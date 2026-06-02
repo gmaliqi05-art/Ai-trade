@@ -249,15 +249,14 @@ export default function MarketPricesPage({ onNavigate }: { onNavigate: (p: Clien
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-4">
         <div>
           <h3 className="text-white font-semibold text-sm">Dëshiron analizë AI për ndonjërin?</h3>
-          <p className="text-gray-400 text-xs mt-0.5">Ngarko një grafik ose shiko sinjalet e motorit me çmime reale</p>
+          <p className="text-gray-400 text-xs mt-0.5">Gjenero analizë automatike nga çmimet live (pa foto) ose shiko sinjalet e motorit</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={() => onNavigate('chart_analysis')}
             className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold px-4 py-2 rounded-xl text-sm transition-all"
           >
-            <Brain className="w-4 h-4" />Ngarko grafik
-          </button>
+            <Brain className="w-4 h-4" />Analizë AI</button>
           <button
             onClick={() => onNavigate('signals')}
             className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-sm transition-all"
