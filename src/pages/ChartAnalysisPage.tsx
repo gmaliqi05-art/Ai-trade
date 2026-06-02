@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, Image as ImageIcon, Brain, Zap, TrendingUp, TrendingDown, Minus, Clock, Target, Shield, ChevronDown, RefreshCw, CheckCircle, AlertCircle, Loader2, X, Camera } from 'lucide-react';
+import { Upload, Image as ImageIcon, Brain, Zap, TrendingUp, TrendingDown, Minus, Clock, Target, Shield, ChevronDown, RefreshCw, CheckCircle, AlertCircle, Loader2, X, Camera, Activity, Wifi } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useAssetAnalysis } from '../ai-trader/react/useAssetAnalysis';
+import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
+import { requestEngineReasoning } from '../services/aiReasoning';
+import type { Timeframe } from '../ai-trader/market/candles';
+import TradingViewChart from '../components/TradingViewChart';
 
 interface AIProvider {
   id: string;
@@ -36,13 +41,26 @@ interface Asset {
   symbol: string;
   name: string;
   current_price: number;
+  category?: string;
+  type?: string;
 }
 
 const TIMEFRAMES = ['1M', '5M', '15M', '30M', '1H', '4H', '1D', '1W'];
 const CHART_TYPES = ['candlestick', 'line', 'bar', 'heikin_ashi'];
 
+// Periudhat e motorit (live) — të njëjta me faqen e Sinjaleve.
+const LIVE_TIMEFRAMES: { v: Timeframe; label: string }[] = [
+  { v: '1m', label: '1 min' },
+  { v: '5m', label: '5 min' },
+  { v: '15m', label: '15 min' },
+  { v: '30m', label: '30 min' },
+  { v: '1h', label: '1 orë' },
+  { v: '4h', label: '4 orë' },
+  { v: '1d', label: '1 ditë' },
+];
+
 export default function ChartAnalysisPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [providers, setProviders] = useState<AIProvider[]>([]);
@@ -56,19 +74,22 @@ export default function ChartAnalysisPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
 
+  // Mënyra: 'live' = analizë automatike nga të dhënat live (pa foto); 'photo' = ngarko grafik.
+  const [mode, setMode] = useState<'live' | 'photo'>('live');
   const [selectedAsset, setSelectedAsset] = useState('');
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedTimeframe, setSelectedTimeframe] = useState('1H');
+  const [liveTimeframe, setLiveTimeframe] = useState<Timeframe>('1h');
   const [selectedChartType, setSelectedChartType] = useState('candlestick');
   const [uploadError, setUploadError] = useState('');
 
   const fetchData = useCallback(async () => {
     const [ar, pr, anr] = await Promise.all([
-      supabase.from('assets').select('id, symbol, name, current_price').order('symbol'),
+      supabase.from('assets').select('id, symbol, name, current_price, category, type').order('symbol'),
       supabase.from('ai_providers').select('id, name, slug, model, is_active, is_default').eq('is_active', true).order('priority'),
       user ? supabase.from('chart_analyses').select('*, assets(symbol, name)').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
     ]);
-    if (ar.data) { setAssets(ar.data); if (ar.data.length > 0) setSelectedAsset(ar.data.find(a => a.symbol === 'XAUUSD')?.id || ar.data[0].id); }
+    if (ar.data) { setAssets(ar.data as Asset[]); if (ar.data.length > 0) setSelectedAsset(ar.data.find(a => a.symbol === 'XAUUSD')?.id || ar.data[0].id); }
     if (pr.data && pr.data.length > 0) {
       setProviders(pr.data as AIProvider[]);
       const def = pr.data.find(p => p.is_default) || pr.data[0];
@@ -79,6 +100,16 @@ export default function ChartAnalysisPage() {
   }, [user]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // --- Analizë automatike LIVE (pa foto): motori AI + arsyetimi Claude ---
+  const assetObj = assets.find(a => a.id === selectedAsset) || null;
+  const liveCategory = assetObj?.category || assetObj?.type;
+  const liveInput = mode === 'live' && assetObj && assetObj.current_price > 0
+    ? { symbol: assetObj.symbol, category: liveCategory, currentPrice: assetObj.current_price, timeframe: liveTimeframe }
+    : null;
+  const { analysis: liveAnalysis, loading: liveLoading, error: liveError, refresh: refreshLive } = useAssetAnalysis(liveInput);
+  // Balanca e profilit për sugjerimin e lotit (rrezik 1%).
+  const accountBalance = Number(profile?.balance) || 0;
 
   const handleFileSelect = (file: File) => {
     if (!file.type.match(/^image\/(png|jpe?g|webp|tiff?)$/i)) {
@@ -224,11 +255,111 @@ export default function ChartAnalysisPage() {
     <div className="p-4 sm:p-6 space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Brain className="w-6 h-6 text-amber-400" />Analizë grafiku me AI
+          <Brain className="w-6 h-6 text-amber-400" />Analizë me AI
         </h2>
-        <p className="text-gray-400 text-sm mt-1">Ngarko një foto grafiku për analizë teknike të menjëhershme me AI</p>
+        <p className="text-gray-400 text-sm mt-1">
+          Gjenero analizë automatikisht nga të dhënat live (pa foto) — ose ngarko një grafik nëse dëshiron.
+        </p>
       </div>
 
+      {/* Zgjedhja e mënyrës: Live (automatik) vs Foto */}
+      <div className="inline-flex bg-gray-900 border border-gray-800 rounded-2xl p-1 gap-1">
+        <button
+          onClick={() => setMode('live')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${mode === 'live' ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+        >
+          <Wifi className="w-4 h-4" />Automatik (live, pa foto)
+        </button>
+        <button
+          onClick={() => setMode('photo')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${mode === 'photo' ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+        >
+          <Camera className="w-4 h-4" />Ngarko foto grafiku
+        </button>
+      </div>
+
+      {mode === 'live' && (
+        <div className="grid lg:grid-cols-5 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
+              <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+                <Activity className="w-4 h-4 text-amber-400" />Cilësimet e analizës live
+              </h3>
+
+              <div>
+                <label className="text-xs text-gray-400 block mb-1.5">Aktivi / Simboli</label>
+                <select value={selectedAsset} onChange={e => setSelectedAsset(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500">
+                  {assets.map(a => <option key={a.id} value={a.id}>{a.symbol} — {a.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-400 block mb-1.5">Periudha e analizës</label>
+                <div className="flex flex-wrap gap-2">
+                  {LIVE_TIMEFRAMES.map(t => (
+                    <button key={t.v} onClick={() => setLiveTimeframe(t.v)}
+                      className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${liveTimeframe === t.v ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={() => refreshLive()}
+                disabled={liveLoading || !assetObj}
+                className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-gray-950 font-bold py-3 rounded-xl text-sm transition-all"
+              >
+                {liveLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+                {liveLoading ? 'Po gjenerohet analiza…' : 'Gjenero analizë (live)'}
+              </button>
+
+              <div className="text-[11px] text-gray-500 bg-gray-800/40 border border-gray-700/50 rounded-xl p-3 leading-relaxed">
+                Motori lexon çmime reale (ari/XAUUSD përmes PAXG, crypto nga tregu) dhe llogarit indikatorët teknikë automatikisht.
+                Pastaj mund të kërkosh arsyetimin e plotë me <span className="text-purple-300">Claude AI</span> brenda kartës.
+                Nuk nevojitet asnjë foto.
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-3 space-y-4">
+            {assetObj && (
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden h-[340px]">
+                <TradingViewChart symbol={assetObj.symbol} timeframe={liveTimeframe} />
+              </div>
+            )}
+
+            {liveLoading ? (
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl flex flex-col items-center justify-center py-16 gap-4">
+                <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
+                <p className="text-amber-400 text-sm animate-pulse">Po lexohen çmimet live dhe po llogariten indikatorët…</p>
+              </div>
+            ) : liveError ? (
+              <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-red-400 font-medium text-sm">S'u gjenerua dot analiza live</p>
+                  <p className="text-red-400/70 text-xs mt-1">{liveError}</p>
+                </div>
+              </div>
+            ) : liveAnalysis ? (
+              <EngineSignalCard
+                analysis={liveAnalysis}
+                category={liveCategory}
+                accountBalance={accountBalance}
+                askAI={(an) => requestEngineReasoning(an, { assetId: selectedAsset || undefined })}
+              />
+            ) : (
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl flex flex-col items-center justify-center py-16 gap-3 text-center">
+                <Activity className="w-10 h-10 text-amber-400/50" />
+                <p className="text-gray-400 text-sm max-w-xs">Zgjidh një aktiv dhe periudhën, pastaj kliko “Gjenero analizë (live)”.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mode === 'photo' && (
       <div className="grid lg:grid-cols-5 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <div
@@ -510,6 +641,7 @@ export default function ChartAnalysisPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
