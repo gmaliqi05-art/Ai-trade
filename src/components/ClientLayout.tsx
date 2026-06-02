@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  TrendingUp, LayoutDashboard, Brain,
+  TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, BarChart3, Upload
+  Zap, Monitor, FileText, Activity, Upload
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -16,48 +16,46 @@ interface ClientLayoutProps {
 
 const navSections = [
   {
-    label: 'Overview',
+    label: 'Kryesore',
     items: [
-      { id: 'dashboard' as ClientPage, label: 'Dashboard', icon: LayoutDashboard },
-      { id: 'market_prices' as ClientPage, label: 'Market Prices', icon: Activity },
+      { id: 'dashboard' as ClientPage, label: 'Paneli', icon: LayoutDashboard },
+      { id: 'market_prices' as ClientPage, label: 'Çmimet e tregut', icon: Activity },
     ],
   },
   {
-    label: 'AI Analysis',
+    label: 'Analiza AI',
     items: [
-      { id: 'chart_analysis' as ClientPage, label: 'Chart Analysis', icon: Upload },
-      { id: 'ai' as ClientPage, label: 'AI Analysis', icon: Brain },
-      { id: 'signals' as ClientPage, label: 'Signals', icon: Zap },
+      { id: 'signals' as ClientPage, label: 'Sinjalet', icon: Zap },
+      { id: 'chart_analysis' as ClientPage, label: 'Analizë grafiku', icon: Upload },
     ],
   },
   {
-    label: 'Data',
+    label: 'Tregtimi',
     items: [
-      { id: 'metatrader' as ClientPage, label: 'MetaTrader', icon: Monitor },
-      { id: 'reports' as ClientPage, label: 'Reports', icon: FileText },
-      { id: 'live_market' as ClientPage, label: 'Live Charts', icon: BarChart3 },
+      { id: 'metatrader' as ClientPage, label: 'MetaTrader / Auto-Trade', icon: Monitor },
+      { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
   },
   {
-    label: 'Account',
+    label: 'Llogaria',
     items: [
-      { id: 'notifications' as ClientPage, label: 'Notifications', icon: Bell },
-      { id: 'settings' as ClientPage, label: 'Settings', icon: Settings },
+      { id: 'notifications' as ClientPage, label: 'Njoftimet', icon: Bell },
+      { id: 'settings' as ClientPage, label: 'Cilësimet', icon: Settings },
     ],
   },
 ];
 
 const pageLabels: Record<ClientPage, string> = {
-  dashboard: 'Dashboard',
-  market_prices: 'Market Prices',
-  ai: 'AI Analysis',
-  chart_analysis: 'Chart Analysis',
-  signals: 'Signals',
-  metatrader: 'MetaTrader',
-  live_market: 'Live Charts',
-  notifications: 'Notifications',
-  reports: 'Reports',
-  settings: 'Settings',
+  dashboard: 'Paneli',
+  market_prices: 'Çmimet e tregut',
+  ai: 'Analizë AI',
+  chart_analysis: 'Analizë grafiku',
+  signals: 'Sinjalet',
+  metatrader: 'MetaTrader / Auto-Trade',
+  live_market: 'Grafikë live',
+  notifications: 'Njoftimet',
+  reports: 'Raporte',
+  settings: 'Cilësimet',
 };
 
 export default function ClientLayout({ currentPage, onNavigate, children }: ClientLayoutProps) {
@@ -111,7 +109,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
         {!collapsed && (
           <div>
             <div className="text-white font-bold text-sm leading-none">GOLDTRADE</div>
-            <div className="text-amber-400 text-[10px] font-semibold tracking-[0.2em] uppercase mt-0.5">AI Signals</div>
+            <div className="text-amber-400 text-[10px] font-semibold tracking-[0.2em] uppercase mt-0.5">Sinjale AI</div>
           </div>
         )}
       </div>
@@ -137,7 +135,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-white text-xs font-medium truncate">{profile?.full_name || 'Trader'}</div>
-              <div className="text-gray-500 text-[10px] capitalize">{profile?.subscription_tier || 'free'} plan</div>
+              <div className="text-gray-500 text-[10px] capitalize">Plani {profile?.subscription_tier || 'free'}</div>
             </div>
           </div>
         )}
@@ -146,7 +144,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-all"
         >
           <LogOut className="w-4 h-4 flex-shrink-0" />
-          {!collapsed && <span className="text-sm font-medium">Sign Out</span>}
+          {!collapsed && <span className="text-sm font-medium">Dil</span>}
         </button>
       </div>
     </div>

@@ -20,7 +20,7 @@ export default function AuthPage() {
       const { error } = await signIn(email, password);
       if (error) setError(error.message);
     } else {
-      if (!fullName.trim()) { setError('Full name is required'); setLoading(false); return; }
+      if (!fullName.trim()) { setError('Emri i plotë është i detyrueshëm'); setLoading(false); return; }
       const { error } = await signUp(email, password, fullName);
       if (error) setError(error.message);
     }
@@ -41,26 +41,26 @@ export default function AuthPage() {
             </div>
             <div className="text-left">
               <h1 className="text-2xl font-bold text-white">GOLDTRADE</h1>
-              <p className="text-amber-400 text-sm font-medium tracking-widest">AI PLATFORM</p>
+              <p className="text-amber-400 text-sm font-medium tracking-widest">PLATFORMË AI</p>
             </div>
           </div>
           <h2 className="text-4xl font-bold text-white mb-4 leading-tight">
-            Trade Smarter with<br /><span className="text-amber-400">AI Intelligence</span>
+            Tregto më zgjuar me<br /><span className="text-amber-400">inteligjencën AI</span>
           </h2>
           <p className="text-gray-400 text-lg mb-10 leading-relaxed">
-            Real-time signals, AI-powered analysis, and professional portfolio management for Gold, Forex, Crypto & Stocks.
+            Sinjale nga motori matematik + arsyetim me Claude AI, çmime reale dhe auto-trade me mbrojtje rreziku për Ar, Forex, Crypto & Indekse.
           </p>
           <div className="grid grid-cols-3 gap-4">
-            {[{ value: '94.2%', label: 'Signal Accuracy' }, { value: '$2.4B', label: 'Volume Tracked' }, { value: '12K+', label: 'Active Traders' }].map((s) => (
+            {[{ value: 'EMA·RSI·MACD', label: 'Indikatorë realë' }, { value: 'Claude AI', label: 'Arsyetim cilësor' }, { value: 'MetaTrader', label: 'Auto-trade (demo)' }].map((s) => (
               <div key={s.label} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
-                <div className="text-xl font-bold text-amber-400">{s.value}</div>
+                <div className="text-lg font-bold text-amber-400">{s.value}</div>
                 <div className="text-gray-400 text-xs mt-1">{s.label}</div>
               </div>
             ))}
           </div>
           <div className="mt-8 flex items-center gap-3 justify-center">
             <BarChart3 className="w-5 h-5 text-amber-400" />
-            <span className="text-gray-400 text-sm">Live market data across 100+ instruments</span>
+            <span className="text-gray-400 text-sm">Çmime reale: Crypto, Ar, Forex, Indekse</span>
           </div>
         </div>
       </div>
@@ -74,26 +74,26 @@ export default function AuthPage() {
             <span className="text-white font-bold text-lg">GOLDTRADE AI</span>
           </div>
           <h2 className="text-3xl font-bold text-white mb-2">
-            {mode === 'login' ? 'Welcome back' : 'Create account'}
+            {mode === 'login' ? 'Mirë se erdhe' : 'Krijo llogari'}
           </h2>
           <p className="text-gray-400 mb-8">
-            {mode === 'login' ? 'Sign in to access your trading dashboard' : 'Start your AI-powered trading journey'}
+            {mode === 'login' ? 'Hyr për të hapur panelin tënd të tregtimit' : 'Nis udhëtimin tënd të tregtimit me AI'}
           </p>
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">Full Name</label>
-                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Smith"
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Emri i plotë</label>
+                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Emri Mbiemri"
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Email Address</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Password</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Fjalëkalimi</label>
               <div className="relative">
                 <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors pr-12" required minLength={6} />
@@ -106,18 +106,18 @@ export default function AuthPage() {
             <button type="submit" disabled={loading}
               className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed text-gray-950 font-semibold py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 mt-2">
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === 'login' ? 'Sign In' : 'Create Account'}
+              {mode === 'login' ? 'Hyr' : 'Krijo llogari'}
             </button>
           </form>
           <div className="mt-6 text-center">
-            <span className="text-gray-400 text-sm">{mode === 'login' ? "Don't have an account? " : 'Already have an account? '}</span>
+            <span className="text-gray-400 text-sm">{mode === 'login' ? "S'ke llogari? " : 'Ke tashmë llogari? '}</span>
             <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }} className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors">
-              {mode === 'login' ? 'Create one' : 'Sign in'}
+              {mode === 'login' ? 'Krijo një' : 'Hyr'}
             </button>
           </div>
           {mode === 'login' && (
             <div className="mt-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-              <p className="text-xs text-gray-500 text-center mb-2">Demo credentials</p>
+              <p className="text-xs text-gray-500 text-center mb-2">Kredenciale demo</p>
               <button type="button" onClick={() => { setEmail('demo@goldtrade.ai'); setPassword('demo123456'); }}
                 className="w-full text-xs text-gray-400 hover:text-amber-400 transition-colors text-center">
                 demo@goldtrade.ai / demo123456

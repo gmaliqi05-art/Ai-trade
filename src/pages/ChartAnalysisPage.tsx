@@ -82,11 +82,11 @@ export default function ChartAnalysisPage() {
 
   const handleFileSelect = (file: File) => {
     if (!file.type.match(/^image\/(png|jpe?g|webp|tiff?)$/i)) {
-      setUploadError('Supported formats: PNG, JPG, WebP, TIFF');
+      setUploadError('Formate të mbështetura: PNG, JPG, WebP, TIFF');
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setUploadError('Max file size: 10MB');
+      setUploadError('Madhësia maksimale: 10MB');
       return;
     }
     setUploadError('');
@@ -110,7 +110,7 @@ export default function ChartAnalysisPage() {
     setUploadError('');
 
     try {
-      setAnalysisStep('Uploading chart image...');
+      setAnalysisStep('Po ngarkohet imazhi i grafikut...');
       const ext = imageFile.name.split('.').pop();
       const path = `chart_analyses/${user.id}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from('charts').upload(path, imageFile, { contentType: imageFile.type });
@@ -121,7 +121,7 @@ export default function ChartAnalysisPage() {
         chartImageUrl = urlData.publicUrl;
       }
 
-      setAnalysisStep('Creating analysis record...');
+      setAnalysisStep('Po krijohet regjistri i analizës...');
       const { data: record, error: recErr } = await supabase.from('chart_analyses').insert({
         user_id: user.id,
         asset_id: selectedAsset || null,
@@ -133,9 +133,9 @@ export default function ChartAnalysisPage() {
         status: 'processing',
       }).select('*, assets(symbol, name)').maybeSingle();
 
-      if (recErr || !record) throw new Error('Failed to create analysis record');
+      if (recErr || !record) throw new Error('Krijimi i regjistrit dështoi');
 
-      setAnalysisStep('Sending to AI for analysis...');
+      setAnalysisStep('Po dërgohet te AI për analizë...');
       const base64 = imagePreview!.split(',')[1];
       const asset = assets.find(a => a.id === selectedAsset);
 
@@ -151,15 +151,15 @@ export default function ChartAnalysisPage() {
         },
       });
 
-      setAnalysisStep('Processing results...');
+      setAnalysisStep('Po përpunohen rezultatet...');
 
       if (fnErr || !result) {
         await supabase.from('chart_analyses').update({
           status: 'failed',
-          analysis_text: 'Analysis failed. Please ensure an AI provider is configured in Admin panel.',
+          analysis_text: 'Analiza dështoi. Sigurohu që një provider AI është konfiguruar te paneli Admin.',
         }).eq('id', record.id);
 
-        const failed = { ...record, status: 'failed', analysis_text: 'Analysis failed. Please configure an AI provider API key in the Admin panel.' } as ChartAnalysis;
+        const failed = { ...record, status: 'failed', analysis_text: 'Analiza dështoi. Konfiguro një çelës API te Admin → AI Providers.' } as ChartAnalysis;
         setCurrent(failed);
         setAnalyses(p => [failed, ...p.slice(0, 19)]);
         return;
@@ -186,14 +186,14 @@ export default function ChartAnalysisPage() {
           await supabase.from('notifications').insert({
             user_id: user.id,
             type: 'analysis_complete',
-            title: `Analysis Complete — ${asset?.symbol || 'Chart'}`,
-            body: `${result.signal} signal with ${result.confidence}% confidence. Entry: ${result.entry_price}`,
+            title: `Analiza përfundoi — ${asset?.symbol || 'Grafik'}`,
+            body: `Sinjal ${result.signal} me ${result.confidence}% besueshmëri. Hyrje: ${result.entry_price}`,
             data: { analysis_id: record.id, signal: result.signal },
           });
         }
       }
     } catch {
-      setUploadError('Analysis failed. Please try again.');
+      setUploadError('Analiza dështoi. Provo përsëri.');
     } finally {
       setAnalyzing(false);
       setAnalysisStep('');
@@ -224,9 +224,9 @@ export default function ChartAnalysisPage() {
     <div className="p-4 sm:p-6 space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Brain className="w-6 h-6 text-amber-400" />AI Chart Analysis
+          <Brain className="w-6 h-6 text-amber-400" />Analizë grafiku me AI
         </h2>
-        <p className="text-gray-400 text-sm mt-1">Upload a chart screenshot for instant AI-powered technical analysis</p>
+        <p className="text-gray-400 text-sm mt-1">Ngarko një foto grafiku për analizë teknike të menjëhershme me AI</p>
       </div>
 
       <div className="grid lg:grid-cols-5 gap-6">
@@ -257,8 +257,8 @@ export default function ChartAnalysisPage() {
                 <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-3">
                   <Upload className="w-7 h-7 text-amber-400" />
                 </div>
-                <p className="text-white font-medium mb-1">Drop chart here or click to upload</p>
-                <p className="text-gray-500 text-xs">PNG, JPG, WebP, TIFF — max 10MB</p>
+                <p className="text-white font-medium mb-1">Lësho grafikun këtu ose kliko për të ngarkuar</p>
+                <p className="text-gray-500 text-xs">PNG, JPG, WebP, TIFF — maks 10MB</p>
               </div>
             )}
           </div>
@@ -271,10 +271,10 @@ export default function ChartAnalysisPage() {
           )}
 
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
-            <h3 className="text-white font-semibold text-sm">Analysis Settings</h3>
+            <h3 className="text-white font-semibold text-sm">Cilësimet e analizës</h3>
 
             <div>
-              <label className="text-xs text-gray-400 block mb-1.5">Asset / Symbol</label>
+              <label className="text-xs text-gray-400 block mb-1.5">Aktivi / Simboli</label>
               <select value={selectedAsset} onChange={e => setSelectedAsset(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500">
                 {assets.map(a => <option key={a.id} value={a.id}>{a.symbol} — {a.name}</option>)}
               </select>
@@ -282,7 +282,7 @@ export default function ChartAnalysisPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">Timeframe</label>
+                <label className="text-xs text-gray-400 block mb-1.5">Periudha</label>
                 <div className="relative">
                   <select value={selectedTimeframe} onChange={e => setSelectedTimeframe(e.target.value)} className="w-full appearance-none bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 pr-8">
                     {TIMEFRAMES.map(tf => <option key={tf} value={tf}>{tf}</option>)}
@@ -291,7 +291,7 @@ export default function ChartAnalysisPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">Chart Type</label>
+                <label className="text-xs text-gray-400 block mb-1.5">Lloji i grafikut</label>
                 <div className="relative">
                   <select value={selectedChartType} onChange={e => setSelectedChartType(e.target.value)} className="w-full appearance-none bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 pr-8 capitalize">
                     {CHART_TYPES.map(ct => <option key={ct} value={ct} className="capitalize">{ct.replace('_', ' ')}</option>)}
@@ -303,7 +303,7 @@ export default function ChartAnalysisPage() {
 
             {providers.length > 0 && (
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">AI Provider</label>
+                <label className="text-xs text-gray-400 block mb-1.5">Provider AI</label>
                 <div className="grid gap-2">
                   {providers.map(p => (
                     <button key={p.slug} onClick={() => setSelectedProvider(p.slug)} className={`flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-all ${selectedProvider === p.slug ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
@@ -322,7 +322,7 @@ export default function ChartAnalysisPage() {
 
             {providers.length === 0 && !loading && (
               <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
-                No active AI providers. Go to Admin → AI Providers and activate Groq (free) or Gemini (free) by adding an API key.
+                Asnjë provider AI aktiv. Shko te Admin → AI Providers dhe aktivizo Anthropic (ose tjetër) duke shtuar një çelës API.
               </div>
             )}
 
@@ -332,18 +332,18 @@ export default function ChartAnalysisPage() {
               className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-gray-950 font-bold py-3 rounded-xl text-sm transition-all"
             >
               {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-              {analyzing ? analysisStep || 'Analyzing...' : 'Analyze Chart'}
+              {analyzing ? analysisStep || 'Po analizohet...' : 'Analizo grafikun'}
             </button>
 
             <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2.5 rounded-xl text-sm transition-all border border-gray-700">
-              <Camera className="w-4 h-4" />Upload Different Chart
+              <Camera className="w-4 h-4" />Ngarko grafik tjetër
             </button>
           </div>
 
           {analyses.length > 0 && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-white font-semibold text-sm flex items-center gap-2"><ImageIcon className="w-4 h-4 text-amber-400" />Recent Analyses</h3>
+                <h3 className="text-white font-semibold text-sm flex items-center gap-2"><ImageIcon className="w-4 h-4 text-amber-400" />Analizat e fundit</h3>
                 <button onClick={fetchData} className="p-1 text-gray-500 hover:text-white transition-colors"><RefreshCw className="w-3.5 h-3.5" /></button>
               </div>
               <div className="space-y-2">
@@ -352,8 +352,8 @@ export default function ChartAnalysisPage() {
                     <div className="flex items-center gap-2.5">
                       <div className={`w-1.5 h-6 rounded-full ${a.signal === 'BUY' ? 'bg-green-400' : a.signal === 'SELL' ? 'bg-red-400' : 'bg-amber-400'}`} />
                       <div>
-                        <div className="text-white text-xs font-medium">{a.assets?.symbol || 'Chart'} — {a.timeframe}</div>
-                        <div className="text-gray-500 text-xs">{new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                        <div className="text-white text-xs font-medium">{a.assets?.symbol || 'Grafik'} — {a.timeframe}</div>
+                        <div className="text-gray-500 text-xs">{new Date(a.created_at).toLocaleDateString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -385,11 +385,11 @@ export default function ChartAnalysisPage() {
                 <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-amber-500 animate-spin" />
               </div>
               <div className="text-center">
-                <p className="text-white font-semibold text-lg">AI Analysis in Progress</p>
-                <p className="text-amber-400 text-sm mt-2 animate-pulse">{analysisStep || 'Processing your chart...'}</p>
+                <p className="text-white font-semibold text-lg">Analiza AI në vazhdim</p>
+                <p className="text-amber-400 text-sm mt-2 animate-pulse">{analysisStep || 'Po përpunohet grafiku...'}</p>
               </div>
               <div className="flex gap-2">
-                {['Detecting patterns', 'Identifying levels', 'Generating signal'].map((s, i) => (
+                {['Po dallon modelet', 'Po identifikon nivelet', 'Po gjeneron sinjalin'].map((s, i) => (
                   <div key={s} className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${i === 0 ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-gray-800 border-gray-700 text-gray-500'}`}>
                     {i === 0 && <CheckCircle className="w-3 h-3" />}
                     {s}
@@ -423,7 +423,7 @@ export default function ChartAnalysisPage() {
                       {current.confidence !== null && (
                         <div className="text-center bg-gray-800 rounded-xl px-3 py-2 border border-gray-700">
                           <div className="text-amber-400 text-xl font-black">{current.confidence.toFixed(0)}%</div>
-                          <div className="text-gray-500 text-xs">confidence</div>
+                          <div className="text-gray-500 text-xs">besueshmëri</div>
                         </div>
                       )}
                     </div>
@@ -434,7 +434,7 @@ export default function ChartAnalysisPage() {
                   <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
                     <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-red-400 font-medium text-sm">Analysis Failed</p>
+                      <p className="text-red-400 font-medium text-sm">Analiza dështoi</p>
                       <p className="text-red-400/70 text-xs mt-1">{current.analysis_text}</p>
                     </div>
                   </div>
@@ -443,8 +443,8 @@ export default function ChartAnalysisPage() {
                     {(current.entry_price || current.target_price || current.stop_loss) && (
                       <div className="grid grid-cols-3 gap-3">
                         {[
-                          { label: 'Entry', value: current.entry_price, icon: Zap, cls: 'bg-gray-800/50 border-gray-700', vCls: 'text-white' },
-                          { label: 'Target', value: current.target_price, icon: Target, cls: 'bg-green-500/10 border-green-500/20', vCls: 'text-green-400' },
+                          { label: 'Hyrje', value: current.entry_price, icon: Zap, cls: 'bg-gray-800/50 border-gray-700', vCls: 'text-white' },
+                          { label: 'Objektiv', value: current.target_price, icon: Target, cls: 'bg-green-500/10 border-green-500/20', vCls: 'text-green-400' },
                           { label: 'Stop Loss', value: current.stop_loss, icon: Shield, cls: 'bg-red-500/10 border-red-500/20', vCls: 'text-red-400' },
                         ].map(item => {
                           const Icon = item.icon;
@@ -465,7 +465,7 @@ export default function ChartAnalysisPage() {
                     {current.analysis_text && (
                       <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4">
                         <h4 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-                          <Brain className="w-4 h-4 text-amber-400" />Technical Analysis
+                          <Brain className="w-4 h-4 text-amber-400" />Analiza teknike
                         </h4>
                         <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{current.analysis_text}</p>
                       </div>
@@ -474,7 +474,7 @@ export default function ChartAnalysisPage() {
                     {current.reasoning && (
                       <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-4">
                         <h4 className="text-amber-400 font-semibold text-sm mb-2 flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4" />Signal Reasoning
+                          <TrendingUp className="w-4 h-4" />Arsyetimi i sinjalit
                         </h4>
                         <p className="text-gray-300 text-sm leading-relaxed">{current.reasoning}</p>
                       </div>
@@ -484,8 +484,8 @@ export default function ChartAnalysisPage() {
 
                 <div className="flex items-center gap-3 text-xs text-gray-500 pt-1 border-t border-gray-800">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>Analyzed at {new Date(current.created_at).toLocaleString()}</span>
-                  <span className="ml-auto capitalize bg-gray-800 px-2 py-0.5 rounded-lg">{current.source} upload</span>
+                  <span>Analizuar më {new Date(current.created_at).toLocaleString('sq-AL')}</span>
+                  <span className="ml-auto capitalize bg-gray-800 px-2 py-0.5 rounded-lg">ngarkim {current.source}</span>
                 </div>
               </div>
             </div>
@@ -495,11 +495,11 @@ export default function ChartAnalysisPage() {
                 <Brain className="w-10 h-10 text-amber-400/60" />
               </div>
               <div className="text-center">
-                <h3 className="text-white font-semibold text-lg">Upload a Chart to Analyze</h3>
-                <p className="text-gray-500 text-sm mt-2 max-w-xs">Take a screenshot of your MT4/MT5 or any trading platform chart and upload it for instant AI analysis</p>
+                <h3 className="text-white font-semibold text-lg">Ngarko një grafik për analizë</h3>
+                <p className="text-gray-500 text-sm mt-2 max-w-xs">Bëj një foto të grafikut nga MT4/MT5 ose çdo platformë tjetër dhe ngarkoje për analizë të menjëhershme me AI</p>
               </div>
               <div className="grid grid-cols-3 gap-3 mt-2">
-                {['Pattern Recognition', 'Support & Resistance', 'Signal Generation'].map(f => (
+                {['Njohje modelesh', 'Mbështetje & Rezistencë', 'Gjenerim sinjali'].map(f => (
                   <div key={f} className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3 text-center">
                     <CheckCircle className="w-4 h-4 text-amber-400 mx-auto mb-1" />
                     <p className="text-gray-400 text-xs">{f}</p>
