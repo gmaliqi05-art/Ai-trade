@@ -71,17 +71,17 @@ export default function NotificationsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Bell className="w-6 h-6 text-amber-400" />Njoftimet
+            <Bell className="w-6 h-6 text-amber-400" />Notifications
             {unreadCount > 0 && (
               <span className="bg-amber-500 text-gray-950 text-xs font-black px-2 py-0.5 rounded-full">{unreadCount}</span>
             )}
           </h2>
-          <p className="text-gray-400 text-sm mt-1">{notifications.length} njoftime gjithsej</p>
+          <p className="text-gray-400 text-sm mt-1">{notifications.length} notifications total</p>
         </div>
         <div className="flex items-center gap-2">
           {unreadCount > 0 && (
             <button onClick={markAllRead} className="flex items-center gap-1.5 text-sm text-amber-400 hover:text-amber-300 transition-colors">
-              <CheckCheck className="w-4 h-4" />Shëno të gjitha si të lexuara
+              <CheckCheck className="w-4 h-4" />Mark all read
             </button>
           )}
           <button onClick={fetchNotifications} className="p-2 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white transition-all">
@@ -91,7 +91,7 @@ export default function NotificationsPage() {
       </div>
 
       <div className="flex gap-2">
-        {[{ id: 'all', label: 'Të gjitha' }, { id: 'unread', label: `Të palexuara (${unreadCount})` }].map(f => (
+        {[{ id: 'all', label: 'All' }, { id: 'unread', label: `Unread (${unreadCount})` }].map(f => (
           <button key={f.id} onClick={() => setFilter(f.id as 'all' | 'unread')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === f.id ? 'bg-amber-500 text-gray-950' : 'bg-gray-900 border border-gray-700 text-gray-400 hover:text-white'}`}>
             {f.label}
           </button>
@@ -103,8 +103,8 @@ export default function NotificationsPage() {
       ) : displayed.length === 0 ? (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-14 text-center">
           <Bell className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-          <p className="text-white font-medium">{filter === 'unread' ? 'Asnjë njoftim i palexuar' : 'Ende pa njoftime'}</p>
-          <p className="text-gray-500 text-sm mt-1">Këtu do të marrësh njoftime për sinjale, analiza dhe alarme të reja</p>
+          <p className="text-white font-medium">{filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}</p>
+          <p className="text-gray-500 text-sm mt-1">You'll receive notifications for new signals, analyses, and alerts here</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -121,21 +121,21 @@ export default function NotificationsPage() {
                     <div className="flex items-center gap-2">
                       <p className={`text-sm font-semibold ${n.is_read ? 'text-gray-400' : 'text-white'}`}>{n.title}</p>
                       {!n.is_read && <div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0 mt-0.5" />}
-                      {n.is_broadcast && <span className="text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-md">Njoftim i përgjithshëm</span>}
+                      {n.is_broadcast && <span className="text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-md">Broadcast</span>}
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       {!n.is_read && (
-                        <button onClick={(e) => { e.stopPropagation(); markRead(n.id); }} className="opacity-0 group-hover:opacity-100 p-1 text-amber-400 hover:text-amber-300 transition-all" title="Shëno si të lexuar">
+                        <button onClick={(e) => { e.stopPropagation(); markRead(n.id); }} className="opacity-0 group-hover:opacity-100 p-1 text-amber-400 hover:text-amber-300 transition-all" title="Mark as read">
                           <Check className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <button onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }} className="opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-red-400 transition-all" title="Fshi">
+                      <button onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }} className="opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-red-400 transition-all" title="Delete">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                   <p className="text-gray-400 text-xs mt-0.5 leading-relaxed">{n.body}</p>
-                  <p className="text-gray-600 text-xs mt-1.5">{new Date(n.created_at).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-gray-600 text-xs mt-1.5">{new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
             );

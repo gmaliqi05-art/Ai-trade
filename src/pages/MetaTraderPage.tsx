@@ -226,7 +226,7 @@ export default function MetaTraderPage() {
       await fetchConnections();
       setStep(2);
     } else {
-      setMsg({ type: 'error', text: 'Krijimi i lidhjes dështoi. Provo përsëri.' });
+      setMsg({ type: 'error', text: 'Failed to create connection. Please try again.' });
     }
     setSaving(false);
   };
@@ -240,7 +240,7 @@ export default function MetaTraderPage() {
   };
 
   const deleteConnection = async (id: string) => {
-    if (!window.confirm('Ta fshij këtë lidhje MetaTrader? Ky veprim s\'kthehet mbrapsht.')) return;
+    if (!window.confirm('Delete this MetaTrader connection? This cannot be undone.')) return;
     await supabase.from('metatrader_connections').delete().eq('id', id);
     setConnections(p => p.filter(c => c.id !== id));
     if (newConnection?.id === id) setNewConnection(null);
@@ -279,10 +279,10 @@ export default function MetaTraderPage() {
     <div className="p-4 sm:p-6 space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Monitor className="w-6 h-6 text-amber-400" />Lidhja MetaTrader
+          <Monitor className="w-6 h-6 text-amber-400" />MetaTrader Connection
         </h2>
         <p className="text-gray-400 text-sm mt-1">
-          Lidh MT4/MT5 për të marrë sinjale automatike AI në 3 hapa të thjeshtë
+          Connect your MT4/MT5 to receive automatic AI trading signals in 3 simple steps
         </p>
       </div>
 
@@ -306,9 +306,9 @@ export default function MetaTraderPage() {
         <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
           <div className="flex border-b border-gray-800">
             {[
-              { n: 1 as const, label: 'Konfiguro', icon: Zap },
-              { n: 2 as const, label: 'Instalo EA', icon: Download },
-              { n: 3 as const, label: 'Lidhur', icon: CheckCircle },
+              { n: 1 as const, label: 'Configure', icon: Zap },
+              { n: 2 as const, label: 'Install EA', icon: Download },
+              { n: 3 as const, label: 'Connected', icon: CheckCircle },
             ].map(({ n, label, icon: Icon }) => (
               <div
                 key={n}
@@ -335,12 +335,12 @@ export default function MetaTraderPage() {
             {step === 1 && (
               <div className="space-y-5 max-w-lg mx-auto">
                 <div>
-                  <h3 className="text-white font-semibold text-lg mb-1">Hapi 1 — Konfiguro lidhjen</h3>
-                  <p className="text-gray-400 text-sm">Zgjidh versionin e MetaTrader-it dhe simbolin e tregtimit</p>
+                  <h3 className="text-white font-semibold text-lg mb-1">Step 1 — Configure your connection</h3>
+                  <p className="text-gray-400 text-sm">Choose your MetaTrader version and trading symbol</p>
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-400 block mb-2">Versioni i platformës</label>
+                  <label className="text-xs text-gray-400 block mb-2">Platform Version</label>
                   <div className="flex gap-3">
                     {(['MT4', 'MT5'] as const).map(p => (
                       <button
@@ -359,7 +359,7 @@ export default function MetaTraderPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-400 block mb-2">Simboli i tregtimit</label>
+                  <label className="text-xs text-gray-400 block mb-2">Trading Symbol</label>
                   <div className="grid grid-cols-5 gap-2">
                     {SYMBOLS.map(s => (
                       <button
@@ -378,7 +378,7 @@ export default function MetaTraderPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-400 block mb-2">Intervali i analizës</label>
+                  <label className="text-xs text-gray-400 block mb-2">Analysis Interval</label>
                   <div className="grid grid-cols-3 gap-2">
                     {INTERVALS.map(i => (
                       <button
@@ -402,7 +402,7 @@ export default function MetaTraderPage() {
                   className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-bold py-3.5 rounded-xl text-sm transition-all"
                 >
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
-                  {saving ? 'Po krijohet lidhja...' : 'Vazhdo — Merr çelësin API'}
+                  {saving ? 'Creating connection...' : 'Continue — Get API Key'}
                 </button>
               </div>
             )}
@@ -410,13 +410,13 @@ export default function MetaTraderPage() {
             {step === 2 && newConnection && (
               <div className="space-y-5 max-w-lg mx-auto">
                 <div>
-                  <h3 className="text-white font-semibold text-lg mb-1">Hapi 2 — Instalo EA-në në MetaTrader</h3>
-                  <p className="text-gray-400 text-sm">Shkarko dhe instalo skedarin Expert Advisor — çelësi yt API është tashmë i para-konfiguruar</p>
+                  <h3 className="text-white font-semibold text-lg mb-1">Step 2 — Install the EA in MetaTrader</h3>
+                  <p className="text-gray-400 text-sm">Download and install the Expert Advisor file — it already has your API key pre-configured</p>
                 </div>
 
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-amber-400 text-xs font-semibold">ÇELËSI YT API</span>
+                    <span className="text-amber-400 text-xs font-semibold">YOUR API KEY</span>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setShowKey(showKey === newConnection.id ? null : newConnection.id)}
@@ -429,7 +429,7 @@ export default function MetaTraderPage() {
                         className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
                       >
                         {copied === 'key' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        {copied === 'key' ? 'U kopjua!' : 'Kopjo'}
+                        {copied === 'key' ? 'Copied!' : 'Copy'}
                       </button>
                     </div>
                   </div>
@@ -446,19 +446,19 @@ export default function MetaTraderPage() {
                     className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-bold py-3.5 rounded-xl text-sm transition-all"
                   >
                     <Download className="w-4 h-4" />
-                    Shkarko {newConnection.platform} EA (.mq{newConnection.platform === 'MT4' ? '4' : '5'}) — i para-konfiguruar
+                    Download {newConnection.platform} EA (.mq{newConnection.platform === 'MT4' ? '4' : '5'}) — Pre-configured
                   </button>
 
                   <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 space-y-3">
-                    <p className="text-white text-xs font-semibold">Hapat e instalimit:</p>
+                    <p className="text-white text-xs font-semibold">Installation steps:</p>
                     {[
-                      `Hap MetaTrader ${newConnection.platform.slice(2)} në kompjuterin tënd`,
-                      'Shko te: File → Open Data Folder → MQL4 (ose MQL5) → Experts',
-                      `Kopjo skedarin e shkarkuar .mq${newConnection.platform === 'MT4' ? '4' : '5'} në atë dosje`,
-                      'Në MetaTrader: shtyp F5 për të rifreskuar panelin Navigator',
-                      `Tërhiq EA-në mbi grafikun e ${newConnection.symbol}`,
-                      'Te cilësimet e EA-së: aktivizo "Allow live trading" dhe "Allow DLL imports"',
-                      `Shko te: Tools → Options → Expert Advisors → Shto URL: ${SUPABASE_WEBHOOK_URL}`,
+                      `Open MetaTrader ${newConnection.platform.slice(2)} on your computer`,
+                      'Go to: File → Open Data Folder → MQL4 (or MQL5) → Experts',
+                      `Copy the downloaded .mq${newConnection.platform === 'MT4' ? '4' : '5'} file into that folder`,
+                      'In MetaTrader: press F5 to refresh the Navigator panel',
+                      `Drag the EA onto your ${newConnection.symbol} chart`,
+                      'In EA settings: tick "Allow live trading" and "Allow DLL imports"',
+                      `Go to: Tools → Options → Expert Advisors → Add URL: ${SUPABASE_WEBHOOK_URL}`,
                     ].map((s, i) => (
                       <div key={i} className="flex items-start gap-3">
                         <span className="w-5 h-5 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">{i + 1}</span>
@@ -473,7 +473,7 @@ export default function MetaTraderPage() {
                     onClick={() => setStep(3)}
                     className="flex-1 flex items-center justify-center gap-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/30 font-semibold py-3 rounded-xl text-sm transition-all"
                   >
-                    <CheckCircle className="w-4 h-4" />U krye — EA u instalua
+                    <CheckCircle className="w-4 h-4" />Done — EA is installed
                   </button>
                 </div>
               </div>
@@ -485,18 +485,18 @@ export default function MetaTraderPage() {
                   <CheckCircle className="w-10 h-10 text-green-400" />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold text-xl mb-2">Lidhja aktive</h3>
+                  <h3 className="text-white font-bold text-xl mb-2">Connection Active</h3>
                   <p className="text-gray-400 text-sm">
-                    EA-ja do të dërgojë të dhëna reale tregu te GOLDTRADE AI çdo{' '}
+                    The EA will send real market data to GOLDTRADE AI every{' '}
                     <span className="text-amber-400 font-medium">{INTERVALS.find(i => i.value === (newConnection?.interval_minutes || intervalMin))?.label?.toLowerCase()}</span>.
-                    Sinjalet AI do të shfaqen automatikisht te faqja e Sinjaleve.
+                    AI signals will appear automatically in your Signals feed.
                   </p>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   {[
-                    { label: 'Të dhëna reale OHLCV', icon: Terminal },
-                    { label: 'Auto-analizë AI', icon: Zap },
-                    { label: 'Sinjale live', icon: Shield },
+                    { label: 'Real OHLCV data', icon: Terminal },
+                    { label: 'AI auto-analysis', icon: Zap },
+                    { label: 'Live signals', icon: Shield },
                   ].map(({ label, icon: Icon }) => (
                     <div key={label} className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3">
                       <Icon className="w-5 h-5 text-amber-400 mx-auto mb-2" />
@@ -508,7 +508,7 @@ export default function MetaTraderPage() {
                   onClick={() => { setStep(1); setNewConnection(null); }}
                   className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
                 >
-                  Shto një simbol tjetër
+                  Add another symbol
                 </button>
               </div>
             )}
@@ -517,13 +517,13 @@ export default function MetaTraderPage() {
       ) : (
         <div className="bg-gray-900 border border-amber-500/20 rounded-2xl p-8 text-center">
           <Monitor className="w-14 h-14 text-gray-700 mx-auto mb-4" />
-          <h3 className="text-white font-semibold mb-2">Asnjë lidhje MetaTrader</h3>
-          <p className="text-gray-400 text-sm mb-5">Lidh MT4 ose MT5 në 3 hapa të thjeshtë për të marrë sinjale automatike AI</p>
+          <h3 className="text-white font-semibold mb-2">No MetaTrader Connections</h3>
+          <p className="text-gray-400 text-sm mb-5">Connect your MT4 or MT5 in 3 easy steps to receive automatic AI trading signals</p>
           <button
             onClick={() => setStep(1)}
             className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-bold px-6 py-3 rounded-xl text-sm transition-all"
           >
-            <Zap className="w-4 h-4" />Lidh MetaTrader
+            <Zap className="w-4 h-4" />Connect MetaTrader
           </button>
         </div>
       )}
@@ -531,7 +531,7 @@ export default function MetaTraderPage() {
       {hasConnections && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-white font-semibold">Lidhjet e tua</h3>
+            <h3 className="text-white font-semibold">Your Connections</h3>
             <button onClick={fetchConnections} className="p-2 text-gray-500 hover:text-white bg-gray-900 border border-gray-700 rounded-xl transition-all">
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
@@ -555,13 +555,13 @@ export default function MetaTraderPage() {
                           <span className="text-white font-semibold text-sm">{c.platform}</span>
                           <span className="text-xs bg-amber-500/15 text-amber-400 px-2 py-0.5 rounded-lg font-medium">{c.symbol}</span>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${online ? 'bg-green-500/15 text-green-400' : 'bg-gray-700/80 text-gray-500'}`}>
-                            {online ? 'Live' : c.last_ping_at ? 'Jashtë linje' : 'Në pritje'}
+                            {online ? 'Live' : c.last_ping_at ? 'Offline' : 'Waiting'}
                           </span>
                         </div>
                         <div className="text-gray-500 text-xs mt-0.5">
                           {c.last_ping_at
-                            ? `Ping i fundit: ${new Date(c.last_ping_at).toLocaleTimeString()}`
-                            : 'Ende pa të dhëna — instalo EA-në për të nisur'}
+                            ? `Last ping: ${new Date(c.last_ping_at).toLocaleTimeString()}`
+                            : 'No data received yet — install the EA to start'}
                         </div>
                       </div>
                     </div>
@@ -574,22 +574,22 @@ export default function MetaTraderPage() {
                     <div className="border-t border-gray-800 p-4 space-y-4">
                       <div className="grid sm:grid-cols-3 gap-3 text-xs">
                         <div className="bg-gray-800/50 rounded-xl p-3">
-                          <div className="text-gray-500 mb-1">Intervali</div>
+                          <div className="text-gray-500 mb-1">Interval</div>
                           <div className="text-white font-medium">{INTERVALS.find(i => i.value === c.interval_minutes)?.label || `${c.interval_minutes}min`}</div>
                         </div>
                         <div className="bg-gray-800/50 rounded-xl p-3">
-                          <div className="text-gray-500 mb-1 flex items-center gap-1"><Clock className="w-3 h-3" />Të dhënat e fundit</div>
-                          <div className="text-white font-medium">{c.last_data_at ? new Date(c.last_data_at).toLocaleTimeString() : 'Ende pa të dhëna'}</div>
+                          <div className="text-gray-500 mb-1 flex items-center gap-1"><Clock className="w-3 h-3" />Last Data</div>
+                          <div className="text-white font-medium">{c.last_data_at ? new Date(c.last_data_at).toLocaleTimeString() : 'No data yet'}</div>
                         </div>
                         <div className="bg-gray-800/50 rounded-xl p-3">
-                          <div className="text-gray-500 mb-1">Statusi</div>
-                          <div className={`font-medium ${c.is_active ? 'text-green-400' : 'text-gray-400'}`}>{c.is_active ? 'Aktiv' : 'Pauzuar'}</div>
+                          <div className="text-gray-500 mb-1">Status</div>
+                          <div className={`font-medium ${c.is_active ? 'text-green-400' : 'text-gray-400'}`}>{c.is_active ? 'Active' : 'Paused'}</div>
                         </div>
                       </div>
 
                       <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-3">
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs text-gray-400">Çelësi API</span>
+                          <span className="text-xs text-gray-400">API Key</span>
                           <div className="flex items-center gap-2">
                             <button onClick={() => setShowKey(showKey === c.id ? null : c.id)} className="text-gray-500 hover:text-white transition-colors">
                               {showKey === c.id ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -610,7 +610,7 @@ export default function MetaTraderPage() {
                           onClick={() => downloadEA(c)}
                           className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-2 rounded-xl text-xs font-medium transition-all"
                         >
-                          <Download className="w-3.5 h-3.5" />Rishkarko EA
+                          <Download className="w-3.5 h-3.5" />Re-download EA
                         </button>
                         <button
                           onClick={() => toggleConnection(c)}
@@ -620,13 +620,13 @@ export default function MetaTraderPage() {
                               : 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border-green-500/30'
                           }`}
                         >
-                          {c.is_active ? 'Pauzo' : 'Rifillo'}
+                          {c.is_active ? 'Pause' : 'Resume'}
                         </button>
                         <button
                           onClick={() => deleteConnection(c.id)}
                           className="flex items-center gap-1.5 bg-red-500/5 hover:bg-red-500/10 text-red-400/70 hover:text-red-400 border border-red-500/20 px-3 py-2 rounded-xl text-xs font-medium transition-all ml-auto"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />Fshi
+                          <Trash2 className="w-3.5 h-3.5" />Delete
                         </button>
                       </div>
                     </div>
@@ -641,7 +641,7 @@ export default function MetaTraderPage() {
               onClick={() => setStep(1)}
               className="mt-3 w-full py-3 rounded-xl border border-dashed border-gray-700 text-gray-500 hover:text-white hover:border-gray-600 text-sm transition-all"
             >
-              + Shto një simbol tjetër
+              + Add another symbol
             </button>
           )}
         </div>

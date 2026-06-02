@@ -146,7 +146,7 @@ export default function ReportsPage() {
           ? Math.round(rows.reduce((a, s) => a + s.confidence, 0) / rows.length)
           : 0;
 
-        title = `Raport sinjalesh AI — ${period}`;
+        title = `AI Signals Report — ${period}`;
         reportData = {
           summary: {
             total_signals: rows.length,
@@ -188,7 +188,7 @@ export default function ReportsPage() {
         const aiRows = (aiRes.data || []) as AIAnalysis[];
         const chartRows = (chartRes.data || []) as ChartAnalysis[];
 
-        title = `Raport analizash AI — ${period}`;
+        title = `AI Analysis Report — ${period}`;
         reportData = {
           summary: {
             total_ai_analyses: aiRows.length,
@@ -225,7 +225,7 @@ export default function ReportsPage() {
           supabase.from('metatrader_connections').select('id, platform, symbol, is_active, last_ping_at, last_data_at').eq('user_id', user.id),
         ]);
 
-        title = `Përmbledhje platforme — ${period}`;
+        title = `Platform Overview — ${period}`;
         const allSignals = (signalsRes.data || []) as Signal[];
         reportData = {
           summary: {
@@ -265,13 +265,13 @@ export default function ReportsPage() {
 
       if (!error && report) {
         setReports(p => [report as Report, ...p]);
-        setMsg({ type: 'success', text: 'Raporti u gjenerua me sukses.' });
+        setMsg({ type: 'success', text: 'Report generated successfully.' });
         downloadCSV(report as Report, reportData, genType);
       } else {
-        setMsg({ type: 'error', text: 'Ruajtja e raportit dështoi.' });
+        setMsg({ type: 'error', text: 'Failed to save report.' });
       }
     } catch {
-      setMsg({ type: 'error', text: 'Gjenerimi i raportit dështoi.' });
+      setMsg({ type: 'error', text: 'Failed to generate report.' });
     } finally {
       setGenerating(false);
       setTimeout(() => setMsg(null), 4000);
@@ -341,20 +341,20 @@ export default function ReportsPage() {
     <div className="p-4 sm:p-6 space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <FileText className="w-6 h-6 text-amber-400" />Raporte
+          <FileText className="w-6 h-6 text-amber-400" />Reports
         </h2>
-        <p className="text-gray-400 text-sm mt-1">Eksporto të dhëna reale nga analizat dhe sinjalet e tua AI</p>
+        <p className="text-gray-400 text-sm mt-1">Export real data from your AI analyses and signals</p>
       </div>
 
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
-            { label: 'Analiza të bëra', value: stats.totalAnalyses, icon: Brain, color: 'text-amber-400' },
-            { label: 'Sinjale aktive', value: stats.totalSignals, icon: Zap, color: 'text-amber-400' },
-            { label: 'Sinjale BLEJ', value: stats.buySignals, icon: TrendingUp, color: 'text-green-400' },
-            { label: 'Sinjale SHIT', value: stats.sellSignals, icon: TrendingDown, color: 'text-red-400' },
-            { label: 'Besueshmëri mesatare', value: stats.avgConfidence > 0 ? `${stats.avgConfidence}%` : '—', icon: Minus, color: 'text-blue-400' },
-            { label: 'Lidhje MT', value: stats.mtConnections, icon: Monitor, color: 'text-green-400' },
+            { label: 'Analyses Run', value: stats.totalAnalyses, icon: Brain, color: 'text-amber-400' },
+            { label: 'Active Signals', value: stats.totalSignals, icon: Zap, color: 'text-amber-400' },
+            { label: 'Buy Signals', value: stats.buySignals, icon: TrendingUp, color: 'text-green-400' },
+            { label: 'Sell Signals', value: stats.sellSignals, icon: TrendingDown, color: 'text-red-400' },
+            { label: 'Avg Confidence', value: stats.avgConfidence > 0 ? `${stats.avgConfidence}%` : '—', icon: Minus, color: 'text-blue-400' },
+            { label: 'MT Connections', value: stats.mtConnections, icon: Monitor, color: 'text-green-400' },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               <Icon className={`w-4 h-4 ${color} mb-2`} />
@@ -366,15 +366,15 @@ export default function ReportsPage() {
       )}
 
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-        <h3 className="text-white font-semibold mb-4">Gjenero raport</h3>
+        <h3 className="text-white font-semibold mb-4">Generate Report</h3>
         <div className="grid sm:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Lloji i raportit</label>
+            <label className="text-xs text-gray-400 block mb-1.5">Report Type</label>
             <div className="grid grid-cols-1 gap-2">
               {[
-                { value: 'signals', label: 'Raport sinjalesh AI', desc: 'Të gjitha sinjalet blej/shit me hyrje, objektiv dhe stop', icon: Zap },
-                { value: 'ai_analyses', label: 'Raport analizash AI', desc: 'Të gjitha analizat AI dhe të grafikëve me ndjenjë dhe besueshmëri', icon: Brain },
-                { value: 'overview', label: 'Përmbledhje platforme', desc: 'Përmbledhje e gjithë aktivitetit dhe lidhjeve MetaTrader', icon: BarChart2 },
+                { value: 'signals', label: 'AI Signals Report', desc: 'All buy/sell signals with entry, target and stop loss', icon: Zap },
+                { value: 'ai_analyses', label: 'AI Analysis Report', desc: 'All AI and chart analyses with sentiment and confidence', icon: Brain },
+                { value: 'overview', label: 'Platform Overview', desc: 'Summary of all activity and MetaTrader connections', icon: BarChart2 },
               ].map(t => (
                 <button
                   key={t.value}
@@ -395,13 +395,13 @@ export default function ReportsPage() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Periudha</label>
+            <label className="text-xs text-gray-400 block mb-1.5">Period</label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { value: '7d', label: '7 ditët e fundit' },
-                { value: '30d', label: '30 ditët e fundit' },
-                { value: '90d', label: '90 ditët e fundit' },
-                { value: '1y', label: 'Viti i fundit' },
+                { value: '7d', label: 'Last 7 Days' },
+                { value: '30d', label: 'Last 30 Days' },
+                { value: '90d', label: 'Last 90 Days' },
+                { value: '1y', label: 'Last Year' },
               ].map(p => (
                 <button
                   key={p.value}
@@ -419,8 +419,8 @@ export default function ReportsPage() {
 
             <div className="mt-4 bg-gray-800/30 border border-gray-700/30 rounded-xl p-3">
               <p className="text-gray-500 text-xs">
-                Raportet përmbajnë vetëm <span className="text-white font-medium">të dhëna reale</span> nga analizat e tua AI,
-                grafikët e ngarkuar dhe sinjalet — pa vlera shembull apo të trilluara.
+                Reports contain only <span className="text-white font-medium">real data</span> from your actual AI analyses,
+                chart uploads, and signals — no sample or placeholder values.
               </p>
             </div>
           </div>
@@ -439,13 +439,13 @@ export default function ReportsPage() {
           className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2.5 rounded-xl text-sm transition-all"
         >
           {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          {generating ? 'Po gjenerohet...' : 'Gjenero & shkarko CSV'}
+          {generating ? 'Generating...' : 'Generate & Download CSV'}
         </button>
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold">Historiku i raporteve</h3>
+          <h3 className="text-white font-semibold">Report History</h3>
           <button
             onClick={() => { fetchReports(); fetchStats(); }}
             className="p-2 text-gray-500 hover:text-white bg-gray-900 border border-gray-700 rounded-xl transition-all"
@@ -461,18 +461,18 @@ export default function ReportsPage() {
         ) : reports.length === 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
             <FileText className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-            <p className="text-white font-medium">Ende pa raporte</p>
-            <p className="text-gray-500 text-sm mt-1">Gjenero raportin tënd të parë më lart — të dhënat vijnë nga analizat e tua reale</p>
+            <p className="text-white font-medium">No reports yet</p>
+            <p className="text-gray-500 text-sm mt-1">Generate your first report above — data comes from your real AI analyses</p>
           </div>
         ) : (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="text-left text-gray-500 font-medium px-4 py-3">Raporti</th>
-                  <th className="text-left text-gray-500 font-medium px-4 py-3 hidden sm:table-cell">Periudha</th>
-                  <th className="text-center text-gray-500 font-medium px-4 py-3">Statusi</th>
-                  <th className="text-center text-gray-500 font-medium px-4 py-3">Shkarko</th>
+                  <th className="text-left text-gray-500 font-medium px-4 py-3">Report</th>
+                  <th className="text-left text-gray-500 font-medium px-4 py-3 hidden sm:table-cell">Period</th>
+                  <th className="text-center text-gray-500 font-medium px-4 py-3">Status</th>
+                  <th className="text-center text-gray-500 font-medium px-4 py-3">Download</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">

@@ -222,9 +222,9 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       await logAction('UPDATE_AI_PROVIDER', 'ai_providers', p.id, { slug: p.slug, is_active: providerForm.is_active });
       await fetchAIProviders();
       setEditingProvider(null);
-      flash('success', `${p.name} u përditësua.`);
+      flash('success', `${p.name} updated.`);
     } else {
-      flash('error', 'Përditësimi dështoi: ' + error.message);
+      flash('error', 'Update failed: ' + error.message);
     }
     setSaving(false);
   };
@@ -236,10 +236,10 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       const { data, error } = await supabase.functions.invoke('analyze-chart', {
         body: { provider: p.slug, testMode: true },
       });
-      if (error || !data) throw new Error(error?.message || 'Pa përgjigje');
-      setTestResult({ slug: p.slug, ok: true, msg: 'Provideri po përgjigjet saktë.' });
+      if (error || !data) throw new Error(error?.message || 'No response');
+      setTestResult({ slug: p.slug, ok: true, msg: 'Provider responding correctly.' });
     } catch (e) {
-      setTestResult({ slug: p.slug, ok: false, msg: (e as Error).message || 'Testi i providerit dështoi.' });
+      setTestResult({ slug: p.slug, ok: false, msg: (e as Error).message || 'Provider test failed.' });
     } finally {
       setTestingProvider(null);
     }
@@ -258,9 +258,9 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     if (!error) {
       await logAction('BROADCAST_NOTIFICATION', 'notifications', undefined, { title: broadcastForm.title });
       setBroadcastForm({ title: '', body: '', type: 'broadcast' });
-      flash('success', 'Mesazhi u dërgua te të gjithë përdoruesit.');
+      flash('success', 'Broadcast sent to all users.');
     } else {
-      flash('error', 'Dërgimi i mesazhit dështoi.');
+      flash('error', 'Failed to send broadcast.');
     }
     setSendingBroadcast(false);
   };
@@ -281,9 +281,9 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       await logAction('UPDATE_USER', 'profiles', u.id, { subscription_tier: editUserForm.subscription_tier, balance: editUserForm.balance });
       await fetchUsers();
       setEditingUser(null);
-      flash('success', `Përdoruesi ${u.full_name} u përditësua.`);
+      flash('success', `User ${u.full_name} updated.`);
     } else {
-      flash('error', 'Përditësimi dështoi: ' + error.message);
+      flash('error', 'Update failed: ' + error.message);
     }
     setSaving(false);
   };
@@ -295,9 +295,9 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       await logAction('UPDATE_ASSET', 'assets', a.id, { symbol: a.symbol });
       await fetchAssets();
       setEditingAsset(null);
-      flash('success', `Aktivi ${a.symbol} u përditësua.`);
+      flash('success', `Asset ${a.symbol} updated.`);
     } else {
-      flash('error', 'Përditësimi dështoi: ' + error.message);
+      flash('error', 'Update failed: ' + error.message);
     }
     setSaving(false);
   };
@@ -321,22 +321,22 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       await fetchAssets();
       setShowNewAsset(false);
       setNewAsset({ symbol: '', name: '', category: 'commodity', current_price: '', price_change_pct: '0', volume_24h: '0', high_24h: '0', low_24h: '0' });
-      flash('success', `Aktivi ${payload.symbol} u krijua.`);
+      flash('success', `Asset ${payload.symbol} created.`);
     } else {
-      flash('error', 'Krijimi dështoi: ' + error.message);
+      flash('error', 'Create failed: ' + error.message);
     }
     setSaving(false);
   };
 
   const deleteAsset = async (a: AssetRow) => {
-    if (!window.confirm(`Ta fshij ${a.symbol}? Ky veprim s'kthehet mbrapsht.`)) return;
+    if (!window.confirm(`Delete ${a.symbol}? This cannot be undone.`)) return;
     const { error } = await supabase.from('assets').delete().eq('id', a.id);
     if (!error) {
       await logAction('DELETE_ASSET', 'assets', a.id, { symbol: a.symbol });
       await fetchAssets();
-      flash('success', `Aktivi ${a.symbol} u fshi.`);
+      flash('success', `Asset ${a.symbol} deleted.`);
     } else {
-      flash('error', 'Fshirja dështoi: ' + error.message);
+      flash('error', 'Delete failed: ' + error.message);
     }
   };
 
@@ -361,9 +361,9 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       await fetchSignals();
       setShowNewSignal(false);
       setNewSignal({ asset_id: '', signal_type: 'buy', strength: 'medium', entry_price: '', target_price: '', stop_loss: '', confidence: '75', timeframe: '1D', description: '', expires_at: '' });
-      flash('success', 'Sinjali u krijua.');
+      flash('success', 'Signal created.');
     } else {
-      flash('error', 'Krijimi dështoi: ' + error.message);
+      flash('error', 'Create failed: ' + error.message);
     }
     setSaving(false);
   };
@@ -378,12 +378,12 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   };
 
   const deleteSignal = async (s: SignalRow) => {
-    if (!window.confirm('Ta fshij këtë sinjal?')) return;
+    if (!window.confirm('Delete this signal?')) return;
     const { error } = await supabase.from('signals').delete().eq('id', s.id);
     if (!error) {
       await logAction('DELETE_SIGNAL', 'signals', s.id);
       await fetchSignals();
-      flash('success', 'Sinjali u fshi.');
+      flash('success', 'Signal deleted.');
     }
   };
 
@@ -404,22 +404,22 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   }[t] || 'text-gray-400 bg-gray-700/50');
 
   const tabs: { id: AdminTab; label: string; icon: React.ElementType }[] = [
-    { id: 'overview', label: 'Përmbledhje', icon: BarChart2 },
-    { id: 'users', label: 'Përdorues', icon: Users },
-    { id: 'assets', label: 'Aktive', icon: TrendingUp },
-    { id: 'signals', label: 'Sinjale', icon: Zap },
-    { id: 'trades', label: 'Tregti', icon: Activity },
+    { id: 'overview', label: 'Overview', icon: BarChart2 },
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'assets', label: 'Assets', icon: TrendingUp },
+    { id: 'signals', label: 'Signals', icon: Zap },
+    { id: 'trades', label: 'Trades', icon: Activity },
     { id: 'ai_providers', label: 'AI Providers', icon: Brain },
     { id: 'notifications', label: 'Broadcast', icon: Megaphone },
-    { id: 'audit', label: 'Audit', icon: Shield },
+    { id: 'audit', label: 'Audit Log', icon: Shield },
   ];
 
   if (!forcedTab && !(profile as unknown as { is_admin?: boolean })?.is_admin) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-96 gap-4">
         <AlertTriangle className="w-12 h-12 text-red-400" />
-        <h2 className="text-xl font-bold text-white">Qasje e ndaluar</h2>
-        <p className="text-gray-400 text-sm">Nuk ke privilegje administratori.</p>
+        <h2 className="text-xl font-bold text-white">Access Denied</h2>
+        <p className="text-gray-400 text-sm">You do not have administrator privileges.</p>
       </div>
     );
   }
@@ -431,7 +431,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <Shield className="w-6 h-6 text-amber-400" />Super Admin
           </h2>
-          <p className="text-gray-400 text-sm mt-1">Menaxhimi dhe mbikëqyrja e platformës</p>
+          <p className="text-gray-400 text-sm mt-1">Platform management and oversight</p>
         </div>
         {msg && (
           <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium ${msg.type === 'success' ? 'bg-green-500/15 text-green-400 border border-green-500/30' : 'bg-red-500/15 text-red-400 border border-red-500/30'}`}>
@@ -456,12 +456,12 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {[
-              { label: 'Përdorues gjithsej', value: stats.totalUsers.toString(), icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-              { label: 'Përdorues me pagesë', value: stats.proUsers.toString(), icon: Crown, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-              { label: 'Tregti gjithsej', value: stats.totalTrades.toString(), icon: Activity, color: 'text-green-400', bg: 'bg-green-500/10' },
-              { label: 'Vëllim blerjeje', value: `$${stats.totalVolume.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, icon: DollarSign, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-              { label: 'Sinjale aktive', value: stats.activeSignals.toString(), icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-              { label: 'Aktive të listuara', value: stats.totalAssets.toString(), icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-500/10' },
+              { label: 'Total Users', value: stats.totalUsers.toString(), icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+              { label: 'Pro/Elite Users', value: stats.proUsers.toString(), icon: Crown, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+              { label: 'Total Trades', value: stats.totalTrades.toString(), icon: Activity, color: 'text-green-400', bg: 'bg-green-500/10' },
+              { label: 'Buy Volume', value: `$${stats.totalVolume.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, icon: DollarSign, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+              { label: 'Active Signals', value: stats.activeSignals.toString(), icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+              { label: 'Listed Assets', value: stats.totalAssets.toString(), icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-500/10' },
             ].map(s => {
               const Icon = s.icon;
               return (
@@ -476,13 +476,13 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
             })}
           </div>
           <div className="bg-gray-900 border border-amber-500/30 rounded-2xl p-5">
-            <h3 className="text-amber-400 font-semibold mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4" />Veprime të shpejta</h3>
+            <h3 className="text-amber-400 font-semibold mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4" />Quick Actions</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: 'Menaxho përdoruesit', tab: 'users' as AdminTab },
-                { label: 'Përditëso çmimet', tab: 'assets' as AdminTab },
-                { label: 'Publiko sinjal', tab: 'signals' as AdminTab },
-                { label: 'Shiko aktivitetin', tab: 'trades' as AdminTab },
+                { label: 'Manage Users', tab: 'users' as AdminTab },
+                { label: 'Update Prices', tab: 'assets' as AdminTab },
+                { label: 'Publish Signal', tab: 'signals' as AdminTab },
+                { label: 'View Activity', tab: 'trades' as AdminTab },
               ].map(a => (
                 <button key={a.label} onClick={() => setTab(a.tab)} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-amber-500/30 text-white text-sm font-medium px-4 py-3 rounded-xl transition-all text-center">
                   {a.label}
@@ -498,7 +498,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Kërko përdorues..." className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search users..." className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
             </div>
             <button onClick={fetchUsers} className="p-2.5 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white hover:border-gray-600 transition-all">
               <RefreshCw className="w-4 h-4" />
@@ -513,11 +513,11 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800">
-                      <th className="text-left text-gray-500 font-medium px-4 py-3">Përdoruesi</th>
-                      <th className="text-left text-gray-500 font-medium px-4 py-3">Plani</th>
-                      <th className="text-right text-gray-500 font-medium px-4 py-3">Balanca</th>
+                      <th className="text-left text-gray-500 font-medium px-4 py-3">User</th>
+                      <th className="text-left text-gray-500 font-medium px-4 py-3">Tier</th>
+                      <th className="text-right text-gray-500 font-medium px-4 py-3">Balance</th>
                       <th className="text-center text-gray-500 font-medium px-4 py-3">Admin</th>
-                      <th className="text-center text-gray-500 font-medium px-4 py-3">Veprime</th>
+                      <th className="text-center text-gray-500 font-medium px-4 py-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
@@ -530,8 +530,8 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                                 {u.full_name?.[0]?.toUpperCase() || '?'}
                               </div>
                               <div>
-                                <div className="text-white font-medium text-sm">{u.full_name || 'Pa emër'}</div>
-                                <div className="text-gray-500 text-xs">@{u.username || 'pa-username'}</div>
+                                <div className="text-white font-medium text-sm">{u.full_name || 'No name'}</div>
+                                <div className="text-gray-500 text-xs">@{u.username || 'no-username'}</div>
                               </div>
                             </div>
                           </td>
@@ -558,11 +558,11 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                             <td colSpan={5} className="px-4 py-4">
                               <div className="flex flex-wrap gap-3 items-end">
                                 <div>
-                                  <label className="text-xs text-gray-400 block mb-1">Balanca ($)</label>
+                                  <label className="text-xs text-gray-400 block mb-1">Balance ($)</label>
                                   <input type="number" value={editUserForm.balance} onChange={e => setEditUserForm(f => ({ ...f, balance: e.target.value }))} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm w-36 focus:outline-none focus:border-amber-500" />
                                 </div>
                                 <div>
-                                  <label className="text-xs text-gray-400 block mb-1">Abonimi</label>
+                                  <label className="text-xs text-gray-400 block mb-1">Subscription</label>
                                   <select value={editUserForm.subscription_tier} onChange={e => setEditUserForm(f => ({ ...f, subscription_tier: e.target.value }))} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500">
                                     <option value="free">Free</option>
                                     <option value="pro">Pro</option>
@@ -570,16 +570,16 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                                   </select>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <label className="text-xs text-gray-400">Admin</label>
+                                  <label className="text-xs text-gray-400">Is Admin</label>
                                   <button onClick={() => setEditUserForm(f => ({ ...f, is_admin: !f.is_admin }))} className={`w-10 h-5 rounded-full transition-all relative ${editUserForm.is_admin ? 'bg-amber-500' : 'bg-gray-600'}`}>
                                     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${editUserForm.is_admin ? 'left-5' : 'left-0.5'}`} />
                                   </button>
                                 </div>
                                 <button onClick={() => saveUser(u)} disabled={saving} className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-4 py-1.5 rounded-lg text-sm transition-all">
-                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Ruaj
+                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Save
                                 </button>
                                 <button onClick={() => setEditingUser(null)} className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white px-4 py-1.5 rounded-lg text-sm transition-all">
-                                  <X className="w-3 h-3" />Anulo
+                                  <X className="w-3 h-3" />Cancel
                                 </button>
                               </div>
                             </td>
@@ -590,7 +590,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   </tbody>
                 </table>
                 {filteredUsers.length === 0 && (
-                  <div className="text-center py-12 text-gray-500 text-sm">Asnjë përdorues i gjetur</div>
+                  <div className="text-center py-12 text-gray-500 text-sm">No users found</div>
                 )}
               </div>
             </div>
@@ -603,25 +603,25 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Kërko aktive..." className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search assets..." className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
             </div>
             <button onClick={() => { setShowNewAsset(!showNewAsset); setSearch(''); }} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold px-4 py-2.5 rounded-xl text-sm transition-all">
-              <Plus className="w-4 h-4" />Shto aktiv
+              <Plus className="w-4 h-4" />Add Asset
             </button>
           </div>
 
           {showNewAsset && (
             <div className="bg-gray-900 border border-amber-500/30 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2"><Plus className="w-4 h-4 text-amber-400" />Aktiv i ri</h3>
+              <h3 className="text-white font-semibold mb-4 flex items-center gap-2"><Plus className="w-4 h-4 text-amber-400" />New Asset</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { key: 'symbol', label: 'Simboli', placeholder: 'XAUUSD' },
-                  { key: 'name', label: 'Emri', placeholder: 'Ari / USD' },
-                  { key: 'current_price', label: 'Çmimi', placeholder: '2340.00' },
-                  { key: 'high_24h', label: 'Maks 24h', placeholder: '2360.00' },
-                  { key: 'low_24h', label: 'Min 24h', placeholder: '2310.00' },
-                  { key: 'price_change_pct', label: 'Ndryshim %', placeholder: '1.25' },
-                  { key: 'volume_24h', label: 'Vëllimi 24h', placeholder: '100000' },
+                  { key: 'symbol', label: 'Symbol', placeholder: 'XAUUSD' },
+                  { key: 'name', label: 'Name', placeholder: 'Gold / USD' },
+                  { key: 'current_price', label: 'Price', placeholder: '2340.00' },
+                  { key: 'high_24h', label: '24H High', placeholder: '2360.00' },
+                  { key: 'low_24h', label: '24H Low', placeholder: '2310.00' },
+                  { key: 'price_change_pct', label: 'Change %', placeholder: '1.25' },
+                  { key: 'volume_24h', label: 'Volume 24H', placeholder: '100000' },
                 ].map(f => (
                   <div key={f.key}>
                     <label className="text-xs text-gray-400 block mb-1">{f.label}</label>
@@ -629,20 +629,20 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   </div>
                 ))}
                 <div>
-                  <label className="text-xs text-gray-400 block mb-1">Kategoria</label>
+                  <label className="text-xs text-gray-400 block mb-1">Category</label>
                   <select value={newAsset.category} onChange={e => setNewAsset(a => ({ ...a, category: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500">
-                    <option value="commodity">Mallra / Ar</option>
+                    <option value="commodity">Commodity</option>
                     <option value="forex">Forex</option>
                     <option value="crypto">Crypto</option>
-                    <option value="stock">Indekse / Aksione</option>
+                    <option value="stock">Stock</option>
                   </select>
                 </div>
               </div>
               <div className="flex gap-3 mt-4">
                 <button onClick={createAsset} disabled={saving || !newAsset.symbol || !newAsset.current_price} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2 rounded-xl text-sm transition-all">
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Krijo aktiv
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Create Asset
                 </button>
-                <button onClick={() => setShowNewAsset(false)} className="px-5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm transition-all">Anulo</button>
+                <button onClick={() => setShowNewAsset(false)} className="px-5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm transition-all">Cancel</button>
               </div>
             </div>
           )}
@@ -655,12 +655,12 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800">
-                      <th className="text-left text-gray-500 font-medium px-4 py-3">Aktivi</th>
-                      <th className="text-left text-gray-500 font-medium px-4 py-3">Kategoria</th>
-                      <th className="text-right text-gray-500 font-medium px-4 py-3">Çmimi</th>
-                      <th className="text-right text-gray-500 font-medium px-4 py-3">24h %</th>
-                      <th className="text-right text-gray-500 font-medium px-4 py-3">Vëllimi</th>
-                      <th className="text-center text-gray-500 font-medium px-4 py-3">Veprime</th>
+                      <th className="text-left text-gray-500 font-medium px-4 py-3">Asset</th>
+                      <th className="text-left text-gray-500 font-medium px-4 py-3">Category</th>
+                      <th className="text-right text-gray-500 font-medium px-4 py-3">Price</th>
+                      <th className="text-right text-gray-500 font-medium px-4 py-3">24H %</th>
+                      <th className="text-right text-gray-500 font-medium px-4 py-3">Volume</th>
+                      <th className="text-center text-gray-500 font-medium px-4 py-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
@@ -702,11 +702,11 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                             <td colSpan={6} className="px-4 py-4">
                               <div className="flex flex-wrap gap-3 items-end">
                                 {[
-                                  { key: 'current_price', label: 'Çmimi' },
-                                  { key: 'price_change_pct_24h', label: 'Ndryshim %' },
-                                  { key: 'high_24h', label: 'Maks 24h' },
-                                  { key: 'low_24h', label: 'Min 24h' },
-                                  { key: 'volume_24h', label: 'Vëllimi' },
+                                  { key: 'current_price', label: 'Price' },
+                                  { key: 'price_change_pct_24h', label: 'Change %' },
+                                  { key: 'high_24h', label: '24H High' },
+                                  { key: 'low_24h', label: '24H Low' },
+                                  { key: 'volume_24h', label: 'Volume' },
                                 ].map(f => (
                                   <div key={f.key}>
                                     <label className="text-xs text-gray-400 block mb-1">{f.label}</label>
@@ -714,9 +714,9 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                                   </div>
                                 ))}
                                 <button onClick={() => saveAsset(a)} disabled={saving} className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-4 py-1.5 rounded-lg text-sm transition-all">
-                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Ruaj
+                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Save
                                 </button>
-                                <button onClick={() => setEditingAsset(null)} className="px-4 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm transition-all">Anulo</button>
+                                <button onClick={() => setEditingAsset(null)} className="px-4 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm transition-all">Cancel</button>
                               </div>
                             </td>
                           </tr>
@@ -726,7 +726,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   </tbody>
                 </table>
                 {filteredAssets.length === 0 && (
-                  <div className="text-center py-12 text-gray-500 text-sm">Asnjë aktiv i gjetur</div>
+                  <div className="text-center py-12 text-gray-500 text-sm">No assets found</div>
                 )}
               </div>
             </div>
@@ -738,43 +738,43 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
         <div className="space-y-4">
           <div className="flex justify-end">
             <button onClick={() => setShowNewSignal(!showNewSignal)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold px-4 py-2.5 rounded-xl text-sm transition-all">
-              <Plus className="w-4 h-4" />Publiko sinjal
+              <Plus className="w-4 h-4" />Publish Signal
             </button>
           </div>
 
           {showNewSignal && (
             <div className="bg-gray-900 border border-amber-500/30 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />Sinjal i ri</h3>
+              <h3 className="text-white font-semibold mb-4 flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />New Signal</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 block mb-1">Aktivi</label>
+                  <label className="text-xs text-gray-400 block mb-1">Asset</label>
                   <select value={newSignal.asset_id} onChange={e => setNewSignal(s => ({ ...s, asset_id: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500">
-                    <option value="">Zgjidh aktivin</option>
+                    <option value="">Select asset</option>
                     {assets.map(a => <option key={a.id} value={a.id}>{a.symbol} — {a.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 block mb-1">Lloji i sinjalit</label>
+                  <label className="text-xs text-gray-400 block mb-1">Signal Type</label>
                   <select value={newSignal.signal_type} onChange={e => setNewSignal(s => ({ ...s, signal_type: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500">
-                    <option value="buy">Blej</option>
-                    <option value="sell">Shit</option>
+                    <option value="buy">Buy</option>
+                    <option value="sell">Sell</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 block mb-1">Fuqia</label>
+                  <label className="text-xs text-gray-400 block mb-1">Strength</label>
                   <select value={newSignal.strength} onChange={e => setNewSignal(s => ({ ...s, strength: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500">
-                    <option value="strong">E fortë</option>
-                    <option value="medium">Mesatare</option>
-                    <option value="weak">E dobët</option>
+                    <option value="strong">Strong</option>
+                    <option value="medium">Medium</option>
+                    <option value="weak">Weak</option>
                   </select>
                 </div>
                 {[
-                  { key: 'entry_price', label: 'Çmimi i hyrjes' },
-                  { key: 'target_price', label: 'Çmimi objektiv' },
+                  { key: 'entry_price', label: 'Entry Price' },
+                  { key: 'target_price', label: 'Target Price' },
                   { key: 'stop_loss', label: 'Stop Loss' },
-                  { key: 'confidence', label: 'Besueshmëria (0-100)' },
-                  { key: 'timeframe', label: 'Periudha (p.sh. 1D)' },
-                  { key: 'expires_at', label: 'Skadon më (opsionale)' },
+                  { key: 'confidence', label: 'Confidence (0-100)' },
+                  { key: 'timeframe', label: 'Timeframe (e.g. 1D)' },
+                  { key: 'expires_at', label: 'Expires At (optional)' },
                 ].map(f => (
                   <div key={f.key}>
                     <label className="text-xs text-gray-400 block mb-1">{f.label}</label>
@@ -782,15 +782,15 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   </div>
                 ))}
                 <div className="col-span-2 md:col-span-3">
-                  <label className="text-xs text-gray-400 block mb-1">Përshkrimi</label>
-                  <textarea value={newSignal.description} onChange={e => setNewSignal(s => ({ ...s, description: e.target.value }))} rows={3} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500 resize-none" placeholder="Analiza dhe arsyetimi i sinjalit..." />
+                  <label className="text-xs text-gray-400 block mb-1">Description</label>
+                  <textarea value={newSignal.description} onChange={e => setNewSignal(s => ({ ...s, description: e.target.value }))} rows={3} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500 resize-none" placeholder="Signal analysis and rationale..." />
                 </div>
               </div>
               <div className="flex gap-3 mt-4">
                 <button onClick={createSignal} disabled={saving || !newSignal.asset_id || !newSignal.entry_price} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2 rounded-xl text-sm transition-all">
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}Publiko sinjal
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}Publish Signal
                 </button>
-                <button onClick={() => setShowNewSignal(false)} className="px-5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm transition-all">Anulo</button>
+                <button onClick={() => setShowNewSignal(false)} className="px-5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm transition-all">Cancel</button>
               </div>
             </div>
           )}
@@ -806,11 +806,11 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                       <span className="text-white font-semibold">{s.symbol || '—'}</span>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type}</span>
                       <span className="text-amber-400 font-semibold text-sm">{s.confidence}%</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${s.status === 'active' ? 'bg-green-500/10 text-green-400' : 'bg-gray-700 text-gray-500'}`}>{s.status === 'active' ? 'Aktiv' : 'Joaktiv'}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${s.status === 'active' ? 'bg-green-500/10 text-green-400' : 'bg-gray-700 text-gray-500'}`}>{s.status === 'active' ? 'Active' : 'Inactive'}</span>
                       {s.source && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{s.source}</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <button onClick={() => toggleSignal(s)} className={`p-1.5 rounded-lg transition-all ${s.status === 'active' ? 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white' : 'bg-green-500/10 hover:bg-green-500/20 text-green-400'}`} title={s.status === 'active' ? 'Çaktivizo' : 'Aktivizo'}>
+                      <button onClick={() => toggleSignal(s)} className={`p-1.5 rounded-lg transition-all ${s.status === 'active' ? 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white' : 'bg-green-500/10 hover:bg-green-500/20 text-green-400'}`} title={s.status === 'active' ? 'Deactivate' : 'Activate'}>
                         {s.status === 'active' ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
                       <button onClick={() => deleteSignal(s)} className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all">
@@ -819,15 +819,15 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                     </div>
                   </div>
                   <div className="mt-2 grid grid-cols-3 gap-3 text-xs text-gray-400">
-                    <span>Hyrje: <span className="text-white">{s.entry_price}</span></span>
-                    <span>Objektiv: <span className="text-green-400">{s.target_price}</span></span>
+                    <span>Entry: <span className="text-white">{s.entry_price}</span></span>
+                    <span>Target: <span className="text-green-400">{s.target_price}</span></span>
                     <span>Stop: <span className="text-red-400">{s.stop_loss}</span></span>
                   </div>
                   {s.analysis && <p className="mt-2 text-xs text-gray-500 line-clamp-2">{s.analysis}</p>}
                 </div>
               ))}
               {signals.length === 0 && (
-                <div className="text-center py-12 text-gray-500 text-sm bg-gray-900 border border-gray-800 rounded-2xl">Asnjë sinjal i gjetur</div>
+                <div className="text-center py-12 text-gray-500 text-sm bg-gray-900 border border-gray-800 rounded-2xl">No signals found</div>
               )}
             </div>
           )}
@@ -843,13 +843,13 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="text-left text-gray-500 font-medium px-4 py-3">Përdoruesi</th>
-                    <th className="text-left text-gray-500 font-medium px-4 py-3">Aktivi</th>
-                    <th className="text-center text-gray-500 font-medium px-4 py-3">Lloji</th>
-                    <th className="text-right text-gray-500 font-medium px-4 py-3">Sasia</th>
-                    <th className="text-right text-gray-500 font-medium px-4 py-3">Çmimi</th>
-                    <th className="text-right text-gray-500 font-medium px-4 py-3">Totali</th>
-                    <th className="text-right text-gray-500 font-medium px-4 py-3">Data</th>
+                    <th className="text-left text-gray-500 font-medium px-4 py-3">User</th>
+                    <th className="text-left text-gray-500 font-medium px-4 py-3">Asset</th>
+                    <th className="text-center text-gray-500 font-medium px-4 py-3">Type</th>
+                    <th className="text-right text-gray-500 font-medium px-4 py-3">Qty</th>
+                    <th className="text-right text-gray-500 font-medium px-4 py-3">Price</th>
+                    <th className="text-right text-gray-500 font-medium px-4 py-3">Total</th>
+                    <th className="text-right text-gray-500 font-medium px-4 py-3">Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
@@ -872,7 +872,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
               </table>
             )}
             {!loading && trades.length === 0 && (
-              <div className="text-center py-12 text-gray-500 text-sm">Asnjë tregti e gjetur</div>
+              <div className="text-center py-12 text-gray-500 text-sm">No trades found</div>
             )}
           </div>
         </div>
@@ -882,11 +882,11 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
         <div className="space-y-5">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
             <h3 className="text-white font-semibold mb-1 flex items-center gap-2">
-              <Brain className="w-4 h-4 text-amber-400" />Konfigurimi i AI Providers
+              <Brain className="w-4 h-4 text-amber-400" />AI Provider Setup
             </h3>
             <p className="text-gray-400 text-sm mb-4">
-              Konfiguro të paktën një provider AI për të aktivizuar analizën reale.
-              Çdo analizë përdor <strong className="text-white">të dhëna reale tregu</strong> — kurrë vlera fake apo të fiksuara.
+              Configure at least one AI provider to enable real analysis for your clients.
+              All analysis uses <strong className="text-white">live market data</strong> — never fake or hardcoded values.
             </p>
             <div className="grid sm:grid-cols-2 gap-3">
               {[
@@ -952,14 +952,14 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-white font-semibold">{p.name}</span>
-                          {p.is_default && <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-lg">Parazgjedhur</span>}
+                          {p.is_default && <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-lg">Default</span>}
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.is_active ? 'bg-green-500/15 text-green-400' : 'bg-gray-700 text-gray-500'}`}>
-                            {p.is_active ? 'Aktiv' : 'Joaktiv'}
+                            {p.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </div>
                         <div className="text-gray-500 text-xs mt-0.5">
-                          Modeli: <span className="text-gray-400">{p.model}</span> | Prioriteti: {p.priority}
-                          {p.api_key_encrypted ? <span className="ml-2 text-green-500">· çelësi i vendosur</span> : <span className="ml-2 text-amber-500">· pa çelës</span>}
+                          Model: <span className="text-gray-400">{p.model}</span> | Priority: {p.priority}
+                          {p.api_key_encrypted ? <span className="ml-2 text-green-500">· API key set</span> : <span className="ml-2 text-amber-500">· No API key</span>}
                         </div>
                       </div>
                     </div>
@@ -993,8 +993,8 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   {!p.api_key_encrypted && (
                     <div className="mt-3 flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
                       <Key className="w-3.5 h-3.5" />
-                      Pa çelës API. Kliko Edito për të shtuar një çelës dhe aktivizuar këtë provider.
-                      {p.slug === 'anthropic' && <span className="ml-1 font-semibold">Çelësin e Anthropic e merr te console.anthropic.com</span>}
+                      No API key configured. Click Edit to add a key and enable this provider.
+                      {p.slug === 'groq' && <span className="ml-1 font-semibold">Groq is FREE — get key at console.groq.com</span>}
                     </div>
                   )}
 
@@ -1022,7 +1022,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                       )}
                       <div>
                         <label className="text-xs text-gray-400 flex items-center gap-1 mb-1.5">
-                          <Key className="w-3 h-3" />Çelësi API {p.api_key_encrypted ? '(lëre bosh për të mbajtur aktualin)' : '(i nevojshëm për aktivizim)'}
+                          <Key className="w-3 h-3" />API Key {p.api_key_encrypted ? '(leave blank to keep current)' : '(required to activate)'}
                         </label>
                         <div className="relative">
                           <input
@@ -1042,17 +1042,17 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                         </div>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 block mb-1.5">System Prompt (opsional — lëre bosh për parazgjedhjen)</label>
+                        <label className="text-xs text-gray-400 block mb-1.5">System Prompt (optional — leave blank for default)</label>
                         <textarea
                           value={providerForm.system_prompt}
                           onChange={e => setProviderForm(f => ({ ...f, system_prompt: e.target.value }))}
                           rows={3}
-                          placeholder="Lëre bosh për të përdorur prompt-in e parazgjedhur të analizës..."
+                          placeholder="Leave blank to use the default trading analysis prompt..."
                           className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 resize-none"
                         />
                       </div>
                       <div className="flex items-center gap-6">
-                        {[{ key: 'is_active', label: 'Aktiv (klientët mund ta përdorin)' }, { key: 'is_default', label: 'Provider i parazgjedhur' }].map(f => (
+                        {[{ key: 'is_active', label: 'Active (clients can use)' }, { key: 'is_default', label: 'Default Provider' }].map(f => (
                           <div key={f.key} className="flex items-center gap-2">
                             <button
                               onClick={() => setProviderForm(prev => ({ ...prev, [f.key]: !prev[f.key as keyof typeof prev] }))}
@@ -1070,16 +1070,16 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                           disabled={saving}
                           className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2 rounded-xl text-sm transition-all"
                         >
-                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}Ruaj & aktivizo
+                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}Save & Activate
                         </button>
-                        <button onClick={() => setEditingProvider(null)} className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm transition-all">Anulo</button>
+                        <button onClick={() => setEditingProvider(null)} className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm transition-all">Cancel</button>
                       </div>
                     </div>
                   )}
                 </div>
               ))}
               {aiProviders.length === 0 && (
-                <div className="text-center py-12 text-gray-500 text-sm bg-gray-900 border border-gray-800 rounded-2xl">Asnjë provider AI në databazë</div>
+                <div className="text-center py-12 text-gray-500 text-sm bg-gray-900 border border-gray-800 rounded-2xl">No AI providers found in database</div>
               )}
             </div>
           )}
@@ -1089,31 +1089,31 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       {tab === 'notifications' && (
         <div className="space-y-4">
           <div className="bg-gray-900 border border-amber-500/20 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-1 flex items-center gap-2"><Megaphone className="w-4 h-4 text-amber-400" />Dërgo njoftim të përgjithshëm</h3>
-            <p className="text-gray-400 text-sm mb-4">Ky mesazh do të shihet nga TË GJITHË përdoruesit te njoftimet e tyre.</p>
+            <h3 className="text-white font-semibold mb-1 flex items-center gap-2"><Megaphone className="w-4 h-4 text-amber-400" />Send Broadcast Notification</h3>
+            <p className="text-gray-400 text-sm mb-4">This message will be visible to ALL users in their notifications.</p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">Titulli</label>
-                <input value={broadcastForm.title} onChange={e => setBroadcastForm(f => ({ ...f, title: e.target.value }))} placeholder="Njoftim i rëndësishëm..." className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
+                <label className="text-xs text-gray-400 block mb-1.5">Title</label>
+                <input value={broadcastForm.title} onChange={e => setBroadcastForm(f => ({ ...f, title: e.target.value }))} placeholder="Important announcement..." className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
               </div>
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">Mesazhi</label>
-                <textarea value={broadcastForm.body} onChange={e => setBroadcastForm(f => ({ ...f, body: e.target.value }))} rows={3} placeholder="Mesazhi yt për të gjithë përdoruesit..." className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 resize-none" />
+                <label className="text-xs text-gray-400 block mb-1.5">Message</label>
+                <textarea value={broadcastForm.body} onChange={e => setBroadcastForm(f => ({ ...f, body: e.target.value }))} rows={3} placeholder="Your message to all users..." className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 resize-none" />
               </div>
               <button onClick={sendBroadcast} disabled={sendingBroadcast || !broadcastForm.title || !broadcastForm.body} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2.5 rounded-xl text-sm transition-all">
                 {sendingBroadcast ? <Loader2 className="w-4 h-4 animate-spin" /> : <Megaphone className="w-4 h-4" />}
-                {sendingBroadcast ? 'Po dërgohet...' : 'Dërgo te të gjithë'}
+                {sendingBroadcast ? 'Sending...' : 'Send to All Users'}
               </button>
             </div>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Monitor className="w-4 h-4 text-amber-400" />Lidhjet MetaTrader</h3>
-            <p className="text-gray-400 text-sm">Monitoro lidhjet aktive MT4/MT5 të të gjithë përdoruesve.</p>
+            <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Monitor className="w-4 h-4 text-amber-400" />MetaTrader Connections</h3>
+            <p className="text-gray-400 text-sm">Monitor active MT4/MT5 connections across all users.</p>
             <button onClick={async () => {
               const { data } = await supabase.from('metatrader_connections').select('*, profiles(full_name)').order('created_at', { ascending: false });
-              if (data) flash('success', `U gjetën ${data.length} lidhje MT te të gjithë përdoruesit.`);
+              if (data) flash('success', `Found ${data.length} MT connections across all users.`);
             }} className="mt-3 flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl transition-all">
-              <RefreshCw className="w-4 h-4" />Kontrollo të gjitha lidhjet
+              <RefreshCw className="w-4 h-4" />Check All Connections
             </button>
           </div>
         </div>
@@ -1129,10 +1129,10 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                 <thead>
                   <tr className="border-b border-gray-800">
                     <th className="text-left text-gray-500 font-medium px-4 py-3">Admin</th>
-                    <th className="text-left text-gray-500 font-medium px-4 py-3">Veprimi</th>
-                    <th className="text-left text-gray-500 font-medium px-4 py-3">Tabela</th>
-                    <th className="text-left text-gray-500 font-medium px-4 py-3">Detaje</th>
-                    <th className="text-right text-gray-500 font-medium px-4 py-3">Data</th>
+                    <th className="text-left text-gray-500 font-medium px-4 py-3">Action</th>
+                    <th className="text-left text-gray-500 font-medium px-4 py-3">Table</th>
+                    <th className="text-left text-gray-500 font-medium px-4 py-3">Details</th>
+                    <th className="text-right text-gray-500 font-medium px-4 py-3">Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
@@ -1159,7 +1159,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
               </table>
             )}
             {!loading && auditLog.length === 0 && (
-              <div className="text-center py-12 text-gray-500 text-sm">Ende pa veprime në regjistër</div>
+              <div className="text-center py-12 text-gray-500 text-sm">No audit entries yet</div>
             )}
           </div>
         </div>
