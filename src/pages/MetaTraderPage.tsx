@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Monitor, Copy, Check, Loader2, AlertCircle, CheckCircle, Clock, Wifi, WifiOff, Download, Eye, EyeOff, RefreshCw, Trash2, ChevronRight, Terminal, Zap, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import MetaApiPanel from '../components/MetaApiPanel';
 
 interface MTConnection {
   id: string;
@@ -17,7 +18,9 @@ interface MTConnection {
   created_at: string;
 }
 
-const SUPABASE_WEBHOOK_URL = 'https://qohltksmotdhrcixagfo.supabase.co/functions/v1/mt-webhook';
+// URL-ja e webhook-ut merret nga projekti i lidhur (env), jo e fiksuar — që EA-ja
+// e gjeneruar të dërgojë gjithmonë te databaza e duhur.
+const SUPABASE_WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mt-webhook`;
 
 function buildEACode(platform: 'mt4' | 'mt5', apiKey: string, symbol: string, intervalMin: number) {
   if (platform === 'mt4') {
@@ -281,6 +284,15 @@ export default function MetaTraderPage() {
         <p className="text-gray-400 text-sm mt-1">
           Connect your MT4/MT5 to receive automatic AI trading signals in 3 simple steps
         </p>
+      </div>
+
+      {/* Faza 5: auto-trade në cloud via MetaApi (punon edhe me celular) */}
+      <MetaApiPanel />
+
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-gray-800" />
+        <span className="text-xs text-gray-600 uppercase tracking-wide">ose: Expert Advisor (MT5 desktop)</span>
+        <div className="flex-1 h-px bg-gray-800" />
       </div>
 
       {msg && (
