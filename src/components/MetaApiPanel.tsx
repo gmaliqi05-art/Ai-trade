@@ -108,6 +108,19 @@ export default function MetaApiPanel() {
         </div>
       </div>
 
+      {/* Auto-execute mbi sinjale */}
+      <div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><Play className="w-4 h-4 text-amber-400" />Auto-execute mbi sinjale</div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Besueshmëri minimale (%)"><input type="number" step="1" min="0" max="100" value={cfg.min_confidence} onChange={e => set('min_confidence', +e.target.value)} className="inp" /></Field>
+          <Field label="Simbolet e lejuara (me presje)"><input value={cfg.auto_symbols} onChange={e => set('auto_symbols', e.target.value)} placeholder="XAUUSD" className="inp" /></Field>
+        </div>
+        <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+          Kur <span className="text-amber-400">Auto-trade</span> është ON, sinjalet BLEJ/SHIT për këto simbole me besueshmëri ≥ pragut
+          ekzekutohen <span className="text-white">automatikisht</span> në MT5 (çdo minutë), brenda mbrojtjeve të rrezikut.
+        </p>
+      </div>
+
       {/* Toggles */}
       <div className="flex flex-wrap gap-3">
         <Toggle on={cfg.mode === 'live'} onClick={() => set('mode', cfg.mode === 'demo' ? 'live' : 'demo')}
