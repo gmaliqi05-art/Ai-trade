@@ -83,6 +83,9 @@ export default function MarketPricesPage({ onNavigate }: { onNavigate: (p: Clien
       const q = search.toLowerCase();
       list = list.filter(a => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q));
     }
+    // Ari (XAUUSD) i pari; pastaj mallrat, pastaj të tjerat.
+    const rank = (a: Asset) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2);
+    list = [...list].sort((a, b) => rank(a) - rank(b));
     setFiltered(list);
   }, [assets, activeCategory, search]);
 
