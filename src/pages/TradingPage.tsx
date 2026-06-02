@@ -5,6 +5,15 @@ import { useAuth } from '../context/AuthContext';
 import { useAssetAnalysis } from '../ai-trader/react/useAssetAnalysis';
 import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
 import { requestEngineReasoning } from '../services/aiReasoning';
+import TradingViewChart from '../components/TradingViewChart';
+
+// Rendit aktivet me arin (XAUUSD) të parin — platforma është GOLDTRADE.
+const goldFirst = <T extends { symbol: string; category?: string }>(arr: T[]): T[] =>
+  [...arr].sort((a, b) => {
+    const rank = (x: { symbol: string; category?: string }) =>
+      x.symbol === 'XAUUSD' ? 0 : x.category === 'commodity' ? 1 : 2;
+    return rank(a) - rank(b);
+  });
 
 interface Asset {
   id: string; symbol: string; name: string; type: string; category: string;
@@ -35,7 +44,7 @@ export default function TradingPage() {
 
   const fetchAssets = async () => {
     const { data } = await supabase.from('assets').select('*').order('category');
-    if (data) { setAssets(data); if (!selected && data.length > 0) setSelected(data[0]); }
+    if (data) { const sorted = goldFirst(data as Asset[]); setAssets(sorted); if (!selected && sorted.length > 0) setSelected(sorted[0]); }
     setLoading(false);
   };
 
@@ -113,7 +122,7 @@ export default function TradingPage() {
     selected ? { symbol: selected.symbol, category: selected.category, currentPrice: selected.current_price, timeframe: '1h' } : null,
   );
 
-  const filtered = assets.filter(a => (category === 'all' || a.category === category) && (a.symbol.toLowerCase().includes(search.toLowerCase()) || a.name.toLowerCase().includes(search.toLowerCase())));
+  const filtered = goldFirst(assets.filter(a => (category === 'all' || a.category === category) && (a.symbol.toLowerCase().includes(search.toLowerCase()) || a.name.toLowerCase().includes(search.toLowerCase()))));
   const fp = (a: Asset) => a.category === 'forex' ? a.current_price.toFixed(4) : a.current_price.toLocaleString('en-US', { minimumFractionDigits: 2 });
   const cc: Record<string, string> = { commodity: 'text-amber-400', forex: 'text-blue-400', crypto: 'text-orange-400', stock: 'text-green-400' };
 
@@ -190,21 +199,9 @@ export default function TradingPage() {
             </div>
 
             <div className="flex-1 flex overflow-hidden">
-              <div className="flex-1 p-6">
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl h-full flex flex-col items-center justify-center gap-4 relative overflow-hidden">
-                  <div className="absolute bottom-4 left-4 right-4 flex items-end gap-0.5 h-24">
-                    {[...Array(50)].map((_, i) => {
-                      const h = 15 + Math.sin(i * 0.4 + 1) * 25 + Math.cos(i * 0.2) * 15 + (i / 50) * 30;
-                      return <div key={i} className={`flex-1 rounded-sm ${i > 45 ? 'bg-amber-500' : selected.price_change_pct >= 0 ? 'bg-green-500/30' : 'bg-red-500/30'}`} style={{ height: `${Math.max(8, Math.min(100, h))}%` }} />;
-                    })}
-                  </div>
-                  <div className="relative z-10 text-center">
-                    <div className={`text-5xl font-bold mb-2 ${cc[selected.category] || 'text-white'}`}>{selected.symbol}</div>
-                    <div className="text-4xl font-bold text-white mb-1">{fp(selected)}</div>
-                    <div className={`text-lg font-medium ${selected.price_change_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {selected.price_change_pct >= 0 ? '+' : ''}{selected.price_change_pct.toFixed(2)}% (24h)
-                    </div>
-                  </div>
+              <div className="flex-1 p-4">
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl h-full overflow-hidden">
+                  <TradingViewChart symbol={selected.symbol} />
                 </div>
               </div>
 

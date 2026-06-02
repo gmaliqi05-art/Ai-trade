@@ -57,7 +57,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
     }
     const res = await Promise.all(queries) as Array<{ data: unknown; count?: number }>;
     const [ar, sr, pr, mac, ter] = res;
-    if (ar?.data) setAssets(ar.data as Asset[]);
+    if (ar?.data) setAssets([...(ar.data as Asset[])].sort((a, b) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2) - (b.symbol === 'XAUUSD' ? 0 : b.category === 'commodity' ? 1 : 2)));
     if (sr?.data) setSignals(sr.data as Signal[]);
     if (pr?.data) setAIProviderActive((pr.data as unknown[]).length > 0);
     setMetaApi((mac?.data as MetaApiCfg) ?? null);

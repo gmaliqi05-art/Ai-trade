@@ -30,8 +30,8 @@ interface Asset { id: string; symbol: string; name: string; current_price: numbe
 // Tregjet e synuara (faza 1) → kategoritë në DB.
 type MarketKey = 'crypto' | 'commodity' | 'stock';
 const MARKETS: { key: MarketKey; label: string }[] = [
-  { key: 'crypto', label: 'Crypto' },
   { key: 'commodity', label: 'Ari / Mallra' },
+  { key: 'crypto', label: 'Crypto' },
   { key: 'stock', label: 'Indekse / Aksione' },
 ];
 
@@ -41,7 +41,7 @@ export default function SignalsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [activeTab, setActiveTab] = useState<'engine' | 'signals' | 'alerts'>('engine');
-  const [market, setMarket] = useState<MarketKey>('crypto');
+  const [market, setMarket] = useState<MarketKey>('commodity');
   const [timeframe, setTimeframe] = useState<Timeframe>('1h');
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
