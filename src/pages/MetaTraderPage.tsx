@@ -17,7 +17,9 @@ interface MTConnection {
   created_at: string;
 }
 
-const SUPABASE_WEBHOOK_URL = 'https://qohltksmotdhrcixagfo.supabase.co/functions/v1/mt-webhook';
+// URL-ja e webhook-ut merret nga projekti i lidhur (env), jo e fiksuar — që EA-ja
+// e gjeneruar të dërgojë gjithmonë te databaza e duhur.
+const SUPABASE_WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mt-webhook`;
 
 function buildEACode(platform: 'mt4' | 'mt5', apiKey: string, symbol: string, intervalMin: number) {
   if (platform === 'mt4') {
