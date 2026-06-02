@@ -38,29 +38,33 @@ async function fetchForexPrices(): Promise<PriceUpdate[]> {
 
 async function fetchCryptoPrices(): Promise<PriceUpdate[]> {
   const results: PriceUpdate[] = [];
+  // CoinGecko id → simboli i platformës.
+  const MAP: Record<string, string> = {
+    bitcoin: "BTCUSD",
+    ethereum: "ETHUSD",
+    solana: "SOLUSD",
+    binancecoin: "BNBUSD",
+    ripple: "XRPUSD",
+  };
   try {
+    const ids = Object.keys(MAP).join(",");
     const resp = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true",
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
       { signal: AbortSignal.timeout(10000) }
     );
     if (!resp.ok) throw new Error("CoinGecko API failed");
     const data = await resp.json();
 
-    if (data.bitcoin) {
-      results.push({
-        symbol: "BTCUSD",
-        price: data.bitcoin.usd,
-        change24h: 0,
-        changePct: data.bitcoin.usd_24h_change ? parseFloat(data.bitcoin.usd_24h_change.toFixed(2)) : 0,
-      });
-    }
-    if (data.ethereum) {
-      results.push({
-        symbol: "ETHUSD",
-        price: data.ethereum.usd,
-        change24h: 0,
-        changePct: data.ethereum.usd_24h_change ? parseFloat(data.ethereum.usd_24h_change.toFixed(2)) : 0,
-      });
+    for (const [id, symbol] of Object.entries(MAP)) {
+      const row = data[id];
+      if (row && typeof row.usd === "number") {
+        results.push({
+          symbol,
+          price: row.usd,
+          change24h: 0,
+          changePct: row.usd_24h_change ? parseFloat(row.usd_24h_change.toFixed(2)) : 0,
+        });
+      }
     }
   } catch (e) {
     console.error("CoinGecko fetch error:", e);
@@ -70,27 +74,32 @@ async function fetchCryptoPrices(): Promise<PriceUpdate[]> {
 
 async function fetchMetalPrices(): Promise<PriceUpdate[]> {
   const results: PriceUpdate[] = [];
+
+  // ARI: Binance PAXGUSDT (PAX Gold — token i mbështetur me ar fizik që ndjek spot-in).
+  // Burim falas dhe i besueshëm; zëvendëson metals.live që ishte shpesh i padisponueshëm.
   try {
     const resp = await fetch(
-      "https://api.metals.live/v1/spot/gold,silver",
+      "https://api.binance.com/api/v3/ticker/24hr?symbol=PAXGUSDT",
       { signal: AbortSignal.timeout(8000) }
     );
-    if (!resp.ok) throw new Error("metals.live failed");
-    const data = await resp.json();
-
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        if (item.gold !== undefined) {
-          results.push({ symbol: "XAUUSD", price: parseFloat(item.gold.toFixed(2)), change24h: 0, changePct: 0 });
-        }
-        if (item.silver !== undefined) {
-          results.push({ symbol: "XAGUSD", price: parseFloat(item.silver.toFixed(4)), change24h: 0, changePct: 0 });
-        }
+    if (resp.ok) {
+      const d = await resp.json();
+      const price = parseFloat(d.lastPrice);
+      const pct = parseFloat(d.priceChangePercent);
+      if (price > 0) {
+        results.push({
+          symbol: "XAUUSD",
+          price: parseFloat(price.toFixed(2)),
+          change24h: 0,
+          changePct: Number.isNaN(pct) ? 0 : parseFloat(pct.toFixed(2)),
+        });
       }
+    } else {
+      throw new Error(`Binance PAXG ${resp.status}`);
     }
   } catch (e) {
-    console.error("metals.live fetch error:", e);
-
+    console.error("Binance PAXG (gold) error:", e);
+    // Fallback: çmimi i arit nga Coinbase XAU.
     try {
       const resp2 = await fetch(
         "https://api.coinbase.com/v2/exchange-rates?currency=XAU",
@@ -107,6 +116,27 @@ async function fetchMetalPrices(): Promise<PriceUpdate[]> {
       console.error("Coinbase gold fallback failed:", e2);
     }
   }
+
+  // ARGJENDI: metals.live (best-effort; nëse dështon, mbetet te vlera e fundit).
+  try {
+    const resp = await fetch(
+      "https://api.metals.live/v1/spot/silver",
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          if (item.silver !== undefined) {
+            results.push({ symbol: "XAGUSD", price: parseFloat(item.silver.toFixed(4)), change24h: 0, changePct: 0 });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("metals.live (silver) error:", e);
+  }
+
   return results;
 }
 
@@ -143,12 +173,14 @@ Deno.serve(async (req: Request) => {
       const change24h = update.change24h !== 0 ? update.change24h : parseFloat((update.price - prevPrice).toFixed(4));
       const changePct = update.changePct !== 0 ? update.changePct : prevPrice > 0 ? parseFloat(((change24h / prevPrice) * 100).toFixed(4)) : 0;
 
+      // Shënim: `price_change_pct` është kolonë e gjeneruar nga `price_change_pct_24h`,
+      // prandaj shkruajmë kolonën bazë (përndryshe Postgres hedh gabim).
       const { error } = await supabase
         .from("assets")
         .update({
           current_price: update.price,
           price_change_24h: change24h,
-          price_change_pct: changePct,
+          price_change_pct_24h: changePct,
           updated_at: new Date().toISOString(),
         })
         .eq("symbol", update.symbol);
