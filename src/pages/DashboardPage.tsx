@@ -7,6 +7,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ClientPage as Page } from '../App';
+import TradingViewChart from '../components/TradingViewChart';
 
 interface Asset {
   id: string; symbol: string; name: string; category: string;
@@ -117,6 +118,15 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
           </div>
         </div>
       )}
+
+      {/* Grafiku kryesor — Ari (XAUUSD) nga TradingView */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+          <h3 className="text-white font-semibold flex items-center gap-2"><BarChart3 className="w-4 h-4 text-amber-400" />Ari — XAU/USD</h3>
+          <button onClick={() => onNavigate('trading')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">Tregto <ArrowRight className="w-3 h-3" /></button>
+        </div>
+        <div className="h-[360px]"><TradingViewChart symbol="XAUUSD" timeframe="1h" /></div>
+      </div>
 
       <div className="grid lg:grid-cols-5 gap-6">
         <div className="lg:col-span-3 space-y-4">
