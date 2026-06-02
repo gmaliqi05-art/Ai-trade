@@ -30,7 +30,7 @@ export default function AdminSettingsPage() {
     }).eq('id', user.id);
     if (!error) {
       await refreshProfile();
-      flash('success', 'Profile updated successfully.');
+      flash('success', 'Profili u përditësua me sukses.');
     } else {
       flash('error', error.message);
     }
@@ -39,18 +39,18 @@ export default function AdminSettingsPage() {
 
   const changePassword = async () => {
     if (!form.newPassword || form.newPassword !== form.confirmPassword) {
-      flash('error', 'Passwords do not match.');
+      flash('error', 'Fjalëkalimet nuk përputhen.');
       return;
     }
     if (form.newPassword.length < 6) {
-      flash('error', 'Password must be at least 6 characters.');
+      flash('error', 'Fjalëkalimi duhet të paktën 6 karaktere.');
       return;
     }
     setSaving(true);
     const { error } = await supabase.auth.updateUser({ password: form.newPassword });
     if (!error) {
       setForm(f => ({ ...f, currentPassword: '', newPassword: '', confirmPassword: '' }));
-      flash('success', 'Password changed successfully.');
+      flash('success', 'Fjalëkalimi u ndryshua me sukses.');
     } else {
       flash('error', error.message);
     }
@@ -65,9 +65,9 @@ export default function AdminSettingsPage() {
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-red-400" />
-            Platform Settings
+            Cilësimet e platformës
           </h2>
-          <p className="text-gray-500 text-sm mt-1">Manage your admin account and platform preferences</p>
+          <p className="text-gray-500 text-sm mt-1">Menaxho llogarinë admin dhe preferencat e platformës</p>
         </div>
         {msg && (
           <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium ${
@@ -84,7 +84,7 @@ export default function AdminSettingsPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-2">
           <Shield className="w-4 h-4 text-red-400" />
-          <span className="text-white font-semibold text-sm">Admin Profile</span>
+          <span className="text-white font-semibold text-sm">Profili i adminit</span>
         </div>
         <div className="p-5 space-y-4">
           <div className="flex items-center gap-4 pb-4 border-b border-gray-800">
@@ -96,18 +96,18 @@ export default function AdminSettingsPage() {
               <div className="text-red-400 text-sm flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
                 Super Administrator
-              </div>
+              </div>{/* role */}
               <div className="text-gray-500 text-xs mt-0.5">{user?.email}</div>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-gray-400 font-medium mb-1.5">Full Name</label>
+              <label className="block text-xs text-gray-400 font-medium mb-1.5">Emri i plotë</label>
               <input
                 value={form.full_name}
                 onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
                 className={inputClass}
-                placeholder="Your name"
+                placeholder="Emri yt"
               />
             </div>
             <div>
@@ -124,7 +124,7 @@ export default function AdminSettingsPage() {
               <input value={user?.email || ''} disabled className={`${inputClass} opacity-50 cursor-not-allowed`} />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 font-medium mb-1.5">Role</label>
+              <label className="block text-xs text-gray-400 font-medium mb-1.5">Roli</label>
               <input value="Super Administrator" disabled className={`${inputClass} opacity-50 cursor-not-allowed text-red-400`} />
             </div>
           </div>
@@ -134,7 +134,7 @@ export default function AdminSettingsPage() {
             className="flex items-center gap-2 bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-all"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save Profile
+            Ruaj profilin
           </button>
         </div>
       </div>
@@ -142,28 +142,28 @@ export default function AdminSettingsPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-2">
           <Shield className="w-4 h-4 text-amber-400" />
-          <span className="text-white font-semibold text-sm">Change Password</span>
+          <span className="text-white font-semibold text-sm">Ndrysho fjalëkalimin</span>
         </div>
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className="block text-xs text-gray-400 font-medium mb-1.5">New Password</label>
+              <label className="block text-xs text-gray-400 font-medium mb-1.5">Fjalëkalimi i ri</label>
               <input
                 type="password"
                 value={form.newPassword}
                 onChange={e => setForm(f => ({ ...f, newPassword: e.target.value }))}
                 className={inputClass}
-                placeholder="Min. 6 characters"
+                placeholder="Min. 6 karaktere"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs text-gray-400 font-medium mb-1.5">Confirm New Password</label>
+              <label className="block text-xs text-gray-400 font-medium mb-1.5">Konfirmo fjalëkalimin e ri</label>
               <input
                 type="password"
                 value={form.confirmPassword}
                 onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
                 className={inputClass}
-                placeholder="Repeat password"
+                placeholder="Përsërit fjalëkalimin"
               />
             </div>
           </div>
@@ -173,7 +173,7 @@ export default function AdminSettingsPage() {
             className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-all"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-            Update Password
+            Ndrysho fjalëkalimin
           </button>
         </div>
       </div>
@@ -181,15 +181,15 @@ export default function AdminSettingsPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-2">
           <Globe className="w-4 h-4 text-blue-400" />
-          <span className="text-white font-semibold text-sm">Platform Information</span>
+          <span className="text-white font-semibold text-sm">Informacioni i platformës</span>
         </div>
         <div className="p-5 space-y-3">
           {[
-            { label: 'Platform Name', value: 'GOLDTRADE AI' },
-            { label: 'Version', value: '2.0.0' },
-            { label: 'Environment', value: 'Production' },
-            { label: 'Database', value: 'Supabase PostgreSQL' },
-            { label: 'Auth Provider', value: 'Supabase Auth' },
+            { label: 'Emri i platformës', value: 'GOLDTRADE AI' },
+            { label: 'Versioni', value: '2.0.0' },
+            { label: 'Mjedisi', value: 'Production' },
+            { label: 'Databaza', value: 'Supabase PostgreSQL' },
+            { label: 'Provider Auth', value: 'Supabase Auth' },
           ].map(item => (
             <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
               <span className="text-gray-400 text-sm">{item.label}</span>
@@ -201,9 +201,9 @@ export default function AdminSettingsPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: Database, label: 'Database', desc: 'Supabase PostgreSQL', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', status: 'Connected' },
-          { icon: Bell, label: 'Notifications', desc: 'Real-time enabled', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', status: 'Active' },
-          { icon: RefreshCw, label: 'Auto-sync', desc: 'Market data', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', status: 'Running' },
+          { icon: Database, label: 'Databaza', desc: 'Supabase PostgreSQL', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', status: 'E lidhur' },
+          { icon: Bell, label: 'Njoftimet', desc: 'Real-time aktive', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', status: 'Aktive' },
+          { icon: RefreshCw, label: 'Auto-sync', desc: 'Të dhënat e tregut', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', status: 'Në punë' },
         ].map(item => {
           const Icon = item.icon;
           return (
