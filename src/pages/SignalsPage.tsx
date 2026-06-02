@@ -4,7 +4,13 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useMarketAnalysis, type MarketAsset } from '../ai-trader/react/useMarketAnalysis';
 import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
+import type { Timeframe } from '../ai-trader/market/candles';
 import { requestEngineReasoning } from '../services/aiReasoning';
+
+const TIMEFRAMES: { v: Timeframe; label: string }[] = [
+  { v: '1m', label: '1 min' }, { v: '5m', label: '5 min' }, { v: '15m', label: '15 min' },
+  { v: '30m', label: '30 min' }, { v: '1h', label: '1 orë' }, { v: '4h', label: '4 orë' }, { v: '1d', label: '1 ditë' },
+];
 
 interface Signal {
   id: string; type: string; symbol: string; entry_price: number;
@@ -30,12 +36,13 @@ const MARKETS: { key: MarketKey; label: string }[] = [
 ];
 
 export default function SignalsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [signals, setSignals] = useState<Signal[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [activeTab, setActiveTab] = useState<'engine' | 'signals' | 'alerts'>('engine');
   const [market, setMarket] = useState<MarketKey>('crypto');
+  const [timeframe, setTimeframe] = useState<Timeframe>('1h');
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ asset_id: '', condition: 'above', target_price: '' });
@@ -89,7 +96,9 @@ export default function SignalsPage() {
       .map(a => ({ symbol: a.symbol, category: a.category || a.type, currentPrice: a.current_price }));
   }, [assets, market, activeTab]);
 
-  const { analyses, loading: engineLoading, refresh: refreshEngine } = useMarketAnalysis(engineAssets, '1h');
+  const { analyses, loading: engineLoading, refresh: refreshEngine } = useMarketAnalysis(engineAssets, timeframe);
+  const accountBalance = Number((profile as { balance?: number } | null)?.balance) || 0;
+  const catBySymbol = (sym: string) => assets.find(a => a.symbol === sym)?.category || assets.find(a => a.symbol === sym)?.type;
 
   return (
     <div className="p-6 space-y-6">
@@ -132,8 +141,19 @@ export default function SignalsPage() {
             </div>
             <button onClick={refreshEngine} disabled={engineLoading}
               className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
-              <RefreshCw className={`w-3.5 h-3.5 ${engineLoading ? 'animate-spin' : ''}`} />Rifresko
+              <RefreshCw className={`w-3.5 h-3.5 ${engineLoading ? 'animate-spin' : ''}`} />Gjenero / Rifresko
             </button>
+          </div>
+
+          {/* Zgjedhësi i periudhës — klienti kërkon analizë për një periudhë të caktuar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-500">Periudha e analizës:</span>
+            {TIMEFRAMES.map(t => (
+              <button key={t.v} onClick={() => setTimeframe(t.v)}
+                className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${timeframe === t.v ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                {t.label}
+              </button>
+            ))}
           </div>
 
           {engineLoading ? (
@@ -146,6 +166,8 @@ export default function SignalsPage() {
                 <EngineSignalCard
                   key={a.symbol}
                   analysis={a}
+                  category={catBySymbol(a.symbol)}
+                  accountBalance={accountBalance}
                   askAI={(an) => requestEngineReasoning(an, { assetId: assets.find(x => x.symbol === an.symbol)?.id })}
                 />
               ))}

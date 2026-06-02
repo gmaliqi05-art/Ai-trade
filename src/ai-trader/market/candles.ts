@@ -8,7 +8,7 @@
 import type { Candle } from '../core/types';
 
 export type CandleSource = 'live' | 'demo';
-export type Timeframe = '15m' | '1h' | '4h' | '1d';
+export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
 
 export interface CandleResult {
   candles: Candle[];
@@ -42,12 +42,15 @@ const BINANCE_PAIRS: Record<string, string> = {
 };
 
 const BINANCE_INTERVAL: Record<Timeframe, string> = {
-  '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d',
+  '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '4h': '4h', '1d': '1d',
 };
 
 /** Kohëzgjatja e një qiriu në milisekonda (për qirinjtë demo). */
 const TIMEFRAME_MS: Record<Timeframe, number> = {
+  '1m': 60_000,
+  '5m': 5 * 60_000,
   '15m': 15 * 60_000,
+  '30m': 30 * 60_000,
   '1h': 60 * 60_000,
   '4h': 4 * 60 * 60_000,
   '1d': 24 * 60 * 60_000,

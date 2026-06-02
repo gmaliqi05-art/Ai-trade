@@ -6,5 +6,6 @@ export * from './core/indicators';
 export * from './core/signal-engine';
 export * from './core/risk';
 export * from './core/trade-plan';
+export * from './core/lot';
 export * from './market/candles';
 export * from './analyze';

@@ -66,7 +66,7 @@ export default function TradingPage() {
     const fee = total * 0.001;
 
     if (tradeType === 'buy' && profile && total + fee > profile.balance) {
-      setTradeMsg({ type: 'error', text: 'Insufficient balance for this trade.' });
+      setTradeMsg({ type: 'error', text: 'Balancë e pamjaftueshme për këtë tregti.' });
       setTradeLoading(false);
       return;
     }
@@ -75,14 +75,14 @@ export default function TradingPage() {
       const { data: pos } = await supabase.from('portfolio_positions').select('quantity').eq('user_id', user.id).eq('asset_id', selected.id).maybeSingle();
       const owned = pos?.quantity ?? 0;
       if (qty > owned) {
-        setTradeMsg({ type: 'error', text: `You only own ${owned.toFixed(6)} ${selected.symbol}.` });
+        setTradeMsg({ type: 'error', text: `Ke vetëm ${owned.toFixed(6)} ${selected.symbol}.` });
         setTradeLoading(false);
         return;
       }
     }
 
     const { error: te } = await supabase.from('trades').insert({ user_id: user.id, asset_id: selected.id, symbol: selected.symbol, type: tradeType, quantity: qty, price: selected.current_price, total, fee, status: 'executed', executed_at: new Date().toISOString() });
-    if (te) { setTradeMsg({ type: 'error', text: 'Trade failed. Please try again.' }); setTradeLoading(false); return; }
+    if (te) { setTradeMsg({ type: 'error', text: 'Tregtia dështoi. Provo përsëri.' }); setTradeLoading(false); return; }
 
     const newBalance = tradeType === 'buy' ? (profile?.balance || 0) - total - fee : (profile?.balance || 0) + total - fee;
     await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id);
@@ -104,7 +104,7 @@ export default function TradingPage() {
     }
 
     await refreshProfile();
-    setTradeMsg({ type: 'success', text: `${tradeType === 'buy' ? 'Bought' : 'Sold'} ${qty} ${selected.symbol} successfully.` });
+    setTradeMsg({ type: 'success', text: `${tradeType === 'buy' ? 'U blenë' : 'U shitën'} ${qty} ${selected.symbol} me sukses.` });
     setQuantity('');
     setTradeLoading(false);
   };
@@ -123,14 +123,14 @@ export default function TradingPage() {
         <div className="p-3 border-b border-gray-800">
           <div className="relative mb-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..."
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Kërko..."
               className="w-full bg-gray-800 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-amber-500 border border-gray-700" />
           </div>
           <div className="flex gap-1 flex-wrap">
-            {(['all', 'commodity', 'forex', 'crypto', 'stock'] as const).map((cat) => (
+            {([['all','Të gjitha'],['commodity','Mallra'],['forex','Forex'],['crypto','Crypto'],['stock','Aksione']] as const).map(([cat, lbl]) => (
               <button key={cat} onClick={() => setCategory(cat)}
-                className={`text-xs px-2 py-1 rounded-lg transition-colors capitalize ${category === cat ? 'bg-amber-500 text-gray-950 font-medium' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
-                {cat}
+                className={`text-xs px-2 py-1 rounded-lg transition-colors ${category === cat ? 'bg-amber-500 text-gray-950 font-medium' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                {lbl}
               </button>
             ))}
           </div>
@@ -181,7 +181,7 @@ export default function TradingPage() {
                   </div>
                 </div>
                 <div className="flex gap-4 text-sm">
-                  {[{ l: '24H High', v: selected.high_24h.toFixed(selected.category === 'forex' ? 4 : 2) }, { l: '24H Low', v: selected.low_24h.toFixed(selected.category === 'forex' ? 4 : 2) }, { l: 'Volume', v: `$${(selected.volume_24h / 1e9).toFixed(2)}B` }].map(s => (
+                  {[{ l: 'Maks 24h', v: selected.high_24h.toFixed(selected.category === 'forex' ? 4 : 2) }, { l: 'Min 24h', v: selected.low_24h.toFixed(selected.category === 'forex' ? 4 : 2) }, { l: 'Vëllimi', v: `$${(selected.volume_24h / 1e9).toFixed(2)}B` }].map(s => (
                     <div key={s.l} className="text-center"><div className="text-gray-500 text-xs">{s.l}</div><div className="text-white font-medium">{s.v}</div></div>
                   ))}
                 </div>
@@ -217,6 +217,8 @@ export default function TradingPage() {
                     <>
                       <EngineSignalCard
                         analysis={engineAnalysis}
+                        category={selected?.category}
+                        accountBalance={Number(profile?.balance) || 0}
                         askAI={(an) => requestEngineReasoning(an, { assetId: selected?.id })}
                       />
                       {engineAnalysis.short && engineAnalysis.short.signal.action !== 'HOLD' && (
@@ -231,17 +233,17 @@ export default function TradingPage() {
                   )}
                 </div>
 
-                <h3 className="text-white font-semibold">Place Order</h3>
+                <h3 className="text-white font-semibold">Vendos porosi</h3>
                 <div className="flex rounded-xl overflow-hidden border border-gray-700">
-                  <button onClick={() => setTradeType('buy')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Buy</button>
-                  <button onClick={() => setTradeType('sell')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Sell</button>
+                  <button onClick={() => setTradeType('buy')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>BLEJ</button>
+                  <button onClick={() => setTradeType('sell')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>SHIT</button>
                 </div>
                 <div className="bg-gray-800 rounded-xl p-3">
-                  <div className="flex items-center justify-between mb-1"><span className="text-gray-400 text-xs">Market Price</span><span className="text-amber-400 text-xs">MARKET</span></div>
+                  <div className="flex items-center justify-between mb-1"><span className="text-gray-400 text-xs">Çmimi i tregut</span><span className="text-amber-400 text-xs">TREG</span></div>
                   <div className="text-white font-bold text-lg">{fp(selected)}</div>
                 </div>
                 <div>
-                  <label className="block text-gray-400 text-xs mb-1.5">Quantity</label>
+                  <label className="block text-gray-400 text-xs mb-1.5">Sasia</label>
                   <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" min="0" step="any"
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" />
                 </div>
@@ -253,13 +255,13 @@ export default function TradingPage() {
                 </div>
                 {quantity && parseFloat(quantity) > 0 && (
                   <div className="bg-gray-800/50 rounded-xl p-3 space-y-1.5">
-                    <div className="flex justify-between text-xs"><span className="text-gray-400">Subtotal</span><span className="text-white">${(parseFloat(quantity) * selected.current_price).toFixed(2)}</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-gray-400">Fee (0.1%)</span><span className="text-white">${(parseFloat(quantity) * selected.current_price * 0.001).toFixed(2)}</span></div>
-                    <div className="flex justify-between text-xs font-semibold border-t border-gray-700 pt-1.5"><span className="text-gray-300">Total</span><span className="text-white">${(parseFloat(quantity) * selected.current_price * 1.001).toFixed(2)}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-gray-400">Nëntotali</span><span className="text-white">${(parseFloat(quantity) * selected.current_price).toFixed(2)}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-gray-400">Tarifa (0.1%)</span><span className="text-white">${(parseFloat(quantity) * selected.current_price * 0.001).toFixed(2)}</span></div>
+                    <div className="flex justify-between text-xs font-semibold border-t border-gray-700 pt-1.5"><span className="text-gray-300">Totali</span><span className="text-white">${(parseFloat(quantity) * selected.current_price * 1.001).toFixed(2)}</span></div>
                   </div>
                 )}
                 <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <DollarSign className="w-3 h-3" />Balance: <span className="text-amber-400 font-medium">${(profile?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <DollarSign className="w-3 h-3" />Balanca: <span className="text-amber-400 font-medium">${(profile?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                 </div>
                 {tradeMsg && (
                   <div className={`text-xs rounded-xl px-3 py-2 ${tradeMsg.type === 'success' ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-red-900/30 text-red-400 border border-red-800/50'}`}>{tradeMsg.text}</div>
@@ -267,13 +269,13 @@ export default function TradingPage() {
                 <button onClick={handleTrade} disabled={tradeLoading || !quantity || parseFloat(quantity) <= 0}
                   className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${tradeType === 'buy' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
                   {tradeLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {tradeType === 'buy' ? 'Buy' : 'Sell'} {selected.symbol}
+                  {tradeType === 'buy' ? 'BLEJ' : 'SHIT'} {selected.symbol}
                 </button>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">Select an asset to start trading</div>
+          <div className="flex-1 flex items-center justify-center text-gray-500">Zgjidh një aktiv për të nisur tregtimin</div>
         )}
       </div>
     </div>

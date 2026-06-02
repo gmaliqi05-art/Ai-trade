@@ -2,8 +2,9 @@
 // afatgjatë me veprimin (BLEJ/SHIT/PRIT), besueshmërinë, planet dhe arsyet.
 
 import { useState } from 'react';
-import { Target, Shield, TrendingUp, ChevronDown, ChevronUp, Clock, Activity, Sparkles, Loader2 } from 'lucide-react';
+import { Target, Shield, TrendingUp, ChevronDown, ChevronUp, Clock, Activity, Sparkles, Loader2, Layers } from 'lucide-react';
 import type { AssetAnalysis, HorizonAnalysis } from '../analyze';
+import { suggestLot } from '../core/lot';
 import { actionClasses, actionLabel, fmtPct, fmtPrice } from './format';
 
 /** Forma minimale e arsyetimit nga AI që i duhet kartës (e pajtueshme me services/aiReasoning). */
@@ -16,7 +17,7 @@ export interface CardAiReasoning {
   provider_used?: string;
 }
 
-function HorizonBlock({ title, data }: { title: string; data: HorizonAnalysis | null }) {
+function HorizonBlock({ title, data, category, accountBalance }: { title: string; data: HorizonAnalysis | null; category?: string; accountBalance?: number }) {
   const [open, setOpen] = useState(false);
 
   if (!data) {
@@ -34,6 +35,9 @@ function HorizonBlock({ title, data }: { title: string; data: HorizonAnalysis | 
 
   const { signal, plan } = data;
   const isActionable = signal.action !== 'HOLD';
+  const lot = isActionable && accountBalance
+    ? suggestLot(category, accountBalance, plan.entry, plan.stopLoss)
+    : null;
 
   return (
     <div className="bg-gray-800/40 rounded-xl p-3 space-y-2">
@@ -66,6 +70,13 @@ function HorizonBlock({ title, data }: { title: string; data: HorizonAnalysis | 
         </div>
       )}
 
+      {isActionable && lot && (
+        <div className="flex items-center justify-between text-[11px] bg-gray-900/40 rounded-lg px-2 py-1">
+          <span className="text-gray-400 flex items-center gap-1"><Layers className="w-3 h-3 text-amber-400" />Lot i sugjeruar (rrezik 1%)</span>
+          <span className="text-white font-semibold">{lot.lot} <span className="text-gray-500">· rrezik ~${lot.moneyAtRisk.toFixed(0)}</span></span>
+        </div>
+      )}
+
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between text-gray-500 hover:text-gray-300 text-[11px] transition-colors"
@@ -91,6 +102,10 @@ interface EngineSignalCardProps {
   analysis: AssetAnalysis;
   /** Nëse jepet, shfaqet butoni "Arsyeto me Claude AI" që e thërret këtë funksion. */
   askAI?: (analysis: AssetAnalysis) => Promise<CardAiReasoning>;
+  /** Kategoria e aktivit (për llogaritjen e lotit). */
+  category?: string;
+  /** Balanca e llogarisë (për sugjerimin e lotit me rrezik 1%). */
+  accountBalance?: number;
 }
 
 function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI: NonNullable<EngineSignalCardProps['askAI']> }) {
@@ -146,7 +161,7 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
   );
 }
 
-export function EngineSignalCard({ analysis, askAI }: EngineSignalCardProps) {
+export function EngineSignalCard({ analysis, askAI, category, accountBalance }: EngineSignalCardProps) {
   const sourceBadge =
     analysis.source === 'live'
       ? 'bg-green-500/20 text-green-400 border-green-500/30'
@@ -164,8 +179,8 @@ export function EngineSignalCard({ analysis, askAI }: EngineSignalCardProps) {
         </span>
       </div>
 
-      <HorizonBlock title="Afatshkurtër" data={analysis.short} />
-      <HorizonBlock title="Afatgjatë" data={analysis.long} />
+      <HorizonBlock title="Afatshkurtër" data={analysis.short} category={category} accountBalance={accountBalance} />
+      <HorizonBlock title="Afatgjatë" data={analysis.long} category={category} accountBalance={accountBalance} />
 
       {askAI && (analysis.short || analysis.long) && <AiReasoningBlock analysis={analysis} askAI={askAI} />}
     </div>

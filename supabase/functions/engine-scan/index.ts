@@ -139,12 +139,82 @@ async function fetchCandles(symbol: string): Promise<Candle[] | null> {
 
 interface CfgRow { user_id: string; auto_symbols: string; min_confidence: number; }
 
+// Lista e ndjekur për sinjalet PLATFORM-WIDE (të dukshme nga TË GJITHË klientët).
+// Simbole likuide me qirinj realë; ari via PAXG.
+const PLATFORM_WATCHLIST = ["XAUUSD", "BTCUSD", "ETHUSD", "SOLUSD", "BNBUSD", "XRPUSD"];
+const PLATFORM_MIN_CONF = 0.30;   // pragu i besueshmërisë (0..1)
+const PLATFORM_MAX = 3;            // maksimumi i sinjaleve platform-wide aktive njëkohësisht
+const PLATFORM_DEDUP_H = 4;        // mos krijo sinjal të ri për të njëjtin simbol brenda 4 orëve
+
+/**
+ * Gjeneron deri në PLATFORM_MAX sinjale REALE platform-wide (user_id = NULL),
+ * me throttle: një sinjal për simbol jo më shumë se një herë në PLATFORM_DEDUP_H orë.
+ * Këto janë vetëm për shfaqje te "Sinjale AI"; auto-trade-runner s'i ekzekuton (user_id NULL).
+ */
+async function platformPass(
+  db: ReturnType<typeof createClient>,
+  out: Array<Record<string, unknown>>,
+) {
+  const dedupIso = new Date(Date.now() - PLATFORM_DEDUP_H * 60 * 60 * 1000).toISOString();
+  // Numri aktual i sinjaleve platform-wide aktive nga motori.
+  const { count: activeCount } = await db
+    .from("signals")
+    .select("id", { count: "exact", head: true })
+    .is("user_id", null)
+    .eq("source", "engine")
+    .eq("status", "active");
+  if ((activeCount ?? 0) >= PLATFORM_MAX) return;
+
+  // Llogarit sinjalet për watchlist-in dhe rendit sipas besueshmërisë.
+  const candidates: { symbol: string; sig: NonNullable<ReturnType<typeof generateShort>> }[] = [];
+  for (const symbol of PLATFORM_WATCHLIST) {
+    try {
+      const candles = await fetchCandles(symbol);
+      if (!candles) continue;
+      const sig = generateShort(candles);
+      if (sig && sig.action !== "HOLD" && sig.confidence >= PLATFORM_MIN_CONF) candidates.push({ symbol, sig });
+    } catch { /* anashkalo simbolin */ }
+  }
+  candidates.sort((a, b) => b.sig.confidence - a.sig.confidence);
+
+  let created = 0;
+  const room = PLATFORM_MAX - (activeCount ?? 0);
+  for (const { symbol, sig } of candidates) {
+    if (created >= room) break;
+    // Dedup: a ka sinjal platform-wide për këtë simbol brenda dritares?
+    const { data: recent } = await db
+      .from("signals")
+      .select("id")
+      .is("user_id", null)
+      .eq("source", "engine")
+      .eq("symbol", symbol)
+      .gte("created_at", dedupIso)
+      .limit(1);
+    if (recent && recent.length > 0) continue;
+
+    await db.from("signals").insert({
+      user_id: null, symbol, type: sig.action.toLowerCase(),
+      entry_price: sig.entry, target_price: sig.takeProfit, stop_loss: sig.stopLoss,
+      confidence: Math.round(sig.confidence * 100), timeframe: "1h",
+      analysis: `Motori AI: ${sig.reasons.slice(0, 3).join("; ")}`,
+      source: "engine", status: "active",
+      expires_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+    });
+    created++;
+    out.push({ platform: symbol, action: sig.action, confidence: Math.round(sig.confidence * 100), created: true });
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const out: Array<Record<string, unknown>> = [];
 
   try {
+    // 1) Sinjale platform-wide (për të gjithë klientët) — gjithmonë.
+    await platformPass(db, out);
+
+    // 2) Sinjale per-përdorues për auto-trade.
     const { data: configs } = await db
       .from("metaapi_config")
       .select("user_id, auto_symbols, min_confidence")
@@ -159,7 +229,6 @@ Deno.serve(async (req: Request) => {
         symbolUsers.get(s)!.push(c);
       }
     }
-    if (symbolUsers.size === 0) return json({ success: true, scanned: 0, note: "Asnjë përdorues me auto-trade." });
 
     const sinceIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
