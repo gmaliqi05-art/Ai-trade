@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useMarketAnalysis, type MarketAsset } from '../ai-trader/react/useMarketAnalysis';
 import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
+import { requestEngineReasoning } from '../services/aiReasoning';
 
 interface Signal {
   id: string; type: string; symbol: string; entry_price: number;
@@ -141,7 +142,13 @@ export default function SignalsPage() {
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center"><Cpu className="w-12 h-12 text-gray-700 mx-auto mb-3" /><p className="text-gray-400">Asnjë aktiv në këtë treg</p></div>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {analyses.map(a => <EngineSignalCard key={a.symbol} analysis={a} />)}
+              {analyses.map(a => (
+                <EngineSignalCard
+                  key={a.symbol}
+                  analysis={a}
+                  askAI={(an) => requestEngineReasoning(an, { assetId: assets.find(x => x.symbol === an.symbol)?.id })}
+                />
+              ))}
             </div>
           )}
         </div>

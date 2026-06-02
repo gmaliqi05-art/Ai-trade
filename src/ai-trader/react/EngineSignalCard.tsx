@@ -2,9 +2,19 @@
 // afatgjatë me veprimin (BLEJ/SHIT/PRIT), besueshmërinë, planet dhe arsyet.
 
 import { useState } from 'react';
-import { Target, Shield, TrendingUp, ChevronDown, ChevronUp, Clock, Activity } from 'lucide-react';
+import { Target, Shield, TrendingUp, ChevronDown, ChevronUp, Clock, Activity, Sparkles, Loader2 } from 'lucide-react';
 import type { AssetAnalysis, HorizonAnalysis } from '../analyze';
 import { actionClasses, actionLabel, fmtPct, fmtPrice } from './format';
+
+/** Forma minimale e arsyetimit nga AI që i duhet kartës (e pajtueshme me services/aiReasoning). */
+export interface CardAiReasoning {
+  signal: string;
+  confidence: number;
+  sentiment?: string;
+  analysis_text: string;
+  reasoning: string;
+  provider_used?: string;
+}
 
 function HorizonBlock({ title, data }: { title: string; data: HorizonAnalysis | null }) {
   const [open, setOpen] = useState(false);
@@ -77,7 +87,66 @@ function HorizonBlock({ title, data }: { title: string; data: HorizonAnalysis | 
   );
 }
 
-export function EngineSignalCard({ analysis }: { analysis: AssetAnalysis }) {
+interface EngineSignalCardProps {
+  analysis: AssetAnalysis;
+  /** Nëse jepet, shfaqet butoni "Arsyeto me Claude AI" që e thërret këtë funksion. */
+  askAI?: (analysis: AssetAnalysis) => Promise<CardAiReasoning>;
+}
+
+function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI: NonNullable<EngineSignalCardProps['askAI']> }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<CardAiReasoning | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setResult(await askAI(analysis));
+    } catch (e) {
+      setError((e as Error).message || 'Arsyetimi dështoi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="pt-1 border-t border-gray-800">
+      <button
+        onClick={run}
+        disabled={loading}
+        className="w-full flex items-center justify-center gap-2 text-xs font-medium text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl py-2 transition-colors disabled:opacity-50"
+      >
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+        {loading ? 'Claude po analizon…' : result ? 'Rifresko arsyetimin AI' : 'Arsyeto me Claude AI'}
+      </button>
+
+      {error && (
+        <p className="mt-2 text-[11px] text-red-400">
+          {error === 'no_active_providers' || error.includes('provider')
+            ? 'Asnjë provider AI i konfiguruar. Shto një çelës (p.sh. Anthropic) te Admin → AI Providers.'
+            : error}
+        </p>
+      )}
+
+      {result && (
+        <div className="mt-2 space-y-1.5 bg-purple-500/5 border border-purple-500/20 rounded-xl p-3">
+          <div className="flex items-center justify-between">
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${actionClasses(result.signal.toUpperCase() === 'BUY' ? 'BUY' : result.signal.toUpperCase() === 'SELL' ? 'SELL' : 'HOLD')}`}>
+              {result.signal.toUpperCase() === 'BUY' ? 'BLEJ' : result.signal.toUpperCase() === 'SELL' ? 'SHIT' : 'PRIT'}
+            </span>
+            <span className="text-purple-300 text-xs font-semibold">{Math.round(result.confidence)}% Claude</span>
+          </div>
+          <p className="text-gray-300 text-[11px] leading-relaxed">{result.analysis_text}</p>
+          <p className="text-gray-400 text-[11px] leading-relaxed">{result.reasoning}</p>
+          {result.provider_used && <p className="text-gray-600 text-[10px]">burimi: {result.provider_used}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function EngineSignalCard({ analysis, askAI }: EngineSignalCardProps) {
   const sourceBadge =
     analysis.source === 'live'
       ? 'bg-green-500/20 text-green-400 border-green-500/30'
@@ -97,6 +166,8 @@ export function EngineSignalCard({ analysis }: { analysis: AssetAnalysis }) {
 
       <HorizonBlock title="Afatshkurtër" data={analysis.short} />
       <HorizonBlock title="Afatgjatë" data={analysis.long} />
+
+      {askAI && (analysis.short || analysis.long) && <AiReasoningBlock analysis={analysis} askAI={askAI} />}
     </div>
   );
 }
