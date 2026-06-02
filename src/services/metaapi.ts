@@ -13,11 +13,16 @@ export interface MetaApiConfig {
   max_daily_loss: number;
   max_open_trades: number;
   kill_switch: boolean;
+  /** Vetëm sinjalet me besueshmëri >= këtij pragu ekzekutohen automatikisht. */
+  min_confidence: number;
+  /** Lista (me presje) e simboleve të lejuara për auto-trade. */
+  auto_symbols: string;
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
   account_id: '', token: '', region: 'new-york', mode: 'demo', auto_trade: false,
   default_lot: 0.01, max_lot: 0.1, max_daily_loss: 100, max_open_trades: 3, kill_switch: false,
+  min_confidence: 70, auto_symbols: 'XAUUSD',
 };
 
 export interface TradeExecution {
@@ -35,6 +40,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     default_lot: Number(data.default_lot ?? 0.01), max_lot: Number(data.max_lot ?? 0.1),
     max_daily_loss: Number(data.max_daily_loss ?? 100), max_open_trades: Number(data.max_open_trades ?? 3),
     kill_switch: !!data.kill_switch,
+    min_confidence: Number(data.min_confidence ?? 70), auto_symbols: data.auto_symbols ?? 'XAUUSD',
   };
 }
 
