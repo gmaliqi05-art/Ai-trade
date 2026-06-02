@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Shield, Users, TrendingUp, Zap, BarChart2, Search, Edit2, Check, X,
-  Trash2, Plus, RefreshCw, ChevronDown, ChevronUp, Activity, DollarSign,
+  Trash2, Plus, RefreshCw, ChevronUp, Activity, DollarSign,
   AlertTriangle, Crown, Loader2, Eye, EyeOff, Brain, Megaphone, Monitor, Key, TestTube
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';

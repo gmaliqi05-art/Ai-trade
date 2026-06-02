@@ -174,7 +174,7 @@ const INTERVALS = [
 export default function MetaTraderPage() {
   const { user } = useAuth();
   const [connections, setConnections] = useState<MTConnection[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [platform, setPlatform] = useState<'MT4' | 'MT5'>('MT4');
