@@ -15,29 +15,29 @@ interface AdminLayoutProps {
 }
 
 const navItems: { id: AdminPage; label: string; icon: React.ElementType; section: string }[] = [
-  { id: 'admin_overview', label: 'Overview', icon: LayoutDashboard, section: 'Dashboard' },
-  { id: 'admin_users', label: 'Users', icon: Users, section: 'Management' },
-  { id: 'admin_assets', label: 'Assets & Markets', icon: BarChart2, section: 'Management' },
-  { id: 'admin_signals', label: 'Signals', icon: Zap, section: 'Management' },
-  { id: 'admin_trades', label: 'Trade Monitor', icon: Activity, section: 'Management' },
-  { id: 'admin_ai', label: 'AI Providers', icon: Brain, section: 'Platform' },
-  { id: 'admin_broadcast', label: 'Broadcast', icon: Megaphone, section: 'Platform' },
-  { id: 'admin_metatrader', label: 'MetaTrader', icon: Monitor, section: 'Platform' },
-  { id: 'admin_audit', label: 'Audit Log', icon: Shield, section: 'Security' },
-  { id: 'admin_settings', label: 'Settings', icon: Settings, section: 'Security' },
+  { id: 'admin_overview', label: 'Përmbledhje', icon: LayoutDashboard, section: 'Paneli' },
+  { id: 'admin_users', label: 'Përdoruesit', icon: Users, section: 'Menaxhimi' },
+  { id: 'admin_assets', label: 'Aktivet & tregjet', icon: BarChart2, section: 'Menaxhimi' },
+  { id: 'admin_signals', label: 'Sinjalet', icon: Zap, section: 'Menaxhimi' },
+  { id: 'admin_trades', label: 'Tregtitë', icon: Activity, section: 'Menaxhimi' },
+  { id: 'admin_ai', label: 'AI Providers', icon: Brain, section: 'Platforma' },
+  { id: 'admin_broadcast', label: 'Broadcast', icon: Megaphone, section: 'Platforma' },
+  { id: 'admin_metatrader', label: 'MetaTrader', icon: Monitor, section: 'Platforma' },
+  { id: 'admin_audit', label: 'Regjistri i auditit', icon: Shield, section: 'Siguria' },
+  { id: 'admin_settings', label: 'Cilësimet', icon: Settings, section: 'Siguria' },
 ];
 
 const pageLabels: Record<AdminPage, string> = {
-  admin_overview: 'Platform Overview',
-  admin_users: 'User Management',
-  admin_assets: 'Assets & Markets',
-  admin_signals: 'Signal Management',
-  admin_trades: 'Trade Monitor',
+  admin_overview: 'Përmbledhja e platformës',
+  admin_users: 'Menaxhimi i përdoruesve',
+  admin_assets: 'Aktivet & tregjet',
+  admin_signals: 'Menaxhimi i sinjaleve',
+  admin_trades: 'Monitorimi i tregtive',
   admin_ai: 'AI Providers',
   admin_broadcast: 'Broadcast',
-  admin_metatrader: 'MetaTrader Connections',
-  admin_audit: 'Audit Log',
-  admin_settings: 'Platform Settings',
+  admin_metatrader: 'Lidhjet MetaTrader',
+  admin_audit: 'Regjistri i auditit',
+  admin_settings: 'Cilësimet e platformës',
 };
 
 export default function AdminLayout({ currentPage, onNavigate, children }: AdminLayoutProps) {
@@ -59,7 +59,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
 
   useEffect(() => { fetchUnread(); }, [fetchUnread, currentPage]);
 
-  const sections = ['Dashboard', 'Management', 'Platform', 'Security'];
+  const sections = ['Paneli', 'Menaxhimi', 'Platforma', 'Siguria'];
 
   const NavItem = ({ item }: { item: typeof navItems[0] }) => {
     const active = currentPage === item.id;
@@ -139,7 +139,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
                 className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-all text-sm"
               >
                 <LogOut className="w-4 h-4" />
-                Sign Out
+                Dil
               </button>
             </div>
           )}
@@ -188,7 +188,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">
               <Shield className="w-3.5 h-3.5 text-red-400" />
-              <span className="text-red-400 text-xs font-semibold">Administrator</span>
+              <span className="text-red-400 text-xs font-semibold">Administrator</span>{/* badge */}
             </div>
             <button className="relative p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
               <Bell className="w-5 h-5" />

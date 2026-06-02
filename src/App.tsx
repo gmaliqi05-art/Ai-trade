@@ -36,7 +36,7 @@ function AdminApp() {
 
   return (
     <AdminLayout currentPage={currentPage} onNavigate={setCurrentPage}>
-      {currentPage === 'admin_overview' && <AdminOverviewPage />}
+      {currentPage === 'admin_overview' && <AdminOverviewPage onNavigate={setCurrentPage} />}
       {currentPage === 'admin_users' && <AdminPageTab tab="users" />}
       {currentPage === 'admin_assets' && <AdminPageTab tab="assets" />}
       {currentPage === 'admin_signals' && <AdminPageTab tab="signals" />}

@@ -173,20 +173,20 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-white font-semibold flex items-center gap-2"><Crown className="w-4 h-4 text-amber-400" />Current Plan</h3>
+                  <h3 className="text-white font-semibold flex items-center gap-2"><Crown className="w-4 h-4 text-amber-400" />Plani aktual</h3>
                   <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-2 py-1 rounded-lg capitalize">{profile?.subscription_tier || 'free'}</span>
                 </div>
-                <p className="text-gray-400 text-sm">Upgrade to unlock premium features and advanced AI capabilities.</p>
+                <p className="text-gray-400 text-sm">Pagesat online nuk janë aktivizuar ende — planet me pagesë vijnë së shpejti. Për ndryshim plani aktualisht, kontakto administratorin.</p>
               </div>
               <div className="grid md:grid-cols-3 gap-4">
                 {tiers.map((t) => (
                   <div key={t.id} className={`bg-gray-900 border-2 rounded-2xl p-5 relative ${t.id === profile?.subscription_tier ? 'border-amber-500' : t.border}`}>
                     {t.badge && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-gray-950 text-xs font-bold px-3 py-1 rounded-full">{t.badge}</div>}
-                    {t.id === profile?.subscription_tier && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">Current</div>}
-                    <div className="mb-4"><h4 className="text-white font-bold text-lg">{t.name}</h4><div className="flex items-baseline gap-1 mt-1"><span className="text-3xl font-bold text-white">{t.price}</span><span className="text-gray-400 text-sm">/mo</span></div></div>
+                    {t.id === profile?.subscription_tier && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">Aktiv</div>}
+                    <div className="mb-4"><h4 className="text-white font-bold text-lg">{t.name}</h4><div className="flex items-baseline gap-1 mt-1"><span className="text-3xl font-bold text-white">{t.price}</span><span className="text-gray-400 text-sm">/muaj</span></div></div>
                     <ul className="space-y-2 mb-5">{t.features.map(f => <li key={f} className="flex items-center gap-2 text-gray-300 text-sm"><Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />{f}</li>)}</ul>
-                    <button disabled={t.id === profile?.subscription_tier} className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all ${t.id === profile?.subscription_tier ? 'bg-gray-700 text-gray-400 cursor-default' : t.id === 'pro' ? 'bg-amber-500 hover:bg-amber-400 text-gray-950' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
-                      {t.id === profile?.subscription_tier ? 'Active' : `Upgrade to ${t.name}`}
+                    <button disabled className={`w-full py-2.5 rounded-xl text-sm font-semibold ${t.id === profile?.subscription_tier ? 'bg-gray-700 text-gray-400' : 'bg-gray-800 text-gray-500'} cursor-not-allowed`}>
+                      {t.id === profile?.subscription_tier ? 'Aktiv' : 'Së shpejti'}
                     </button>
                   </div>
                 ))}
