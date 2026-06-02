@@ -38,29 +38,33 @@ async function fetchForexPrices(): Promise<PriceUpdate[]> {
 
 async function fetchCryptoPrices(): Promise<PriceUpdate[]> {
   const results: PriceUpdate[] = [];
+  // CoinGecko id → simboli i platformës.
+  const MAP: Record<string, string> = {
+    bitcoin: "BTCUSD",
+    ethereum: "ETHUSD",
+    solana: "SOLUSD",
+    binancecoin: "BNBUSD",
+    ripple: "XRPUSD",
+  };
   try {
+    const ids = Object.keys(MAP).join(",");
     const resp = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true",
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
       { signal: AbortSignal.timeout(10000) }
     );
     if (!resp.ok) throw new Error("CoinGecko API failed");
     const data = await resp.json();
 
-    if (data.bitcoin) {
-      results.push({
-        symbol: "BTCUSD",
-        price: data.bitcoin.usd,
-        change24h: 0,
-        changePct: data.bitcoin.usd_24h_change ? parseFloat(data.bitcoin.usd_24h_change.toFixed(2)) : 0,
-      });
-    }
-    if (data.ethereum) {
-      results.push({
-        symbol: "ETHUSD",
-        price: data.ethereum.usd,
-        change24h: 0,
-        changePct: data.ethereum.usd_24h_change ? parseFloat(data.ethereum.usd_24h_change.toFixed(2)) : 0,
-      });
+    for (const [id, symbol] of Object.entries(MAP)) {
+      const row = data[id];
+      if (row && typeof row.usd === "number") {
+        results.push({
+          symbol,
+          price: row.usd,
+          change24h: 0,
+          changePct: row.usd_24h_change ? parseFloat(row.usd_24h_change.toFixed(2)) : 0,
+        });
+      }
     }
   } catch (e) {
     console.error("CoinGecko fetch error:", e);
@@ -143,12 +147,14 @@ Deno.serve(async (req: Request) => {
       const change24h = update.change24h !== 0 ? update.change24h : parseFloat((update.price - prevPrice).toFixed(4));
       const changePct = update.changePct !== 0 ? update.changePct : prevPrice > 0 ? parseFloat(((change24h / prevPrice) * 100).toFixed(4)) : 0;
 
+      // Shënim: `price_change_pct` është kolonë e gjeneruar nga `price_change_pct_24h`,
+      // prandaj shkruajmë kolonën bazë (përndryshe Postgres hedh gabim).
       const { error } = await supabase
         .from("assets")
         .update({
           current_price: update.price,
           price_change_24h: change24h,
-          price_change_pct: changePct,
+          price_change_pct_24h: changePct,
           updated_at: new Date().toISOString(),
         })
         .eq("symbol", update.symbol);
