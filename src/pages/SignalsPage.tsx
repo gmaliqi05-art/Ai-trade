@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Zap, Bell, TrendingUp, TrendingDown, Plus, Trash2, Target, Shield, Clock, CheckCircle, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Zap, Bell, TrendingUp, Plus, Trash2, Target, Shield, Clock, CheckCircle, Loader2, Cpu, RefreshCw, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useMarketAnalysis, type MarketAsset } from '../ai-trader/react/useMarketAnalysis';
+import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
 
 interface Signal {
   id: string; type: string; symbol: string; entry_price: number;
@@ -16,14 +18,23 @@ interface Alert {
   is_active: boolean; triggered_at: string | null; created_at: string;
 }
 
-interface Asset { id: string; symbol: string; name: string; current_price: number; }
+interface Asset { id: string; symbol: string; name: string; current_price: number; category?: string; type?: string; }
+
+// Tregjet e synuara (faza 1) → kategoritë në DB.
+type MarketKey = 'crypto' | 'commodity' | 'stock';
+const MARKETS: { key: MarketKey; label: string }[] = [
+  { key: 'crypto', label: 'Crypto' },
+  { key: 'commodity', label: 'Ari / Mallra' },
+  { key: 'stock', label: 'Indekse / Aksione' },
+];
 
 export default function SignalsPage() {
   const { user } = useAuth();
   const [signals, setSignals] = useState<Signal[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [activeTab, setActiveTab] = useState<'signals' | 'alerts'>('signals');
+  const [activeTab, setActiveTab] = useState<'engine' | 'signals' | 'alerts'>('engine');
+  const [market, setMarket] = useState<MarketKey>('crypto');
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ asset_id: '', condition: 'above', target_price: '' });
@@ -40,7 +51,7 @@ export default function SignalsPage() {
         .eq('status', 'active')
         .or(`expires_at.is.null,expires_at.gt.${now}`)
         .order('confidence', { ascending: false }),
-      supabase.from('assets').select('id, symbol, name, current_price'),
+      supabase.from('assets').select('id, symbol, name, current_price, category, type'),
       user ? supabase.from('alerts').select('*').eq('user_id', user.id).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
     ]);
     if (sr.data) setSignals(sr.data as Signal[]);
@@ -65,12 +76,19 @@ export default function SignalsPage() {
     setAlerts(p => p.filter(a => a.id !== id));
   };
 
-  const sourceBadge = (s: string) => {
-    if (s === 'metatrader_ai') return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-    if (s === 'metatrader') return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-    return 'bg-gray-700 text-gray-400 border-gray-600';
-  };
   const selAsset = assets.find(a => a.id === form.asset_id);
+
+  // Aktivet për motorin: filtruar sipas tregut të zgjedhur. Kur s'jemi te tab-i
+  // i motorit, dërgojmë listë bosh që të mos llogarisim pa nevojë.
+  const engineAssets = useMemo<MarketAsset[]>(() => {
+    if (activeTab !== 'engine') return [];
+    return assets
+      .filter(a => (a.category || a.type) === market && a.current_price > 0)
+      .slice(0, 12)
+      .map(a => ({ symbol: a.symbol, category: a.category || a.type, currentPrice: a.current_price }));
+  }, [assets, market, activeTab]);
+
+  const { analyses, loading: engineLoading, refresh: refreshEngine } = useMarketAnalysis(engineAssets, '1h');
 
   return (
     <div className="p-6 space-y-6">
@@ -83,12 +101,51 @@ export default function SignalsPage() {
         )}
       </div>
 
-      <div className="flex gap-2">
-        {[{ id: 'signals', label: 'AI Signals', icon: Zap }, { id: 'alerts', label: 'My Alerts', icon: Bell }].map((t) => {
+      <div className="flex gap-2 flex-wrap">
+        {[{ id: 'engine', label: 'Motori AI', icon: Cpu }, { id: 'signals', label: 'AI Signals', icon: Zap }, { id: 'alerts', label: 'My Alerts', icon: Bell }].map((t) => {
           const Icon = t.icon;
-          return <button key={t.id} onClick={() => setActiveTab(t.id as 'signals' | 'alerts')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === t.id ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}><Icon className="w-4 h-4" />{t.label}</button>;
+          return <button key={t.id} onClick={() => setActiveTab(t.id as 'engine' | 'signals' | 'alerts')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === t.id ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}><Icon className="w-4 h-4" />{t.label}</button>;
         })}
       </div>
+
+      {activeTab === 'engine' && (
+        <div className="space-y-4">
+          <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-gray-300 leading-relaxed">
+              <span className="font-semibold text-amber-400">Sinjale nga motori matematik (DEMO).</span>{' '}
+              Indikatorë realë (EMA, RSI, MACD, Bollinger, ATR) → BLEJ / SHIT / PRIT, afatshkurtër + afatgjatë.
+              Crypto përdor qirinj realë (Binance); ari/indekset përdorin qirinj demo derisa të lidhet feed-i real.
+              Asnjë garanci fitimi — testo gjithmonë në demo.
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex gap-2 flex-wrap">
+              {MARKETS.map(m => (
+                <button key={m.key} onClick={() => setMarket(m.key)}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${market === m.key ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={refreshEngine} disabled={engineLoading}
+              className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+              <RefreshCw className={`w-3.5 h-3.5 ${engineLoading ? 'animate-spin' : ''}`} />Rifresko
+            </button>
+          </div>
+
+          {engineLoading ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">{[...Array(6)].map((_, i) => <div key={i} className="h-56 bg-gray-800 rounded-2xl animate-pulse" />)}</div>
+          ) : engineAssets.length === 0 ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center"><Cpu className="w-12 h-12 text-gray-700 mx-auto mb-3" /><p className="text-gray-400">Asnjë aktiv në këtë treg</p></div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {analyses.map(a => <EngineSignalCard key={a.symbol} analysis={a} />)}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeTab === 'alerts' && showForm && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
@@ -122,7 +179,7 @@ export default function SignalsPage() {
         </div>
       )}
 
-      {loading ? (
+      {activeTab === 'engine' ? null : loading ? (
         <div className="grid md:grid-cols-2 gap-4">{[...Array(4)].map((_, i) => <div key={i} className="h-40 bg-gray-800 rounded-2xl animate-pulse" />)}</div>
       ) : activeTab === 'signals' ? (
         signals.length === 0 ? (

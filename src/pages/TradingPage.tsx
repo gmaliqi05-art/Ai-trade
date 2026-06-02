@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Search, Star, StarOff, ChevronUp, ChevronDown, RefreshCw, DollarSign, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useAssetAnalysis } from '../ai-trader/react/useAssetAnalysis';
+import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
 
 interface Asset {
   id: string; symbol: string; name: string; type: string; category: string;
@@ -106,6 +108,10 @@ export default function TradingPage() {
     setTradeLoading(false);
   };
 
+  const { analysis: engineAnalysis, loading: engineLoading } = useAssetAnalysis(
+    selected ? { symbol: selected.symbol, category: selected.category, currentPrice: selected.current_price, timeframe: '1h' } : null,
+  );
+
   const filtered = assets.filter(a => (category === 'all' || a.category === category) && (a.symbol.toLowerCase().includes(search.toLowerCase()) || a.name.toLowerCase().includes(search.toLowerCase())));
   const fp = (a: Asset) => a.category === 'forex' ? a.current_price.toFixed(4) : a.current_price.toLocaleString('en-US', { minimumFractionDigits: 2 });
   const cc: Record<string, string> = { commodity: 'text-amber-400', forex: 'text-blue-400', crypto: 'text-orange-400', stock: 'text-green-400' };
@@ -202,6 +208,25 @@ export default function TradingPage() {
               </div>
 
               <div className="w-72 bg-gray-900 border-l border-gray-800 p-5 flex flex-col gap-4 overflow-y-auto">
+                <div>
+                  <h3 className="text-white font-semibold mb-2">Sinjali AI</h3>
+                  {engineLoading || !engineAnalysis ? (
+                    <div className="h-40 bg-gray-800 rounded-2xl animate-pulse" />
+                  ) : (
+                    <>
+                      <EngineSignalCard analysis={engineAnalysis} />
+                      {engineAnalysis.short && engineAnalysis.short.signal.action !== 'HOLD' && (
+                        <button
+                          onClick={() => setTradeType(engineAnalysis.short!.signal.action === 'BUY' ? 'buy' : 'sell')}
+                          className="mt-2 w-full text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl py-2 transition-colors"
+                        >
+                          Apliko te porosia: {engineAnalysis.short.signal.action === 'BUY' ? 'BLEJ' : 'SHIT'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
                 <h3 className="text-white font-semibold">Place Order</h3>
                 <div className="flex rounded-xl overflow-hidden border border-gray-700">
                   <button onClick={() => setTradeType('buy')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Buy</button>
