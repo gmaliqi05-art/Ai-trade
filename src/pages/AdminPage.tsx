@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Shield, Users, TrendingUp, Zap, BarChart2, Search, Edit2, Check, X,
   Trash2, Plus, RefreshCw, ChevronUp, Activity, DollarSign,
-  AlertTriangle, Crown, Loader2, Eye, EyeOff, Brain, Megaphone, Monitor, Key, TestTube
+  AlertTriangle, Crown, Loader2, Eye, EyeOff, Brain, Megaphone, Monitor, Key, TestTube, ExternalLink
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -1118,12 +1118,52 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
             </div>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Monitor className="w-4 h-4 text-amber-400" />Lidhjet MetaTrader</h3>
-            <p className="text-gray-400 text-sm">Monitoro lidhjet aktive MT4/MT5 të të gjithë përdoruesve.</p>
+            <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Monitor className="w-4 h-4 text-amber-400" />Integrimi MetaTrader / Auto-Trade</h3>
+
+            {/* Si funksionon — arkitektura */}
+            <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-white mb-2">Si funksionon lidhja (arkitektura)</p>
+              <div className="flex items-center gap-2 text-[11px] text-gray-300 flex-wrap mb-2">
+                <span className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1">Roboti AI (sinjale)</span>
+                <span className="text-amber-400">→</span>
+                <span className="bg-gray-900 border border-amber-500/30 rounded-lg px-2 py-1 text-amber-400">MetaApi.cloud (urë)</span>
+                <span className="text-amber-400">→</span>
+                <span className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1">MT5 / Vantage (ekzekutim)</span>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Klienti nuk lidh drejtpërdrejt MT5 me aplikacionin. Ai regjistron llogarinë e tij MT5 (Vantage) te <strong className="text-white">MetaApi.cloud</strong>,
+                merr një <strong className="text-white">Account ID + Token</strong>, dhe i fut te paneli i tij (Tregtimi → MetaTrader). Roboti dërgon urdhrat përmes MetaApi-t.
+                <strong className="text-white"> TradingView</strong> përdoret vetëm për grafikët (pamje), jo për tregtim.
+              </p>
+            </div>
+
+            {/* Lidhjet korrekte për konfigurim */}
+            <p className="text-xs font-semibold text-white mb-2">Lidhjet zyrtare (kliko për t'u lidhur)</p>
+            <div className="grid sm:grid-cols-2 gap-2 mb-4">
+              {[
+                { name: 'MetaApi — Llogaritë (Add account)', url: 'https://app.metaapi.cloud/accounts', desc: 'Regjistro MT5-në e Vantage → merr Account ID' },
+                { name: 'MetaApi — Token', url: 'https://app.metaapi.cloud/token', desc: 'Krijo API Token për lidhjen' },
+                { name: 'MetaApi — Dokumentacioni', url: 'https://metaapi.cloud/docs/client/', desc: 'Udhëzues teknik i plotë' },
+                { name: 'Vantage Markets', url: 'https://www.vantagemarkets.com/', desc: 'Broker-i — krijo/menaxho llogarinë MT5' },
+                { name: 'MetaTrader 5 — Shkarko', url: 'https://www.metatrader5.com/en/download', desc: 'Platforma MT5 për desktop/mobile' },
+                { name: 'TradingView', url: 'https://www.tradingview.com/', desc: 'Grafikët (vetëm pamje në dashboard)' },
+              ].map(l => (
+                <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-start gap-2 bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 hover:border-amber-500/40 rounded-xl px-3 py-2.5 transition-all">
+                  <ExternalLink className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <span>
+                    <span className="block text-xs text-white font-medium">{l.name}</span>
+                    <span className="block text-[10px] text-gray-500">{l.desc}</span>
+                  </span>
+                </a>
+              ))}
+            </div>
+
+            <p className="text-gray-400 text-xs mb-2">Monitoro lidhjet aktive MT4/MT5 të të gjithë përdoruesve.</p>
             <button onClick={async () => {
               const { data } = await supabase.from('metatrader_connections').select('*, profiles(full_name)').order('created_at', { ascending: false });
               if (data) flash('success', `U gjetën ${data.length} lidhje MT te të gjithë përdoruesit.`);
-            }} className="mt-3 flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl transition-all">
+            }} className="flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl transition-all">
               <RefreshCw className="w-4 h-4" />Kontrollo të gjitha lidhjet
             </button>
           </div>
