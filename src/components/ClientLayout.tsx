@@ -32,6 +32,7 @@ const navSections = [
   {
     label: 'Tregtimi',
     items: [
+      { id: 'trading' as ClientPage, label: 'Tregto (manual)', icon: TrendingUp },
       { id: 'metatrader' as ClientPage, label: 'MetaTrader / Auto-Trade', icon: Monitor },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
@@ -51,6 +52,7 @@ const pageLabels: Record<ClientPage, string> = {
   ai: 'Analizë AI',
   chart_analysis: 'Analizë grafiku',
   signals: 'Sinjalet',
+  trading: 'Tregto',
   metatrader: 'MetaTrader / Auto-Trade',
   live_market: 'Grafikë live',
   notifications: 'Njoftimet',

@@ -9,6 +9,7 @@ import MarketPricesPage from './pages/MarketPricesPage';
 import AIAnalysisPage from './pages/AIAnalysisPage';
 import ChartAnalysisPage from './pages/ChartAnalysisPage';
 import SignalsPage from './pages/SignalsPage';
+import TradingPage from './pages/TradingPage';
 import MetaTraderPage from './pages/MetaTraderPage';
 import LiveMarketPage from './pages/LiveMarketPage';
 import NotificationsPage from './pages/NotificationsPage';
@@ -22,7 +23,7 @@ import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
   | 'dashboard' | 'market_prices' | 'ai' | 'chart_analysis'
-  | 'signals' | 'metatrader' | 'live_market' | 'notifications' | 'reports' | 'settings';
+  | 'signals' | 'trading' | 'metatrader' | 'live_market' | 'notifications' | 'reports' | 'settings';
 
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_assets' | 'admin_signals'
@@ -64,6 +65,7 @@ function ClientApp() {
       {currentPage === 'ai' && <AIAnalysisPage />}
       {currentPage === 'chart_analysis' && <ChartAnalysisPage />}
       {currentPage === 'signals' && <SignalsPage />}
+      {currentPage === 'trading' && <TradingPage />}
       {currentPage === 'metatrader' && <MetaTraderPage />}
       {currentPage === 'live_market' && <LiveMarketPage />}
       {currentPage === 'notifications' && <NotificationsPage />}
