@@ -114,7 +114,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   const [search, setSearch] = useState('');
 
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
-  const [providerForm, setProviderForm] = useState<{ api_key: string; system_prompt: string; is_active: boolean; is_default: boolean }>({ api_key: '', system_prompt: '', is_active: false, is_default: false });
+  const [providerForm, setProviderForm] = useState<{ api_key: string; model: string; system_prompt: string; is_active: boolean; is_default: boolean }>({ api_key: '', model: '', system_prompt: '', is_active: false, is_default: false });
   const [showProviderKey, setShowProviderKey] = useState<string | null>(null);
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ slug: string; ok: boolean; msg: string } | null>(null);
@@ -214,6 +214,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       is_default: providerForm.is_default,
     };
     if (providerForm.api_key) updates.api_key_encrypted = providerForm.api_key;
+    if (providerForm.model) updates.model = providerForm.model.trim();
     if (providerForm.is_default) {
       await supabase.from('ai_providers').update({ is_default: false }).neq('id', p.id);
     }
@@ -974,7 +975,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                       <button
                         onClick={() => {
                           setEditingProvider(editingProvider === p.id ? null : p.id);
-                          setProviderForm({ api_key: '', system_prompt: p.system_prompt, is_active: p.is_active, is_default: p.is_default });
+                          setProviderForm({ api_key: '', model: p.model, system_prompt: p.system_prompt, is_active: p.is_active, is_default: p.is_default });
                           setTestResult(null);
                         }}
                         className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all"
@@ -1001,23 +1002,23 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   {editingProvider === p.id && (
                     <div className="mt-4 space-y-4 border-t border-gray-800 pt-4">
                       {p.slug === 'groq' && (
-                        <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3 text-xs text-green-300">
-                          <strong>Groq is FREE.</strong> Steps: 1) Go to console.groq.com → 2) Create free account → 3) Click "API Keys" → 4) Create new key → 5) Paste below
+                        <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3 text-xs text-green-300 leading-relaxed">
+                          <strong>Groq është FALAS.</strong> Hapat: 1) Hap <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="underline font-semibold">console.groq.com/keys</a> → 2) Krijo llogari falas → 3) Krijo një çelës → 4) Ngjite poshtë.<br />Model i sugjeruar: <code className="text-white">llama-3.3-70b-versatile</code>
                         </div>
                       )}
                       {p.slug === 'openai' && (
-                        <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-300">
-                          Go to platform.openai.com → API Keys → Create new secret key. Starts with "sk-..."
+                        <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-300 leading-relaxed">
+                          Hap <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline font-semibold">platform.openai.com/api-keys</a> → krijo çelës (fillon me <code className="text-white">sk-...</code>). Kërkon kredite. Model: <code className="text-white">gpt-4o</code>
                         </div>
                       )}
                       {p.slug === 'gemini' && (
-                        <div className="bg-sky-500/5 border border-sky-500/20 rounded-xl p-3 text-xs text-sky-300">
-                          Go to aistudio.google.com → Get API Key → Create API key. Free tier available.
+                        <div className="bg-sky-500/5 border border-sky-500/20 rounded-xl p-3 text-xs text-sky-300 leading-relaxed">
+                          Hap <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline font-semibold">aistudio.google.com/app/apikey</a> → krijo çelës (ka plan falas). Model: <code className="text-white">gemini-1.5-flash</code>
                         </div>
                       )}
                       {p.slug === 'anthropic' && (
-                        <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-3 text-xs text-orange-300">
-                          Go to console.anthropic.com → API Keys → Create Key. Starts with "sk-ant-..."
+                        <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-3 text-xs text-orange-300 leading-relaxed">
+                          Hap <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="underline font-semibold">console.anthropic.com/settings/keys</a> → krijo çelës (fillon me <code className="text-white">sk-ant-...</code>) dhe sigurohu që ke <strong>kredite/billing</strong> aktiv te <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener noreferrer" className="underline font-semibold">Billing</a>.<br />Modele aktuale: <code className="text-white">claude-opus-4-8</code> (Opus, më i fuqishëm) · <code className="text-white">claude-sonnet-4-6</code> (më i lirë/shpejtë).
                         </div>
                       )}
                       <div>
@@ -1040,6 +1041,16 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                             {showProviderKey === p.id ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1.5">Modeli AI</label>
+                        <input
+                          value={providerForm.model}
+                          onChange={e => setProviderForm(f => ({ ...f, model: e.target.value }))}
+                          placeholder={p.slug === 'anthropic' ? 'claude-opus-4-8' : p.model}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 font-mono"
+                        />
+                        <p className="text-[10px] text-gray-600 mt-1">Shkruaj emrin e saktë të modelit (p.sh. claude-opus-4-8). Aktual: <span className="text-gray-400">{p.model}</span></p>
                       </div>
                       <div>
                         <label className="text-xs text-gray-400 block mb-1.5">System Prompt (opsional — lëre bosh për parazgjedhjen)</label>
