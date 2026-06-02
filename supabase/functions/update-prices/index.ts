@@ -74,27 +74,32 @@ async function fetchCryptoPrices(): Promise<PriceUpdate[]> {
 
 async function fetchMetalPrices(): Promise<PriceUpdate[]> {
   const results: PriceUpdate[] = [];
+
+  // ARI: Binance PAXGUSDT (PAX Gold — token i mbështetur me ar fizik që ndjek spot-in).
+  // Burim falas dhe i besueshëm; zëvendëson metals.live që ishte shpesh i padisponueshëm.
   try {
     const resp = await fetch(
-      "https://api.metals.live/v1/spot/gold,silver",
+      "https://api.binance.com/api/v3/ticker/24hr?symbol=PAXGUSDT",
       { signal: AbortSignal.timeout(8000) }
     );
-    if (!resp.ok) throw new Error("metals.live failed");
-    const data = await resp.json();
-
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        if (item.gold !== undefined) {
-          results.push({ symbol: "XAUUSD", price: parseFloat(item.gold.toFixed(2)), change24h: 0, changePct: 0 });
-        }
-        if (item.silver !== undefined) {
-          results.push({ symbol: "XAGUSD", price: parseFloat(item.silver.toFixed(4)), change24h: 0, changePct: 0 });
-        }
+    if (resp.ok) {
+      const d = await resp.json();
+      const price = parseFloat(d.lastPrice);
+      const pct = parseFloat(d.priceChangePercent);
+      if (price > 0) {
+        results.push({
+          symbol: "XAUUSD",
+          price: parseFloat(price.toFixed(2)),
+          change24h: 0,
+          changePct: Number.isNaN(pct) ? 0 : parseFloat(pct.toFixed(2)),
+        });
       }
+    } else {
+      throw new Error(`Binance PAXG ${resp.status}`);
     }
   } catch (e) {
-    console.error("metals.live fetch error:", e);
-
+    console.error("Binance PAXG (gold) error:", e);
+    // Fallback: çmimi i arit nga Coinbase XAU.
     try {
       const resp2 = await fetch(
         "https://api.coinbase.com/v2/exchange-rates?currency=XAU",
@@ -111,6 +116,27 @@ async function fetchMetalPrices(): Promise<PriceUpdate[]> {
       console.error("Coinbase gold fallback failed:", e2);
     }
   }
+
+  // ARGJENDI: metals.live (best-effort; nëse dështon, mbetet te vlera e fundit).
+  try {
+    const resp = await fetch(
+      "https://api.metals.live/v1/spot/silver",
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          if (item.silver !== undefined) {
+            results.push({ symbol: "XAGUSD", price: parseFloat(item.silver.toFixed(4)), change24h: 0, changePct: 0 });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("metals.live (silver) error:", e);
+  }
+
   return results;
 }
 

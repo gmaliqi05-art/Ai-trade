@@ -29,12 +29,16 @@ export interface FetchCandlesInput {
 }
 
 // Hartë simbolesh të platformës → çifte Binance.
+// Ari (XAUUSD) hartëzohet te PAXGUSDT — PAX Gold është token i mbështetur me ar
+// fizik (1 token ≈ 1 ons), prandaj ndjek nga afër çmimin spot të arit. Kjo na jep
+// qirinj realë për arin pa pasur nevojë për një API me çelës.
 const BINANCE_PAIRS: Record<string, string> = {
   BTCUSD: 'BTCUSDT', BTCUSDT: 'BTCUSDT',
   ETHUSD: 'ETHUSDT', ETHUSDT: 'ETHUSDT',
   SOLUSD: 'SOLUSDT', BNBUSD: 'BNBUSDT', XRPUSD: 'XRPUSDT',
   ADAUSD: 'ADAUSDT', DOGEUSD: 'DOGEUSDT', AVAXUSD: 'AVAXUSDT',
   MATICUSD: 'MATICUSDT', DOTUSD: 'DOTUSDT', LINKUSD: 'LINKUSDT',
+  XAUUSD: 'PAXGUSDT',
 };
 
 const BINANCE_INTERVAL: Record<Timeframe, string> = {
@@ -54,13 +58,17 @@ const TIMEFRAME_MS: Record<Timeframe, number> = {
  * nëse dështon ose s'mbulohet, bie te qirinj demo të riprodhueshëm.
  */
 export async function fetchCandles(input: FetchCandlesInput): Promise<CandleResult> {
-  const { symbol, category, currentPrice, timeframe = '1h', limit = 260 } = input;
+  const { symbol, currentPrice, timeframe = '1h', limit = 260 } = input;
   const pair = BINANCE_PAIRS[symbol.toUpperCase()];
 
-  if (category === 'crypto' && pair) {
+  // Çdo simbol me një çift Binance të hartëzuar (crypto ose ari via PAXG) merr qirinj realë.
+  if (pair) {
     try {
       const candles = await fetchBinanceCandles(pair, timeframe, limit);
-      if (candles.length >= 60) return { candles, source: 'live', provider: 'Binance' };
+      if (candles.length >= 60) {
+        const provider = pair === 'PAXGUSDT' ? 'Binance · PAXG (ar)' : 'Binance';
+        return { candles, source: 'live', provider };
+      }
     } catch {
       // Bie te demo më poshtë.
     }
