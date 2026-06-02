@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useAssetAnalysis } from '../ai-trader/react/useAssetAnalysis';
 import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
+import { requestEngineReasoning } from '../services/aiReasoning';
 
 interface Asset {
   id: string; symbol: string; name: string; type: string; category: string;
@@ -214,7 +215,10 @@ export default function TradingPage() {
                     <div className="h-40 bg-gray-800 rounded-2xl animate-pulse" />
                   ) : (
                     <>
-                      <EngineSignalCard analysis={engineAnalysis} />
+                      <EngineSignalCard
+                        analysis={engineAnalysis}
+                        askAI={(an) => requestEngineReasoning(an, { assetId: selected?.id })}
+                      />
                       {engineAnalysis.short && engineAnalysis.short.signal.action !== 'HOLD' && (
                         <button
                           onClick={() => setTradeType(engineAnalysis.short!.signal.action === 'BUY' ? 'buy' : 'sell')}

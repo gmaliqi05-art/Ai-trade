@@ -43,20 +43,48 @@ interface MarketData {
   bid?: number;
   ask?: number;
   spread?: number;
+  /** Dalja e motorit matematik (src/ai-trader) — indikatorë + verdikt për dy horizonte. */
+  engine?: EngineInput;
+}
+
+/** Verdikti i një horizonti nga motori matematik i platformës. */
+interface EngineHorizon {
+  action: "BUY" | "SELL" | "HOLD";
+  confidence: number; // 0..1
+  reasons?: string[];
+}
+
+/** Snapshot i indikatorëve të llogaritur nga motori (qirinj realë/demo). */
+interface EngineInput {
+  source?: "live" | "demo";
+  indicators?: {
+    emaFast?: number; emaSlow?: number; rsi?: number;
+    macd?: number; macdSignal?: number; macdHist?: number;
+    bbUpper?: number; bbMiddle?: number; bbLower?: number; atr?: number;
+  };
+  short?: EngineHorizon;
+  long?: EngineHorizon;
 }
 
 function buildSystemPrompt(customPrompt: string | null): string {
   if (customPrompt && customPrompt.trim().length > 20) return customPrompt;
   return `You are a professional trading analyst specializing in Forex, Gold (XAUUSD), and Cryptocurrencies.
 
+You work ALONGSIDE a deterministic mathematical engine that has already computed the
+technical indicators (EMA, RSI, MACD, Bollinger Bands, ATR) and a preliminary
+BUY/SELL/HOLD verdict for short- and long-term horizons. When this engine output is
+provided, your job is QUALITATIVE: confirm, refine, or push back on the engine's verdict
+with clear reasoning about trend, momentum, volatility and risk. Do not silently ignore it.
+
 STRICT RULES — NEVER VIOLATE:
-1. Use ONLY the exact price data provided in the user message. NEVER use prices from your training data.
+1. Use ONLY the exact price/indicator data provided in the user message. NEVER use values from your training data.
 2. The current_price in the message is the REAL live price — base all levels on it.
 3. entry_price must be within 0.5% of the provided current_price.
 4. target_price must be a realistic move (0.5-3% from entry for forex/gold, up to 5% for crypto).
-5. stop_loss must be set — never return null for stop_loss if you give a signal.
+5. stop_loss must be set — never return null for stop_loss if you give a signal. Prefer an ATR-based stop when ATR is provided.
 6. If provided data is insufficient, return "hold" with confidence < 50.
 7. NEVER fabricate indicator values — use only what is provided.
+8. If you disagree with the engine's verdict, say so explicitly in "reasoning" and explain why.
 
 Return ONLY valid JSON in this exact structure, no markdown, no extra text:
 {
@@ -100,6 +128,32 @@ function buildUserMessage(data: MarketData): string {
     if (data.indicators.ma50) msg += `  MA(50): ${data.indicators.ma50}\n`;
     if (data.indicators.rsi14 !== undefined) msg += `  RSI(14): ${data.indicators.rsi14.toFixed(1)}\n`;
     if (data.indicators.atr14) msg += `  ATR(14): ${data.indicators.atr14}\n`;
+  }
+
+  if (data.engine) {
+    const e = data.engine;
+    msg += `\n=== MATH ENGINE OUTPUT (deterministic, computed from ${e.source === 'live' ? 'LIVE' : 'demo'} candles) ===\n`;
+    const ind = e.indicators;
+    if (ind) {
+      msg += `Engine indicators:\n`;
+      const f = (n?: number) => (n === undefined || n === null || Number.isNaN(n) ? "n/a" : n);
+      msg += `  EMA fast/slow: ${f(ind.emaFast)} / ${f(ind.emaSlow)}\n`;
+      msg += `  RSI: ${ind.rsi !== undefined ? Number(ind.rsi).toFixed(1) : "n/a"}\n`;
+      msg += `  MACD / signal / hist: ${f(ind.macd)} / ${f(ind.macdSignal)} / ${f(ind.macdHist)}\n`;
+      msg += `  Bollinger up/mid/low: ${f(ind.bbUpper)} / ${f(ind.bbMiddle)} / ${f(ind.bbLower)}\n`;
+      msg += `  ATR: ${f(ind.atr)}\n`;
+    }
+    const horizon = (label: string, h?: EngineHorizon) => {
+      if (!h) return "";
+      let s = `${label} verdict: ${h.action} (engine confidence ${(h.confidence * 100).toFixed(0)}%)\n`;
+      if (h.reasons && h.reasons.length > 0) {
+        s += `${label} reasons:\n` + h.reasons.map((r) => `    - ${r}`).join("\n") + "\n";
+      }
+      return s;
+    };
+    msg += horizon("SHORT-TERM", e.short);
+    msg += horizon("LONG-TERM", e.long);
+    msg += `\nAssess whether you AGREE with the engine. In "reasoning", state agreement or disagreement and why, and set "confidence" to reflect your own conviction.\n`;
   }
 
   msg += `\nIMPORTANT: The current price is ${data.current_price}. Your entry_price MUST be near ${data.current_price}. Do NOT use any other price range.`;
@@ -291,7 +345,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { symbol, asset_id, timeframe, preferred_provider } = body;
+    const { symbol, asset_id, timeframe, preferred_provider, engine } = body;
 
     if (!symbol) {
       return new Response(JSON.stringify({ error: "symbol is required" }), {
@@ -341,7 +395,13 @@ Deno.serve(async (req: Request) => {
         close: Number(r.close_price),
         volume: Number(r.volume),
       })) : undefined,
+      engine: engine && typeof engine === "object" ? (engine as EngineInput) : undefined,
     };
+
+    // Nëse motori dha ATR dhe s'kemi indikatorë nga MetaTrader, përdor ATR-në e motorit.
+    if (engine?.indicators?.atr && (!marketData.indicators || marketData.indicators.atr14 === undefined)) {
+      marketData.indicators = { ...(marketData.indicators || {}), atr14: Number(engine.indicators.atr) };
+    }
 
     const userMessage = buildUserMessage(marketData);
 
