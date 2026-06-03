@@ -80,6 +80,36 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // POSITIONS — kthen pozicionet e hapura REALE nga MT5 (live).
+    if (action === "POSITIONS") {
+      try {
+        const positions = await metaApiGet(config, "/positions");
+        return json({ success: true, mode: config.mode, positions });
+      } catch (e) {
+        return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
+      }
+    }
+
+    // CLOSE — mbyll një pozicion të hapur sipas id-së.
+    if (action === "CLOSE") {
+      const positionId = body.positionId;
+      if (!positionId) return json({ error: "bad_request", message: "positionId i nevojshëm" }, 400);
+      try {
+        const resp = await fetch(`${host(config.region)}/users/current/accounts/${config.account_id}/trade`, {
+          method: "POST",
+          headers: { "auth-token": config.token, "Content-Type": "application/json" },
+          body: JSON.stringify({ actionType: "POSITION_CLOSE_ID", positionId }),
+          signal: AbortSignal.timeout(20000),
+        });
+        const txt = await resp.text();
+        let rb: unknown = txt; try { rb = JSON.parse(txt); } catch { /* tekst */ }
+        if (!resp.ok) return json({ error: "close_failed", status: resp.status, details: rb }, 502);
+        return json({ success: true, result: rb });
+      } catch (e) {
+        return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
+      }
+    }
+
     if (action !== "BUY" && action !== "SELL") {
       return json({ error: "bad_action", message: "action duhet BUY, SELL ose CHECK" }, 400);
     }
