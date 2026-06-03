@@ -2,7 +2,7 @@
 // Veprimet e tregtimit (BLEJ/SHIT) dhe pozicionet janë te faqja "Tregto Live".
 
 import { useEffect, useState, useCallback } from 'react';
-import { Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save, Eye, EyeOff } from 'lucide-react';
+import { Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save, Eye, EyeOff, Layers } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   loadMetaApiConfig, saveMetaApiConfig, checkMetaApiConnection,
@@ -151,6 +151,27 @@ export default function MetaApiPanel() {
           <li><span className="text-gray-300">Lot maksimal:</span> kufiri i sipërm — asnjë trade s'kalon këtë lot.</li>
           <li><span className="text-gray-300">Humbja maks. ditore ($):</span> shumë <strong className="text-amber-400">në para</strong> (monedha e llogarisë). P.sh. <code className="text-amber-300">5</code> = (1) kur humbja e ditës arrin ~5$, roboti <strong>ndalon trade-t e reja</strong>; dhe (2) <strong>SL-ja e çdo trade-i auto kufizohet</strong> që humbja maks. e tij të mos kalojë ~5$. Vendos sa je gati të humbasësh maksimumi.</li>
           <li><span className="text-gray-300">Pozicione maks.:</span> sa trade mund të jenë hapur njëkohësisht (p.sh. 3).</li>
+        </ul>
+      </div>
+
+      {/* Madhësia e pozicionit sipas besueshmërisë */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 text-xs text-gray-400"><Layers className="w-4 h-4 text-amber-400" />Madhësia sipas besueshmërisë</div>
+          <button onClick={() => set('dynamic_lot', !cfg.dynamic_lot)}
+            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${cfg.dynamic_lot ? 'bg-green-500/15 text-green-400 border-green-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+            {cfg.dynamic_lot ? 'AKTIV' : 'JOAKTIV'}
+          </button>
+        </div>
+        <div className={`grid grid-cols-3 gap-3 transition-opacity ${cfg.dynamic_lot ? '' : 'opacity-40 pointer-events-none'}`}>
+          <Field label="Lot kur ≥ 70%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_70} onChange={e => set('lot_conf_70', +e.target.value)} className="inp" /></Field>
+          <Field label="Lot kur ≥ 80%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_80} onChange={e => set('lot_conf_80', +e.target.value)} className="inp" /></Field>
+          <Field label="Lot kur ≥ 90%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_90} onChange={e => set('lot_conf_90', +e.target.value)} className="inp" /></Field>
+        </div>
+        <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
+          <li>Sa më e lartë besueshmëria e analizës, aq më i madh loti — më shumë besim, pozicion më i madh.</li>
+          <li><span className="text-gray-300">≥ 70%</span> → loti i parë (default <code className="text-amber-300">0.01</code>) · <span className="text-gray-300">≥ 80%</span> → <code className="text-amber-300">0.02</code> · <span className="text-gray-300">≥ 90%</span> → <code className="text-amber-300">0.05</code>.</li>
+          <li>Loti nuk kalon kurrë <span className="text-gray-300">Lot maksimal</span>. Kur <span className="text-gray-300">JOAKTIV</span>, përdoret gjithmonë <span className="text-gray-300">Lot default</span>.</li>
         </ul>
       </div>
 

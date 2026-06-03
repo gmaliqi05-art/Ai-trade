@@ -17,12 +17,18 @@ export interface MetaApiConfig {
   min_confidence: number;
   /** Lista (me presje) e simboleve të lejuara për auto-trade. */
   auto_symbols: string;
+  /** Madhësia e pozicionit dinamike sipas % të analizës (përndryshe përdor default_lot). */
+  dynamic_lot: boolean;
+  lot_conf_70: number;  // lot kur besueshmëria ≥ 70%
+  lot_conf_80: number;  // lot kur besueshmëria ≥ 80%
+  lot_conf_90: number;  // lot kur besueshmëria ≥ 90%
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
   account_id: '', token: '', region: 'new-york', mode: 'demo', auto_trade: false,
   default_lot: 0.01, max_lot: 0.1, max_daily_loss: 100, max_open_trades: 3, kill_switch: false,
   min_confidence: 70, auto_symbols: 'XAUUSD',
+  dynamic_lot: true, lot_conf_70: 0.01, lot_conf_80: 0.02, lot_conf_90: 0.05,
 };
 
 export interface TradeExecution {
@@ -41,6 +47,10 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     max_daily_loss: Number(data.max_daily_loss ?? 100), max_open_trades: Number(data.max_open_trades ?? 3),
     kill_switch: !!data.kill_switch,
     min_confidence: Number(data.min_confidence ?? 70), auto_symbols: data.auto_symbols ?? 'XAUUSD',
+    dynamic_lot: data.dynamic_lot ?? true,
+    lot_conf_70: Number(data.lot_conf_70 ?? 0.01),
+    lot_conf_80: Number(data.lot_conf_80 ?? 0.02),
+    lot_conf_90: Number(data.lot_conf_90 ?? 0.05),
   };
 }
 
