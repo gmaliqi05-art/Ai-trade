@@ -1,12 +1,12 @@
-// Paneli MetaApi — KONFIGURIMI i lidhjes MT5 + mbrojtja e rrezikut + auto-trade.
-// Veprimet e tregtimit (BLEJ/SHIT) dhe pozicionet janë te faqja "Tregto Live".
+// Paneli MetaApi (Faza 5): konfigurim i llogarisë MT5 në cloud + auto-trade me
+// mbrojtje rreziku. "Demo i pari" — mode-i fillon demo dhe kill-switch është gati.
 
 import { useEffect, useState, useCallback } from 'react';
 import { Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
-  loadMetaApiConfig, saveMetaApiConfig, checkMetaApiConnection,
-  DEFAULT_CONFIG, type MetaApiConfig,
+  loadMetaApiConfig, saveMetaApiConfig, checkMetaApiConnection, executeTrade, loadExecutions,
+  DEFAULT_CONFIG, type MetaApiConfig, type TradeExecution,
 } from '../services/metaapi';
 
 const REGIONS = ['new-york', 'london', 'singapore'];
@@ -19,31 +19,17 @@ export default function MetaApiPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [executions, setExecutions] = useState<TradeExecution[]>([]);
 
   const refresh = useCallback(async () => {
     if (!user) return;
-    const c = await loadMetaApiConfig(user.id);
-    setCfg(c); setLoading(false);
+    const [c, ex] = await Promise.all([loadMetaApiConfig(user.id), loadExecutions(user.id)]);
+    setCfg(c); setExecutions(ex); setLoading(false);
   }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
   const set = <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
-
-  // Ndryshon dhe RUAN menjëherë — për kontrollet kritike të sigurisë
-  // (Auto-trade, Kill-switch, Mode) që nuk duhet të varen nga butoni "Ruaj".
-  const setAndSave = async <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => {
-    const next = { ...cfg, [k]: v };
-    setCfg(next);
-    if (!user) return;
-    setMsg(null);
-    try {
-      await saveMetaApiConfig(user.id, next);
-      setMsg({ type: 'success', text: 'U ruajt automatikisht.' });
-    } catch (e) {
-      setMsg({ type: 'error', text: (e as Error).message });
-    }
-  };
 
   const save = async () => {
     if (!user) return;
@@ -61,6 +47,15 @@ export default function MetaApiPanel() {
     setBusy(null);
   };
 
+  const testTrade = async (action: 'BUY' | 'SELL') => {
+    setBusy(action); setMsg(null);
+    const r = await executeTrade({ action, symbol: 'XAUUSD', volume: cfg.default_lot });
+    if (r.error) setMsg({ type: 'error', text: errText(r.error, r.message) });
+    else setMsg({ type: 'success', text: `Urdhër ${action} XAUUSD dërguar (${r.mode}). Order: ${r.order_id ?? 'n/a'}` });
+    await refresh();
+    setBusy(null);
+  };
+
   if (loading) return <div className="h-40 bg-gray-800 rounded-2xl animate-pulse" />;
 
   const configured = cfg.account_id && cfg.token;
@@ -68,15 +63,15 @@ export default function MetaApiPanel() {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-white font-semibold flex items-center gap-2"><Cloud className="w-5 h-5 text-amber-400" />Lidhja & Konfigurimi (MetaApi)</h3>
+        <h3 className="text-white font-semibold flex items-center gap-2"><Cloud className="w-5 h-5 text-amber-400" />Auto-Trade (MetaApi.cloud)</h3>
         <span className={`text-xs px-2.5 py-1 rounded-full border ${cfg.mode === 'demo' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'bg-red-500/15 text-red-400 border-red-500/30'}`}>
           {cfg.mode === 'demo' ? 'DEMO' : 'LIVE — para reale'}
         </span>
       </div>
 
       <p className="text-xs text-gray-400 leading-relaxed">
-        Këtu lidh dhe konfiguron llogarinë MT5 (Vantage) përmes <span className="text-amber-400">MetaApi.cloud</span>.
-        Tregtimi (BLEJ/SHIT) dhe pozicionet e hapura janë te faqja <span className="text-amber-400 font-medium">Tregto Live</span>.
+        Roboti tregton në MT5-në tënde (Vantage) përmes <span className="text-amber-400">MetaApi.cloud</span> — një urë në cloud
+        që lidh aplikacionin me MetaTrader. <span className="text-amber-400 font-medium">Demo i pari</span> — testo gjithmonë në demo para parave reale.
       </p>
 
       {/* Udhëzues hap-pas-hapi me lidhje korrekte */}
@@ -109,9 +104,14 @@ export default function MetaApiPanel() {
             <span className="text-amber-400 font-bold">4.</span>
             <span>
               Ngjit <strong className="text-white">Account ID</strong> + <strong className="text-white">Token</strong> poshtë, zgjidh rajonin, kliko <strong className="text-white">Ruaj</strong> → <strong className="text-white">Testo lidhjen</strong>.
+              Tani roboti ekzekuton sinjalet automatikisht në MT5-në tënde.
             </span>
           </li>
         </ol>
+        <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-700/50">
+          Dokumentacioni i plotë: <a href="https://metaapi.cloud/docs/client/" target="_blank" rel="noopener noreferrer" className="text-gray-400 underline">metaapi.cloud/docs</a>.
+          Grafikët në panel vijnë nga TradingView (vetëm pamje) — tregtimi ndodh përmes MetaApi → MT5.
+        </p>
       </div>
 
       {/* Kredencialet */}
@@ -120,7 +120,7 @@ export default function MetaApiPanel() {
           <input value={cfg.account_id} onChange={e => set('account_id', e.target.value)} placeholder="p.sh. 0a1b2c3d-..."
             className="inp" />
         </Field>
-        <Field label="Rajoni (i njëjti si te MetaApi)">
+        <Field label="Rajoni">
           <select value={cfg.region} onChange={e => set('region', e.target.value)} className="inp">
             {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
@@ -142,16 +142,9 @@ export default function MetaApiPanel() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Field label="Lot default"><input type="number" step="0.01" value={cfg.default_lot} onChange={e => set('default_lot', +e.target.value)} className="inp" /></Field>
           <Field label="Lot maksimal"><input type="number" step="0.01" value={cfg.max_lot} onChange={e => set('max_lot', +e.target.value)} className="inp" /></Field>
-          <Field label="Humbja maks. ditore ($)"><input type="number" step="1" value={cfg.max_daily_loss} onChange={e => set('max_daily_loss', +e.target.value)} className="inp" /></Field>
-          <Field label="Pozicione maks. njëkohësisht"><input type="number" step="1" value={cfg.max_open_trades} onChange={e => set('max_open_trades', +e.target.value)} className="inp" /></Field>
+          <Field label="Humbje ditore maks."><input type="number" step="1" value={cfg.max_daily_loss} onChange={e => set('max_daily_loss', +e.target.value)} className="inp" /></Field>
+          <Field label="Pozicione maks."><input type="number" step="1" value={cfg.max_open_trades} onChange={e => set('max_open_trades', +e.target.value)} className="inp" /></Field>
         </div>
-        {/* Sqarimi i fushave të rrezikut */}
-        <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
-          <li><span className="text-gray-300">Lot default:</span> madhësia e çdo trade-i (0.01 = më i vogli, rrezik minimal).</li>
-          <li><span className="text-gray-300">Lot maksimal:</span> kufiri i sipërm — asnjë trade s'kalon këtë lot.</li>
-          <li><span className="text-gray-300">Humbja maks. ditore ($):</span> shumë <strong className="text-amber-400">në para</strong> (monedha e llogarisë). P.sh. <code className="text-amber-300">15</code> = kur humbja e ditës arrin ~15$, roboti <strong>ndalon trade-t e reja automatike</strong>. Vendos sa je gati të humbasësh maksimumi në një ditë.</li>
-          <li><span className="text-gray-300">Pozicione maks.:</span> sa trade mund të jenë hapur njëkohësisht (p.sh. 3).</li>
-        </ul>
       </div>
 
       {/* Auto-execute mbi sinjale */}
@@ -163,20 +156,17 @@ export default function MetaApiPanel() {
         </div>
         <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
           Kur <span className="text-amber-400">Auto-trade</span> është ON, sinjalet BLEJ/SHIT për këto simbole me besueshmëri ≥ pragut
-          ekzekutohen <span className="text-white">automatikisht</span> në MT5 (çdo minutë), brenda mbrojtjeve të rrezikut sipër.
+          ekzekutohen <span className="text-white">automatikisht</span> në MT5 (çdo minutë), brenda mbrojtjeve të rrezikut.
         </p>
       </div>
 
-      {/* Toggles të sigurisë */}
+      {/* Toggles */}
       <div className="flex flex-wrap gap-3">
-        <Toggle on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo')}
+        <Toggle on={cfg.mode === 'live'} onClick={() => set('mode', cfg.mode === 'demo' ? 'live' : 'demo')}
           label={cfg.mode === 'demo' ? 'Mode: DEMO' : 'Mode: LIVE'} danger={cfg.mode === 'live'} icon={Cloud} />
-        <Toggle on={cfg.auto_trade} onClick={() => setAndSave('auto_trade', !cfg.auto_trade)} label="Auto-trade" icon={Play} />
-        <Toggle on={cfg.kill_switch} onClick={() => setAndSave('kill_switch', !cfg.kill_switch)} label="Kill-switch" danger icon={Power} />
+        <Toggle on={cfg.auto_trade} onClick={() => set('auto_trade', !cfg.auto_trade)} label="Auto-trade" icon={Play} />
+        <Toggle on={cfg.kill_switch} onClick={() => set('kill_switch', !cfg.kill_switch)} label="Kill-switch" danger icon={Power} />
       </div>
-      <p className="text-[11px] text-gray-500 -mt-2 flex items-center gap-1">
-        <Power className="w-3 h-3 text-amber-400" /> Këto 3 butona ruhen <span className="text-gray-300">menjëherë</span>. <span className="text-gray-300">Kill-switch ON</span> ndalon çdo trade (urgjencë).
-      </p>
 
       {cfg.mode === 'live' && (
         <div className="flex items-center gap-2 text-xs bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-red-400">
@@ -190,7 +180,7 @@ export default function MetaApiPanel() {
         </div>
       )}
 
-      {/* Veprimet — vetëm ruajtja dhe testi i lidhjes */}
+      {/* Veprimet */}
       <div className="flex flex-wrap gap-2">
         <button onClick={save} disabled={saving} className="btn-amber">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}Ruaj cilësimet
@@ -198,16 +188,45 @@ export default function MetaApiPanel() {
         <button onClick={testConnection} disabled={!configured || !!busy} className="btn-ghost">
           {busy === 'check' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}Testo lidhjen
         </button>
+        <button onClick={() => testTrade('BUY')} disabled={!configured || !!busy} className="btn-green">
+          {busy === 'BUY' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Test BLEJ XAUUSD
+        </button>
+        <button onClick={() => testTrade('SELL')} disabled={!configured || !!busy} className="btn-red">
+          {busy === 'SELL' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Test SHIT XAUUSD
+        </button>
       </div>
+
+      {/* Ekzekutimet e fundit */}
+      {executions.length > 0 && (
+        <div>
+          <div className="text-xs text-gray-400 mb-2">Ekzekutimet e fundit</div>
+          <div className="space-y-1.5">
+            {executions.map(e => (
+              <div key={e.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-2">
+                <span className="flex items-center gap-2">
+                  <span className={`font-bold ${e.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{e.action === 'BUY' ? 'BLEJ' : 'SHIT'}</span>
+                  <span className="text-white">{e.symbol}</span>
+                  <span className="text-gray-500">{e.volume} lot · {e.mode}</span>
+                </span>
+                <span className={`px-2 py-0.5 rounded-full ${e.status === 'executed' ? 'bg-green-500/15 text-green-400' : e.status === 'rejected' ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>
+                  {e.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <style>{`
         .inp { width:100%; background:#1f2937; border:1px solid #374151; border-radius:0.75rem; padding:0.55rem 0.75rem; color:#fff; font-size:0.8rem; outline:none; }
         .inp:focus { border-color:#f59e0b; }
-        .btn-amber,.btn-ghost { display:inline-flex; align-items:center; gap:0.4rem; font-size:0.8rem; font-weight:600; padding:0.55rem 0.9rem; border-radius:0.75rem; transition:all .15s; }
+        .btn-amber,.btn-ghost,.btn-green,.btn-red { display:inline-flex; align-items:center; gap:0.4rem; font-size:0.8rem; font-weight:600; padding:0.55rem 0.9rem; border-radius:0.75rem; transition:all .15s; }
         .btn-amber { background:#f59e0b; color:#0a0a0a; }
         .btn-amber:disabled { opacity:.5; }
         .btn-ghost { background:#1f2937; color:#d1d5db; border:1px solid #374151; }
-        .btn-ghost:disabled { opacity:.5; }
+        .btn-green { background:rgba(34,197,94,.15); color:#4ade80; border:1px solid rgba(34,197,94,.3); }
+        .btn-red { background:rgba(239,68,68,.15); color:#f87171; border:1px solid rgba(239,68,68,.3); }
+        .btn-green:disabled,.btn-red:disabled,.btn-ghost:disabled { opacity:.5; }
       `}</style>
     </div>
   );
@@ -239,6 +258,10 @@ function errText(code: string, message?: string): string {
   const map: Record<string, string> = {
     metaapi_not_configured: 'Plotëso Account ID dhe Token, pastaj ruaj.',
     metaapi_unreachable: 'S\'u arrit MetaApi — kontrollo token-in, account-id dhe rajonin.',
+    kill_switch: 'Kill-switch është aktiv — çaktivizoje për të tregtuar.',
+    max_open_trades: 'Arritur limiti i pozicioneve të hapura.',
+    max_daily_loss: 'Arritur limiti i humbjes ditore.',
+    trade_failed: 'MetaApi e refuzoi urdhrin.',
   };
   return map[code] || message || code;
 }
