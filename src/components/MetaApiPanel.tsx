@@ -31,6 +31,21 @@ export default function MetaApiPanel() {
 
   const set = <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
 
+  // Ndryshon dhe RUAN menjëherë — për kontrollet kritike të sigurisë
+  // (Auto-trade, Kill-switch, Mode) që nuk duhet të varen nga butoni "Ruaj".
+  const setAndSave = async <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => {
+    const next = { ...cfg, [k]: v };
+    setCfg(next);
+    if (!user) return;
+    setMsg(null);
+    try {
+      await saveMetaApiConfig(user.id, next);
+      setMsg({ type: 'success', text: 'U ruajt automatikisht.' });
+    } catch (e) {
+      setMsg({ type: 'error', text: (e as Error).message });
+    }
+  };
+
   const save = async () => {
     if (!user) return;
     setSaving(true); setMsg(null);
@@ -162,11 +177,14 @@ export default function MetaApiPanel() {
 
       {/* Toggles */}
       <div className="flex flex-wrap gap-3">
-        <Toggle on={cfg.mode === 'live'} onClick={() => set('mode', cfg.mode === 'demo' ? 'live' : 'demo')}
+        <Toggle on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo')}
           label={cfg.mode === 'demo' ? 'Mode: DEMO' : 'Mode: LIVE'} danger={cfg.mode === 'live'} icon={Cloud} />
-        <Toggle on={cfg.auto_trade} onClick={() => set('auto_trade', !cfg.auto_trade)} label="Auto-trade" icon={Play} />
-        <Toggle on={cfg.kill_switch} onClick={() => set('kill_switch', !cfg.kill_switch)} label="Kill-switch" danger icon={Power} />
+        <Toggle on={cfg.auto_trade} onClick={() => setAndSave('auto_trade', !cfg.auto_trade)} label="Auto-trade" icon={Play} />
+        <Toggle on={cfg.kill_switch} onClick={() => setAndSave('kill_switch', !cfg.kill_switch)} label="Kill-switch" danger icon={Power} />
       </div>
+      <p className="text-[11px] text-gray-500 -mt-2 flex items-center gap-1">
+        <Power className="w-3 h-3 text-amber-400" /> Këto 3 butona ruhen <span className="text-gray-300">menjëherë</span> — pa nevojë për "Ruaj cilësimet".
+      </p>
 
       {cfg.mode === 'live' && (
         <div className="flex items-center gap-2 text-xs bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-red-400">
