@@ -175,7 +175,7 @@ export function EngineSignalCard({ analysis, askAI, category, accountBalance }: 
           <span className="text-white font-bold">{analysis.symbol}</span>
         </div>
         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${sourceBadge}`}>
-          {analysis.source === 'live' ? `LIVE · ${analysis.provider}` : 'DEMO'}
+          {analysis.source === 'live' ? `LIVE · ${analysis.provider}` : 'VLERËSIM'}
         </span>
       </div>
 
