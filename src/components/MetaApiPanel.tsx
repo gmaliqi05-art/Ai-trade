@@ -2,12 +2,11 @@
 // mbrojtje rreziku. "Demo i pari" — mode-i fillon demo dhe kill-switch është gati.
 
 import { useEffect, useState, useCallback } from 'react';
-import { Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save, Eye, EyeOff, RefreshCw, X, TrendingUp, TrendingDown } from 'lucide-react';
+import { Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   loadMetaApiConfig, saveMetaApiConfig, checkMetaApiConnection, executeTrade, loadExecutions,
-  loadOpenPositions, closePosition,
-  DEFAULT_CONFIG, type MetaApiConfig, type TradeExecution, type OpenPosition,
+  DEFAULT_CONFIG, type MetaApiConfig, type TradeExecution,
 } from '../services/metaapi';
 
 const REGIONS = ['new-york', 'london', 'singapore'];
@@ -21,9 +20,6 @@ export default function MetaApiPanel() {
   const [showToken, setShowToken] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [executions, setExecutions] = useState<TradeExecution[]>([]);
-  const [positions, setPositions] = useState<OpenPosition[]>([]);
-  const [posLoading, setPosLoading] = useState(false);
-  const [closingId, setClosingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -33,47 +29,7 @@ export default function MetaApiPanel() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Lexon pozicionet e hapura REALE nga MT5 (vetëm nëse ka kredenciale).
-  const refreshPositions = useCallback(async () => {
-    setPosLoading(true);
-    const r = await loadOpenPositions();
-    if (!r.error && Array.isArray(r.positions)) setPositions(r.positions);
-    else if (r.error) setPositions([]);
-    setPosLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (!loading && cfg.account_id && cfg.token) {
-      refreshPositions();
-      const id = setInterval(refreshPositions, 20000);
-      return () => clearInterval(id);
-    }
-  }, [loading, cfg.account_id, cfg.token, refreshPositions]);
-
-  const handleClose = async (posId: string) => {
-    setClosingId(posId); setMsg(null);
-    const r = await closePosition(posId);
-    if (r.error) setMsg({ type: 'error', text: errText(r.error, r.message) });
-    else { setMsg({ type: 'success', text: 'Pozicioni u mbyll.' }); await refreshPositions(); await refresh(); }
-    setClosingId(null);
-  };
-
   const set = <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
-
-  // Ndryshon dhe RUAN menjëherë — për kontrollet kritike të sigurisë
-  // (Auto-trade, Kill-switch, Mode) që nuk duhet të varen nga butoni "Ruaj".
-  const setAndSave = async <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => {
-    const next = { ...cfg, [k]: v };
-    setCfg(next);
-    if (!user) return;
-    setMsg(null);
-    try {
-      await saveMetaApiConfig(user.id, next);
-      setMsg({ type: 'success', text: 'U ruajt automatikisht.' });
-    } catch (e) {
-      setMsg({ type: 'error', text: (e as Error).message });
-    }
-  };
 
   const save = async () => {
     if (!user) return;
@@ -206,14 +162,11 @@ export default function MetaApiPanel() {
 
       {/* Toggles */}
       <div className="flex flex-wrap gap-3">
-        <Toggle on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo')}
+        <Toggle on={cfg.mode === 'live'} onClick={() => set('mode', cfg.mode === 'demo' ? 'live' : 'demo')}
           label={cfg.mode === 'demo' ? 'Mode: DEMO' : 'Mode: LIVE'} danger={cfg.mode === 'live'} icon={Cloud} />
-        <Toggle on={cfg.auto_trade} onClick={() => setAndSave('auto_trade', !cfg.auto_trade)} label="Auto-trade" icon={Play} />
-        <Toggle on={cfg.kill_switch} onClick={() => setAndSave('kill_switch', !cfg.kill_switch)} label="Kill-switch" danger icon={Power} />
+        <Toggle on={cfg.auto_trade} onClick={() => set('auto_trade', !cfg.auto_trade)} label="Auto-trade" icon={Play} />
+        <Toggle on={cfg.kill_switch} onClick={() => set('kill_switch', !cfg.kill_switch)} label="Kill-switch" danger icon={Power} />
       </div>
-      <p className="text-[11px] text-gray-500 -mt-2 flex items-center gap-1">
-        <Power className="w-3 h-3 text-amber-400" /> Këto 3 butona ruhen <span className="text-gray-300">menjëherë</span> — pa nevojë për "Ruaj cilësimet".
-      </p>
 
       {cfg.mode === 'live' && (
         <div className="flex items-center gap-2 text-xs bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-red-400">
@@ -236,63 +189,12 @@ export default function MetaApiPanel() {
           {busy === 'check' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}Testo lidhjen
         </button>
         <button onClick={() => testTrade('BUY')} disabled={!configured || !!busy} className="btn-green">
-          {busy === 'BUY' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}BLEJ XAUUSD ({cfg.default_lot})
+          {busy === 'BUY' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Test BLEJ XAUUSD
         </button>
         <button onClick={() => testTrade('SELL')} disabled={!configured || !!busy} className="btn-red">
-          {busy === 'SELL' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}SHIT XAUUSD ({cfg.default_lot})
+          {busy === 'SELL' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Test SHIT XAUUSD
         </button>
       </div>
-
-      {/* Pozicionet e hapura LIVE nga MT5 */}
-      {configured && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs text-gray-400 flex items-center gap-2">
-              Pozicionet e hapura (live nga MT5)
-              <span className="bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-md font-semibold">{positions.length}</span>
-            </div>
-            <button onClick={refreshPositions} disabled={posLoading}
-              className="p-1.5 text-gray-500 hover:text-white bg-gray-800 rounded-lg transition-all disabled:opacity-50" title="Rifresko">
-              <RefreshCw className={`w-3.5 h-3.5 ${posLoading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-          {positions.length === 0 ? (
-            <div className="text-[11px] text-gray-600 bg-gray-800/30 rounded-lg px-3 py-3 text-center">
-              {posLoading ? 'Po lexohen pozicionet…' : 'Asnjë pozicion i hapur tani.'}
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {positions.map((p) => {
-                const isBuy = (p.type || '').includes('BUY');
-                const profit = Number(p.profit ?? 0);
-                return (
-                  <div key={p.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-2">
-                    <span className="flex items-center gap-2">
-                      {isBuy ? <TrendingUp className="w-3.5 h-3.5 text-green-400" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
-                      <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? 'BLEJ' : 'SHIT'}</span>
-                      <span className="text-white">{p.symbol}</span>
-                      <span className="text-gray-500">{p.volume} lot</span>
-                      {p.openPrice != null && <span className="text-gray-600">@ {p.openPrice}</span>}
-                    </span>
-                    <span className="flex items-center gap-3">
-                      <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {profit >= 0 ? '+' : ''}{profit.toFixed(2)}
-                      </span>
-                      <button
-                        onClick={() => handleClose(p.id)}
-                        disabled={closingId === p.id}
-                        className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg font-medium transition-all disabled:opacity-50"
-                      >
-                        {closingId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}Mbyll
-                      </button>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Ekzekutimet e fundit */}
       {executions.length > 0 && (
