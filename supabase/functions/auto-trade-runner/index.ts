@@ -81,6 +81,17 @@ async function maTrade(cfg: Cfg, body: Record<string, unknown>) {
   return { ok: resp.ok, status: resp.status, body: b };
 }
 
+// MetaApi kthen HTTP 200 edhe kur brokeri e REFUZON urdhrin — rezultati i vërtetë
+// është te numericCode (10009 = DONE). Kjo lexon statusin real.
+function brokerResult(body: unknown): { ok: boolean; code: number; msg: string; orderId: string | null } {
+  const o = (body ?? {}) as Record<string, unknown>;
+  const code = Number(o.numericCode);
+  const orderId = (o.orderId as string) ?? (o.positionId as string) ?? null;
+  const msg = String(o.message ?? "");
+  const ok = code === 10009 || code === 10008 || code === 10010 || (!!orderId && !Number.isFinite(code));
+  return { ok, code, msg, orderId };
+}
+
 // Claude si "portë": konfirmon nëse trade-i është i arsyeshëm. Fail-open: nëse Claude
 // s'është i disponueshëm ose gabon, lejon trade-in (motori është tashmë i përforcuar).
 type DB = ReturnType<typeof createClient>;
@@ -184,29 +195,40 @@ Deno.serve(async (req: Request) => {
         if (existing && existing.length > 0) continue;
 
         const action = sig.type === "buy" ? "BUY" : "SELL";
-        // Lot dinamik sipas besueshmërisë së sinjalit (≥70/≥80/≥90).
-        const volume = lotForConfidence(cfg, Number(sig.confidence) || 0);
-
-        // Kufizo rrezikun e trade-it te SL: humbja maks. ≤ max_daily_loss.
-        let stopLoss = sig.stop_loss != null ? Number(sig.stop_loss) : undefined;
+        // SL-ja e sinjalit mbetet e PANGUSHTUAR (distancë valide te brokeri).
+        const stopLoss = sig.stop_loss != null ? Number(sig.stop_loss) : undefined;
         const entry = sig.entry_price != null ? Number(sig.entry_price) : undefined;
+
+        // Lot fillestar: dinamik sipas besueshmërisë (≥70/≥80/≥90).
+        let volume = lotForConfidence(cfg, Number(sig.confidence) || 0);
+
+        // RREZIKU VIA MADHËSIA E LOTIT: ul lotin që humbja te SL ≤ kufiri ditor.
+        // S'e ngushtojmë SL-në (do shkaktonte "Invalid stops" te brokeri).
         const maxRisk = Number(cfg.max_daily_loss) || 0;
+        let tooRisky = false;
         if (stopLoss != null && entry != null && maxRisk > 0) {
           const vpp = valuePerPrice(sig.symbol);
-          if (Math.abs(entry - stopLoss) * vpp * volume > maxRisk) {
-            const maxDist = maxRisk / (vpp * volume);
-            stopLoss = action === "BUY" ? entry - maxDist : entry + maxDist;
-            stopLoss = Math.round(stopLoss * 100) / 100;
+          const slDist = Math.abs(entry - stopLoss);
+          if (slDist > 0) {
+            const lotByRisk = Math.floor((maxRisk / (slDist * vpp)) * 100) / 100; // hap 0.01
+            if (lotByRisk < volume) volume = lotByRisk;
+            if (volume < 0.01) tooRisky = true; // as 0.01 lot s'futet në kufi
           }
         }
+        volume = Math.round(volume * 100) / 100;
 
         const log = (status: string, reason: string, orderId: string | null, rawResp: unknown) =>
           db.from("trade_executions").insert({
-            user_id: cfg.user_id, signal_id: sig.id, symbol: sig.symbol, action, volume,
+            user_id: cfg.user_id, signal_id: sig.id, symbol: sig.symbol, action, volume: Math.max(volume, 0.01),
             entry_price: sig.entry_price, stop_loss: stopLoss ?? sig.stop_loss, take_profit: sig.target_price,
             mode: cfg.mode, status, reason, metaapi_order_id: orderId, raw_response: rawResp ?? null,
           });
 
+        if (tooRisky) {
+          await log("rejected", `Rreziku i 0.01 lot e tejkalon kufirin ($${maxRisk}) — anashkaluar. Rrit kufirin ose përdor simbol më të vogël.`, null, null);
+          summary.push({ user: cfg.user_id, signal: sig.id, status: "too_risky" });
+          continue;
+        }
         if (openTrades >= cfg.max_open_trades) { await log("rejected", `Max pozicione (${cfg.max_open_trades})`, null, null); continue; }
         if (floatingLoss >= cfg.max_daily_loss) { await log("rejected", `Limit humbjeje (${cfg.max_daily_loss})`, null, null); continue; }
 
@@ -224,11 +246,16 @@ Deno.serve(async (req: Request) => {
         try {
           const r = await maTrade(cfg, tradeBody);
           if (!r.ok) { await log("error", `trade ${r.status}`, null, r.body); summary.push({ user: cfg.user_id, signal: sig.id, status: "error" }); continue; }
-          const orderId = (r.body as { orderId?: string; positionId?: string })?.orderId
-            ?? (r.body as { positionId?: string })?.positionId ?? null;
-          await log("executed", `auto (${cfg.mode})`, orderId, r.body);
+          const br = brokerResult(r.body);
+          if (!br.ok) {
+            // Brokeri e refuzoi (p.sh. Invalid stops, Market closed, No money) — statusi REAL.
+            await log("rejected", `Brokeri: ${br.msg || "refuzuar"} (${br.code})`, null, r.body);
+            summary.push({ user: cfg.user_id, signal: sig.id, status: "broker_rejected", code: br.code });
+            continue;
+          }
+          await log("executed", `auto (${cfg.mode})`, br.orderId, r.body);
           openTrades += 1;
-          summary.push({ user: cfg.user_id, signal: sig.id, status: "executed", order: orderId });
+          summary.push({ user: cfg.user_id, signal: sig.id, status: "executed", order: br.orderId });
         } catch (e) {
           await log("error", (e as Error).message, null, null);
           summary.push({ user: cfg.user_id, signal: sig.id, status: "error" });

@@ -244,10 +244,20 @@ Deno.serve(async (req: Request) => {
       return json({ error: "trade_failed", status: resp.status, details: respBody }, 502);
     }
 
-    const orderId = (respBody as { orderId?: string; positionId?: string })?.orderId
-      ?? (respBody as { positionId?: string })?.positionId ?? null;
-    await logExec("executed", `OK (${config.mode})`, orderId, respBody);
+    // MetaApi kthen HTTP 200 edhe kur brokeri e REFUZON urdhrin — rezultati i vërtetë
+    // është te numericCode (10009 = DONE). Lexo statusin real.
+    const rb = (respBody ?? {}) as Record<string, unknown>;
+    const code = Number(rb.numericCode);
+    const orderId = (rb.orderId as string) ?? (rb.positionId as string) ?? null;
+    const brokerMsg = String(rb.message ?? "");
+    const ok = code === 10009 || code === 10008 || code === 10010 || (!!orderId && !Number.isFinite(code));
 
+    if (!ok) {
+      await logExec("rejected", `Brokeri: ${brokerMsg || "refuzuar"} (${code})`, null, respBody);
+      return json({ error: "broker_rejected", code, message: brokerMsg || "Urdhri u refuzua nga brokeri.", result: respBody }, 200);
+    }
+
+    await logExec("executed", `OK (${config.mode})`, orderId, respBody);
     return json({
       success: true,
       mode: config.mode,
