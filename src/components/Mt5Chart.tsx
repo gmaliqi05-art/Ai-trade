@@ -32,7 +32,7 @@ export default function Mt5Chart({ candles, lines = [], height = 380 }: {
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = createChart(containerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: '#111827' }, textColor: '#9ca3af' },
+      layout: { background: { type: ColorType.Solid, color: '#111827' }, textColor: '#9ca3af', attributionLogo: false },
       grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
       rightPriceScale: { borderColor: '#374151' },
       timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false },
