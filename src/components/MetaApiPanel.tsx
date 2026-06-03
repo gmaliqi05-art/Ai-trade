@@ -2,11 +2,12 @@
 // mbrojtje rreziku. "Demo i pari" — mode-i fillon demo dhe kill-switch është gati.
 
 import { useEffect, useState, useCallback } from 'react';
-import { Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save, Eye, EyeOff } from 'lucide-react';
+import { Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save, Eye, EyeOff, RefreshCw, X, TrendingUp, TrendingDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   loadMetaApiConfig, saveMetaApiConfig, checkMetaApiConnection, executeTrade, loadExecutions,
-  DEFAULT_CONFIG, type MetaApiConfig, type TradeExecution,
+  loadOpenPositions, closePosition,
+  DEFAULT_CONFIG, type MetaApiConfig, type TradeExecution, type OpenPosition,
 } from '../services/metaapi';
 
 const REGIONS = ['new-york', 'london', 'singapore'];
@@ -20,6 +21,9 @@ export default function MetaApiPanel() {
   const [showToken, setShowToken] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [executions, setExecutions] = useState<TradeExecution[]>([]);
+  const [positions, setPositions] = useState<OpenPosition[]>([]);
+  const [posLoading, setPosLoading] = useState(false);
+  const [closingId, setClosingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -28,6 +32,31 @@ export default function MetaApiPanel() {
   }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Lexon pozicionet e hapura REALE nga MT5 (vetëm nëse ka kredenciale).
+  const refreshPositions = useCallback(async () => {
+    setPosLoading(true);
+    const r = await loadOpenPositions();
+    if (!r.error && Array.isArray(r.positions)) setPositions(r.positions);
+    else if (r.error) setPositions([]);
+    setPosLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!loading && cfg.account_id && cfg.token) {
+      refreshPositions();
+      const id = setInterval(refreshPositions, 20000);
+      return () => clearInterval(id);
+    }
+  }, [loading, cfg.account_id, cfg.token, refreshPositions]);
+
+  const handleClose = async (posId: string) => {
+    setClosingId(posId); setMsg(null);
+    const r = await closePosition(posId);
+    if (r.error) setMsg({ type: 'error', text: errText(r.error, r.message) });
+    else { setMsg({ type: 'success', text: 'Pozicioni u mbyll.' }); await refreshPositions(); await refresh(); }
+    setClosingId(null);
+  };
 
   const set = <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
 
@@ -213,6 +242,57 @@ export default function MetaApiPanel() {
           {busy === 'SELL' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Test SHIT XAUUSD
         </button>
       </div>
+
+      {/* Pozicionet e hapura LIVE nga MT5 */}
+      {configured && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs text-gray-400 flex items-center gap-2">
+              Pozicionet e hapura (live nga MT5)
+              <span className="bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-md font-semibold">{positions.length}</span>
+            </div>
+            <button onClick={refreshPositions} disabled={posLoading}
+              className="p-1.5 text-gray-500 hover:text-white bg-gray-800 rounded-lg transition-all disabled:opacity-50" title="Rifresko">
+              <RefreshCw className={`w-3.5 h-3.5 ${posLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          {positions.length === 0 ? (
+            <div className="text-[11px] text-gray-600 bg-gray-800/30 rounded-lg px-3 py-3 text-center">
+              {posLoading ? 'Po lexohen pozicionet…' : 'Asnjë pozicion i hapur tani.'}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {positions.map((p) => {
+                const isBuy = (p.type || '').includes('BUY');
+                const profit = Number(p.profit ?? 0);
+                return (
+                  <div key={p.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-2">
+                    <span className="flex items-center gap-2">
+                      {isBuy ? <TrendingUp className="w-3.5 h-3.5 text-green-400" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
+                      <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? 'BLEJ' : 'SHIT'}</span>
+                      <span className="text-white">{p.symbol}</span>
+                      <span className="text-gray-500">{p.volume} lot</span>
+                      {p.openPrice != null && <span className="text-gray-600">@ {p.openPrice}</span>}
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {profit >= 0 ? '+' : ''}{profit.toFixed(2)}
+                      </span>
+                      <button
+                        onClick={() => handleClose(p.id)}
+                        disabled={closingId === p.id}
+                        className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg font-medium transition-all disabled:opacity-50"
+                      >
+                        {closingId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}Mbyll
+                      </button>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Ekzekutimet e fundit */}
       {executions.length > 0 && (
