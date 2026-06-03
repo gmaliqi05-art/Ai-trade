@@ -64,9 +64,34 @@ export interface OpenPosition {
   swap?: number;
 }
 
+/** Deal i mbyllur nga historiku i MT5. */
+export interface HistoryDeal {
+  id: string;
+  symbol?: string;
+  type?: string;       // DEAL_TYPE_BUY | DEAL_TYPE_SELL
+  entryType?: string;  // DEAL_ENTRY_IN | DEAL_ENTRY_OUT
+  volume?: number;
+  price?: number;
+  profit?: number;
+  commission?: number;
+  swap?: number;
+  time?: string;
+}
+
+/** Gjendja e llogarisë MT5 (nga account-information). */
+export interface AccountInfo {
+  balance?: number;
+  equity?: number;
+  profit?: number;
+  margin?: number;
+  freeMargin?: number;
+  currency?: string;
+  leverage?: number;
+}
+
 interface TradeResponse {
   success?: boolean; error?: string; message?: string; mode?: string;
-  order_id?: string | null; account?: unknown; positions?: OpenPosition[];
+  order_id?: string | null; account?: AccountInfo; positions?: OpenPosition[]; deals?: HistoryDeal[];
 }
 
 async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> {
@@ -100,6 +125,11 @@ export function loadOpenPositions() {
 /** Mbyll një pozicion të hapur sipas id-së. */
 export function closePosition(positionId: string) {
   return callTrade({ action: 'CLOSE', positionId });
+}
+
+/** Lexon historikun e trade-ve të mbyllura (7 ditët e fundit) nga MT5. */
+export function loadTradeHistory() {
+  return callTrade({ action: 'HISTORY' });
 }
 
 /** Ekzekuton një tregti në MT5 via MetaApi (me mbrojtjet e rrezikut në server). */
