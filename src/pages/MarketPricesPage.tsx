@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   TrendingUp, TrendingDown, RefreshCw, Search,
-  Activity, Brain, Zap
+  Activity, Brain, Zap, X, LineChart
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ClientPage } from '../App';
+import TradingViewChart from '../components/TradingViewChart';
 
 interface Asset {
   id: string;
@@ -55,6 +56,7 @@ export default function MarketPricesPage({ onNavigate }: { onNavigate: (p: Clien
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [chartAsset, setChartAsset] = useState<Asset | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAssets = async () => {
@@ -105,7 +107,7 @@ export default function MarketPricesPage({ onNavigate }: { onNavigate: (p: Clien
             <Activity className="w-6 h-6 text-amber-400" />Çmimet e tregut
           </h2>
           <p className="text-gray-400 text-sm mt-1">
-            Çmime reale nga databaza
+            Çmime reale · kliko një aktiv për grafikun TradingView
             {lastUpdated && (
               <span className="ml-2 text-gray-600 text-xs">· përditësuar {lastUpdated.toLocaleTimeString()} · rifreskohet çdo 30s</span>
             )}
@@ -195,9 +197,14 @@ export default function MarketPricesPage({ onNavigate }: { onNavigate: (p: Clien
                   {items.map((a, idx) => (
                     <div
                       key={a.id}
-                      className={`grid md:grid-cols-12 gap-2 md:gap-4 px-5 py-3.5 md:py-3 items-center ${idx < items.length - 1 ? 'border-b border-gray-800/50' : ''} hover:bg-gray-800/30 transition-colors`}
+                      onClick={() => setChartAsset(a)}
+                      className={`grid md:grid-cols-12 gap-2 md:gap-4 px-5 py-3.5 md:py-3 items-center cursor-pointer ${idx < items.length - 1 ? 'border-b border-gray-800/50' : ''} hover:bg-gray-800/30 transition-colors group`}
+                      title="Kliko për grafikun TradingView"
                     >
                       <div className="md:col-span-3 flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-lg bg-gray-800 group-hover:bg-amber-500/20 flex items-center justify-center flex-shrink-0 transition-colors">
+                          <LineChart className="w-3.5 h-3.5 text-gray-500 group-hover:text-amber-400 transition-colors" />
+                        </div>
                         <div>
                           <div className="text-white font-bold text-sm">{a.symbol}</div>
                           <div className="text-gray-500 text-xs truncate max-w-[160px]">{a.name}</div>
@@ -265,6 +272,46 @@ export default function MarketPricesPage({ onNavigate }: { onNavigate: (p: Clien
           </button>
         </div>
       </div>
+
+      {/* Modal me grafikun real TradingView për aktivin e klikuar */}
+      {chartAsset && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => setChartAsset(null)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+              <div className="flex items-center gap-2.5">
+                <LineChart className="w-5 h-5 text-amber-400" />
+                <div>
+                  <div className="text-white font-bold text-sm">{chartAsset.symbol}</div>
+                  <div className="text-gray-500 text-xs">{chartAsset.name} · TradingView</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setChartAsset(null); onNavigate('chart_analysis'); }}
+                  className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
+                >
+                  <Brain className="w-3.5 h-3.5" />Analizë AI
+                </button>
+                <button
+                  onClick={() => setChartAsset(null)}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="h-[460px]">
+              <TradingViewChart symbol={chartAsset.symbol} timeframe="1h" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
