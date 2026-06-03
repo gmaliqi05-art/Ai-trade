@@ -60,8 +60,6 @@ export interface OpenPosition {
   volume: number;
   openPrice?: number;
   currentPrice?: number;
-  stopLoss?: number;
-  takeProfit?: number;
   profit?: number;
   swap?: number;
 }
@@ -91,15 +89,9 @@ export interface AccountInfo {
   leverage?: number;
 }
 
-/** Qiri nga MT5 (historical-market-data). */
-export interface Mt5Candle {
-  time: string; open: number; high: number; low: number; close: number;
-}
-
 interface TradeResponse {
   success?: boolean; error?: string; message?: string; mode?: string;
-  order_id?: string | null; account?: AccountInfo; positions?: OpenPosition[];
-  deals?: HistoryDeal[]; candles?: Mt5Candle[];
+  order_id?: string | null; account?: AccountInfo; positions?: OpenPosition[]; deals?: HistoryDeal[];
 }
 
 async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> {
@@ -138,16 +130,6 @@ export function closePosition(positionId: string) {
 /** Lexon historikun e trade-ve të mbyllura (7 ditët e fundit) nga MT5. */
 export function loadTradeHistory() {
   return callTrade({ action: 'HISTORY' });
-}
-
-/** Lexon qirinjtë historikë nga MT5 për një simbol + periudhë. */
-export function loadCandles(symbol: string, timeframe: string, limit = 300) {
-  return callTrade({ action: 'CANDLES', symbol, timeframe, limit });
-}
-
-/** Ndryshon SL/TP të një pozicioni të hapur (dërgon në MT5). */
-export function modifyPosition(positionId: string, stopLoss?: number, takeProfit?: number) {
-  return callTrade({ action: 'MODIFY', positionId, stopLoss, takeProfit });
 }
 
 /** Ekzekuton një tregti në MT5 via MetaApi (me mbrojtjet e rrezikut në server). */

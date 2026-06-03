@@ -6,14 +6,12 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ClientPage } from '../App';
-import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
+import TradingViewChart from '../components/TradingViewChart';
 import OpenPositionsPanel from '../components/OpenPositionsPanel';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
-  loadCandles, loadOpenPositions, modifyPosition,
-  type AccountInfo, type HistoryDeal, type OpenPosition,
+  type AccountInfo, type HistoryDeal,
 } from '../services/metaapi';
-import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
 interface Signal {
@@ -44,12 +42,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [history, setHistory] = useState<HistoryDeal[]>([]);
-  const [positions, setPositions] = useState<OpenPosition[]>([]);
-  const [candles, setCandles] = useState<ChartCandle[]>([]);
-  const [slInput, setSlInput] = useState('');
-  const [tpInput, setTpInput] = useState('');
-  const [modifyMsg, setModifyMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [modifyBusy, setModifyBusy] = useState(false);
 
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
   const [lot, setLot] = useState('0.01');
@@ -79,7 +71,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setMetaConfigured(configured);
     setMtMode(cfg.mode);
     if (configured) {
-      const [acc, hist, pos] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions()]);
+      const [acc, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory()]);
       if (!acc.error && acc.account) setAccount(acc.account);
       if (!hist.error && Array.isArray(hist.deals)) {
         const closed = hist.deals
@@ -87,35 +79,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           .sort((a, b) => (b.time || '').localeCompare(a.time || ''));
         setHistory(closed);
       }
-      if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
     }
     setLastUpdated(new Date());
   }, [user]);
-
-  // Qirinjtë: provo nga MT5 (saktë); nëse s'ka, bie te feed-i i motorit (PAXG/treg).
-  const loadChart = useCallback(async () => {
-    let out: ChartCandle[] = [];
-    if (metaConfigured) {
-      const r = await loadCandles(selected, tf, 300);
-      if (!r.error && Array.isArray(r.candles) && r.candles.length > 0) {
-        out = r.candles.map(c => ({
-          time: Math.floor(new Date(c.time).getTime() / 1000),
-          open: c.open, high: c.high, low: c.low, close: c.close,
-        }));
-      }
-    }
-    if (out.length === 0) {
-      // Fallback: feed-i i motorit (qirinj realë për ari/crypto).
-      const px = assets.find(a => a.symbol === selected)?.current_price || 0;
-      try {
-        const res = await fetchCandles({ symbol: selected, currentPrice: px, timeframe: tf as Timeframe, limit: 300 });
-        out = res.candles.map(c => ({ time: Math.floor(c.time / 1000), open: c.open, high: c.high, low: c.low, close: c.close }));
-      } catch { /* lëre bosh */ }
-    }
-    setCandles(out);
-  }, [metaConfigured, selected, tf, assets]);
-
-  useEffect(() => { loadChart(); }, [loadChart]);
 
   useEffect(() => {
     fetchBase();
@@ -133,34 +99,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     if (r.error) setTradeMsg({ type: 'error', text: errText(r.error, r.message) });
     else { setTradeMsg({ type: 'success', text: `Urdhër ${tradeType === 'buy' ? 'BLEJ' : 'SHIT'} ${selected} (${vol} lot) dërguar (${r.mode}).` }); fetchMeta(); }
     setTradeLoading(false);
-  };
-
-  // Pozicioni i hapur për simbolin e zgjedhur → linjat Hyrje/SL/TP + modifikim.
-  const posForSymbol = positions.find(p => p.symbol === selected) || null;
-  const chartLines: PriceLineDef[] = posForSymbol ? [
-    ...(posForSymbol.openPrice ? [{ price: posForSymbol.openPrice, color: '#3b82f6', title: 'Hyrje' }] : []),
-    ...(posForSymbol.stopLoss ? [{ price: posForSymbol.stopLoss, color: '#ef4444', title: 'SL' }] : []),
-    ...(posForSymbol.takeProfit ? [{ price: posForSymbol.takeProfit, color: '#22c55e', title: 'TP' }] : []),
-  ] : [];
-
-  // Parambush SL/TP kur ndryshon pozicioni.
-  useEffect(() => {
-    setSlInput(posForSymbol?.stopLoss ? String(posForSymbol.stopLoss) : '');
-    setTpInput(posForSymbol?.takeProfit ? String(posForSymbol.takeProfit) : '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posForSymbol?.id, posForSymbol?.stopLoss, posForSymbol?.takeProfit]);
-
-  const handleModify = async () => {
-    if (!posForSymbol) return;
-    setModifyBusy(true); setModifyMsg(null);
-    const r = await modifyPosition(
-      posForSymbol.id,
-      slInput ? parseFloat(slInput) : undefined,
-      tpInput ? parseFloat(tpInput) : undefined,
-    );
-    if (r.error) setModifyMsg({ type: 'error', text: errText(r.error, r.message) });
-    else { setModifyMsg({ type: 'success', text: 'SL/TP u përditësuan në MT5.' }); fetchMeta(); }
-    setModifyBusy(false);
   };
 
   const money = (n?: number) => (n == null ? '—' : `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
@@ -237,20 +175,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 ))}
               </div>
             </div>
-            <div className="px-2 pb-2">
-              {candles.length === 0 ? (
-                <div className="h-[380px] flex items-center justify-center text-gray-600 text-sm">Po ngarkohet grafiku…</div>
-              ) : (
-                <Mt5Chart candles={candles} lines={chartLines} height={380} />
-              )}
-            </div>
-            {posForSymbol && (
-              <div className="flex items-center gap-3 px-4 py-1.5 border-t border-gray-800 text-[11px] flex-wrap">
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-500" />Hyrje {posForSymbol.openPrice}</span>
-                {posForSymbol.stopLoss ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500" />SL {posForSymbol.stopLoss}</span> : <span className="text-gray-600">SL pa vendosur</span>}
-                {posForSymbol.takeProfit ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500" />TP {posForSymbol.takeProfit}</span> : <span className="text-gray-600">TP pa vendosur</span>}
-              </div>
-            )}
+            <div className="h-[380px]"><TradingViewChart symbol={selected} timeframe={tf} /></div>
           </div>
         </div>
 
@@ -281,36 +206,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           <button onClick={() => onNavigate('chart_analysis')} className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-xl py-2 text-xs font-medium transition-colors">
             <Brain className="w-3.5 h-3.5" />Analizë AI për {selected}
           </button>
-
-          {/* Modifiko SL/TP për pozicionin e hapur të këtij simboli */}
-          {posForSymbol && (
-            <div className="pt-3 border-t border-gray-800 space-y-2">
-              <div className="text-xs font-semibold text-white flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] ${(posForSymbol.type || '').includes('BUY') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{(posForSymbol.type || '').includes('BUY') ? 'BLEJ' : 'SHIT'}</span>
-                Ndrysho SL / TP ({posForSymbol.volume} lot)
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] text-red-400 mb-1">Stop Loss</label>
-                  <input type="number" step="0.01" value={slInput} onChange={e => setSlInput(e.target.value)} placeholder="—"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-red-500" />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-green-400 mb-1">Take Profit</label>
-                  <input type="number" step="0.01" value={tpInput} onChange={e => setTpInput(e.target.value)} placeholder="—"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-green-500" />
-                </div>
-              </div>
-              {modifyMsg && (
-                <div className={`text-[11px] rounded-lg px-2 py-1.5 ${modifyMsg.type === 'success' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>{modifyMsg.text}</div>
-              )}
-              <button onClick={handleModify} disabled={modifyBusy}
-                className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold py-2 rounded-lg text-xs transition-all">
-                {modifyBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}Ruaj SL/TP në MT5
-              </button>
-              <p className="text-[10px] text-gray-600">Linjat duken në grafik: Hyrje (blu), SL (kuq), TP (jeshil).</p>
-            </div>
-          )}
         </div>
       </div>
 

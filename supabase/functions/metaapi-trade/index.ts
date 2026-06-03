@@ -29,11 +29,6 @@ function host(region: string): string {
   return `https://mt-client-api-v1.${r}.agiliumtrade.ai`;
 }
 
-function marketDataHost(region: string): string {
-  const r = (region || "new-york").trim();
-  return `https://mt-market-data-client-api-v1.${r}.agiliumtrade.ai`;
-}
-
 async function metaApiGet(cfg: MetaApiConfig, path: string) {
   const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
     headers: { "auth-token": cfg.token },
@@ -103,46 +98,6 @@ Deno.serve(async (req: Request) => {
         const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(end.toISOString())}`;
         const deals = await metaApiGet(config, path);
         return json({ success: true, mode: config.mode, deals });
-      } catch (e) {
-        return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
-      }
-    }
-
-    // CANDLES — qirinj historikë nga MT5 (për grafikun me linja SL/TP).
-    if (action === "CANDLES") {
-      const symbol = body.symbol || "XAUUSD";
-      const timeframe = body.timeframe || "15m";
-      const limit = Math.min(Number(body.limit) || 300, 1000);
-      try {
-        const url = `${marketDataHost(config.region)}/users/current/accounts/${config.account_id}/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${timeframe}/candles?limit=${limit}`;
-        const resp = await fetch(url, { headers: { "auth-token": config.token }, signal: AbortSignal.timeout(15000) });
-        const txt = await resp.text();
-        let cb: unknown = txt; try { cb = JSON.parse(txt); } catch { /* tekst */ }
-        if (!resp.ok) return json({ error: "candles_failed", status: resp.status, details: cb }, 502);
-        return json({ success: true, candles: cb });
-      } catch (e) {
-        return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
-      }
-    }
-
-    // MODIFY — ndrysho SL/TP të një pozicioni të hapur.
-    if (action === "MODIFY") {
-      const positionId = body.positionId;
-      if (!positionId) return json({ error: "bad_request", message: "positionId i nevojshëm" }, 400);
-      const mbody: Record<string, unknown> = { actionType: "POSITION_MODIFY", positionId };
-      if (body.stopLoss != null && Number.isFinite(Number(body.stopLoss))) mbody.stopLoss = Number(body.stopLoss);
-      if (body.takeProfit != null && Number.isFinite(Number(body.takeProfit))) mbody.takeProfit = Number(body.takeProfit);
-      try {
-        const resp = await fetch(`${host(config.region)}/users/current/accounts/${config.account_id}/trade`, {
-          method: "POST",
-          headers: { "auth-token": config.token, "Content-Type": "application/json" },
-          body: JSON.stringify(mbody),
-          signal: AbortSignal.timeout(20000),
-        });
-        const txt = await resp.text();
-        let rb: unknown = txt; try { rb = JSON.parse(txt); } catch { /* tekst */ }
-        if (!resp.ok) return json({ error: "modify_failed", status: resp.status, details: rb }, 502);
-        return json({ success: true, result: rb });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
       }
