@@ -52,21 +52,9 @@ export async function saveMetaApiConfig(userId: string, cfg: MetaApiConfig): Pro
   if (error) throw new Error(error.message);
 }
 
-/** Pozicion i hapur nga MetaApi (fushat kryesore që na duhen). */
-export interface OpenPosition {
-  id: string;
-  symbol: string;
-  type: string; // POSITION_TYPE_BUY | POSITION_TYPE_SELL
-  volume: number;
-  openPrice?: number;
-  currentPrice?: number;
-  profit?: number;
-  swap?: number;
-}
-
 interface TradeResponse {
   success?: boolean; error?: string; message?: string; mode?: string;
-  order_id?: string | null; account?: unknown; positions?: OpenPosition[];
+  order_id?: string | null; account?: unknown;
 }
 
 async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> {
@@ -90,16 +78,6 @@ async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> 
 /** Teston lidhjen me MetaApi (kthen info të llogarisë). */
 export function checkMetaApiConnection() {
   return callTrade({ action: 'CHECK' });
-}
-
-/** Lexon pozicionet e hapura REALE nga MT5 (live). */
-export function loadOpenPositions() {
-  return callTrade({ action: 'POSITIONS' });
-}
-
-/** Mbyll një pozicion të hapur sipas id-së. */
-export function closePosition(positionId: string) {
-  return callTrade({ action: 'CLOSE', positionId });
 }
 
 /** Ekzekuton një tregti në MT5 via MetaApi (me mbrojtjet e rrezikut në server). */
