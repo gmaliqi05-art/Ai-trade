@@ -236,10 +236,10 @@ export default function MetaApiPanel() {
           {busy === 'check' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}Testo lidhjen
         </button>
         <button onClick={() => testTrade('BUY')} disabled={!configured || !!busy} className="btn-green">
-          {busy === 'BUY' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Test BLEJ XAUUSD
+          {busy === 'BUY' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}BLEJ XAUUSD ({cfg.default_lot})
         </button>
         <button onClick={() => testTrade('SELL')} disabled={!configured || !!busy} className="btn-red">
-          {busy === 'SELL' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Test SHIT XAUUSD
+          {busy === 'SELL' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}SHIT XAUUSD ({cfg.default_lot})
         </button>
       </div>
 

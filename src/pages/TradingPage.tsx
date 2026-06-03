@@ -1,11 +1,25 @@
-import { useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, Search, Star, StarOff, ChevronUp, ChevronDown, RefreshCw, DollarSign, Loader2 } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { TrendingUp, TrendingDown, Search, Star, StarOff, ChevronUp, ChevronDown, RefreshCw, Loader2, Cloud, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useAssetAnalysis } from '../ai-trader/react/useAssetAnalysis';
 import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
 import { requestEngineReasoning } from '../services/aiReasoning';
 import TradingViewChart from '../components/TradingViewChart';
+import { executeTrade, loadMetaApiConfig, checkMetaApiConnection } from '../services/metaapi';
+
+// Përkthen kodet e gabimit të MetaApi në mesazhe shqip.
+function errText(code: string, message?: string): string {
+  const map: Record<string, string> = {
+    metaapi_not_configured: 'Lidh llogarinë MT5 te MetaTrader / Auto-Trade para se të tregtosh.',
+    metaapi_unreachable: 'S\'u arrit MetaApi — kontrollo lidhjen te MetaTrader / Auto-Trade.',
+    kill_switch: 'Kill-switch është aktiv — çaktivizoje te MetaTrader / Auto-Trade.',
+    max_open_trades: 'Arritur limiti i pozicioneve të hapura.',
+    max_daily_loss: 'Arritur limiti i humbjes ditore.',
+    trade_failed: 'MetaApi e refuzoi urdhrin.',
+  };
+  return map[code] || message || code;
+}
 
 // Rendit aktivet me arin (XAUUSD) të parin — platforma është GOLDTRADE.
 const goldFirst = <T extends { symbol: string; category?: string }>(arr: T[]): T[] =>
@@ -25,21 +39,39 @@ type TradeType = 'buy' | 'sell';
 type CategoryFilter = 'all' | 'commodity' | 'forex' | 'crypto' | 'stock';
 
 export default function TradingPage() {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Asset | null>(null);
   const [category, setCategory] = useState<CategoryFilter>('all');
   const [search, setSearch] = useState('');
   const [tradeType, setTradeType] = useState<TradeType>('buy');
-  const [quantity, setQuantity] = useState('');
+  const [lot, setLot] = useState('0.01');
   const [loading, setLoading] = useState(true);
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeMsg, setTradeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // Gjendja e lidhjes reale MT5 (MetaApi).
+  const [metaConfigured, setMetaConfigured] = useState(false);
+  const [mtBalance, setMtBalance] = useState<number | null>(null);
+  const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
 
   useEffect(() => {
     fetchAssets();
-    if (user) fetchWatchlist();
+    if (user) { fetchWatchlist(); loadMeta(); }
+  }, [user]);
+
+  // Lexon konfigurimin MetaApi dhe balancën reale të MT5.
+  const loadMeta = useCallback(async () => {
+    if (!user) return;
+    const cfg = await loadMetaApiConfig(user.id);
+    const configured = !!(cfg.account_id && cfg.token);
+    setMetaConfigured(configured);
+    setMtMode(cfg.mode);
+    if (configured) {
+      const r = await checkMetaApiConnection();
+      const bal = (r.account as { balance?: number } | undefined)?.balance;
+      if (typeof bal === 'number') setMtBalance(bal);
+    }
   }, [user]);
 
   const fetchAssets = async () => {
@@ -65,56 +97,21 @@ export default function TradingPage() {
     }
   };
 
+  // Dërgon urdhër REAL në MT5 përmes MetaApi (jo simulim).
   const handleTrade = async () => {
-    if (!user || !selected || !quantity) return;
-    const qty = parseFloat(quantity);
-    if (isNaN(qty) || qty <= 0) return;
+    if (!selected) return;
+    const vol = parseFloat(lot);
+    if (isNaN(vol) || vol <= 0) { setTradeMsg({ type: 'error', text: 'Vendos një lot të vlefshëm (p.sh. 0.01).' }); return; }
+    if (!metaConfigured) { setTradeMsg({ type: 'error', text: errText('metaapi_not_configured') }); return; }
     setTradeLoading(true);
     setTradeMsg(null);
-    const total = qty * selected.current_price;
-    const fee = total * 0.001;
-
-    if (tradeType === 'buy' && profile && total + fee > profile.balance) {
-      setTradeMsg({ type: 'error', text: 'Balancë e pamjaftueshme për këtë tregti.' });
-      setTradeLoading(false);
-      return;
+    const r = await executeTrade({ action: tradeType === 'buy' ? 'BUY' : 'SELL', symbol: selected.symbol, volume: vol });
+    if (r.error) {
+      setTradeMsg({ type: 'error', text: errText(r.error, r.message) });
+    } else {
+      setTradeMsg({ type: 'success', text: `Urdhër ${tradeType === 'buy' ? 'BLEJ' : 'SHIT'} ${selected.symbol} (${vol} lot) dërguar në MT5 (${r.mode}). Order: ${r.order_id ?? 'n/a'}` });
+      loadMeta();
     }
-
-    if (tradeType === 'sell') {
-      const { data: pos } = await supabase.from('portfolio_positions').select('quantity').eq('user_id', user.id).eq('asset_id', selected.id).maybeSingle();
-      const owned = pos?.quantity ?? 0;
-      if (qty > owned) {
-        setTradeMsg({ type: 'error', text: `Ke vetëm ${owned.toFixed(6)} ${selected.symbol}.` });
-        setTradeLoading(false);
-        return;
-      }
-    }
-
-    const { error: te } = await supabase.from('trades').insert({ user_id: user.id, asset_id: selected.id, symbol: selected.symbol, type: tradeType, quantity: qty, price: selected.current_price, total, fee, status: 'executed', executed_at: new Date().toISOString() });
-    if (te) { setTradeMsg({ type: 'error', text: 'Tregtia dështoi. Provo përsëri.' }); setTradeLoading(false); return; }
-
-    const newBalance = tradeType === 'buy' ? (profile?.balance || 0) - total - fee : (profile?.balance || 0) + total - fee;
-    await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id);
-
-    const { data: ex } = await supabase.from('portfolio_positions').select('*').eq('user_id', user.id).eq('asset_id', selected.id).eq('status', 'open').maybeSingle();
-    if (ex) {
-      const nq = tradeType === 'buy' ? ex.quantity + qty : ex.quantity - qty;
-      const newEntryPrice = tradeType === 'buy'
-        ? (ex.entry_price * ex.quantity + selected.current_price * qty) / (ex.quantity + qty)
-        : ex.entry_price;
-      const unrealizedPnl = (selected.current_price - newEntryPrice) * nq;
-      if (nq <= 0) {
-        await supabase.from('portfolio_positions').update({ status: 'closed', closed_at: new Date().toISOString(), quantity: 0 }).eq('id', ex.id);
-      } else {
-        await supabase.from('portfolio_positions').update({ quantity: nq, entry_price: newEntryPrice, current_price: selected.current_price, unrealized_pnl: unrealizedPnl }).eq('id', ex.id);
-      }
-    } else if (tradeType === 'buy') {
-      await supabase.from('portfolio_positions').insert({ user_id: user.id, asset_id: selected.id, symbol: selected.symbol, type: 'long', quantity: qty, entry_price: selected.current_price, current_price: selected.current_price, unrealized_pnl: 0, status: 'open', opened_at: new Date().toISOString() });
-    }
-
-    await refreshProfile();
-    setTradeMsg({ type: 'success', text: `${tradeType === 'buy' ? 'U blenë' : 'U shitën'} ${qty} ${selected.symbol} me sukses.` });
-    setQuantity('');
     setTradeLoading(false);
   };
 
@@ -215,7 +212,7 @@ export default function TradingPage() {
                       <EngineSignalCard
                         analysis={engineAnalysis}
                         category={selected?.category}
-                        accountBalance={Number(profile?.balance) || 0}
+                        accountBalance={mtBalance ?? 0}
                         askAI={(an) => requestEngineReasoning(an, { assetId: selected?.id })}
                       />
                       {engineAnalysis.short && engineAnalysis.short.signal.action !== 'HOLD' && (
@@ -230,7 +227,16 @@ export default function TradingPage() {
                   )}
                 </div>
 
-                <h3 className="text-white font-semibold">Vendos porosi</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-white font-semibold">Vendos porosi <span className="text-gray-500 text-xs font-normal">(LIVE në MT5)</span></h3>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    !metaConfigured ? 'bg-gray-700/50 text-gray-400 border-gray-600'
+                    : mtMode === 'live' ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                    : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                  }`}>
+                    {!metaConfigured ? 'PA LIDHJE' : mtMode === 'live' ? 'LIVE' : 'DEMO'}
+                  </span>
+                </div>
                 <div className="flex rounded-xl overflow-hidden border border-gray-700">
                   <button onClick={() => setTradeType('buy')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>BLEJ</button>
                   <button onClick={() => setTradeType('sell')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>SHIT</button>
@@ -240,34 +246,39 @@ export default function TradingPage() {
                   <div className="text-white font-bold text-lg">{fp(selected)}</div>
                 </div>
                 <div>
-                  <label className="block text-gray-400 text-xs mb-1.5">Sasia</label>
-                  <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" min="0" step="any"
+                  <label className="block text-gray-400 text-xs mb-1.5">Lot (madhësia e porosisë)</label>
+                  <input type="number" value={lot} onChange={(e) => setLot(e.target.value)} placeholder="0.01" min="0.01" step="0.01"
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" />
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
-                  {['25%', '50%', '75%', '100%'].map((pct) => (
-                    <button key={pct} onClick={() => { const p = parseFloat(pct) / 100; setQuantity(((profile?.balance || 0) * p / selected.current_price).toFixed(6)); }}
-                      className="bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-xs py-1.5 rounded-lg transition-colors">{pct}</button>
+                  {['0.01', '0.05', '0.10', '0.25'].map((v) => (
+                    <button key={v} onClick={() => setLot(v)}
+                      className={`text-xs py-1.5 rounded-lg transition-colors ${lot === v ? 'bg-amber-500 text-gray-950 font-medium' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white'}`}>{v}</button>
                   ))}
                 </div>
-                {quantity && parseFloat(quantity) > 0 && (
-                  <div className="bg-gray-800/50 rounded-xl p-3 space-y-1.5">
-                    <div className="flex justify-between text-xs"><span className="text-gray-400">Nëntotali</span><span className="text-white">${(parseFloat(quantity) * selected.current_price).toFixed(2)}</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-gray-400">Tarifa (0.1%)</span><span className="text-white">${(parseFloat(quantity) * selected.current_price * 0.001).toFixed(2)}</span></div>
-                    <div className="flex justify-between text-xs font-semibold border-t border-gray-700 pt-1.5"><span className="text-gray-300">Totali</span><span className="text-white">${(parseFloat(quantity) * selected.current_price * 1.001).toFixed(2)}</span></div>
+
+                {mtBalance != null && (
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <Cloud className="w-3 h-3 text-amber-400" />Balanca reale MT5: <span className="text-amber-400 font-medium">${mtBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <DollarSign className="w-3 h-3" />Balanca: <span className="text-amber-400 font-medium">${(profile?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                </div>
+
+                {!metaConfigured && (
+                  <div className="flex items-start gap-2 text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    Lidh llogarinë tënde MT5 te <strong>MetaTrader / Auto-Trade</strong> për të tregtuar manual me para reale.
+                  </div>
+                )}
+
                 {tradeMsg && (
                   <div className={`text-xs rounded-xl px-3 py-2 ${tradeMsg.type === 'success' ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-red-900/30 text-red-400 border border-red-800/50'}`}>{tradeMsg.text}</div>
                 )}
-                <button onClick={handleTrade} disabled={tradeLoading || !quantity || parseFloat(quantity) <= 0}
+                <button onClick={handleTrade} disabled={tradeLoading || !metaConfigured || !lot || parseFloat(lot) <= 0}
                   className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${tradeType === 'buy' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
                   {tradeLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                   {tradeType === 'buy' ? 'BLEJ' : 'SHIT'} {selected.symbol}
                 </button>
+                <p className="text-[10px] text-gray-600 text-center">Porosia dërgohet direkt në MT5 përmes MetaApi. Mbylle te MetaTrader / Auto-Trade.</p>
               </div>
             </div>
           </>
