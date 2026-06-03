@@ -205,12 +205,13 @@ async function callAnthropic(apiKey: string, model: string, systemPrompt: string
       "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
     },
+    // Shënim: modelet e reja (p.sh. claude-opus-4-8) e refuzojnë `temperature`
+    // (e vjetëruar) me 400. Prandaj NUK e dërgojmë temperature për Anthropic.
     body: JSON.stringify({
       model: model || "claude-3-haiku-20240307",
       max_tokens: 1500,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
-      temperature: 0.1,
     }),
   });
 

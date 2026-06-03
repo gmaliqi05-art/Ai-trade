@@ -886,43 +886,19 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
               <Brain className="w-4 h-4 text-amber-400" />Konfigurimi i AI Providers
             </h3>
             <p className="text-gray-400 text-sm mb-4">
-              Konfiguro të paktën një provider AI për të aktivizuar analizën reale.
+              Platforma përdor <strong className="text-white">vetëm Claude (Anthropic)</strong> — modeli më i fuqishëm për arsyetim tregtimi.
               Provider-i AI është <strong className="text-white">truri që arsyeton</strong>: motori llogarit indikatorët nga të dhëna reale tregu,
-              dhe AI-ja shpjegon e konfirmon sinjalin (BLEJ/SHIT/PRIT). Kurrë vlera fake apo të fiksuara.
+              dhe Claude shpjegon e konfirmon sinjalin (BLEJ/SHIT/PRIT). Kurrë vlera fake apo të fiksuara.
             </p>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid gap-3">
               {[
                 {
-                  name: 'Groq',
-                  badge: 'FALAS',
-                  badgeColor: 'bg-green-500/20 text-green-400',
-                  desc: 'Opsioni më i mirë për të nisur — plotësisht falas dhe i shpejtë (LLaMA). Çelësi te console.groq.com',
-                  url: 'console.groq.com',
-                  slug: 'groq',
-                },
-                {
-                  name: 'OpenAI',
-                  badge: 'ME PAGESË',
-                  badgeColor: 'bg-blue-500/20 text-blue-400',
-                  desc: 'GPT-4o — shumë i saktë. Pagesë sipas përdorimit. Çelësi te platform.openai.com',
-                  url: 'platform.openai.com',
-                  slug: 'openai',
-                },
-                {
-                  name: 'Anthropic',
-                  badge: 'ME PAGESË',
+                  name: 'Anthropic Claude',
+                  badge: 'AKTIV',
                   badgeColor: 'bg-orange-500/20 text-orange-400',
-                  desc: 'Claude (Opus) — arsyetim i shkëlqyer, i rekomanduar për sinjale. Çelësi te console.anthropic.com',
+                  desc: 'Claude Opus 4.8 — arsyetimi më i mirë për tregti. Çelësi merret te console.anthropic.com (kërkon kredite/billing).',
                   url: 'console.anthropic.com',
                   slug: 'anthropic',
-                },
-                {
-                  name: 'Google Gemini',
-                  badge: 'PLAN FALAS',
-                  badgeColor: 'bg-sky-500/20 text-sky-400',
-                  desc: 'Gemini Flash — ka plan falas. Çelësi te aistudio.google.com',
-                  url: 'aistudio.google.com',
-                  slug: 'gemini',
                 },
               ].map(info => {
                 const provider = aiProviders.find(p => p.slug === info.slug);

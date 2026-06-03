@@ -69,7 +69,7 @@ export async function fetchCandles(input: FetchCandlesInput): Promise<CandleResu
     try {
       const candles = await fetchBinanceCandles(pair, timeframe, limit);
       if (candles.length >= 60) {
-        const provider = pair === 'PAXGUSDT' ? 'Binance · PAXG (ar)' : 'Binance';
+        const provider = pair === 'PAXGUSDT' ? 'Treg live · ari (PAXG)' : 'Treg live';
         return { candles, source: 'live', provider };
       }
     } catch {
