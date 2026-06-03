@@ -7,6 +7,7 @@ import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
 import { requestEngineReasoning } from '../services/aiReasoning';
 import TradingViewChart from '../components/TradingViewChart';
 import { executeTrade, loadMetaApiConfig, checkMetaApiConnection } from '../services/metaapi';
+import OpenPositionsPanel from '../components/OpenPositionsPanel';
 
 // Përkthen kodet e gabimit të MetaApi në mesazhe shqip.
 function errText(code: string, message?: string): string {
@@ -54,6 +55,7 @@ export default function TradingPage() {
   const [metaConfigured, setMetaConfigured] = useState(false);
   const [mtBalance, setMtBalance] = useState<number | null>(null);
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
+  const [autoOn, setAutoOn] = useState(false);
 
   useEffect(() => {
     fetchAssets();
@@ -67,6 +69,7 @@ export default function TradingPage() {
     const configured = !!(cfg.account_id && cfg.token);
     setMetaConfigured(configured);
     setMtMode(cfg.mode);
+    setAutoOn(!!cfg.auto_trade && !cfg.kill_switch && configured);
     if (configured) {
       const r = await checkMetaApiConnection();
       const bal = (r.account as { balance?: number } | undefined)?.balance;
@@ -196,10 +199,26 @@ export default function TradingPage() {
             </div>
 
             <div className="flex-1 flex overflow-hidden">
-              <div className="flex-1 p-4">
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl h-full overflow-hidden">
+              <div className="flex-1 p-4 overflow-y-auto space-y-4">
+                {/* Statusi i auto-trade */}
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-400">Auto-Trade:</span>
+                    <span className={`font-bold px-2 py-0.5 rounded-full text-xs border ${autoOn ? 'bg-green-500/15 text-green-400 border-green-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+                      {autoOn ? `AKTIV · ${mtMode.toUpperCase()}` : 'I FIKUR'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-gray-500">
+                    {autoOn ? 'Roboti hap trade vetë sipas sinjaleve. Menaxhoji te cilësimet.' : 'Aktivizoje te MetaTrader / Auto-Trade.'}
+                  </span>
+                </div>
+
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden h-[360px]">
                   <TradingViewChart symbol={selected.symbol} />
                 </div>
+
+                {/* Pozicionet e hapura live + mbyllje manuale */}
+                <OpenPositionsPanel configured={metaConfigured} />
               </div>
 
               <div className="w-72 bg-gray-900 border-l border-gray-800 p-5 flex flex-col gap-4 overflow-y-auto">
