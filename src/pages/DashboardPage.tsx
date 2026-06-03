@@ -41,6 +41,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
   const [autoTradesToday, setAutoTradesToday] = useState(0);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [chartTf, setChartTf] = useState('15m');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = async () => {
@@ -69,7 +70,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
 
   useEffect(() => {
     fetchData();
-    intervalRef.current = setInterval(fetchData, 30000);
+    intervalRef.current = setInterval(fetchData, 15000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -121,11 +122,24 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
 
       {/* Grafiku kryesor — Ari (XAUUSD) nga TradingView */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800 flex-wrap gap-2">
           <h3 className="text-white font-semibold flex items-center gap-2"><BarChart3 className="w-4 h-4 text-amber-400" />Ari — XAU/USD</h3>
-          <button onClick={() => onNavigate('trading')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">Tregto <ArrowRight className="w-3 h-3" /></button>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
+              {[
+                { v: '1m', l: '1m' }, { v: '5m', l: '5m' }, { v: '15m', l: '15m' },
+                { v: '1h', l: '1h' }, { v: '4h', l: '4h' }, { v: '1d', l: '1D' },
+              ].map(t => (
+                <button key={t.v} onClick={() => setChartTf(t.v)}
+                  className={`text-[11px] px-2 py-1 rounded-md font-medium transition-colors ${chartTf === t.v ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white'}`}>
+                  {t.l}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => onNavigate('trading')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">Tregto <ArrowRight className="w-3 h-3" /></button>
+          </div>
         </div>
-        <div className="h-[360px]"><TradingViewChart symbol="XAUUSD" timeframe="1h" /></div>
+        <div className="h-[360px]"><TradingViewChart symbol="XAUUSD" timeframe={chartTf} /></div>
       </div>
 
       <div className="grid lg:grid-cols-5 gap-6">

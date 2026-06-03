@@ -74,7 +74,7 @@ export default function MarketPricesPage({ onNavigate }: { onNavigate: (p: Clien
 
   useEffect(() => {
     fetchAssets();
-    intervalRef.current = setInterval(fetchAssets, 30000);
+    intervalRef.current = setInterval(fetchAssets, 15000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
@@ -109,7 +109,7 @@ export default function MarketPricesPage({ onNavigate }: { onNavigate: (p: Clien
           <p className="text-gray-400 text-sm mt-1">
             Çmime reale · kliko një aktiv për grafikun TradingView
             {lastUpdated && (
-              <span className="ml-2 text-gray-600 text-xs">· përditësuar {lastUpdated.toLocaleTimeString()} · rifreskohet çdo 30s</span>
+              <span className="ml-2 text-gray-600 text-xs">· përditësuar {lastUpdated.toLocaleTimeString()} · rifreskohet çdo 15s</span>
             )}
           </p>
         </div>
