@@ -125,7 +125,7 @@ export default function SignalsPage() {
             <div className="text-xs text-gray-300 leading-relaxed">
               <span className="font-semibold text-amber-400">Sinjale nga motori matematik (DEMO).</span>{' '}
               Indikatorë realë (EMA, RSI, MACD, Bollinger, ATR) → BLEJ / SHIT / PRIT, afatshkurtër + afatgjatë.
-              Crypto përdor qirinj realë (Binance); ari/indekset përdorin qirinj demo derisa të lidhet feed-i real.
+              Ari (XAUUSD) dhe crypto përdorin çmime live nga tregu; grafikët janë nga TradingView.
               Asnjë garanci fitimi — testo gjithmonë në demo.
             </div>
           </div>
