@@ -149,7 +149,7 @@ export default function MetaApiPanel() {
         <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
           <li><span className="text-gray-300">Lot default:</span> madhësia e çdo trade-i (0.01 = më i vogli, rrezik minimal).</li>
           <li><span className="text-gray-300">Lot maksimal:</span> kufiri i sipërm — asnjë trade s'kalon këtë lot.</li>
-          <li><span className="text-gray-300">Humbja maks. ditore ($):</span> shumë <strong className="text-amber-400">në para</strong> (monedha e llogarisë). P.sh. <code className="text-amber-300">15</code> = kur humbja e ditës arrin ~15$, roboti <strong>ndalon trade-t e reja automatike</strong>. Vendos sa je gati të humbasësh maksimumi në një ditë.</li>
+          <li><span className="text-gray-300">Humbja maks. ditore ($):</span> shumë <strong className="text-amber-400">në para</strong> (monedha e llogarisë). P.sh. <code className="text-amber-300">5</code> = (1) kur humbja e ditës arrin ~5$, roboti <strong>ndalon trade-t e reja</strong>; dhe (2) <strong>SL-ja e çdo trade-i auto kufizohet</strong> që humbja maks. e tij të mos kalojë ~5$. Vendos sa je gati të humbasësh maksimumi.</li>
           <li><span className="text-gray-300">Pozicione maks.:</span> sa trade mund të jenë hapur njëkohësisht (p.sh. 3).</li>
         </ul>
       </div>
