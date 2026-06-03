@@ -5,11 +5,10 @@ import AdminLayout from './components/AdminLayout';
 import ClientLayout from './components/ClientLayout';
 
 import DashboardPage from './pages/DashboardPage';
-import MarketPricesPage from './pages/MarketPricesPage';
+import MarketTerminalPage from './pages/MarketTerminalPage';
 import AIAnalysisPage from './pages/AIAnalysisPage';
 import ChartAnalysisPage from './pages/ChartAnalysisPage';
 import SignalsPage from './pages/SignalsPage';
-import TradingPage from './pages/TradingPage';
 import MetaTraderPage from './pages/MetaTraderPage';
 import LiveMarketPage from './pages/LiveMarketPage';
 import NotificationsPage from './pages/NotificationsPage';
@@ -61,11 +60,10 @@ function ClientApp() {
   return (
     <ClientLayout currentPage={currentPage} onNavigate={setCurrentPage}>
       {currentPage === 'dashboard' && <DashboardPage onNavigate={setCurrentPage} />}
-      {currentPage === 'market_prices' && <MarketPricesPage onNavigate={setCurrentPage} />}
+      {(currentPage === 'market_prices' || currentPage === 'trading') && <MarketTerminalPage onNavigate={setCurrentPage} />}
       {currentPage === 'ai' && <AIAnalysisPage />}
       {currentPage === 'chart_analysis' && <ChartAnalysisPage />}
       {currentPage === 'signals' && <SignalsPage />}
-      {currentPage === 'trading' && <TradingPage />}
       {currentPage === 'metatrader' && <MetaTraderPage />}
       {currentPage === 'live_market' && <LiveMarketPage />}
       {currentPage === 'notifications' && <NotificationsPage />}

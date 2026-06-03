@@ -19,7 +19,7 @@ const navSections = [
     label: 'Kryesore',
     items: [
       { id: 'dashboard' as ClientPage, label: 'Paneli', icon: LayoutDashboard },
-      { id: 'market_prices' as ClientPage, label: 'Çmimet e tregut', icon: Activity },
+      { id: 'market_prices' as ClientPage, label: 'MetaTrader 5 Live', icon: Activity },
     ],
   },
   {
@@ -32,7 +32,6 @@ const navSections = [
   {
     label: 'Tregtimi',
     items: [
-      { id: 'trading' as ClientPage, label: 'Tregto Live', icon: TrendingUp },
       { id: 'metatrader' as ClientPage, label: 'Lidhja & Konfigurimi', icon: Monitor },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
@@ -48,11 +47,11 @@ const navSections = [
 
 const pageLabels: Record<ClientPage, string> = {
   dashboard: 'Paneli',
-  market_prices: 'Çmimet e tregut',
+  market_prices: 'MetaTrader 5 Live',
   ai: 'Analizë AI',
   chart_analysis: 'Analizë grafiku',
   signals: 'Sinjalet',
-  trading: 'Tregto Live',
+  trading: 'MetaTrader 5 Live',
   metatrader: 'Lidhja & Konfigurimi',
   live_market: 'Grafikë live',
   notifications: 'Njoftimet',

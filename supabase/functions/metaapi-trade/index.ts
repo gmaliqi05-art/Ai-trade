@@ -90,6 +90,19 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // HISTORY — kthen deal-et e mbyllura (7 ditët e fundit) për trade-t e përfunduara.
+    if (action === "HISTORY") {
+      try {
+        const end = new Date();
+        const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(end.toISOString())}`;
+        const deals = await metaApiGet(config, path);
+        return json({ success: true, mode: config.mode, deals });
+      } catch (e) {
+        return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
+      }
+    }
+
     // CLOSE — mbyll një pozicion të hapur sipas id-së.
     if (action === "CLOSE") {
       const positionId = body.positionId;
