@@ -20,7 +20,12 @@ interface Signal {
   id: string; type: string; symbol: string; confidence: number;
   entry_price: number | null; target_price: number | null; stop_loss: number | null;
   source: string; created_at: string;
+  status?: string; outcome?: string | null; result_pct?: number | null; closed_at?: string | null;
 }
+
+// Orë e saktë e sinjalit (dt + orë:min).
+const fmtTime = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 function errText(code: string, message?: string): string {
   const map: Record<string, string> = {
@@ -37,6 +42,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const { user } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [doneSignals, setDoneSignals] = useState<Signal[]>([]);
   const [selected, setSelected] = useState('XAUUSD');
   const [tf, setTf] = useState('15m');
 
@@ -65,13 +71,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   const fetchBase = useCallback(async () => {
     const now = new Date().toISOString();
-    const [ar, sr] = await Promise.all([
+    const [ar, sr, dr] = await Promise.all([
       supabase.from('assets').select('id, symbol, name, category, current_price').gt('current_price', 0),
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at')
         .eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${now}`).order('confidence', { ascending: false }).limit(8),
+      // Sinjalet e PËRFUNDUARA (TP/SL/skaduar) — për raportim suksesi.
+      supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, outcome, result_pct, closed_at')
+        .in('status', ['hit_tp', 'hit_sl', 'expired']).order('closed_at', { ascending: false }).limit(12),
     ]);
     if (ar.data) setAssets(goldFirst(ar.data as Asset[]));
     if (sr.data) setSignals(sr.data as Signal[]);
+    if (dr.data) setDoneSignals(dr.data as Signal[]);
   }, []);
 
   // Lexon gjendjen reale të MT5: llogaria + historiku.
@@ -347,6 +357,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   {latestSignal.target_price && <span>TP: <span className="text-green-400">{Number(latestSignal.target_price).toLocaleString()}</span></span>}
                   {latestSignal.stop_loss && <span>SL: <span className="text-red-400">{Number(latestSignal.stop_loss).toLocaleString()}</span></span>}
                 </div>
+                <div className="text-[10px] text-gray-600 mt-1">🕒 Gjeneruar: {fmtTime(latestSignal.created_at)}</div>
               </button>
             ) : (
               <p className="text-gray-600 text-xs text-center py-2">Asnjë sinjal i gjeneruar ende.</p>
@@ -408,11 +419,56 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   {s.target_price && <span>Objektiv: <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
                   {s.stop_loss && <span>Stop: <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
                 </div>
+                <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}</div>
               </button>
             ))}
           </div>
         )}
         </div>
+      </div>
+
+      {/* Sinjale të përfunduara — raportim suksesi (TP/SL/skaduar) */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><History className="w-4 h-4 text-amber-400" />Sinjale të përfunduara</h3>
+          {doneSignals.length > 0 && (() => {
+            const decided = doneSignals.filter(s => s.outcome === 'tp' || s.outcome === 'sl');
+            const wins = decided.filter(s => s.outcome === 'tp').length;
+            const rate = decided.length ? Math.round((wins / decided.length) * 100) : 0;
+            return (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-800 text-gray-300">
+                Sukses: <span className={rate >= 50 ? 'text-green-400' : 'text-red-400'}>{rate}%</span> ({wins}/{decided.length})
+              </span>
+            );
+          })()}
+        </div>
+        {doneSignals.length === 0 ? (
+          <p className="text-gray-600 text-xs text-center py-3">Asnjë sinjal i përfunduar ende. Vlerësohen automatikisht kur arrijnë TP/SL.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-2">
+            {doneSignals.map(s => {
+              const tp = s.outcome === 'tp', sl = s.outcome === 'sl';
+              const pct = s.result_pct == null ? null : Number(s.result_pct);
+              return (
+                <div key={s.id} className="bg-gray-800/40 rounded-xl px-3 py-2">
+                  <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                    <span className="flex items-center gap-2">
+                      <span className="text-white text-sm font-bold">{s.symbol}</span>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${tp ? 'bg-green-500/20 text-green-400' : sl ? 'bg-red-500/20 text-red-400' : 'bg-gray-600/30 text-gray-400'}`}>
+                        {tp ? '✓ TP arritur' : sl ? '✗ SL arritur' : '⏱ Skadoi'}
+                      </span>
+                    </span>
+                    {pct != null && <span className={`text-xs font-bold ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pct >= 0 ? '+' : ''}{pct}%</span>}
+                  </div>
+                  <div className="text-[10px] text-gray-500">
+                    🕒 Gjeneruar: {fmtTime(s.created_at)} · Mbyllur: {fmtTime(s.closed_at)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Pozicionet e hapura (live) + mbyllje */}

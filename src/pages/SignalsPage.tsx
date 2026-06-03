@@ -16,8 +16,13 @@ interface Signal {
   id: string; type: string; symbol: string; entry_price: number;
   target_price: number; stop_loss: number; confidence: number; timeframe: string;
   analysis: string; status: string; created_at: string;
+  outcome?: string | null; result_pct?: number | null; closed_at?: string | null;
   assets: { symbol: string; name: string; type: string; current_price: number } | null;
 }
+
+// Datë + orë e saktë.
+const fmtDT = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 interface Alert {
   id: string; asset_id: string; symbol: string; condition: string; type: string;
@@ -38,9 +43,10 @@ const MARKETS: { key: MarketKey; label: string }[] = [
 export default function SignalsPage() {
   const { user, profile } = useAuth();
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [doneSignals, setDoneSignals] = useState<Signal[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [activeTab, setActiveTab] = useState<'engine' | 'signals' | 'alerts'>('engine');
+  const [activeTab, setActiveTab] = useState<'engine' | 'signals' | 'done' | 'alerts'>('engine');
   const [market, setMarket] = useState<MarketKey>('commodity');
   const [timeframe, setTimeframe] = useState<Timeframe>('1h');
   const [loading, setLoading] = useState(true);
@@ -54,17 +60,21 @@ export default function SignalsPage() {
   const fetchData = async () => {
     setLoading(true);
     const now = new Date().toISOString();
-    const [sr, ar, alr] = await Promise.all([
+    const [sr, ar, alr, dr] = await Promise.all([
       supabase.from('signals').select('id, type, symbol, entry_price, target_price, stop_loss, confidence, timeframe, analysis, status, source, created_at, expires_at')
         .eq('status', 'active')
         .or(`expires_at.is.null,expires_at.gt.${now}`)
         .order('confidence', { ascending: false }),
       supabase.from('assets').select('id, symbol, name, current_price, category, type'),
       user ? supabase.from('alerts').select('*').eq('user_id', user.id).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
+      // Sinjale të përfunduara (TP/SL/skaduar) për raportim.
+      supabase.from('signals').select('id, type, symbol, entry_price, target_price, stop_loss, confidence, timeframe, analysis, status, source, created_at, outcome, result_pct, closed_at')
+        .in('status', ['hit_tp', 'hit_sl', 'expired']).order('closed_at', { ascending: false }).limit(30),
     ]);
     if (sr.data) setSignals(sr.data as Signal[]);
     if (ar.data) { setAssets(ar.data); if (ar.data.length > 0 && !form.asset_id) setForm(f => ({ ...f, asset_id: ar.data[0].id })); }
     if (alr.data) setAlerts(alr.data as Alert[]);
+    if (dr.data) setDoneSignals(dr.data as Signal[]);
     setLoading(false);
   };
 
@@ -112,9 +122,9 @@ export default function SignalsPage() {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        {[{ id: 'engine', label: 'Motori AI', icon: Cpu }, { id: 'signals', label: 'Sinjale AI', icon: Zap }, { id: 'alerts', label: 'Alarmet e mia', icon: Bell }].map((t) => {
+        {[{ id: 'engine', label: 'Motori AI', icon: Cpu }, { id: 'signals', label: 'Sinjale AI', icon: Zap }, { id: 'done', label: 'Të përfunduara', icon: Clock }, { id: 'alerts', label: 'Alarmet e mia', icon: Bell }].map((t) => {
           const Icon = t.icon;
-          return <button key={t.id} onClick={() => setActiveTab(t.id as 'engine' | 'signals' | 'alerts')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === t.id ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}><Icon className="w-4 h-4" />{t.label}</button>;
+          return <button key={t.id} onClick={() => setActiveTab(t.id as 'engine' | 'signals' | 'done' | 'alerts')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === t.id ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}><Icon className="w-4 h-4" />{t.label}</button>;
         })}
       </div>
 
@@ -242,11 +252,55 @@ export default function SignalsPage() {
                   <div className="flex items-center justify-between text-xs text-gray-500">
                     <div className="flex items-center gap-1"><Clock className="w-3 h-3" />{s.timeframe}</div>
                     <div>R/R: <span className="text-amber-400 font-medium">1:{rr}</span></div>
-                    <div>{new Date(s.created_at).toLocaleDateString()}</div>
+                    <div className="flex items-center gap-1">🕒 {fmtDT(s.created_at)}</div>
                   </div>
                 </div>
               );
             })}
+          </div>
+        )
+      ) : activeTab === 'done' ? (
+        doneSignals.length === 0 ? (
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center"><Clock className="w-12 h-12 text-gray-700 mx-auto mb-3" /><p className="text-gray-400">Asnjë sinjal i përfunduar ende</p><p className="text-gray-600 text-xs mt-1">Vlerësohen automatikisht kur arrijnë TP ose SL.</p></div>
+        ) : (
+          <div>
+            {(() => {
+              const decided = doneSignals.filter(s => s.outcome === 'tp' || s.outcome === 'sl');
+              const wins = decided.filter(s => s.outcome === 'tp').length;
+              const rate = decided.length ? Math.round((wins / decided.length) * 100) : 0;
+              const avg = decided.length ? decided.reduce((a, s) => a + Number(s.result_pct || 0), 0) / decided.length : 0;
+              return (
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><div className="text-gray-500 text-[11px] mb-1">Shkalla e suksesit</div><div className={`font-bold text-lg ${rate >= 50 ? 'text-green-400' : 'text-red-400'}`}>{rate}%</div></div>
+                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><div className="text-gray-500 text-[11px] mb-1">TP / Total</div><div className="font-bold text-lg text-white">{wins}/{decided.length}</div></div>
+                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><div className="text-gray-500 text-[11px] mb-1">Mesatarja</div><div className={`font-bold text-lg ${avg >= 0 ? 'text-green-400' : 'text-red-400'}`}>{avg >= 0 ? '+' : ''}{avg.toFixed(2)}%</div></div>
+                </div>
+              );
+            })()}
+            <div className="grid md:grid-cols-2 gap-4">
+              {doneSignals.map((s) => {
+                const tp = s.outcome === 'tp', sl = s.outcome === 'sl';
+                const pct = s.result_pct == null ? null : Number(s.result_pct);
+                return (
+                  <div key={s.id} className={`bg-gray-900 border rounded-2xl p-5 ${tp ? 'border-green-500/30' : sl ? 'border-red-500/30' : 'border-gray-800'}`}>
+                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-bold text-lg">{s.symbol}</span>
+                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full uppercase border ${s.type === 'buy' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>{s.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
+                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${tp ? 'bg-green-500/20 text-green-400' : sl ? 'bg-red-500/20 text-red-400' : 'bg-gray-600/30 text-gray-400'}`}>{tp ? '✓ TP arritur' : sl ? '✗ SL arritur' : '⏱ Skadoi'}</span>
+                      </div>
+                      {pct != null && <span className={`font-bold text-lg ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pct >= 0 ? '+' : ''}{pct}%</span>}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="bg-gray-800/50 rounded-lg p-2 text-center"><div className="text-gray-500 text-xs mb-1">Hyrje</div><div className="text-white text-xs font-semibold">{s.entry_price?.toLocaleString()}</div></div>
+                      <div className="bg-green-500/10 rounded-lg p-2 text-center"><div className="text-gray-500 text-xs mb-1">Objektiv</div><div className="text-green-400 text-xs font-semibold">{s.target_price?.toLocaleString()}</div></div>
+                      <div className="bg-red-500/10 rounded-lg p-2 text-center"><div className="text-gray-500 text-xs mb-1">Stop</div><div className="text-red-400 text-xs font-semibold">{s.stop_loss?.toLocaleString()}</div></div>
+                    </div>
+                    <div className="text-xs text-gray-500">🕒 Gjeneruar: {fmtDT(s.created_at)} · Mbyllur: {fmtDT(s.closed_at)} · besueshmëri {s.confidence}%</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )
       ) : (
