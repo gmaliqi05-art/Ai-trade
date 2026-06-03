@@ -16,6 +16,24 @@ interface Cfg {
   user_id: string; account_id: string; token: string; region: string; mode: string;
   default_lot: number; max_lot: number; max_daily_loss: number; max_open_trades: number;
   kill_switch: boolean; min_confidence: number; auto_symbols: string;
+  dynamic_lot?: boolean; lot_conf_70?: number; lot_conf_80?: number; lot_conf_90?: number;
+}
+
+// Madhësia e pozicionit sipas % të analizës: më e lartë besueshmëria → lot më i madh.
+// Gjithmonë e kapur te max_lot. Kur dynamic_lot=false, përdor default_lot.
+function lotForConfidence(cfg: Cfg, conf: number): number {
+  let lot: number;
+  if (cfg.dynamic_lot === false) {
+    lot = Number(cfg.default_lot) || 0.01;
+  } else {
+    lot = Number(cfg.lot_conf_70 ?? 0.01);
+    if (conf >= 80) lot = Number(cfg.lot_conf_80 ?? 0.02);
+    if (conf >= 90) lot = Number(cfg.lot_conf_90 ?? 0.05);
+  }
+  const maxLot = Number(cfg.max_lot) || lot;
+  lot = Math.min(lot, maxLot);
+  if (!(lot >= 0.01)) lot = 0.01;
+  return Math.round(lot * 100) / 100;
 }
 
 interface Signal {
@@ -166,9 +184,8 @@ Deno.serve(async (req: Request) => {
         if (existing && existing.length > 0) continue;
 
         const action = sig.type === "buy" ? "BUY" : "SELL";
-        let volume = Math.min(cfg.default_lot, cfg.max_lot);
-        if (volume < 0.01) volume = 0.01;
-        volume = Math.round(volume * 100) / 100;
+        // Lot dinamik sipas besueshmërisë së sinjalit (≥70/≥80/≥90).
+        const volume = lotForConfidence(cfg, Number(sig.confidence) || 0);
 
         // Kufizo rrezikun e trade-it te SL: humbja maks. ≤ max_daily_loss.
         let stopLoss = sig.stop_loss != null ? Number(sig.stop_loss) : undefined;
