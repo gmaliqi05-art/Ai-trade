@@ -75,6 +75,36 @@ function atr(highs: number[], lows: number[], closes: number[], period = 14): nu
   for (let i = period + 1; i < n; i++) { prev = (prev * (period - 1) + tr[i]) / period; out[i] = prev; }
   return out;
 }
+// ADX (Wilder) — forca e trendit. ADX>20-25 = trend i fortë; <20 = treg pa drejtim.
+function adx(highs: number[], lows: number[], closes: number[], period = 14): number[] {
+  const n = closes.length, out = new Array(n).fill(NaN);
+  if (n <= period * 2 + 1) return out;
+  const plusDM = new Array(n).fill(0), minusDM = new Array(n).fill(0), tr = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const up = highs[i] - highs[i - 1], down = lows[i - 1] - lows[i];
+    plusDM[i] = up > down && up > 0 ? up : 0;
+    minusDM[i] = down > up && down > 0 ? down : 0;
+    tr[i] = Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1]));
+  }
+  let atrS = 0, plusS = 0, minusS = 0;
+  for (let i = 1; i <= period; i++) { atrS += tr[i]; plusS += plusDM[i]; minusS += minusDM[i]; }
+  const dx = new Array(n).fill(NaN);
+  for (let i = period + 1; i < n; i++) {
+    atrS = atrS - atrS / period + tr[i];
+    plusS = plusS - plusS / period + plusDM[i];
+    minusS = minusS - minusS / period + minusDM[i];
+    const plusDI = atrS === 0 ? 0 : 100 * plusS / atrS;
+    const minusDI = atrS === 0 ? 0 : 100 * minusS / atrS;
+    const denom = plusDI + minusDI;
+    dx[i] = denom === 0 ? 0 : 100 * Math.abs(plusDI - minusDI) / denom;
+  }
+  const firstDx = dx.findIndex((v) => !Number.isNaN(v));
+  if (firstDx === -1 || firstDx + period >= n) return out;
+  let sum = 0; for (let i = firstDx; i < firstDx + period; i++) sum += dx[i];
+  let adxPrev = sum / period; out[firstDx + period - 1] = adxPrev;
+  for (let i = firstDx + period; i < n; i++) { adxPrev = (adxPrev * (period - 1) + dx[i]) / period; out[i] = adxPrev; }
+  return out;
+}
 
 // ---------- Motori (port nga signal-engine.ts + trade-plan.ts, profil 'short') ----------
 interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; }
@@ -118,16 +148,87 @@ function generateShort(candles: Candle[]): EngineResult | null {
   };
 }
 
+// Analizë e një periudhe: kthen drejtimin, besueshmërinë, EMA200 dhe ADX.
+interface TFResult { action: "BUY" | "SELL" | "HOLD"; confidence: number; price: number; atr: number; ema200: number; adx: number; reasons: string[]; }
+function analyzeTF(candles: Candle[]): TFResult | null {
+  if (candles.length < 210) return null; // duhen ≥200 qirinj për EMA200
+  const closes = candles.map((c) => c.close), highs = candles.map((c) => c.high), lows = candles.map((c) => c.low);
+  const i = candles.length - 1;
+  const ef = ema(closes, 9)[i], es = ema(closes, 21)[i], e200 = ema(closes, 200)[i], r = rsi(closes, 14)[i];
+  const m = macd(closes), bb = bollinger(closes), a = atr(highs, lows, closes)[i], adxV = adx(highs, lows, closes)[i];
+  const price = closes[i], mh = m.histogram[i], bu = bb.upper[i], bl = bb.lower[i];
+
+  const rules: { w: number; pass: boolean; reason: string }[] = [];
+  if (!Number.isNaN(ef) && !Number.isNaN(es)) rules.push({ w: 2.5, pass: ef > es, reason: ef > es ? "EMA9>EMA21" : "EMA9<EMA21" });
+  if (!Number.isNaN(mh)) rules.push({ w: 1.5, pass: mh > 0, reason: mh > 0 ? "MACD pozitiv" : "MACD negativ" });
+  if (!Number.isNaN(es)) rules.push({ w: 1, pass: price > es, reason: price > es ? "Çmimi mbi EMA21" : "Çmimi nën EMA21" });
+  if (!Number.isNaN(r)) {
+    if (r < 30) rules.push({ w: 1, pass: true, reason: `RSI ${r.toFixed(0)} mbishitur` });
+    else if (r > 70) rules.push({ w: 1, pass: false, reason: `RSI ${r.toFixed(0)} mbiblerë` });
+    else rules.push({ w: 0.5, pass: r >= 50, reason: `RSI ${r.toFixed(0)}` });
+  }
+  if (!Number.isNaN(bl) && !Number.isNaN(bu)) {
+    if (price < bl) rules.push({ w: 0.75, pass: true, reason: "Poshtë Bollinger" });
+    else if (price > bu) rules.push({ w: 0.75, pass: false, reason: "Mbi Bollinger" });
+  }
+  const score = rules.reduce((s, x) => s + (x.pass ? x.w : -x.w), 0);
+  const maxScore = rules.reduce((s, x) => s + x.w, 0) || 1;
+  const confidence = Math.min(1, Math.abs(score) / maxScore);
+  let action: TFResult["action"] = "HOLD";
+  if (confidence >= 0.25) action = score > 0 ? "BUY" : "SELL";
+  return { action, confidence, price, atr: Number.isFinite(a) ? a : 0, ema200: Number.isFinite(e200) ? e200 : price, adx: Number.isFinite(adxV) ? adxV : 0, reasons: rules.map((x) => x.reason) };
+}
+
+// Gjenerues i PËRFORCUAR për auto-trade:
+//  - Konfirmim shumë-periudhash: 15m + 1h + 4h duhet të pajtohen.
+//  - Filtër trendi: çmimi mbi EMA200 për BLEJ, nën EMA200 për SHIT (në 1h).
+//  - Filtër force: ADX(1h) ≥ 20 (vetëm trende të forta).
+const ADX_MIN = 20;
+async function generateStrong(symbol: string): Promise<EngineResult | null> {
+  const [c15, c1h, c4h] = await Promise.all([
+    fetchCandles(symbol, "15m"), fetchCandles(symbol, "1h"), fetchCandles(symbol, "4h"),
+  ]);
+  if (!c15 || !c1h || !c4h) return null;
+  const s15 = analyzeTF(c15), s1h = analyzeTF(c1h), s4h = analyzeTF(c4h);
+  if (!s15 || !s1h || !s4h) return null;
+
+  const dir = s1h.action;
+  if (dir === "HOLD") return null;
+  // 1) Të treja periudhat në të njëjtin drejtim.
+  if (s15.action !== dir || s4h.action !== dir) return null;
+  // 2) Filtër trendi EMA200 (1h).
+  const price = s1h.price;
+  if (dir === "BUY" && !(price > s1h.ema200)) return null;
+  if (dir === "SELL" && !(price < s1h.ema200)) return null;
+  // 3) Filtër force ADX (1h).
+  if (s1h.adx < ADX_MIN) return null;
+
+  const confidence = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
+  const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
+  const isBuy = dir === "BUY";
+  return {
+    action: dir, confidence, entry: price,
+    stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
+    takeProfit: Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
+    reasons: [
+      `Multi-TF: 15m+1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
+      `Trendi: çmimi ${isBuy ? "mbi" : "nën"} EMA200`,
+      `ADX ${s1h.adx.toFixed(0)} (trend i fortë)`,
+      ...s1h.reasons.slice(0, 2),
+    ],
+  };
+}
+
 // ---------- Candles nga Binance (XAUUSD→PAXGUSDT) ----------
 const PAIRS: Record<string, string> = {
   BTCUSD: "BTCUSDT", ETHUSD: "ETHUSDT", SOLUSD: "SOLUSDT", BNBUSD: "BNBUSDT", XRPUSD: "XRPUSDT",
   ADAUSD: "ADAUSDT", DOGEUSD: "DOGEUSDT", AVAXUSD: "AVAXUSDT", LINKUSD: "LINKUSDT", DOTUSD: "DOTUSDT",
   XAUUSD: "PAXGUSDT",
 };
-async function fetchCandles(symbol: string): Promise<Candle[] | null> {
+async function fetchCandles(symbol: string, interval = "1h"): Promise<Candle[] | null> {
   const pair = PAIRS[symbol.toUpperCase()];
   if (!pair) return null; // simbol pa burim real (p.sh. indeks/aksion) — anashkalohet
-  const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1h&limit=260`;
+  const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=300`;
   const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (!resp.ok) throw new Error(`Binance ${resp.status}`);
   const raw = (await resp.json()) as unknown[][];
@@ -233,12 +334,11 @@ Deno.serve(async (req: Request) => {
     const sinceIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
     for (const [symbol, users] of symbolUsers) {
-      let candles: Candle[] | null;
-      try { candles = await fetchCandles(symbol); } catch (e) { out.push({ symbol, error: (e as Error).message }); continue; }
-      if (!candles) { out.push({ symbol, skipped: "pa burim real candlesh" }); continue; }
-
-      const sig = generateShort(candles);
-      if (!sig || sig.action === "HOLD") { out.push({ symbol, action: sig?.action ?? "n/a" }); continue; }
+      // Gjenerues i PËRFORCUAR: multi-timeframe + EMA200 + ADX. Kthen sinjal vetëm
+      // kur 15m/1h/4h pajtohen, çmimi në drejtim të trendit (EMA200) dhe ADX≥20.
+      let sig: EngineResult | null;
+      try { sig = await generateStrong(symbol); } catch (e) { out.push({ symbol, error: (e as Error).message }); continue; }
+      if (!sig || sig.action === "HOLD") { out.push({ symbol, action: sig?.action ?? "filtruar" }); continue; }
       const confPct = Math.round(sig.confidence * 100);
 
       for (const u of users) {
