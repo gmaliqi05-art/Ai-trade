@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ClientPage as Page } from '../App';
 import TradingViewChart from '../components/TradingViewChart';
+import { loadOpenPositions, type OpenPosition } from '../services/metaapi';
 
 interface Asset {
   id: string; symbol: string; name: string; category: string;
@@ -39,6 +40,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
   const [aiProviderActive, setAIProviderActive] = useState(false);
   const [metaApi, setMetaApi] = useState<MetaApiCfg | null>(null);
   const [autoTradesToday, setAutoTradesToday] = useState(0);
+  const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [chartTf, setChartTf] = useState('15m');
@@ -62,8 +64,16 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
     if (ar?.data) setAssets([...(ar.data as Asset[])].sort((a, b) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2) - (b.symbol === 'XAUUSD' ? 0 : b.category === 'commodity' ? 1 : 2)));
     if (sr?.data) setSignals(sr.data as Signal[]);
     if (pr?.data) setAIProviderActive((pr.data as unknown[]).length > 0);
-    setMetaApi((mac?.data as MetaApiCfg) ?? null);
+    const cfg = (mac?.data as MetaApiCfg) ?? null;
+    setMetaApi(cfg);
     setAutoTradesToday(ter?.count ?? 0);
+    // Pozicionet e hapura REALE nga MT5 (vetëm nëse ka llogari të lidhur).
+    if (cfg?.account_id) {
+      const pr2 = await loadOpenPositions();
+      setPositions(!pr2.error && Array.isArray(pr2.positions) ? pr2.positions : []);
+    } else {
+      setPositions([]);
+    }
     setLastUpdated(new Date());
     setLoading(false);
   };
@@ -76,6 +86,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
   }, [user]);
 
   const autoTradeOn = metaApi?.auto_trade && !!metaApi?.account_id && !metaApi?.kill_switch;
+  const totalPnl = positions.reduce((s, p) => s + Number(p.profit ?? 0), 0);
 
   return (
     <div className="p-6 space-y-6">
@@ -109,12 +120,12 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatusCard label="Sinjale aktive" value={signals.length.toString()} sub="Nga motori + AI" icon={Zap}
           status={signals.length > 0 ? 'ok' : 'neutral'} onClick={() => onNavigate('signals')} />
         <StatusCard label="Auto-Trade" value={autoTradeOn ? `Aktiv · ${metaApi?.mode?.toUpperCase()}` : 'I fikur'}
-          sub={autoTradeOn ? `${autoTradesToday} ekzekutime sot` : 'Konfiguro te MetaTrader'} icon={Cloud}
-          status={autoTradeOn ? 'ok' : 'neutral'} onClick={() => onNavigate('metatrader')} />
+          sub={metaApi?.account_id ? `${positions.length} aktive · ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}` : 'Konfiguro lidhjen'} icon={Cloud}
+          status={autoTradeOn ? 'ok' : 'neutral'} onClick={() => onNavigate('trading')} />
         <StatusCard label="Arsyetimi AI (Claude)" value={aiProviderActive ? 'Gati' : 'Pa konfiguruar'}
           sub={aiProviderActive ? 'Provider aktiv' : 'Shto çelës te Admin'} icon={Brain}
           status={aiProviderActive ? 'ok' : 'warn'} onClick={() => onNavigate('ai')} />
@@ -154,7 +165,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
             <button onClick={() => onNavigate('trading')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">Tregto <ArrowRight className="w-3 h-3" /></button>
           </div>
         </div>
-        <div className="h-[360px]"><TradingViewChart symbol="XAUUSD" timeframe={chartTf} /></div>
+        <div className="h-[440px]"><TradingViewChart symbol="XAUUSD" timeframe={chartTf} /></div>
       </div>
 
       <div className="grid lg:grid-cols-5 gap-6">
@@ -215,10 +226,42 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                     <ShieldCheck className="w-4 h-4" />Kill-switch aktiv — tregtitë e bllokuara.
                   </div>
                 )}
-                <div className="flex items-center justify-between px-3 py-2 text-xs">
-                  <span className="text-gray-400">Ekzekutime sot</span><span className="text-white font-semibold">{autoTradesToday}</span>
+                {/* Pozicionet aktive REALE + fitim/humbje live */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-gray-800/50 rounded-xl px-3 py-2 text-center">
+                    <div className="text-gray-500 text-[10px]">Aktive tani</div>
+                    <div className="text-white font-bold text-sm">{positions.length}</div>
+                  </div>
+                  <div className="bg-gray-800/50 rounded-xl px-3 py-2 text-center">
+                    <div className="text-gray-500 text-[10px]">Fitim/Humbje</div>
+                    <div className={`font-bold text-sm ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="bg-gray-800/50 rounded-xl px-3 py-2 text-center">
+                    <div className="text-gray-500 text-[10px]">Ekzekutime sot</div>
+                    <div className="text-white font-bold text-sm">{autoTradesToday}</div>
+                  </div>
                 </div>
-                <button onClick={() => onNavigate('metatrader')} className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">Menaxho <ArrowRight className="w-3 h-3" /></button>
+                {positions.length > 0 && (
+                  <div className="space-y-1">
+                    {positions.slice(0, 4).map(p => {
+                      const isBuy = (p.type || '').includes('BUY');
+                      const profit = Number(p.profit ?? 0);
+                      return (
+                        <div key={p.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-1.5">
+                          <span className="flex items-center gap-2">
+                            <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? 'BLEJ' : 'SHIT'}</span>
+                            <span className="text-white">{p.symbol}</span>
+                            <span className="text-gray-500">{p.volume} lot</span>
+                          </span>
+                          <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <button onClick={() => onNavigate('trading')} className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">Menaxho te Tregto Live <ArrowRight className="w-3 h-3" /></button>
               </div>
             )}
           </div>
@@ -303,15 +346,15 @@ function StatusCard({ label, value, sub, icon: Icon, status, onClick }: {
     neutral: { bg: 'bg-gray-700/50', icon: 'text-gray-400', dot: 'bg-gray-500' },
   }[status];
   return (
-    <button onClick={onClick} className="bg-gray-900 border border-gray-800 hover:border-gray-700 rounded-2xl p-4 text-left transition-all group">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-gray-400 text-xs font-medium">{label}</span>
-        <div className={`w-8 h-8 ${colors.bg} rounded-lg flex items-center justify-center`}><Icon className={`w-4 h-4 ${colors.icon}`} /></div>
+    <button onClick={onClick} className="bg-gray-900 border border-gray-800 hover:border-gray-700 rounded-xl p-3 text-left transition-all group">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-gray-400 text-xs font-medium truncate">{label}</span>
+        <div className={`w-6 h-6 ${colors.bg} rounded-lg flex items-center justify-center flex-shrink-0`}><Icon className={`w-3.5 h-3.5 ${colors.icon}`} /></div>
       </div>
-      <div className="text-lg font-bold text-white mb-1">{value}</div>
-      <div className="flex items-center gap-1.5">
-        <div className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
-        <span className="text-xs text-gray-500">{sub}</span>
+      <div className="text-base font-bold text-white leading-tight">{value}</div>
+      <div className="flex items-center gap-1.5 mt-0.5">
+        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.dot}`} />
+        <span className="text-[11px] text-gray-500 truncate">{sub}</span>
       </div>
     </button>
   );
