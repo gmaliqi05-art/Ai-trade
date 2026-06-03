@@ -81,9 +81,24 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-white">
-            Mirë se erdhe, {profile?.full_name?.split(' ')[0] || 'Trader'}
-          </h2>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-2xl font-bold text-white">
+              Mirë se erdhe, {profile?.full_name?.split(' ')[0] || 'Trader'}
+            </h2>
+            {metaApi?.account_id ? (
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                metaApi.mode === 'live'
+                  ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                  : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+              }`}>
+                {metaApi.mode === 'live' ? '● LIVE · para reale' : '● DEMO'}
+              </span>
+            ) : (
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full border bg-gray-700/50 text-gray-400 border-gray-600">
+                Pa llogari trade
+              </span>
+            )}
+          </div>
           <p className="text-gray-400 text-sm mt-1">
             Platformë analize tregu dhe sinjalesh me AI
             {lastUpdated && <span className="ml-2 text-gray-600 text-xs">· përditësuar {lastUpdated.toLocaleTimeString()}</span>}
