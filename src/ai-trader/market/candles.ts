@@ -13,7 +13,7 @@ export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
 export interface CandleResult {
   candles: Candle[];
   source: CandleSource;
-  /** Etiketë e lexueshme për UI (p.sh. "Binance" ose "Demo (i riprodhueshëm)"). */
+  /** Etiketë e lexueshme për UI (p.sh. "TradingView" ose "Demo (i riprodhueshëm)"). */
   provider: string;
 }
 
@@ -69,7 +69,7 @@ export async function fetchCandles(input: FetchCandlesInput): Promise<CandleResu
     try {
       const candles = await fetchBinanceCandles(pair, timeframe, limit);
       if (candles.length >= 60) {
-        const provider = pair === 'PAXGUSDT' ? 'Treg live · ari (PAXG)' : 'Treg live';
+        const provider = pair === 'PAXGUSDT' ? 'TradingView · ari' : 'TradingView';
         return { candles, source: 'live', provider };
       }
     } catch {
