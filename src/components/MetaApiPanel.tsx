@@ -70,10 +70,49 @@ export default function MetaApiPanel() {
       </div>
 
       <p className="text-xs text-gray-400 leading-relaxed">
-        Lidh llogarinë tënde MT5 në cloud për ekzekutim automatik me mbrojtje rreziku.
-        Krijo një token + account-id falas te <span className="text-amber-400">metaapi.cloud</span>.
-        <span className="text-amber-400 font-medium"> Demo i pari</span> — testo gjithmonë në demo para parave reale.
+        Roboti tregton në MT5-në tënde (Vantage) përmes <span className="text-amber-400">MetaApi.cloud</span> — një urë në cloud
+        që lidh aplikacionin me MetaTrader. <span className="text-amber-400 font-medium">Demo i pari</span> — testo gjithmonë në demo para parave reale.
       </p>
+
+      {/* Udhëzues hap-pas-hapi me lidhje korrekte */}
+      <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-4 space-y-2.5">
+        <div className="text-xs font-semibold text-white flex items-center gap-2">
+          <Cloud className="w-4 h-4 text-amber-400" />Si të lidhësh robotin me MT5 (4 hapa)
+        </div>
+        <ol className="space-y-2 text-[11px] text-gray-300 leading-relaxed">
+          <li className="flex gap-2">
+            <span className="text-amber-400 font-bold">1.</span>
+            <span>
+              <strong className="text-white">Llogaria MT5 (Vantage)</strong> — duhet ta kesh tashmë (Login, Password, Server p.sh. <code className="text-amber-300">VantageInternational-Demo</code>).
+              Nëse jo, hape te <a href="https://www.vantagemarkets.com/" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline">vantagemarkets.com</a> ose shkarko <a href="https://www.metatrader5.com/en/download" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline">MetaTrader 5</a>.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-amber-400 font-bold">2.</span>
+            <span>
+              Hap <a href="https://app.metaapi.cloud/accounts" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-semibold">app.metaapi.cloud/accounts</a> → krijo llogari falas →
+              <strong className="text-white"> Add account</strong> → zgjidh MT5 dhe fut Login/Password/Server-in e Vantage. MetaApi e lidh në cloud dhe të jep një <strong className="text-white">Account ID</strong>.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-amber-400 font-bold">3.</span>
+            <span>
+              Hap <a href="https://app.metaapi.cloud/token" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-semibold">app.metaapi.cloud/token</a> → krijo një <strong className="text-white">API Token</strong> dhe kopjoje.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-amber-400 font-bold">4.</span>
+            <span>
+              Ngjit <strong className="text-white">Account ID</strong> + <strong className="text-white">Token</strong> poshtë, zgjidh rajonin, kliko <strong className="text-white">Ruaj</strong> → <strong className="text-white">Testo lidhjen</strong>.
+              Tani roboti ekzekuton sinjalet automatikisht në MT5-në tënde.
+            </span>
+          </li>
+        </ol>
+        <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-700/50">
+          Dokumentacioni i plotë: <a href="https://metaapi.cloud/docs/client/" target="_blank" rel="noopener noreferrer" className="text-gray-400 underline">metaapi.cloud/docs</a>.
+          Grafikët në panel vijnë nga TradingView (vetëm pamje) — tregtimi ndodh përmes MetaApi → MT5.
+        </p>
+      </div>
 
       {/* Kredencialet */}
       <div className="grid sm:grid-cols-2 gap-3">
