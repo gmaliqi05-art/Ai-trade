@@ -26,6 +26,17 @@ function host(region: string) {
   return `https://mt-client-api-v1.${(region || "new-york").trim()}.agiliumtrade.ai`;
 }
 
+// Vlera monetare për 1.0 lëvizje çmimi për 1.0 lot (përafërt, sipas simbolit).
+// Përdoret për të kufizuar rrezikun (humbjen) e çdo trade-i te SL.
+function valuePerPrice(symbol: string): number {
+  const s = (symbol || "").toUpperCase();
+  if (s.includes("XAU")) return 100;     // ari: 100 ons/lot → $1 lëvizje = $100/lot
+  if (s.includes("XAG")) return 5000;    // argjend: 5000 ons/lot
+  if (/^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test(s)) return 1; // crypto
+  if (s.length === 6) return 100000;     // forex standard (lot = 100,000 njësi)
+  return 100;
+}
+
 async function maGet(cfg: Cfg, path: string) {
   const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
     headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(15000),
@@ -125,7 +136,22 @@ Deno.serve(async (req: Request) => {
           actionType: action === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL",
           symbol: sig.symbol, volume,
         };
-        if (sig.stop_loss != null) tradeBody.stopLoss = Number(sig.stop_loss);
+
+        // Kufizo rrezikun e trade-it te SL: humbja maksimale ≤ max_daily_loss (kufiri i përdoruesit).
+        // Nëse SL-ja e sinjalit rrezikon më shumë, e afrojmë SL-në që humbja të mos kalojë kufirin.
+        let stopLoss = sig.stop_loss != null ? Number(sig.stop_loss) : undefined;
+        const entry = sig.entry_price != null ? Number(sig.entry_price) : undefined;
+        const maxRisk = Number(cfg.max_daily_loss) || 0;
+        if (stopLoss != null && entry != null && maxRisk > 0) {
+          const vpp = valuePerPrice(sig.symbol);
+          const riskMoney = Math.abs(entry - stopLoss) * vpp * volume;
+          if (riskMoney > maxRisk) {
+            const maxDist = maxRisk / (vpp * volume);
+            stopLoss = action === "BUY" ? entry - maxDist : entry + maxDist;
+            stopLoss = Math.round(stopLoss * 100) / 100;
+          }
+        }
+        if (stopLoss != null) tradeBody.stopLoss = stopLoss;
         if (sig.target_price != null) tradeBody.takeProfit = Number(sig.target_price);
 
         try {
