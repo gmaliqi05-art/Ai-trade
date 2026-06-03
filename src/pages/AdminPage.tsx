@@ -887,39 +887,40 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
             </h3>
             <p className="text-gray-400 text-sm mb-4">
               Konfiguro të paktën një provider AI për të aktivizuar analizën reale.
-              Çdo analizë përdor <strong className="text-white">të dhëna reale tregu</strong> — kurrë vlera fake apo të fiksuara.
+              Provider-i AI është <strong className="text-white">truri që arsyeton</strong>: motori llogarit indikatorët nga të dhëna reale tregu,
+              dhe AI-ja shpjegon e konfirmon sinjalin (BLEJ/SHIT/PRIT). Kurrë vlera fake apo të fiksuara.
             </p>
             <div className="grid sm:grid-cols-2 gap-3">
               {[
                 {
                   name: 'Groq',
-                  badge: 'FREE',
+                  badge: 'FALAS',
                   badgeColor: 'bg-green-500/20 text-green-400',
-                  desc: 'Best option — completely free. Fast LLaMA 4 model. Get key at console.groq.com',
+                  desc: 'Opsioni më i mirë për të nisur — plotësisht falas dhe i shpejtë (LLaMA). Çelësi te console.groq.com',
                   url: 'console.groq.com',
                   slug: 'groq',
                 },
                 {
                   name: 'OpenAI',
-                  badge: 'PAID',
+                  badge: 'ME PAGESË',
                   badgeColor: 'bg-blue-500/20 text-blue-400',
-                  desc: 'GPT-4o — most accurate. Paid per use. Get key at platform.openai.com',
+                  desc: 'GPT-4o — shumë i saktë. Pagesë sipas përdorimit. Çelësi te platform.openai.com',
                   url: 'platform.openai.com',
                   slug: 'openai',
                 },
                 {
                   name: 'Anthropic',
-                  badge: 'PAID',
+                  badge: 'ME PAGESË',
                   badgeColor: 'bg-orange-500/20 text-orange-400',
-                  desc: 'Claude — excellent reasoning. Get key at console.anthropic.com',
+                  desc: 'Claude (Opus) — arsyetim i shkëlqyer, i rekomanduar për sinjale. Çelësi te console.anthropic.com',
                   url: 'console.anthropic.com',
                   slug: 'anthropic',
                 },
                 {
                   name: 'Google Gemini',
-                  badge: 'FREE TIER',
+                  badge: 'PLAN FALAS',
                   badgeColor: 'bg-sky-500/20 text-sky-400',
-                  desc: 'Gemini 1.5 Flash — free tier available. Get key at aistudio.google.com',
+                  desc: 'Gemini Flash — ka plan falas. Çelësi te aistudio.google.com',
                   url: 'aistudio.google.com',
                   slug: 'gemini',
                 },
@@ -930,7 +931,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-white font-semibold text-sm">{info.name}</span>
                       <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${info.badgeColor}`}>{info.badge}</span>
-                      {provider?.is_active && <span className="text-xs text-green-400 ml-auto flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-green-400" />Active</span>}
+                      {provider?.is_active && <span className="text-xs text-green-400 ml-auto flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-green-400" />Aktiv</span>}
                     </div>
                     <p className="text-gray-400 text-xs">{info.desc}</p>
                   </div>
