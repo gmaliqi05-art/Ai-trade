@@ -453,9 +453,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       </div>
 
-      {/* Sinjale të përfunduara — raportim suksesi (TP/SL/skaduar) */}
-      <CompletedSignals signals={doneSignals} variant="compact" />
-
       {/* Pozicionet e hapura (live) + mbyllje */}
       <OpenPositionsPanel configured={metaConfigured} />
 
@@ -499,6 +496,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           )}
         </div>
       )}
+
+      {/* Sinjale të përfunduara — raportim suksesi. Në FUND të faqes; s'ka nevojë të shihen vazhdimisht. */}
+      <CompletedSignals signals={doneSignals} variant="compact" />
     </div>
   );
 }
