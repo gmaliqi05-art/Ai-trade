@@ -493,14 +493,22 @@ Deno.serve(async (req: Request) => {
               continue;
             }
           }
-          // 2) Trailing me shkallë (relativ ndaj SL-së = R, default $2): mbron fitimin progresivisht.
-          //    +0.5R → break-even;  +1.0R → mbyll +0.5R;  +1.25R → mbyll +1.0R (p.sh. >+2.5$ → SL +2$).
+          // 2) Trailing me shkallë RELATIV NDAJ TP-së (fitimit të synuar): mbron fitimin progresivisht.
+          //    +¼ TP → break-even; +½ TP → mbyll +¼ TP; +¾ TP → mbyll +½ TP. (Nëse s'ka TP: bie te R.)
           if (sl != null) {
-            const R = Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
+            const tp = p.takeProfit != null ? Number(p.takeProfit) : null;
+            const tpDist = (tp != null && Number.isFinite(tp)) ? Math.abs(tp - entry) : 0;
             let newSL: number | null = null;
-            if (moved >= 1.25 * R) newSL = isBuy ? entry + 1.0 * R : entry - 1.0 * R;
-            else if (moved >= 1.0 * R) newSL = isBuy ? entry + 0.5 * R : entry - 0.5 * R;
-            else if (moved >= 0.5 * R) newSL = isBuy ? entry + 0.025 * R : entry - 0.025 * R;
+            if (tpDist > 0) {
+              if (moved >= 0.75 * tpDist) newSL = isBuy ? entry + 0.5 * tpDist : entry - 0.5 * tpDist;
+              else if (moved >= 0.5 * tpDist) newSL = isBuy ? entry + 0.25 * tpDist : entry - 0.25 * tpDist;
+              else if (moved >= 0.25 * tpDist) newSL = isBuy ? entry + 0.02 * tpDist : entry - 0.02 * tpDist; // ~break-even
+            } else {
+              const R = Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
+              if (moved >= 1.25 * R) newSL = isBuy ? entry + 1.0 * R : entry - 1.0 * R;
+              else if (moved >= 1.0 * R) newSL = isBuy ? entry + 0.5 * R : entry - 0.5 * R;
+              else if (moved >= 0.5 * R) newSL = isBuy ? entry + 0.025 * R : entry - 0.025 * R;
+            }
             if (newSL != null) {
               const better = isBuy ? newSL > sl : newSL < sl;
               if (better) {
