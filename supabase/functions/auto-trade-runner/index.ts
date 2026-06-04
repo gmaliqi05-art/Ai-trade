@@ -26,7 +26,7 @@ interface Signal {
 }
 
 interface Position {
-  id: string; type?: string; openPrice?: number; currentPrice?: number;
+  id: string; type?: string; symbol?: string; volume?: number; openPrice?: number; currentPrice?: number;
   stopLoss?: number; takeProfit?: number; profit?: number;
 }
 
@@ -320,6 +320,7 @@ async function inNewsBlackout(): Promise<boolean> {
 }
 
 const BREAKEVEN_R = 1.0;
+const MAX_HEAT_PCT = 6; // rreziku total i hapur (portfolio heat) s'kalon 6% të kapitalit
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -356,6 +357,13 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       let openTrades = positions.length;
+
+      // PORTFOLIO HEAT (Tier-2): rreziku total i hapur (distanca te SL × vlerë × lot).
+      let openHeat = 0;
+      for (const p of positions) {
+        const op = Number(p.openPrice), sl = p.stopLoss != null ? Number(p.stopLoss) : null, vol = Number(p.volume) || 0;
+        if (Number.isFinite(op) && sl != null && vol > 0) openHeat += Math.abs(op - sl) * valuePerPrice(p.symbol || "XAUUSD") * vol;
+      }
 
       // TRAILING / BREAK-EVEN
       for (const p of positions) {
@@ -482,6 +490,11 @@ Deno.serve(async (req: Request) => {
         // KONFIRMIM DOLLARI (DXY via EURUSD) — refuzo kur dollari shkon qartë kundër arit.
         if (isBuy && dxy === "strong") { await log("rejected", "Dollari i fortë (kundër BLEJ ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
         if (!isBuy && dxy === "weak") { await log("rejected", "Dollari i dobët (kundër SHIT ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
+        // PORTFOLIO HEAT — rreziku total i hapur + ky trade s'duhet të kalojë MAX_HEAT_PCT të kapitalit.
+        if (equity > 0 && perTradeRisk > 0 && (openHeat + perTradeRisk) > equity * (MAX_HEAT_PCT / 100)) {
+          await log("rejected", `Portfolio heat: rreziku total i hapur do kalonte ${MAX_HEAT_PCT}% të kapitalit`, null, null);
+          summary.push({ user: cfg.user_id, signal: sig.id, status: "portfolio_heat" }); continue;
+        }
 
         // CLAUDE SI PORTË — me kontekstin e grafikut MT5.
         const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);

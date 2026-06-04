@@ -274,9 +274,25 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
   if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) return null;
   reasons.push(`Nivele kyçe: mbështetje ~$${nearestBelow}, rezistencë ~$${nearestAbove}`);
 
-  // Besueshmëria me boost-et e harmonisë së arit.
+  // (5) CONFLUENCE SCORING (Tier-2) — numëron faktorët e pavarur mbështetës. Sa më
+  //     shumë faktorë pajtohen, aq më cilësor sinjali (përdoret për ranking + besueshmëri).
+  const c1hCloses = c1h.map((c) => c.close);
+  const rsi1h = rsi(c1hCloses, 14)[c1hCloses.length - 1];
+  const macdH = macd(c1hCloses).histogram[c1hCloses.length - 1];
+  const adxStrong = s1h.adx >= 25;
+  const rsiRoom = Number.isFinite(rsi1h) && (isBuy ? rsi1h < 68 : rsi1h > 32); // hapësirë para mbiblerjes/mbishitjes
+  const macdAligned = Number.isFinite(macdH) && (isBuy ? macdH > 0 : macdH < 0);
+  if (adxStrong) reasons.push("ADX i fortë (≥25)");
+  if (rsiRoom) reasons.push(`RSI me hapësirë (${Math.round(rsi1h)})`);
+  if (macdAligned) reasons.push("MACD në harmoni");
+  // 2 faktorë bazë (Multi-TF, EMA200) + 5 opsionalë (ADX≥25, sesion-overlap, D1, RSI, MACD).
+  const confFactors = 2 + (adxStrong ? 1 : 0) + (overlap ? 1 : 0) + (d1Boost > 0 ? 1 : 0) + (rsiRoom ? 1 : 0) + (macdAligned ? 1 : 0);
+  reasons.unshift(`Confluence ${confFactors}/7 (${Math.round((confFactors / 7) * 100)}%)`);
+
+  // Besueshmëria me boost-et e harmonisë + confluence (bonusi s'e ul kurrë bazën → s'pakëson sinjalet).
   const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
-  const confidence = Math.min(1, base + d1Boost + (overlap ? 0.05 : 0));
+  const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0);
+  const confidence = Math.min(1, base + d1Boost + (overlap ? 0.05 : 0) + confBonus);
   const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
   return {
     action: dir, confidence, entry: price,
