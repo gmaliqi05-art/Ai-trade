@@ -106,11 +106,12 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // HISTORY — kthen deal-et e mbyllura (7 ditët e fundit) për trade-t e përfunduara.
+    // HISTORY — kthen deal-et e mbyllura për trade-t e përfunduara (parametri 'days', default 7).
     if (action === "HISTORY") {
       try {
+        const days = Math.min(Math.max(Number(body.days) || 7, 1), 120);
         const end = new Date();
-        const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
         const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(end.toISOString())}`;
         const deals = await metaApiGet(config, path);
         return json({ success: true, mode: config.mode, deals });
