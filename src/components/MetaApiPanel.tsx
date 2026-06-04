@@ -190,6 +190,52 @@ export default function MetaApiPanel() {
         </p>
       </div>
 
+      {/* Metodat e tregtimit — afat-gjatë (swing) dhe afat-shkurt (scalp) */}
+      <div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><Layers className="w-4 h-4 text-amber-400" />Metodat e tregtimit</div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {/* Afat-gjatë */}
+          <div className={`rounded-xl border p-3 transition-colors ${cfg.strategy_swing ? 'bg-green-500/10 border-green-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-white">Afat-gjatë (swing)</span>
+              <button onClick={() => setAndSave('strategy_swing', !cfg.strategy_swing)}
+                className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.strategy_swing ? 'bg-green-500/15 text-green-400 border-green-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+                {cfg.strategy_swing ? 'AKTIV' : 'JOAKTIV'}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+              Analiza klasike e robotit në grafikët <span className="text-gray-300">15m / 1h / 4h</span>. Trade më të rralla, SL/TP të gjera (nga ATR), të konfirmuara nga Roboti. Më e qëndrueshme.
+            </p>
+          </div>
+          {/* Afat-shkurt */}
+          <div className={`rounded-xl border p-3 transition-colors ${cfg.strategy_scalp ? 'bg-amber-500/10 border-amber-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-white">Afat-shkurt (scalp)</span>
+              <button onClick={() => setAndSave('strategy_scalp', !cfg.strategy_scalp)}
+                className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.strategy_scalp ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+                {cfg.strategy_scalp ? 'AKTIV' : 'JOAKTIV'}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+              Roboti përcjell tregun çdo minutë në <span className="text-gray-300">1m / 5m</span> dhe hyn në lëvizje të shpejta me SL/TP të ngushtë. Del herët për të mbajtur profitin. Më shumë trade, më aktiv.
+            </p>
+          </div>
+        </div>
+
+        {/* Parametrat e scalp — vetëm kur është aktiv */}
+        <div className={`grid grid-cols-3 gap-3 mt-3 transition-opacity ${cfg.strategy_scalp ? '' : 'opacity-40 pointer-events-none'}`}>
+          <Field label="SL scalp ($ lëvizje)"><input type="number" step="0.1" min="0.3" value={cfg.scalp_sl_usd} onChange={e => set('scalp_sl_usd', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="TP scalp ($ lëvizje)"><input type="number" step="0.1" min="0.3" value={cfg.scalp_tp_usd} onChange={e => set('scalp_tp_usd', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="Scalp maks. njëkohësisht"><input type="number" step="1" min="1" value={cfg.scalp_max_trades} onChange={e => set('scalp_max_trades', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+        </div>
+        <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
+          <li><span className="text-gray-300">SL/TP scalp:</span> distancë në çmim — sa <strong className="text-amber-400">$</strong> lëviz ari nga hyrja. P.sh. SL <code className="text-amber-300">2</code> = mbyll nëse ari shkon 2$ kundër; TP <code className="text-amber-300">4</code> = merr fitimin te +4$.</li>
+          <li><span className="text-amber-400 font-semibold">ℹ️ Mbrojtja "qëndro në profit":</span> sapo trade-i shkon +1$, SL ngrihet te hyrja (s'kthehet në humbje); nëse momentumi kthehet ndërsa je në fitim, mbyllet menjëherë.</li>
+          <li><span className="text-gray-300">⚠️ Kujdes:</span> SL prej 2$ është shumë i ngushtë për arin — zhurma e tregut mund të prekë SL-në shpesh. Disa trade do mbyllen me humbje të vogël; kjo është normale për scalp.</li>
+          <li>Mund t'i mbash <strong className="text-white">të dyja aktive</strong> njëkohësisht — secila punon e pavarur brenda mbrojtjeve të rrezikut sipër.</li>
+        </ul>
+      </div>
+
       {/* Toggles të sigurisë */}
       <div className="flex flex-wrap gap-3">
         <Toggle on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo')}

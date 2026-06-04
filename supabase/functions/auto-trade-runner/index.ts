@@ -17,6 +17,12 @@ interface Cfg {
   kill_switch: boolean; min_confidence: number; auto_symbols: string;
   dynamic_lot?: boolean; lot_conf_70?: number; lot_conf_80?: number; lot_conf_90?: number;
   risk_per_trade_pct?: number; // % e kapitalit për trade (fixed-fractional); default 1%
+  // Dy strategjitë: afat-gjatë (swing, sinjale 15m/1h/4h) dhe afat-shkurt (scalp, momentum 1m/5m).
+  strategy_swing?: boolean;  // default true
+  strategy_scalp?: boolean;  // default false
+  scalp_sl_usd?: number;     // distanca e SL në çmim ($), default 2
+  scalp_tp_usd?: number;     // distanca e TP në çmim ($), default 4
+  scalp_max_trades?: number; // pozicione scalp njëkohësisht, default 2
 }
 
 interface Signal {
@@ -27,7 +33,13 @@ interface Signal {
 
 interface Position {
   id: string; type?: string; symbol?: string; volume?: number; openPrice?: number; currentPrice?: number;
-  stopLoss?: number; takeProfit?: number; profit?: number;
+  stopLoss?: number; takeProfit?: number; profit?: number; comment?: string; clientId?: string;
+}
+
+// Shenja që dallon pozicionet e hapura nga strategjia scalp (vendoset te `comment`/`clientId`).
+const SCALP_TAG = "SCALP";
+function isScalpPosition(p: Position): boolean {
+  return /SCALP/i.test(String(p.comment ?? "")) || /SCALP/i.test(String(p.clientId ?? ""));
 }
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
@@ -156,6 +168,56 @@ function swingLevels(highs: number[], lows: number[], lb = 3): { res: number[]; 
     if (pl) sup.push(lows[i]);
   }
   return { res, sup };
+}
+
+// ---------- MOTORI SCALP (afat-shkurt) ----------
+// Momentum i shpejtë: drejtimi nga 5m (EMA9 vs EMA21), hyrja konfirmohet nga thyerja
+// (breakout/breakdown) në 1m me qiri në drejtim + RSI me hapësirë + MACD hist pajtohet.
+// Nuk përdor Claude (është strategji e shpejtë reagimi brenda çiklit 1-minutësh).
+function scalpSignal(c1m: Candle[], c5m: Candle[]): { action: "BUY" | "SELL"; reason: string } | null {
+  if (c1m.length < 35 || c5m.length < 30) return null;
+  const cl1 = c1m.map((c) => c.close), cl5 = c5m.map((c) => c.close);
+  const i1 = cl1.length - 1, i5 = cl5.length - 1;
+
+  // Drejtimi i tregut nga 5m.
+  const e9_5 = ema(cl5, 9)[i5], e21_5 = ema(cl5, 21)[i5];
+  if (!Number.isFinite(e9_5) || !Number.isFinite(e21_5)) return null;
+  const dir5 = e9_5 > e21_5 ? "up" : e9_5 < e21_5 ? "down" : "flat";
+  if (dir5 === "flat") return null;
+
+  // Momentum në 1m.
+  const e9_1 = ema(cl1, 9)[i1], e21_1 = ema(cl1, 21)[i1];
+  const r1 = rsi(cl1, 14)[i1];
+  const mh1 = macdHist(cl1)[i1];
+  const price = cl1[i1];
+  const last = c1m[i1];
+  if (!Number.isFinite(e9_1) || !Number.isFinite(e21_1) || !Number.isFinite(r1) || !Number.isFinite(mh1)) return null;
+
+  // BUY: trend 5m↑, 1m EMA9>EMA21, çmimi mbi EMA9, qiri ngjitës, RSI<75, MACD hist>0,
+  //      dhe çmimi thyen maksimumin e 3 qirinjve të mëparshëm (breakout).
+  if (dir5 === "up" && e9_1 > e21_1 && price > e9_1 && last.close > last.open && r1 < 75 && mh1 > 0) {
+    const recentHigh = Math.max(c1m[i1 - 1].high, c1m[i1 - 2].high, c1m[i1 - 3].high);
+    if (price >= recentHigh) return { action: "BUY", reason: "Scalp: momentum 1m↑ në trend 5m↑ (breakout)" };
+  }
+  // SELL: pasqyrë e BUY.
+  if (dir5 === "down" && e9_1 < e21_1 && price < e9_1 && last.close < last.open && r1 > 25 && mh1 < 0) {
+    const recentLow = Math.min(c1m[i1 - 1].low, c1m[i1 - 2].low, c1m[i1 - 3].low);
+    if (price <= recentLow) return { action: "SELL", reason: "Scalp: momentum 1m↓ në trend 5m↓ (breakdown)" };
+  }
+  return null;
+}
+
+// A po kthehet momentum-i kundër pozicionit scalp (sinjal për dalje që të mbahet profiti)?
+// Për BUY: qiri i fundit 1m mbyllet poshtë EMA9 ose është qiri rënës i fortë → dil.
+function scalpReversal(c1m: Candle[], isBuy: boolean): boolean {
+  if (c1m.length < 12) return false;
+  const cl = c1m.map((c) => c.close);
+  const i = cl.length - 1;
+  const e9 = ema(cl, 9)[i];
+  if (!Number.isFinite(e9)) return false;
+  const last = c1m[i];
+  if (isBuy) return last.close < e9 && last.close < last.open;   // theu poshtë EMA9 me qiri rënës
+  return last.close > e9 && last.close > last.open;              // theu mbi EMA9 me qiri ngjitës
 }
 
 interface TF { tf: string; price: number; atr: number; snapshot: Record<string, unknown>; res: number[]; sup: number[]; }
@@ -357,6 +419,9 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       let openTrades = positions.length;
+      const scalpOn = cfg.strategy_scalp === true;
+      const swingOn = cfg.strategy_swing !== false; // default ON
+      let scalpOpen = positions.filter(isScalpPosition).length;
 
       // PORTFOLIO HEAT (Tier-2): rreziku total i hapur (distanca te SL × vlerë × lot).
       let openHeat = 0;
@@ -365,12 +430,49 @@ Deno.serve(async (req: Request) => {
         if (Number.isFinite(op) && sl != null && vol > 0) openHeat += Math.abs(op - sl) * valuePerPrice(p.symbol || "XAUUSD") * vol;
       }
 
-      // TRAILING / BREAK-EVEN
+      // Cache i qirinjve (një herë për simbol) — për menaxhimin scalp + hyrjet scalp.
+      const c1mCache = new Map<string, Candle[] | null>();
+      const c5mCache = new Map<string, Candle[] | null>();
+      const get1m = async (s: string) => { if (!c1mCache.has(s)) c1mCache.set(s, await fetchMt5Candles(cfg, s, "1m", 120)); return c1mCache.get(s) ?? null; };
+      const get5m = async (s: string) => { if (!c5mCache.has(s)) c5mCache.set(s, await fetchMt5Candles(cfg, s, "5m", 120)); return c5mCache.get(s) ?? null; };
+
+      // MENAXHIMI I POZICIONEVE TË HAPURA
       for (const p of positions) {
         const isBuy = String(p.type || "").includes("BUY");
         const entry = Number(p.openPrice), cur = Number(p.currentPrice);
         const sl = p.stopLoss != null ? Number(p.stopLoss) : null;
-        if (!Number.isFinite(entry) || !Number.isFinite(cur) || sl == null) continue;
+        if (!Number.isFinite(entry) || !Number.isFinite(cur)) continue;
+
+        // ---- SCALP: "qëndro gjithmonë në profit" (dalje e shpejtë + break-even agresiv) ----
+        if (isScalpPosition(p)) {
+          const moved = isBuy ? cur - entry : entry - cur; // $ në favor
+          const sym = (p.symbol || "XAUUSD").toUpperCase();
+          // 1) Dil nëse momentum-i 1m kthehet ndërsa jemi në profit (mbylle në fitim).
+          if (moved > 0.3) {
+            const c1 = await get1m(sym);
+            if (c1 && scalpReversal(c1, isBuy)) {
+              try { const r = await maTrade(cfg, { actionType: "POSITION_CLOSE_ID", positionId: p.id }); summary.push({ user: cfg.user_id, scalp_exit: p.id, reason: "reversal_lock_profit", ok: r.ok }); } catch { /* */ }
+              continue;
+            }
+          }
+          // 2) Break-even i shpejtë: +1$ → SL te hyrja; +2$ → mbyll fitimin (entry ±1$). Kurrë kthim në humbje.
+          if (sl != null) {
+            let newSL: number | null = null;
+            if (moved >= 2) newSL = isBuy ? entry + 1 : entry - 1;
+            else if (moved >= 1) newSL = isBuy ? entry + 0.05 : entry - 0.05;
+            if (newSL != null) {
+              const better = isBuy ? newSL > sl : newSL < sl;
+              if (better) {
+                const beSL = Math.round(newSL * 100) / 100;
+                try { const r = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: p.id, stopLoss: beSL, takeProfit: p.takeProfit ?? undefined }); summary.push({ user: cfg.user_id, scalp_trail: p.id, sl: beSL, ok: r.ok }); } catch { /* */ }
+              }
+            }
+          }
+          continue; // scalp s'kalon te break-even-i swing
+        }
+
+        // ---- SWING: BREAK-EVEN te +1R (ekzistues) ----
+        if (sl == null) continue;
         const riskDist = Math.abs(entry - sl);
         if (!(riskDist > 0)) continue;
         const moved = isBuy ? cur - entry : entry - cur;
@@ -387,16 +489,70 @@ Deno.serve(async (req: Request) => {
       const allowed = new Set((cfg.auto_symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
       if (allowed.size === 0) continue;
 
+      // Jashtë sesionit të arit s'hapim trade të reja (menaxhimi u bë më sipër).
+      if (!goldSessionOpen()) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
+      // Filtri i lajmeve: pauzë rreth NFP/CPI/FOMC.
+      if (newsBlock) { summary.push({ user: cfg.user_id, status: "news_blackout" }); continue; }
+
+      // ============ HYRJET SCALP (afat-shkurt: momentum 1m/5m, SL/TP të ngushtë) ============
+      if (scalpOn) {
+        const scalpMax = Math.max(1, Number(cfg.scalp_max_trades ?? 2));
+        const slUsd = Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
+        const tpUsd = Math.max(slUsd, Number(cfg.scalp_tp_usd ?? 4));
+        const maxRisk = Number(cfg.max_daily_loss) || 0;
+        for (const sym of allowed) {
+          if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
+          if (maxRisk > 0 && dayPnl <= -maxRisk) break; // limit humbjeje ditore
+          if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym)) continue; // një scalp për simbol
+          const [c1, c5] = await Promise.all([get1m(sym), get5m(sym)]);
+          if (!c1 || !c5) continue;
+          const sgl = scalpSignal(c1, c5);
+          if (!sgl) continue;
+
+          const isBuyS = sgl.action === "BUY";
+          const entryPx = c1[c1.length - 1].close;
+          const stopLoss = Math.round((isBuyS ? entryPx - slUsd : entryPx + slUsd) * 100) / 100;
+          const takeProfit = Math.round((isBuyS ? entryPx + tpUsd : entryPx - tpUsd) * 100) / 100;
+
+          // POSITION SIZING (fixed-fractional, si swing): lot nga rreziku real i SL ($).
+          const vpp = valuePerPrice(sym);
+          const riskPct = Number(cfg.risk_per_trade_pct) || 1;
+          const equityRisk = equity > 0 ? equity * (riskPct / 100) : 0;
+          let perTradeRisk = equityRisk > 0 ? equityRisk : maxRisk;
+          if (maxRisk > 0) perTradeRisk = Math.min(perTradeRisk || maxRisk, maxRisk);
+          let volume = lotForConfidence(cfg, 70);
+          if (perTradeRisk > 0) { const lotByRisk = Math.floor((perTradeRisk / (slUsd * vpp)) * 100) / 100; if (lotByRisk < volume) volume = lotByRisk; }
+          volume = Math.round(volume * 100) / 100;
+
+          const slog = (status: string, reason: string, orderId: string | null, raw: unknown) =>
+            db.from("trade_executions").insert({ user_id: cfg.user_id, symbol: sym, action: sgl.action, volume: Math.max(volume, 0.01),
+              entry_price: entryPx, stop_loss: stopLoss, take_profit: takeProfit, mode: cfg.mode, status, reason: reason.slice(0, 200), metaapi_order_id: orderId, raw_response: raw ?? null });
+
+          if (volume < 0.01) { await slog("rejected", `Scalp: rreziku i 0.01 lot e tejkalon kufirin ($${maxRisk}) — rrit kufirin ditor`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "too_risky" }); continue; }
+          const thisRisk = slUsd * vpp * volume;
+          if (equity > 0 && (openHeat + thisRisk) > equity * (MAX_HEAT_PCT / 100)) { await slog("rejected", `Scalp portfolio heat: rreziku total do kalonte ${MAX_HEAT_PCT}%`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "portfolio_heat" }); continue; }
+
+          const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, takeProfit, comment: SCALP_TAG, clientId: `${SCALP_TAG}_${Date.now()}` };
+          try {
+            const r = await maTrade(cfg, body);
+            if (!r.ok) { await slog("error", `Scalp trade ${r.status}`, null, r.body); summary.push({ user: cfg.user_id, scalp: sym, status: "error" }); continue; }
+            const br = brokerResult(r.body);
+            if (!br.ok) { await slog("rejected", `Scalp brokeri: ${br.msg || "refuzuar"} (${br.code})`, null, r.body); summary.push({ user: cfg.user_id, scalp: sym, status: "broker_rejected", code: br.code }); continue; }
+            await slog("executed", `Scalp auto (${cfg.mode}): ${sgl.reason}`, br.orderId, r.body);
+            openTrades += 1; scalpOpen += 1; openHeat += thisRisk;
+            summary.push({ user: cfg.user_id, scalp: sym, status: "executed", order: br.orderId });
+          } catch (e) { await slog("error", `Scalp: ${(e as Error).message}`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "error" }); }
+        }
+      }
+
+      // ============ HYRJET SWING (afat-gjatë: sinjalet 15m/1h/4h nga motori) ============
+      if (!swingOn) continue;
+
       const { data: signals } = await db
         .from("signals")
         .select("id, symbol, type, confidence, entry_price, target_price, stop_loss, analysis")
         .eq("user_id", cfg.user_id).eq("status", "active").gte("created_at", sinceIso)
         .order("created_at", { ascending: false }).limit(5);
-
-      // Jashtë sesionit të arit s'hapim trade të reja (trailing/break-even u bë më sipër).
-      if (!goldSessionOpen()) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
-      // Filtri i lajmeve: pauzë rreth NFP/CPI/FOMC.
-      if (newsBlock) { summary.push({ user: cfg.user_id, status: "news_blackout" }); continue; }
 
       const candidates = (signals ?? []).filter((s: Signal) =>
         (s.type === "buy" || s.type === "sell") &&
