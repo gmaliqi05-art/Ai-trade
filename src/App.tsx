@@ -6,11 +6,9 @@ import ClientLayout from './components/ClientLayout';
 
 import DashboardPage from './pages/DashboardPage';
 import MarketTerminalPage from './pages/MarketTerminalPage';
-import AIAnalysisPage from './pages/AIAnalysisPage';
 import ChartAnalysisPage from './pages/ChartAnalysisPage';
 import SignalsPage from './pages/SignalsPage';
 import MetaTraderPage from './pages/MetaTraderPage';
-import LiveMarketPage from './pages/LiveMarketPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -21,8 +19,8 @@ import AdminMetaTraderPage from './admin/AdminMetaTraderPage';
 import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
-  | 'dashboard' | 'market_prices' | 'ai' | 'chart_analysis'
-  | 'signals' | 'trading' | 'metatrader' | 'live_market' | 'notifications' | 'reports' | 'settings';
+  | 'dashboard' | 'market_prices' | 'chart_analysis'
+  | 'signals' | 'metatrader' | 'notifications' | 'reports' | 'settings';
 
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_assets' | 'admin_signals'
@@ -60,12 +58,10 @@ function ClientApp() {
   return (
     <ClientLayout currentPage={currentPage} onNavigate={setCurrentPage}>
       {currentPage === 'dashboard' && <DashboardPage onNavigate={setCurrentPage} />}
-      {(currentPage === 'market_prices' || currentPage === 'trading') && <MarketTerminalPage onNavigate={setCurrentPage} />}
-      {currentPage === 'ai' && <AIAnalysisPage />}
+      {currentPage === 'market_prices' && <MarketTerminalPage onNavigate={setCurrentPage} />}
       {currentPage === 'chart_analysis' && <ChartAnalysisPage />}
       {currentPage === 'signals' && <SignalsPage />}
       {currentPage === 'metatrader' && <MetaTraderPage />}
-      {currentPage === 'live_market' && <LiveMarketPage />}
       {currentPage === 'notifications' && <NotificationsPage />}
       {currentPage === 'reports' && <ReportsPage />}
       {currentPage === 'settings' && <SettingsPage />}

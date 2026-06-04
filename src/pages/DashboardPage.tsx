@@ -125,10 +125,10 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
           status={signals.length > 0 ? 'ok' : 'neutral'} onClick={() => onNavigate('signals')} />
         <StatusCard label="Auto-Trade" value={autoTradeOn ? `Aktiv · ${metaApi?.mode?.toUpperCase()}` : 'I fikur'}
           sub={metaApi?.account_id ? `${positions.length} aktive · ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}` : 'Konfiguro lidhjen'} icon={Cloud}
-          status={autoTradeOn ? 'ok' : 'neutral'} onClick={() => onNavigate('trading')} />
+          status={autoTradeOn ? 'ok' : 'neutral'} onClick={() => onNavigate('market_prices')} />
         <StatusCard label="Arsyetimi AI (Claude)" value={aiProviderActive ? 'Gati' : 'Pa konfiguruar'}
           sub={aiProviderActive ? 'Provider aktiv' : 'Shto çelës te Admin'} icon={Brain}
-          status={aiProviderActive ? 'ok' : 'warn'} onClick={() => onNavigate('ai')} />
+          status={aiProviderActive ? 'ok' : 'warn'} onClick={() => onNavigate('chart_analysis')} />
         <StatusCard label="Aktive të ndjekur" value={assets.length.toString()} sub="Çmime reale" icon={Activity}
           status="neutral" onClick={() => onNavigate('market_prices')} />
       </div>
@@ -162,7 +162,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                 </button>
               ))}
             </div>
-            <button onClick={() => onNavigate('trading')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">Tregto <ArrowRight className="w-3 h-3" /></button>
+            <button onClick={() => onNavigate('market_prices')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">Tregto <ArrowRight className="w-3 h-3" /></button>
           </div>
         </div>
         <div className="h-[440px]"><TradingViewChart symbol="XAUUSD" timeframe={chartTf} /></div>
@@ -261,7 +261,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                     })}
                   </div>
                 )}
-                <button onClick={() => onNavigate('trading')} className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">Menaxho te Tregto Live <ArrowRight className="w-3 h-3" /></button>
+                <button onClick={() => onNavigate('market_prices')} className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">Menaxho te Tregto Live <ArrowRight className="w-3 h-3" /></button>
               </div>
             )}
           </div>
