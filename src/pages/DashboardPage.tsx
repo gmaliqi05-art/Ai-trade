@@ -50,7 +50,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
   const fetchData = async () => {
     const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
     const queries: PromiseLike<unknown>[] = [
-      supabase.from('assets').select('id, symbol, name, category, current_price, price_change_24h, price_change_pct').order('category').limit(8),
+      supabase.from('assets').select('id, symbol, name, category, current_price, price_change_24h, price_change_pct').eq('symbol', 'XAUUSD'),
       supabase.from('signals').select('id, type, symbol, confidence, timeframe, analysis, entry_price, target_price, stop_loss, source, created_at').eq('status', 'active').order('created_at', { ascending: false }).limit(6),
       supabase.from('ai_providers').select('id').eq('is_active', true).limit(1),
     ];
@@ -133,7 +133,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         <StatusCard label="Arsyetimi AI (Claude)" value={aiProviderActive ? 'Gati' : 'Pa konfiguruar'}
           sub={aiProviderActive ? 'Provider aktiv' : 'Shto çelës te Admin'} icon={Brain}
           status={aiProviderActive ? 'ok' : 'warn'} onClick={() => onNavigate('chart_analysis')} />
-        <StatusCard label="Aktive të ndjekur" value={assets.length.toString()} sub="Çmime reale" icon={Activity}
+        <StatusCard label="Ari (XAU/USD)" value={assets[0]?.current_price ? `$${Number(assets[0].current_price).toLocaleString()}` : '—'}
+          sub={assets[0]?.price_change_pct != null ? `${Number(assets[0].price_change_pct) >= 0 ? '+' : ''}${Number(assets[0].price_change_pct).toFixed(2)}% sot` : 'Çmim real'} icon={Activity}
           status="neutral" onClick={() => onNavigate('market_prices')} />
       </div>
 
