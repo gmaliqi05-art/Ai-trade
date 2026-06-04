@@ -526,8 +526,9 @@ Deno.serve(async (req: Request) => {
       // ============ HYRJET SCALP (afat-shkurt: momentum 1m/5m, SL/TP të ngushtë) ============
       if (scalpOn) {
         const scalpMax = Math.max(1, Number(cfg.scalp_max_trades ?? 2));
-        const slUsd = Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
-        const tpUsd = Math.max(slUsd, Number(cfg.scalp_tp_usd ?? 4));
+        const baseSL = Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
+        const baseTP = Math.max(baseSL, Number(cfg.scalp_tp_usd ?? 4));
+        const scalpRR = baseSL > 0 ? baseTP / baseSL : 2; // R:R i zgjedhur nga cilësimet (default 2.0)
         const maxRisk = Number(cfg.max_daily_loss) || 0;
         for (const sym of allowed) {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
@@ -543,6 +544,15 @@ Deno.serve(async (req: Request) => {
           if (!c1 || !c5) continue;
           const sgl = scalpSignal(c1, c5, cfg.scalp_small_moves === true);
           if (!sgl) continue;
+
+          // SL/TP SIPAS ATR(5m): stop-i jashtë zhurmës momentale — më i gjerë kur tregu lëviz
+          // shpejt, më i ngushtë kur është i qetë. R:R ruhet; kapet në [0.7×, 2×] të bazës.
+          const a5 = atr(c5.map((c) => c.high), c5.map((c) => c.low), c5.map((c) => c.close), 14);
+          const atr5v = a5[a5.length - 1];
+          let slUsd = baseSL;
+          if (Number.isFinite(atr5v) && atr5v > 0) slUsd = Math.min(Math.max(atr5v, Math.max(0.3, 0.7 * baseSL)), 2 * baseSL);
+          slUsd = Math.round(slUsd * 100) / 100;
+          const tpUsd = Math.round(slUsd * scalpRR * 100) / 100;
 
           const isBuyS = sgl.action === "BUY";
           const entryPx = c1[c1.length - 1].close;
