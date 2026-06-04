@@ -535,12 +535,15 @@ Deno.serve(async (req: Request) => {
           let volume = lotForConfidence(cfg, 70);
           if (perTradeRisk > 0) { const lotByRisk = Math.floor((perTradeRisk / (slUsd * vpp)) * 100) / 100; if (lotByRisk < volume) volume = lotByRisk; }
           volume = Math.round(volume * 100) / 100;
+          // Lejo lotin minimal 0.01 edhe nëse 1% del nën të — mjafton që rreziku i tij të mos e kalojë kufirin DITOR.
+          const minLotRisk = slUsd * vpp * 0.01;
+          if (volume < 0.01) volume = (maxRisk <= 0 || minLotRisk <= maxRisk) ? 0.01 : 0;
 
           const slog = (status: string, reason: string, orderId: string | null, raw: unknown) =>
             db.from("trade_executions").insert({ user_id: cfg.user_id, symbol: sym, action: sgl.action, volume: Math.max(volume, 0.01),
               entry_price: entryPx, stop_loss: stopLoss, take_profit: takeProfit, mode: cfg.mode, status, reason: reason.slice(0, 200), metaapi_order_id: orderId, raw_response: raw ?? null });
 
-          if (volume < 0.01) { await slog("rejected", `Scalp: rreziku i 0.01 lot e tejkalon kufirin ($${maxRisk}) — rrit kufirin ditor`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "too_risky" }); continue; }
+          if (volume < 0.01) { await slog("rejected", `Scalp: edhe 0.01 lot rrezikon $${minLotRisk.toFixed(2)} > kufiri ditor ($${maxRisk}) — rrit kufirin ditor`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "too_risky" }); continue; }
           const thisRisk = slUsd * vpp * volume;
           // Mbrojtja 6% (portfolio heat) vlen për lote të mëdha. Lotin MINIMAL e lejojmë sa kohë
           // rreziku total i hapur mbetet brenda kufirit DITOR (max_daily_loss) — mbrojtja reale për llogari të vogël.
@@ -548,7 +551,7 @@ Deno.serve(async (req: Request) => {
           const withinDaily = maxRisk <= 0 || (openHeat + thisRisk) <= maxRisk;
           if (equity > 0 && (openHeat + thisRisk) > heatCap && !(volume <= 0.01 && withinDaily)) { await slog("rejected", `Scalp portfolio heat: rreziku total do kalonte ${MAX_HEAT_PCT}%`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "portfolio_heat" }); continue; }
 
-          const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, takeProfit, comment: SCALP_TAG, clientId: `${SCALP_TAG}_${Date.now()}` };
+          const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, takeProfit, comment: SCALP_TAG };
           try {
             const r = await maTrade(cfg, body);
             if (!r.ok) { await slog("error", `Scalp trade ${r.status}`, null, r.body); summary.push({ user: cfg.user_id, scalp: sym, status: "error" }); continue; }
