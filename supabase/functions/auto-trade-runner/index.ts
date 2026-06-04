@@ -23,6 +23,7 @@ interface Cfg {
   scalp_sl_usd?: number;     // distanca e SL në çmim ($), default 2
   scalp_tp_usd?: number;     // distanca e TP në çmim ($), default 4
   scalp_max_trades?: number; // pozicione scalp njëkohësisht, default 2
+  scalp_small_moves?: boolean; // hyn edhe në lëvizje të vogla (kushte më të lehta); default false
 }
 
 interface Signal {
@@ -174,7 +175,7 @@ function swingLevels(highs: number[], lows: number[], lb = 3): { res: number[]; 
 // Momentum i shpejtë: drejtimi nga 5m (EMA9 vs EMA21), hyrja konfirmohet nga thyerja
 // (breakout/breakdown) në 1m me qiri në drejtim + RSI me hapësirë + MACD hist pajtohet.
 // Nuk përdor Claude (është strategji e shpejtë reagimi brenda çiklit 1-minutësh).
-function scalpSignal(c1m: Candle[], c5m: Candle[]): { action: "BUY" | "SELL"; reason: string } | null {
+function scalpSignal(c1m: Candle[], c5m: Candle[], loose = false): { action: "BUY" | "SELL"; reason: string } | null {
   if (c1m.length < 35 || c5m.length < 30) return null;
   const cl1 = c1m.map((c) => c.close), cl5 = c5m.map((c) => c.close);
   const i1 = cl1.length - 1, i5 = cl5.length - 1;
@@ -193,6 +194,17 @@ function scalpSignal(c1m: Candle[], c5m: Candle[]): { action: "BUY" | "SELL"; re
   const last = c1m[i1];
   if (!Number.isFinite(e9_1) || !Number.isFinite(e21_1) || !Number.isFinite(r1) || !Number.isFinite(mh1)) return null;
 
+  // ---- HYRJE NË LËVIZJE TË VOGLA (loose): vetëm trend 5m + drejtim 1m + qiri në drejtim ----
+  // Pa pritur breakout/MACD — hyn në çdo vazhdim të vogël të trendit. Shumë më shumë trade.
+  if (loose) {
+    if (dir5 === "up" && price > e9_1 && last.close > last.open && r1 < 80)
+      return { action: "BUY", reason: "Scalp (lëvizje të vogla): vazhdim 1m në trend 5m↑" };
+    if (dir5 === "down" && price < e9_1 && last.close < last.open && r1 > 20)
+      return { action: "SELL", reason: "Scalp (lëvizje të vogla): vazhdim 1m në trend 5m↓" };
+    return null;
+  }
+
+  // ---- HYRJE STANDARDE (strict): kërkon breakout të qartë + MACD që pajtohet ----
   // BUY: trend 5m↑, 1m EMA9>EMA21, çmimi mbi EMA9, qiri ngjitës, RSI<75, MACD hist>0,
   //      dhe çmimi thyen maksimumin e 3 qirinjve të mëparshëm (breakout).
   if (dir5 === "up" && e9_1 > e21_1 && price > e9_1 && last.close > last.open && r1 < 75 && mh1 > 0) {
@@ -506,7 +518,7 @@ Deno.serve(async (req: Request) => {
           if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym)) continue; // një scalp për simbol
           const [c1, c5] = await Promise.all([get1m(sym), get5m(sym)]);
           if (!c1 || !c5) continue;
-          const sgl = scalpSignal(c1, c5);
+          const sgl = scalpSignal(c1, c5, cfg.scalp_small_moves === true);
           if (!sgl) continue;
 
           const isBuyS = sgl.action === "BUY";

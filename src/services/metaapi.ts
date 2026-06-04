@@ -34,6 +34,8 @@ export interface MetaApiConfig {
   scalp_tp_usd: number;
   /** Sa pozicione scalp njëkohësisht maksimumi. Default 2. */
   scalp_max_trades: number;
+  /** Scalp hyn edhe në lëvizje të vogla (kushte më të lehta, më shumë trade). Default OFF. */
+  scalp_small_moves: boolean;
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
@@ -43,7 +45,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   dynamic_lot: true, lot_conf_70: 0.01, lot_conf_80: 0.02, lot_conf_90: 0.05,
   risk_per_trade_pct: 1,
   strategy_swing: true, strategy_scalp: false,
-  scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_max_trades: 2,
+  scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_max_trades: 2, scalp_small_moves: false,
 };
 
 export interface TradeExecution {
@@ -72,6 +74,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     scalp_sl_usd: Number(data.scalp_sl_usd ?? 2),
     scalp_tp_usd: Number(data.scalp_tp_usd ?? 4),
     scalp_max_trades: Number(data.scalp_max_trades ?? 2),
+    scalp_small_moves: !!data.scalp_small_moves,
   };
 }
 

@@ -222,6 +222,20 @@ export default function MetaApiPanel() {
           </div>
         </div>
 
+        {/* Hyrja në lëvizje të vogla — buton i veçantë brenda scalp */}
+        <div className={`flex items-center justify-between rounded-xl border p-3 mt-3 transition-opacity ${cfg.strategy_scalp ? '' : 'opacity-40 pointer-events-none'} ${cfg.scalp_small_moves ? 'bg-amber-500/10 border-amber-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+          <div className="pr-3">
+            <span className="text-sm font-semibold text-white">Hyr edhe në lëvizje të vogla</span>
+            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+              Kur AKTIV, scalp-i hyn me kushte më të lehta (vetëm trend + drejtim, pa pritur breakout). <span className="text-amber-400">Shumë më shumë trade</span> — edhe në treg të qetë — por më shumë humbje të vogla. Kur JOAKTIV, pret vetëm lëvizje të forta (breakout).
+            </p>
+          </div>
+          <button onClick={() => setAndSave('scalp_small_moves', !cfg.scalp_small_moves)}
+            className={`shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.scalp_small_moves ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+            {cfg.scalp_small_moves ? 'AKTIV' : 'JOAKTIV'}
+          </button>
+        </div>
+
         {/* Parametrat e scalp — vetëm kur është aktiv */}
         <div className={`grid grid-cols-3 gap-3 mt-3 transition-opacity ${cfg.strategy_scalp ? '' : 'opacity-40 pointer-events-none'}`}>
           <Field label="SL scalp ($ lëvizje)"><input type="number" step="0.1" min="0.3" value={cfg.scalp_sl_usd} onChange={e => set('scalp_sl_usd', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
