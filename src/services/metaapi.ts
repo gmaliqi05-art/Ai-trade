@@ -115,6 +115,7 @@ interface TradeResponse {
   success?: boolean; error?: string; message?: string; mode?: string;
   order_id?: string | null; account?: AccountInfo; positions?: OpenPosition[];
   deals?: HistoryDeal[]; candles?: Mt5Candle[];
+  price?: { symbol?: string; bid?: number; ask?: number; brokerTime?: string; time?: string };
 }
 
 async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> {
@@ -158,6 +159,11 @@ export function loadTradeHistory(days = 7) {
 /** Lexon qirinjtë historikë nga MT5 për një simbol + periudhë. */
 export function loadCandles(symbol: string, timeframe: string, limit = 300) {
   return callTrade({ action: 'CANDLES', symbol, timeframe, limit });
+}
+
+/** Çmimi REAL live i brokerit (bid/ask) për një simbol — përkon me app-in MT5. */
+export function loadSymbolPrice(symbol: string) {
+  return callTrade({ action: 'PRICE', symbol });
 }
 
 /** Ndryshon SL/TP të një pozicioni të hapur (dërgon në MT5). */
