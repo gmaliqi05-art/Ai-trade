@@ -1,7 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, Download, Plus, RefreshCw, Brain, Zap, BarChart2, Clock, CheckCircle, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, Monitor } from 'lucide-react';
+import { FileText, Download, Plus, RefreshCw, Brain, Zap, BarChart2, Clock, CheckCircle, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, Monitor, Activity, Wallet } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { loadTradeHistory, type HistoryDeal } from '../services/metaapi';
+
+// Përmbledh deal-et e mbyllura nga MT5 → numri, fituese/humbëse, % suksesi, P&L neto.
+interface TradeResults { count: number; wins: number; losses: number; winRate: number; net: number; }
+function summarizeDeals(deals: HistoryDeal[]): TradeResults {
+  const closed = deals.filter(d => (d.entryType || '').includes('OUT') || (!d.entryType && (Number(d.profit) || 0) !== 0));
+  let net = 0, wins = 0, losses = 0;
+  for (const d of closed) {
+    const r = (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0);
+    net += r;
+    if (r > 0) wins++; else if (r < 0) losses++;
+  }
+  const decided = wins + losses;
+  return { count: closed.length, wins, losses, winRate: decided ? Math.round((wins / decided) * 100) : 0, net };
+}
 
 interface Report {
   id: string;
@@ -69,6 +84,7 @@ export default function ReportsPage() {
     avgConfidence: number;
     mtConnections: number;
   } | null>(null);
+  const [tradeStats, setTradeStats] = useState<TradeResults | null>(null);
 
   const fetchReports = useCallback(async () => {
     if (!user) return;
@@ -106,10 +122,20 @@ export default function ReportsPage() {
     });
   }, [user]);
 
+  // Rezultatet REALE të trade-ve nga MT5 (deal-et e mbyllura, 7 ditët e fundit).
+  const fetchTradeStats = useCallback(async () => {
+    try {
+      const res = await loadTradeHistory();
+      const deals = ((res as { deals?: HistoryDeal[] })?.deals || []) as HistoryDeal[];
+      setTradeStats(summarizeDeals(deals));
+    } catch { /* MT5 i palidhur — injoro */ }
+  }, []);
+
   useEffect(() => {
     fetchReports();
     fetchStats();
-  }, [fetchReports, fetchStats]);
+    fetchTradeStats();
+  }, [fetchReports, fetchStats, fetchTradeStats]);
 
   const getDateRange = () => {
     const end = new Date();
@@ -218,6 +244,45 @@ export default function ReportsPage() {
             provider: a.ai_provider,
           })),
         };
+      } else if (genType === 'trades') {
+        // Trade-t e ekzekutuara nga roboti (nga trade_executions) + P&L reale nga MT5.
+        const [execRes, histRes] = await Promise.all([
+          supabase.from('trade_executions')
+            .select('created_at, symbol, action, volume, entry_price, stop_loss, take_profit, status, mode, metaapi_order_id, reason')
+            .eq('user_id', user.id)
+            .eq('status', 'executed')
+            .gte('created_at', start).lte('created_at', end)
+            .order('created_at', { ascending: false }),
+          loadTradeHistory().catch(() => null),
+        ]);
+        const execRows = (execRes.data || []) as Record<string, unknown>[];
+        const deals = ((histRes as { deals?: HistoryDeal[] } | null)?.deals || []) as HistoryDeal[];
+        const tr = summarizeDeals(deals);
+
+        title = `Raport trade-sh reale — ${period}`;
+        reportData = {
+          summary: {
+            executed_trades: execRows.length,
+            mt5_closed_trades_7d: tr.count,
+            wins_7d: tr.wins,
+            losses_7d: tr.losses,
+            win_rate_7d_pct: tr.winRate,
+            net_pnl_7d: Number(tr.net.toFixed(2)),
+            period_start: start,
+            period_end: end,
+          },
+          trades: execRows.map(t => ({
+            date: t.created_at,
+            symbol: t.symbol,
+            action: String(t.action || '').toUpperCase(),
+            volume: t.volume,
+            entry: t.entry_price,
+            stop_loss: t.stop_loss,
+            take_profit: t.take_profit,
+            mode: t.mode,
+            order_id: t.metaapi_order_id || '—',
+          })),
+        };
       } else {
         const [aiRes, signalsRes, mtRes] = await Promise.all([
           supabase.from('ai_analyses').select('id').eq('user_id', user.id).gte('created_at', start).lte('created_at', end),
@@ -300,6 +365,12 @@ export default function ReportsPage() {
       (data.signals as Record<string, unknown>[]).forEach(s => {
         lines.push(`${new Date(s.date as string).toLocaleDateString()},${s.type},${s.symbol},${s.entry},${s.target},${s.stop_loss},${s.confidence}%,${s.timeframe},${s.status}`);
       });
+    } else if (type === 'trades' && Array.isArray(data.trades)) {
+      lines.push('TRADE-T E EKZEKUTUARA');
+      lines.push('Date,Symbol,Action,Volume,Entry,Stop Loss,Take Profit,Mode,Order ID');
+      (data.trades as Record<string, unknown>[]).forEach(t => {
+        lines.push(`${new Date(t.date as string).toLocaleString()},${t.symbol},${t.action},${t.volume},${t.entry ?? ''},${t.stop_loss ?? ''},${t.take_profit ?? ''},${t.mode},${t.order_id}`);
+      });
     } else if (type === 'ai_analyses') {
       if (Array.isArray(data.ai_analyses)) {
         lines.push('AI ANALYSES');
@@ -365,6 +436,28 @@ export default function ReportsPage() {
         </div>
       )}
 
+      {tradeStats && (
+        <div>
+          <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-amber-400" />Rezultatet reale të trade-ve (MT5 · 7 ditët e fundit)
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Trade të mbyllura', value: String(tradeStats.count), icon: Activity, color: 'text-amber-400' },
+              { label: 'Fituese / Humbëse', value: `${tradeStats.wins}/${tradeStats.losses}`, icon: TrendingUp, color: 'text-green-400' },
+              { label: 'Shkalla e suksesit', value: tradeStats.count ? `${tradeStats.winRate}%` : '—', icon: BarChart2, color: tradeStats.winRate >= 50 ? 'text-green-400' : 'text-red-400' },
+              { label: 'Fitim/Humbje neto', value: `${tradeStats.net >= 0 ? '+' : ''}${tradeStats.net.toFixed(2)}`, icon: Wallet, color: tradeStats.net >= 0 ? 'text-green-400' : 'text-red-400' },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+                <Icon className={`w-4 h-4 ${color} mb-2`} />
+                <div className={`font-bold text-xl ${color}`}>{value}</div>
+                <div className="text-gray-500 text-xs mt-0.5">{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
         <h3 className="text-white font-semibold mb-4">Gjenero raport</h3>
         <div className="grid sm:grid-cols-2 gap-4 mb-4">
@@ -372,6 +465,7 @@ export default function ReportsPage() {
             <label className="text-xs text-gray-400 block mb-1.5">Lloji i raportit</label>
             <div className="grid grid-cols-1 gap-2">
               {[
+                { value: 'trades', label: 'Raport trade-sh reale', desc: 'Trade-t e ekzekutuara nga roboti + fitimi/humbja reale nga MT5', icon: Activity },
                 { value: 'signals', label: 'Raport sinjalesh AI', desc: 'Të gjitha sinjalet blej/shit me hyrje, objektiv dhe stop', icon: Zap },
                 { value: 'ai_analyses', label: 'Raport analizash AI', desc: 'Të gjitha analizat AI dhe të grafikëve me ndjenjë dhe besueshmëri', icon: Brain },
                 { value: 'overview', label: 'Përmbledhje platforme', desc: 'Përmbledhje e gjithë aktivitetit dhe lidhjeve MetaTrader', icon: BarChart2 },
