@@ -17,11 +17,19 @@ interface ClosedTrade {
 
 interface DayRow { date: string; count: number; wins: number; losses: number; net: number; pct: number; }
 
-const PERIODS: { v: number; label: string }[] = [
+const PERIODS: { v: number | 'today'; label: string }[] = [
+  { v: 'today', label: 'Sot' },
   { v: 7, label: '7 ditë' },
   { v: 30, label: '30 ditë' },
   { v: 90, label: '90 ditë' },
 ];
+
+// A është kjo datë sot (në kohën lokale të pajisjes)?
+const isToday = (iso?: string) => {
+  if (!iso) return false;
+  const d = new Date(iso), n = new Date();
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+};
 
 // Grupon deal-et e MT5 në trade të mbyllura (IN = hapje, OUT = mbyllje).
 function groupDeals(deals: HistoryDeal[]): ClosedTrade[] {
@@ -73,7 +81,8 @@ const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('sq-A
 const colr = (n: number) => n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 'text-gray-400';
 
 export default function ReportsPage() {
-  const [days, setDays] = useState(30);
+  const [period, setPeriod] = useState<number | 'today'>('today');
+  const periodLabel = period === 'today' ? 'Sot' : `${period} ditët e fundit`;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
@@ -84,7 +93,8 @@ export default function ReportsPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null); setNotConnected(false);
     try {
-      const [chk, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(days)]);
+      const fetchDays = period === 'today' ? 2 : period; // marrë pak më shumë; filtrohet te 'sot'
+      const [chk, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(fetchDays)]);
       if (chk.error || hist.error) {
         if ((chk.error || hist.error) === 'metaapi_not_configured') { setNotConnected(true); setTrades([]); return; }
         setError(chk.message || hist.message || 'S\'u lexuan dot të dhënat e tregtimit.'); return;
@@ -98,29 +108,32 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [days]);
+  }, [period]);
 
   useEffect(() => { load(); }, [load]);
 
+  // Te 'Sot' shfaqen vetëm trade-t e mbyllura sot; përndryshe gjithë periudha.
+  const shown = period === 'today' ? trades.filter(t => isToday(t.closeTime)) : trades;
+
   // Përmbledhja totale.
-  const totalNet = trades.reduce((s, t) => s + t.net, 0);
-  const wins = trades.filter(t => t.net > 0).length;
-  const losses = trades.filter(t => t.net < 0).length;
+  const totalNet = shown.reduce((s, t) => s + t.net, 0);
+  const wins = shown.filter(t => t.net > 0).length;
+  const losses = shown.filter(t => t.net < 0).length;
   const decided = wins + losses;
   const winRate = decided ? Math.round((wins / decided) * 100) : 0;
   const totalPct = balance > 0 ? (totalNet / balance) * 100 : 0;
-  const best = trades.reduce<ClosedTrade | null>((m, t) => (t.net > (m?.net ?? -Infinity) ? t : m), null);
-  const worst = trades.reduce<ClosedTrade | null>((m, t) => (t.net < (m?.net ?? Infinity) ? t : m), null);
-  const days_ = dailyBreakdown(trades, balance);
+  const best = shown.reduce<ClosedTrade | null>((m, t) => (t.net > (m?.net ?? -Infinity) ? t : m), null);
+  const worst = shown.reduce<ClosedTrade | null>((m, t) => (t.net < (m?.net ?? Infinity) ? t : m), null);
+  const days_ = dailyBreakdown(shown, balance);
 
   const exportCSV = () => {
     const lines: string[] = [];
-    lines.push(`GOLDTRADE — Raport tregtimi (${days} ditët e fundit)`);
+    lines.push(`GOLDTRADE — Raport tregtimi (${periodLabel})`);
     lines.push(`Gjeneruar: ${new Date().toLocaleString('sq-AL')}`);
     lines.push(`Balanca: ${balance.toFixed(2)} ${currency}`);
     lines.push('');
     lines.push('PERMBLEDHJE');
-    lines.push(`Trade gjithsej,${trades.length}`);
+    lines.push(`Trade gjithsej,${shown.length}`);
     lines.push(`Fituese,${wins}`);
     lines.push(`Humbese,${losses}`);
     lines.push(`Shkalla e suksesit,${winRate}%`);
@@ -133,10 +146,10 @@ export default function ReportsPage() {
     lines.push('');
     lines.push('TRADE-T E DETAJUARA');
     lines.push('Mbyllur,Simboli,Drejtimi,Lot,Hyrje,Dalje,P&L');
-    trades.forEach(t => lines.push(`${t.closeTime ? new Date(t.closeTime).toLocaleString('sq-AL') : ''},${t.symbol},${t.direction},${t.volume},${t.entryPrice ?? ''},${t.exitPrice ?? ''},${t.net.toFixed(2)}`));
+    shown.forEach(t => lines.push(`${t.closeTime ? new Date(t.closeTime).toLocaleString('sq-AL') : ''},${t.symbol},${t.direction},${t.volume},${t.entryPrice ?? ''},${t.exitPrice ?? ''},${t.net.toFixed(2)}`));
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `goldtrade_raport_${days}d_${Date.now()}.csv`; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `goldtrade_raport_${period === 'today' ? 'sot' : period + 'd'}_${Date.now()}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -151,14 +164,14 @@ export default function ReportsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} className="p-2 text-gray-400 hover:text-white bg-gray-900 border border-gray-700 rounded-xl transition-all"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /></button>
-          <button onClick={exportCSV} disabled={trades.length === 0} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-gray-950 font-semibold px-4 py-2 rounded-xl text-sm transition-all"><Download className="w-4 h-4" />Shkarko CSV</button>
+          <button onClick={exportCSV} disabled={shown.length === 0} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-gray-950 font-semibold px-4 py-2 rounded-xl text-sm transition-all"><Download className="w-4 h-4" />Shkarko CSV</button>
         </div>
       </div>
 
       {/* Periudha */}
       <div className="flex gap-2">
         {PERIODS.map(p => (
-          <button key={p.v} onClick={() => setDays(p.v)} className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${days === p.v ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{p.label}</button>
+          <button key={String(p.v)} onClick={() => setPeriod(p.v)} className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${period === p.v ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{p.label}</button>
         ))}
       </div>
 
@@ -181,7 +194,7 @@ export default function ReportsPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               <Activity className="w-4 h-4 text-amber-400 mb-2" />
-              <div className="text-white font-bold text-xl">{trades.length}</div>
+              <div className="text-white font-bold text-xl">{shown.length}</div>
               <div className="text-gray-500 text-xs mt-0.5">Trade të mbyllura</div>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
@@ -201,10 +214,10 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {trades.length === 0 ? (
+          {shown.length === 0 ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
               <FileText className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-              <p className="text-white font-medium">Asnjë trade i mbyllur në këtë periudhë</p>
+              <p className="text-white font-medium">Asnjë trade i mbyllur {period === 'today' ? 'sot' : 'në këtë periudhë'}</p>
               <p className="text-gray-500 text-sm mt-1">Sapo të mbyllen trade, performanca shfaqet këtu automatikisht.</p>
             </div>
           ) : (
@@ -240,7 +253,7 @@ export default function ReportsPage() {
                     <tfoot>
                       <tr className="border-t border-gray-700 bg-gray-800/30 font-bold">
                         <td className="px-4 py-2.5 text-white">TOTAL</td>
-                        <td className="px-4 py-2.5 text-center text-white">{trades.length}</td>
+                        <td className="px-4 py-2.5 text-center text-white">{shown.length}</td>
                         <td className="px-4 py-2.5 text-center"><span className="text-green-400">{wins}</span> / <span className="text-red-400">{losses}</span></td>
                         <td className={`px-4 py-2.5 text-right ${colr(totalNet)}`}>{fmtMoney(totalNet)}</td>
                         <td className={`px-4 py-2.5 text-right ${colr(totalPct)}`}>{fmtPct(totalPct)}</td>
@@ -272,7 +285,7 @@ export default function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800/60">
-                      {trades.map(t => (
+                      {shown.map(t => (
                         <tr key={t.id} className="hover:bg-gray-800/30">
                           <td className="px-4 py-2.5 text-gray-400">{fmtDT(t.closeTime)}</td>
                           <td className="px-4 py-2.5 text-white font-medium">{t.symbol}</td>
