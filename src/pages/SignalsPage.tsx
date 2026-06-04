@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useMarketAnalysis, type MarketAsset } from '../ai-trader/react/useMarketAnalysis';
 import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
+import CompletedSignals from '../components/CompletedSignals';
 import type { Timeframe } from '../ai-trader/market/candles';
 import { requestEngineReasoning } from '../services/aiReasoning';
 
@@ -260,49 +261,7 @@ export default function SignalsPage() {
           </div>
         )
       ) : activeTab === 'done' ? (
-        doneSignals.length === 0 ? (
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center"><Clock className="w-12 h-12 text-gray-700 mx-auto mb-3" /><p className="text-gray-400">Asnjë sinjal i përfunduar ende</p><p className="text-gray-600 text-xs mt-1">Vlerësohen automatikisht kur arrijnë TP ose SL.</p></div>
-        ) : (
-          <div>
-            {(() => {
-              const decided = doneSignals.filter(s => s.outcome === 'tp' || s.outcome === 'sl');
-              const wins = decided.filter(s => s.outcome === 'tp').length;
-              const rate = decided.length ? Math.round((wins / decided.length) * 100) : 0;
-              const avg = decided.length ? decided.reduce((a, s) => a + Number(s.result_pct || 0), 0) / decided.length : 0;
-              return (
-                <div className="grid grid-cols-3 gap-3 mb-4">
-                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><div className="text-gray-500 text-[11px] mb-1">Shkalla e suksesit</div><div className={`font-bold text-lg ${rate >= 50 ? 'text-green-400' : 'text-red-400'}`}>{rate}%</div></div>
-                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><div className="text-gray-500 text-[11px] mb-1">TP / Total</div><div className="font-bold text-lg text-white">{wins}/{decided.length}</div></div>
-                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><div className="text-gray-500 text-[11px] mb-1">Mesatarja</div><div className={`font-bold text-lg ${avg >= 0 ? 'text-green-400' : 'text-red-400'}`}>{avg >= 0 ? '+' : ''}{avg.toFixed(2)}%</div></div>
-                </div>
-              );
-            })()}
-            <div className="grid md:grid-cols-2 gap-4">
-              {doneSignals.map((s) => {
-                const tp = s.outcome === 'tp', sl = s.outcome === 'sl';
-                const pct = s.result_pct == null ? null : Number(s.result_pct);
-                return (
-                  <div key={s.id} className={`bg-gray-900 border rounded-2xl p-5 ${tp ? 'border-green-500/30' : sl ? 'border-red-500/30' : 'border-gray-800'}`}>
-                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-bold text-lg">{s.symbol}</span>
-                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full uppercase border ${s.type === 'buy' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>{s.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
-                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${tp ? 'bg-green-500/20 text-green-400' : sl ? 'bg-red-500/20 text-red-400' : 'bg-gray-600/30 text-gray-400'}`}>{tp ? '✓ TP arritur' : sl ? '✗ SL arritur' : '⏱ Skadoi'}</span>
-                      </div>
-                      {pct != null && <span className={`font-bold text-lg ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pct >= 0 ? '+' : ''}{pct}%</span>}
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      <div className="bg-gray-800/50 rounded-lg p-2 text-center"><div className="text-gray-500 text-xs mb-1">Hyrje</div><div className="text-white text-xs font-semibold">{s.entry_price?.toLocaleString()}</div></div>
-                      <div className="bg-green-500/10 rounded-lg p-2 text-center"><div className="text-gray-500 text-xs mb-1">Objektiv</div><div className="text-green-400 text-xs font-semibold">{s.target_price?.toLocaleString()}</div></div>
-                      <div className="bg-red-500/10 rounded-lg p-2 text-center"><div className="text-gray-500 text-xs mb-1">Stop</div><div className="text-red-400 text-xs font-semibold">{s.stop_loss?.toLocaleString()}</div></div>
-                    </div>
-                    <div className="text-xs text-gray-500">🕒 Gjeneruar: {fmtDT(s.created_at)} · Mbyllur: {fmtDT(s.closed_at)} · besueshmëri {s.confidence}%</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )
+        <CompletedSignals signals={doneSignals} variant="full" />
       ) : (
         alerts.length === 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
