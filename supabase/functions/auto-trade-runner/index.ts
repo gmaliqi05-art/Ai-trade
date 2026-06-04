@@ -16,6 +16,7 @@ interface Cfg {
   default_lot: number; max_lot: number; max_daily_loss: number; max_open_trades: number;
   kill_switch: boolean; min_confidence: number; auto_symbols: string;
   dynamic_lot?: boolean; lot_conf_70?: number; lot_conf_80?: number; lot_conf_90?: number;
+  risk_per_trade_pct?: number; // % e kapitalit për trade (fixed-fractional); default 1%
 }
 
 interface Signal {
@@ -276,6 +277,48 @@ async function claudeConfirm(
   }
 }
 
+// Bias-i i dollarit përmes EURUSD (proxy i DXY: ari ka korrelacion negativ me dollarin).
+// "weak" = dollar i dobët → mbështet ar BLEJ; "strong" = dollar i fortë → mbështet ar SHIT.
+async function dollarBias(cfg: Cfg): Promise<"weak" | "strong" | "neutral"> {
+  try {
+    const c = await fetchMt5Candles(cfg, "EURUSD", "1h", 120);
+    if (!c || c.length < 60) return "neutral";
+    const closes = c.map((x) => x.close);
+    const e50 = ema(closes, 50);
+    const i = closes.length - 1;
+    const price = closes[i], m = e50[i];
+    if (!Number.isFinite(m) || !(m > 0)) return "neutral";
+    const diff = (price - m) / m;
+    if (diff > 0.0025) return "weak";    // EURUSD qartë mbi EMA50 → dollar i dobët
+    if (diff < -0.0025) return "strong"; // EURUSD qartë nën EMA50 → dollar i fortë
+    return "neutral";
+  } catch { return "neutral"; }
+}
+
+// Filtër lajmesh: bllokon hapjen e trade-ve rreth lajmeve USD me ndikim TË LARTË
+// (NFP/CPI/FOMC). Burim falas pa çelës: faireconomy (kalendari javor i ForexFactory).
+const NEWS_BEFORE_MIN = 15, NEWS_AFTER_MIN = 30;
+let newsCache: { at: number; times: number[] } | null = null;
+async function usdHighImpactTimes(): Promise<number[]> {
+  if (newsCache && Date.now() - newsCache.at < 30 * 60 * 1000) return newsCache.times;
+  try {
+    const resp = await fetch("https://nfs.faireconomy.media/ff_calendar_thisweek.json", { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) { newsCache = { at: Date.now(), times: [] }; return []; }
+    const arr = await resp.json() as Array<{ country?: string; impact?: string; date?: string }>;
+    const times = (Array.isArray(arr) ? arr : [])
+      .filter((e) => e.country === "USD" && /high/i.test(e.impact || "") && e.date)
+      .map((e) => new Date(e.date as string).getTime())
+      .filter((t) => Number.isFinite(t));
+    newsCache = { at: Date.now(), times };
+    return times;
+  } catch { return []; }
+}
+async function inNewsBlackout(): Promise<boolean> {
+  const now = Date.now();
+  const times = await usdHighImpactTimes();
+  return times.some((t) => now >= t - NEWS_BEFORE_MIN * 60000 && now <= t + NEWS_AFTER_MIN * 60000);
+}
+
 const BREAKEVEN_R = 1.0;
 
 Deno.serve(async (req: Request) => {
@@ -286,6 +329,9 @@ Deno.serve(async (req: Request) => {
   const sinceIso = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
   try {
+    // Filtri i lajmeve (një herë për ekzekutim): a jemi rreth një lajmi USD me ndikim të lartë?
+    const newsBlock = await inNewsBlackout();
+
     const { data: configs } = await db
       .from("metaapi_config").select("*").eq("auto_trade", true).eq("kill_switch", false);
 
@@ -295,11 +341,13 @@ Deno.serve(async (req: Request) => {
 
       let positions: Position[] = [];
       let dayPnl = 0; // P&L i ditës = realized(sot) + floating(tani); negativ = humbje
+      let equity = 0; // kapitali aktual (për position sizing 1%)
       try {
         positions = (await maGet(cfg, "/positions") as Position[]) ?? [];
         if (!Array.isArray(positions)) positions = [];
         const info = await maGet(cfg, "/account-information") as { balance?: number; equity?: number };
         const bal = Number(info?.balance), eq = Number(info?.equity);
+        equity = Number.isFinite(eq) ? eq : (Number.isFinite(bal) ? bal : 0);
         const floatingPnl = Number.isFinite(bal) && Number.isFinite(eq) ? eq - bal : 0;
         const realized = await realizedToday(cfg);
         dayPnl = realized + floatingPnl;
@@ -339,12 +387,17 @@ Deno.serve(async (req: Request) => {
 
       // Jashtë sesionit të arit s'hapim trade të reja (trailing/break-even u bë më sipër).
       if (!goldSessionOpen()) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
+      // Filtri i lajmeve: pauzë rreth NFP/CPI/FOMC.
+      if (newsBlock) { summary.push({ user: cfg.user_id, status: "news_blackout" }); continue; }
 
       const candidates = (signals ?? []).filter((s: Signal) =>
         (s.type === "buy" || s.type === "sell") &&
         Number(s.confidence) >= cfg.min_confidence &&
         allowed.has((s.symbol || "").toUpperCase()),
       ) as Signal[];
+
+      // Bias-i i dollarit (një herë për përdorues) — për konfirmim ar↔dollar.
+      const dxy = candidates.length > 0 ? await dollarBias(cfg) : "neutral";
 
       for (const sig of candidates) {
         const { data: existing } = await db
@@ -359,6 +412,7 @@ Deno.serve(async (req: Request) => {
         let stopLoss: number | undefined;
         let takeProfit: number | undefined;
         let slDist = 0;
+        let tpDist = 0;
         let ctx: Record<string, unknown> | null = null;
         let dataSrc = "mt5";
 
@@ -372,7 +426,7 @@ Deno.serve(async (req: Request) => {
           const t15 = buildTF(m15, "15m"), t1h = buildTF(m1h, "1h"), t4h = buildTF(m4h, "4h");
           entryPx = t15.price; // çmimi më i freskët MT5
           slDist = t1h.atr > 0 ? t1h.atr * 1.5 : entryPx * 0.015;
-          const tpDist = slDist * 2;
+          tpDist = slDist * 2;
           stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
           ctx = buildContext(sig.symbol, t15, t1h, t4h, entryPx);
@@ -383,19 +437,30 @@ Deno.serve(async (req: Request) => {
           stopLoss = sig.stop_loss != null ? Number(sig.stop_loss) : undefined;
           takeProfit = sig.target_price != null ? Number(sig.target_price) : undefined;
           slDist = entryPx != null && stopLoss != null ? Math.abs(entryPx - stopLoss) : 0;
+          tpDist = entryPx != null && takeProfit != null ? Math.abs(takeProfit - entryPx) : slDist * 2;
         }
 
-        // Lot fillestar dinamik, pastaj rrezik via lot mbi distancën REALE të SL.
+        // POSITION SIZING (fixed-fractional): rreziku per-trade = % e kapitalit (default 1%),
+        // i kapur te kufiri ditor; lot-i del nga distanca REALE e SL.
         let volume = lotForConfidence(cfg, Number(sig.confidence) || 0);
         const maxRisk = Number(cfg.max_daily_loss) || 0;
+        const riskPct = Number(cfg.risk_per_trade_pct) || 1;
+        const equityRisk = equity > 0 ? equity * (riskPct / 100) : 0;
+        // perTradeRisk = min(kapital×rrezik%, kufiri ditor) — që një trade s'e kalon buxhetin ditor.
+        let perTradeRisk = equityRisk > 0 ? equityRisk : maxRisk;
+        if (maxRisk > 0) perTradeRisk = Math.min(perTradeRisk || maxRisk, maxRisk);
         let tooRisky = false;
-        if (slDist > 0 && maxRisk > 0) {
+        if (slDist > 0 && perTradeRisk > 0) {
           const vpp = valuePerPrice(sig.symbol);
-          const lotByRisk = Math.floor((maxRisk / (slDist * vpp)) * 100) / 100;
+          const lotByRisk = Math.floor((perTradeRisk / (slDist * vpp)) * 100) / 100;
           if (lotByRisk < volume) volume = lotByRisk;
           if (volume < 0.01) tooRisky = true;
         }
         volume = Math.round(volume * 100) / 100;
+
+        // PORTA R:R NETO — pas kostos së përafërt (spread/slippage), refuzo nëse R:R < 1.5.
+        const spreadCost = entryPx != null ? entryPx * 0.00008 : 0; // ~0.008% (≈ $0.32 te $4000)
+        const netRR = slDist + spreadCost > 0 ? (tpDist - spreadCost) / (slDist + spreadCost) : 0;
 
         const log = (status: string, reason: string, orderId: string | null, rawResp: unknown) =>
           db.from("trade_executions").insert({
@@ -412,6 +477,11 @@ Deno.serve(async (req: Request) => {
         if (openTrades >= cfg.max_open_trades) { await log("rejected", `Max pozicione (${cfg.max_open_trades})`, null, null); continue; }
         // Limit REAL i humbjes ditore: realized(sot) + floating(tani).
         if (maxRisk > 0 && dayPnl <= -maxRisk) { await log("rejected", `Limit humbjeje ditore arritur (P&L ditor ${dayPnl.toFixed(2)} ≤ -${maxRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
+        // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
+        if (netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
+        // KONFIRMIM DOLLARI (DXY via EURUSD) — refuzo kur dollari shkon qartë kundër arit.
+        if (isBuy && dxy === "strong") { await log("rejected", "Dollari i fortë (kundër BLEJ ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
+        if (!isBuy && dxy === "weak") { await log("rejected", "Dollari i dobët (kundër SHIT ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
 
         // CLAUDE SI PORTË — me kontekstin e grafikut MT5.
         const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);
