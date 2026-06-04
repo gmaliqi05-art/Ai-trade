@@ -106,6 +106,17 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // PRICE — çmimi REAL live i brokerit (bid/ask) për një simbol (përkon me app-in MT5).
+    if (action === "PRICE") {
+      const symbol = body.symbol || "XAUUSD";
+      try {
+        const price = await metaApiGet(config, `/symbols/${encodeURIComponent(symbol)}/current-price`);
+        return json({ success: true, mode: config.mode, price });
+      } catch (e) {
+        return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
+      }
+    }
+
     // HISTORY — kthen deal-et e mbyllura për trade-t e përfunduara (parametri 'days', default 7).
     if (action === "HISTORY") {
       try {

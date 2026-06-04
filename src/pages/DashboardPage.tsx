@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { ClientPage as Page } from '../App';
 import TradingViewChart from '../components/TradingViewChart';
 import GoldSessionBadge from '../components/GoldSessionBadge';
-import { loadOpenPositions, type OpenPosition } from '../services/metaapi';
+import { loadOpenPositions, loadSymbolPrice, type OpenPosition } from '../services/metaapi';
 
 interface Asset {
   id: string; symbol: string; name: string; category: string;
@@ -42,6 +42,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
   const [metaApi, setMetaApi] = useState<MetaApiCfg | null>(null);
   const [autoTradesToday, setAutoTradesToday] = useState(0);
   const [positions, setPositions] = useState<OpenPosition[]>([]);
+  const [mt5Gold, setMt5Gold] = useState<number | null>(null); // çmimi REAL i brokerit (XAUUSD)
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [chartTf, setChartTf] = useState('15m');
@@ -72,8 +73,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
     if (cfg?.account_id) {
       const pr2 = await loadOpenPositions();
       setPositions(!pr2.error && Array.isArray(pr2.positions) ? pr2.positions : []);
+      // Çmimi REAL i brokerit për arin (përkon me app-in MT5, jo PAXG).
+      const pp = await loadSymbolPrice('XAUUSD');
+      const bid = Number(pp?.price?.bid), ask = Number(pp?.price?.ask);
+      setMt5Gold(!pp.error && Number.isFinite(bid) && Number.isFinite(ask) ? (bid + ask) / 2 : Number.isFinite(bid) ? bid : null);
     } else {
       setPositions([]);
+      setMt5Gold(null);
     }
     setLastUpdated(new Date());
     setLoading(false);
@@ -133,8 +139,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         <StatusCard label="Arsyetimi i Robotit" value={aiProviderActive ? 'Gati' : 'Pa konfiguruar'}
           sub={aiProviderActive ? 'Aktiv' : 'Konfiguro te Admin'} icon={Brain}
           status={aiProviderActive ? 'ok' : 'warn'} onClick={() => onNavigate('chart_analysis')} />
-        <StatusCard label="Ari (XAU/USD)" value={assets[0]?.current_price ? `$${Number(assets[0].current_price).toLocaleString()}` : '—'}
-          sub={assets[0]?.price_change_pct != null ? `${Number(assets[0].price_change_pct) >= 0 ? '+' : ''}${Number(assets[0].price_change_pct).toFixed(2)}% sot` : 'Çmim real'} icon={Activity}
+        <StatusCard label="Ari (XAU/USD)" value={mt5Gold != null ? `$${mt5Gold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : assets[0]?.current_price ? `$${Number(assets[0].current_price).toLocaleString()}` : '—'}
+          sub={mt5Gold != null ? 'Live nga MT5 (broker)' : 'Çmim reference (spot)'} icon={Activity}
           status="neutral" onClick={() => onNavigate('market_prices')} />
       </div>
 
@@ -192,7 +198,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                       <span className="text-gray-400 text-sm group-hover:text-gray-300 transition-colors truncate max-w-[130px]">{a.name}</span>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="text-white font-semibold text-sm">{a.category === 'forex' ? a.current_price.toFixed(5) : a.current_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                      <div className="text-white font-semibold text-sm">{a.symbol === 'XAUUSD' && mt5Gold != null ? mt5Gold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : a.category === 'forex' ? a.current_price.toFixed(5) : a.current_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                       <div className={`text-xs flex items-center justify-end gap-0.5 ${a.price_change_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {a.price_change_pct >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                         {a.price_change_pct >= 0 ? '+' : ''}{Number(a.price_change_pct).toFixed(2)}%
