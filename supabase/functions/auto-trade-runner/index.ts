@@ -200,6 +200,8 @@ function scalpSignal(c1m: Candle[], c5m: Candle[], loose = false): { action: "BU
   if (loose) {
     const hi5 = c5m.map((c) => c.high), lo5 = c5m.map((c) => c.low);
     const hi1 = c1m.map((c) => c.high), lo1 = c1m.map((c) => c.low);
+    const e9_5arr = ema(cl5, 9);
+    const slope5 = e9_5arr[i5] - e9_5arr[i5 - 2]; // drejtimi REAL i EMA9(5m) mbi 2 qirinj
     const atr5 = atr(hi5, lo5, cl5, 14)[i5];
     const atr1 = atr(hi1, lo1, cl1, 14)[i1];
     // (1) Trend i fortë: EMA9/EMA21 (5m) të ndara mjaftueshëm — përndryshe është treg i sheshtë.
@@ -207,11 +209,11 @@ function scalpSignal(c1m: Candle[], c5m: Candle[], loose = false): { action: "BU
     // (2) Jo i shtrirë: çmimi brenda ~1.2×ATR(1m) nga EMA9(1m) — hyn në pullback, jo pas lëvizjes.
     const band = Number.isFinite(atr1) && atr1 > 0 ? 1.2 * atr1 : 1.5;
     if (Math.abs(price - e9_1) > band) return null;
-    // (3) SELL: trend↓, qiri rënës, RSI në zonë pullback-u (jo oversold-klimaks 38–68).
-    if (dir5 === "down" && last.close < last.open && r1 >= 38 && r1 <= 68)
+    // (3) SELL: trend↓ DHE EMA9(5m) ende po bie (jo rikuperim), qiri rënës, RSI 38–68 (jo klimaks).
+    if (dir5 === "down" && slope5 < 0 && last.close < last.open && r1 >= 38 && r1 <= 68)
       return { action: "SELL", reason: "Scalp (lëvizje të vogla): pullback në trend 5m↓" };
-    // BUY: pasqyrë — RSI 32–62 (jo overbought-klimaks).
-    if (dir5 === "up" && last.close > last.open && r1 >= 32 && r1 <= 62)
+    // BUY: pasqyrë — trend↑ DHE EMA9(5m) po ngrihet, RSI 32–62 (jo overbought-klimaks).
+    if (dir5 === "up" && slope5 > 0 && last.close > last.open && r1 >= 32 && r1 <= 62)
       return { action: "BUY", reason: "Scalp (lëvizje të vogla): pullback në trend 5m↑" };
     return null;
   }
