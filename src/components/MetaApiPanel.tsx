@@ -140,11 +140,11 @@ export default function MetaApiPanel() {
       <div>
         <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><ShieldAlert className="w-4 h-4 text-amber-400" />Mbrojtja e rrezikut</div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Field label="Lot default"><input type="number" step="0.01" value={cfg.default_lot} onChange={e => set('default_lot', +e.target.value)} className="inp" /></Field>
-          <Field label="Lot maksimal"><input type="number" step="0.01" value={cfg.max_lot} onChange={e => set('max_lot', +e.target.value)} className="inp" /></Field>
-          <Field label="Humbja maks. ditore ($)"><input type="number" step="1" value={cfg.max_daily_loss} onChange={e => set('max_daily_loss', +e.target.value)} className="inp" /></Field>
-          <Field label="Pozicione maks. njëkohësisht"><input type="number" step="1" value={cfg.max_open_trades} onChange={e => set('max_open_trades', +e.target.value)} className="inp" /></Field>
-          <Field label="Rreziku per-trade (%)"><input type="number" step="0.1" value={cfg.risk_per_trade_pct} onChange={e => set('risk_per_trade_pct', +e.target.value)} className="inp" /></Field>
+          <Field label="Lot default"><input type="number" step="0.01" value={cfg.default_lot} onChange={e => set('default_lot', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="Lot maksimal"><input type="number" step="0.01" value={cfg.max_lot} onChange={e => set('max_lot', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="Humbja maks. ditore ($)"><input type="number" step="1" value={cfg.max_daily_loss} onChange={e => set('max_daily_loss', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="Pozicione maks. njëkohësisht"><input type="number" step="1" value={cfg.max_open_trades} onChange={e => set('max_open_trades', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="Rreziku per-trade (%)"><input type="number" step="0.1" value={cfg.risk_per_trade_pct} onChange={e => set('risk_per_trade_pct', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
         </div>
         {/* Sqarimi i fushave të rrezikut */}
         <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
@@ -166,13 +166,13 @@ export default function MetaApiPanel() {
           </button>
         </div>
         <div className={`grid grid-cols-3 gap-3 transition-opacity ${cfg.dynamic_lot ? '' : 'opacity-40 pointer-events-none'}`}>
-          <Field label="Lot kur ≥ 70%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_70} onChange={e => set('lot_conf_70', +e.target.value)} className="inp" /></Field>
-          <Field label="Lot kur ≥ 80%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_80} onChange={e => set('lot_conf_80', +e.target.value)} className="inp" /></Field>
-          <Field label="Lot kur ≥ 90%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_90} onChange={e => set('lot_conf_90', +e.target.value)} className="inp" /></Field>
+          <Field label="Lot kur ≥ 70%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_70} onChange={e => set('lot_conf_70', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="Lot kur ≥ 80%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_80} onChange={e => set('lot_conf_80', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="Lot kur ≥ 90%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_90} onChange={e => set('lot_conf_90', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
         </div>
         <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
           <li>Sa më e lartë besueshmëria e analizës, aq më i madh loti — më shumë besim, pozicion më i madh.</li>
-          <li><span className="text-gray-300">≥ 70%</span> → loti i parë (default <code className="text-amber-300">0.01</code>) · <span className="text-gray-300">≥ 80%</span> → <code className="text-amber-300">0.02</code> · <span className="text-gray-300">≥ 90%</span> → <code className="text-amber-300">0.05</code>.</li>
+          <li><span className="text-amber-400 font-semibold">ℹ️ 0.01 / 0.02 / 0.05 janë rekomandimi i robotit</span> — i ndryshueshëm: ndrysho çdo fushë sipas dëshirës (ruhet vetë kur largohesh nga fusha).</li>
           <li>Loti nuk kalon kurrë <span className="text-gray-300">Lot maksimal</span>. Kur <span className="text-gray-300">JOAKTIV</span>, përdoret gjithmonë <span className="text-gray-300">Lot default</span>.</li>
         </ul>
       </div>
@@ -181,8 +181,8 @@ export default function MetaApiPanel() {
       <div>
         <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><Play className="w-4 h-4 text-amber-400" />Auto-execute mbi sinjale</div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Besueshmëri minimale (%)"><input type="number" step="1" min="0" max="100" value={cfg.min_confidence} onChange={e => set('min_confidence', +e.target.value)} className="inp" /></Field>
-          <Field label="Simbolet e lejuara (me presje)"><input value={cfg.auto_symbols} onChange={e => set('auto_symbols', e.target.value)} placeholder="XAUUSD" className="inp" /></Field>
+          <Field label="Besueshmëri minimale (%)"><input type="number" step="1" min="0" max="100" value={cfg.min_confidence} onChange={e => set('min_confidence', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label="Simbolet e lejuara (me presje)"><input value={cfg.auto_symbols} onChange={e => set('auto_symbols', e.target.value)} onBlur={() => save()} placeholder="XAUUSD" className="inp" /></Field>
         </div>
         <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
           Kur <span className="text-amber-400">Auto-trade</span> është ON, sinjalet BLEJ/SHIT për këto simbole me besueshmëri ≥ pragut
