@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ClientPage as Page } from '../App';
 import TradingViewChart from '../components/TradingViewChart';
+import GoldSessionBadge from '../components/GoldSessionBadge';
 import { loadOpenPositions, type OpenPosition } from '../services/metaapi';
 
 interface Asset {
@@ -115,9 +116,12 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
             {lastUpdated && <span className="ml-2 text-gray-600 text-xs">· përditësuar {lastUpdated.toLocaleTimeString()}</span>}
           </p>
         </div>
-        <button onClick={fetchData} className="flex items-center gap-2 text-gray-400 hover:text-white text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-all">
-          <RefreshCw className="w-3.5 h-3.5" />Rifresko
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <GoldSessionBadge />
+          <button onClick={fetchData} className="flex items-center gap-2 text-gray-400 hover:text-white text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-all">
+            <RefreshCw className="w-3.5 h-3.5" />Rifresko
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
