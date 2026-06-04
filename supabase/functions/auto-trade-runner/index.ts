@@ -204,6 +204,18 @@ async function maTrade(cfg: Cfg, body: Record<string, unknown>) {
   return { ok: resp.ok, status: resp.status, body: b };
 }
 
+// P&L i REALIZUAR i ditës (që nga 00:00 UTC) — shuma e fitim/humbjeve të trade-ve
+// të mbyllura sot (profit+commission+swap). Përdoret për limitin REAL të humbjes ditore.
+async function realizedToday(cfg: Cfg): Promise<number> {
+  try {
+    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
+    const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
+    if (!Array.isArray(deals)) return 0;
+    return deals.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
+  } catch { return 0; }
+}
+
 // Rezultati real i brokerit (10009 = DONE); HTTP 200 fsheh refuzimet.
 function brokerResult(body: unknown): { ok: boolean; code: number; msg: string; orderId: string | null } {
   const o = (body ?? {}) as Record<string, unknown>;
@@ -271,12 +283,15 @@ Deno.serve(async (req: Request) => {
       if (!cfg.account_id || !cfg.token) continue;
 
       let positions: Position[] = [];
-      let floatingLoss = 0;
+      let dayPnl = 0; // P&L i ditës = realized(sot) + floating(tani); negativ = humbje
       try {
         positions = (await maGet(cfg, "/positions") as Position[]) ?? [];
         if (!Array.isArray(positions)) positions = [];
         const info = await maGet(cfg, "/account-information") as { balance?: number; equity?: number };
-        if (info?.balance != null && info?.equity != null) floatingLoss = Math.max(0, Number(info.balance) - Number(info.equity));
+        const bal = Number(info?.balance), eq = Number(info?.equity);
+        const floatingPnl = Number.isFinite(bal) && Number.isFinite(eq) ? eq - bal : 0;
+        const realized = await realizedToday(cfg);
+        dayPnl = realized + floatingPnl;
       } catch (e) {
         summary.push({ user: cfg.user_id, error: `metaapi: ${(e as Error).message}` });
         continue;
@@ -381,7 +396,8 @@ Deno.serve(async (req: Request) => {
           continue;
         }
         if (openTrades >= cfg.max_open_trades) { await log("rejected", `Max pozicione (${cfg.max_open_trades})`, null, null); continue; }
-        if (floatingLoss >= cfg.max_daily_loss) { await log("rejected", `Limit humbjeje (${cfg.max_daily_loss})`, null, null); continue; }
+        // Limit REAL i humbjes ditore: realized(sot) + floating(tani).
+        if (maxRisk > 0 && dayPnl <= -maxRisk) { await log("rejected", `Limit humbjeje ditore arritur (P&L ditor ${dayPnl.toFixed(2)} ≤ -${maxRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
 
         // CLAUDE SI PORTË — me kontekstin e grafikut MT5.
         const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);
