@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { ClientPage } from '../App';
 import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
 import OpenPositionsPanel from '../components/OpenPositionsPanel';
+import CompletedSignals from '../components/CompletedSignals';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
   loadCandles, loadOpenPositions, modifyPosition,
@@ -428,48 +429,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       </div>
 
       {/* Sinjale të përfunduara — raportim suksesi (TP/SL/skaduar) */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><History className="w-4 h-4 text-amber-400" />Sinjale të përfunduara</h3>
-          {doneSignals.length > 0 && (() => {
-            const decided = doneSignals.filter(s => s.outcome === 'tp' || s.outcome === 'sl');
-            const wins = decided.filter(s => s.outcome === 'tp').length;
-            const rate = decided.length ? Math.round((wins / decided.length) * 100) : 0;
-            return (
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-800 text-gray-300">
-                Sukses: <span className={rate >= 50 ? 'text-green-400' : 'text-red-400'}>{rate}%</span> ({wins}/{decided.length})
-              </span>
-            );
-          })()}
-        </div>
-        {doneSignals.length === 0 ? (
-          <p className="text-gray-600 text-xs text-center py-3">Asnjë sinjal i përfunduar ende. Vlerësohen automatikisht kur arrijnë TP/SL.</p>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-2">
-            {doneSignals.map(s => {
-              const tp = s.outcome === 'tp', sl = s.outcome === 'sl';
-              const pct = s.result_pct == null ? null : Number(s.result_pct);
-              return (
-                <div key={s.id} className="bg-gray-800/40 rounded-xl px-3 py-2">
-                  <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
-                    <span className="flex items-center gap-2">
-                      <span className="text-white text-sm font-bold">{s.symbol}</span>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${tp ? 'bg-green-500/20 text-green-400' : sl ? 'bg-red-500/20 text-red-400' : 'bg-gray-600/30 text-gray-400'}`}>
-                        {tp ? '✓ TP arritur' : sl ? '✗ SL arritur' : '⏱ Skadoi'}
-                      </span>
-                    </span>
-                    {pct != null && <span className={`text-xs font-bold ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pct >= 0 ? '+' : ''}{pct}%</span>}
-                  </div>
-                  <div className="text-[10px] text-gray-500">
-                    🕒 Gjeneruar: {fmtTime(s.created_at)} · Mbyllur: {fmtTime(s.closed_at)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <CompletedSignals signals={doneSignals} variant="compact" />
 
       {/* Pozicionet e hapura (live) + mbyllje */}
       <OpenPositionsPanel configured={metaConfigured} />
