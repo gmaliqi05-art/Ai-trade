@@ -24,6 +24,8 @@ interface Cfg {
   scalp_tp_usd?: number;     // distanca e TP në çmim ($), default 4
   scalp_max_trades?: number; // pozicione scalp njëkohësisht, default 2
   scalp_small_moves?: boolean; // hyn edhe në lëvizje të vogla (kushte më të lehta); default false
+  day_start_equity?: number; // ekuiteti në fillim të ditës UTC (për limitin ditor të humbjes)
+  day_start_date?: string;   // data UTC e ruajtjes së day_start_equity
 }
 
 interface Signal {
@@ -429,7 +431,7 @@ Deno.serve(async (req: Request) => {
       if (!cfg.account_id || !cfg.token) continue;
 
       let positions: Position[] = [];
-      let dayPnl = 0; // P&L i ditës = realized(sot) + floating(tani); negativ = humbje
+      let dayPnl = 0; // P&L i ditës = equity_tani − equity_fillimi (përfshin realized + floating)
       let equity = 0; // kapitali aktual (për position sizing 1%)
       try {
         positions = (await maGet(cfg, "/positions") as Position[]) ?? [];
@@ -437,9 +439,19 @@ Deno.serve(async (req: Request) => {
         const info = await maGet(cfg, "/account-information") as { balance?: number; equity?: number };
         const bal = Number(info?.balance), eq = Number(info?.equity);
         equity = Number.isFinite(eq) ? eq : (Number.isFinite(bal) ? bal : 0);
-        const floatingPnl = Number.isFinite(bal) && Number.isFinite(eq) ? eq - bal : 0;
-        const realized = await realizedToday(cfg);
-        dayPnl = realized + floatingPnl;
+        // LIMITI DITOR I HUMBJES — i bazuar te EKUITETI (i besueshëm; s'dështon në heshtje si
+        // thirrja history-deals). Ruajmë ekuitetin në fillim të ditës UTC; humbja = equity − fillimi.
+        if (equity > 0) {
+          const todayUtc = new Date().toISOString().slice(0, 10);
+          let dayStartEq = Number((cfg as { day_start_equity?: number }).day_start_equity);
+          const dsd = (cfg as { day_start_date?: string }).day_start_date
+            ? String((cfg as { day_start_date?: string }).day_start_date).slice(0, 10) : "";
+          if (dsd !== todayUtc || !Number.isFinite(dayStartEq) || dayStartEq <= 0) {
+            dayStartEq = equity;
+            try { await db.from("metaapi_config").update({ day_start_equity: equity, day_start_date: todayUtc }).eq("user_id", cfg.user_id); } catch { /* */ }
+          }
+          dayPnl = (Number.isFinite(dayStartEq) && dayStartEq > 0) ? equity - dayStartEq : 0;
+        }
       } catch (e) {
         summary.push({ user: cfg.user_id, error: `metaapi: ${(e as Error).message}` });
         continue;
