@@ -144,6 +144,7 @@ export default function MetaApiPanel() {
           <Field label="Lot maksimal"><input type="number" step="0.01" value={cfg.max_lot} onChange={e => set('max_lot', +e.target.value)} className="inp" /></Field>
           <Field label="Humbja maks. ditore ($)"><input type="number" step="1" value={cfg.max_daily_loss} onChange={e => set('max_daily_loss', +e.target.value)} className="inp" /></Field>
           <Field label="Pozicione maks. njëkohësisht"><input type="number" step="1" value={cfg.max_open_trades} onChange={e => set('max_open_trades', +e.target.value)} className="inp" /></Field>
+          <Field label="Rreziku per-trade (%)"><input type="number" step="0.1" value={cfg.risk_per_trade_pct} onChange={e => set('risk_per_trade_pct', +e.target.value)} className="inp" /></Field>
         </div>
         {/* Sqarimi i fushave të rrezikut */}
         <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
@@ -151,6 +152,7 @@ export default function MetaApiPanel() {
           <li><span className="text-gray-300">Lot maksimal:</span> kufiri i sipërm — asnjë trade s'kalon këtë lot.</li>
           <li><span className="text-gray-300">Humbja maks. ditore ($):</span> shumë <strong className="text-amber-400">në para</strong> (monedha e llogarisë). P.sh. <code className="text-amber-300">5</code> = (1) kur humbja e ditës arrin ~5$, roboti <strong>ndalon trade-t e reja</strong>; dhe (2) <strong>SL-ja e çdo trade-i auto kufizohet</strong> që humbja maks. e tij të mos kalojë ~5$. Vendos sa je gati të humbasësh maksimumi.</li>
           <li><span className="text-gray-300">Pozicione maks.:</span> sa trade mund të jenë hapur njëkohësisht (p.sh. 3).</li>
+          <li><span className="text-gray-300">Rreziku per-trade (%):</span> sa % e kapitalit rrezikon çdo trade (profesionalisht <strong className="text-amber-400">1%</strong>). Lot-i llogaritet automatikisht nga kjo + distanca e SL-së, dhe kurrë s'e kalon "Humbjen maks. ditore".</li>
         </ul>
       </div>
 

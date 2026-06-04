@@ -22,6 +22,8 @@ export interface MetaApiConfig {
   lot_conf_70: number;  // lot kur besueshmëria ≥ 70%
   lot_conf_80: number;  // lot kur besueshmëria ≥ 80%
   lot_conf_90: number;  // lot kur besueshmëria ≥ 90%
+  /** Rreziku per-trade si % e kapitalit (fixed-fractional). Default 1%. */
+  risk_per_trade_pct: number;
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
@@ -29,6 +31,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   default_lot: 0.01, max_lot: 0.1, max_daily_loss: 100, max_open_trades: 3, kill_switch: false,
   min_confidence: 70, auto_symbols: 'XAUUSD',
   dynamic_lot: true, lot_conf_70: 0.01, lot_conf_80: 0.02, lot_conf_90: 0.05,
+  risk_per_trade_pct: 1,
 };
 
 export interface TradeExecution {
@@ -51,6 +54,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     lot_conf_70: Number(data.lot_conf_70 ?? 0.01),
     lot_conf_80: Number(data.lot_conf_80 ?? 0.02),
     lot_conf_90: Number(data.lot_conf_90 ?? 0.05),
+    risk_per_trade_pct: Number(data.risk_per_trade_pct ?? 1),
   };
 }
 
