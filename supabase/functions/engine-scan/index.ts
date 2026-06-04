@@ -1,10 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// engine-scan — porton motorin matematik në server. Çdo X minuta llogarit sinjale
-// reale (EMA/RSI/MACD/Bollinger/ATR) për simbolet që përdoruesit e auto-trade duan,
-// dhe i ruan te `signals` (source='engine'). auto-trade-runner i ekzekuton më pas.
-// Kjo bën që auto-trade të punojë mbi sinjalet e motorit edhe kur app-i është mbyllur.
+// engine-scan — motori matematik në server, me FOKUS 100% NË AR (XAUUSD).
+// Platform-wide gjeneron sinjale vetëm për arin, me inteligjencë specifike:
+//   (1) Sesionet e tregut (London/NY), (2) nivelet psikologjike, (3) filtri i
+//   volatilitetit, (4) trendi ditor D1. Simbolet e tjera (kripto/forex) janë
+//   PASIVE — skanohen vetëm nëse përdoruesi i shton manualisht te auto_symbols.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,43 +111,7 @@ function adx(highs: number[], lows: number[], closes: number[], period = 14): nu
 interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; }
 interface EngineResult { action: "BUY" | "SELL" | "HOLD"; confidence: number; entry: number; stopLoss: number; takeProfit: number; reasons: string[]; }
 
-function generateShort(candles: Candle[]): EngineResult | null {
-  if (candles.length < 40) return null;
-  const closes = candles.map((c) => c.close), highs = candles.map((c) => c.high), lows = candles.map((c) => c.low);
-  const i = candles.length - 1;
-  const ef = ema(closes, 9)[i], es = ema(closes, 21)[i], r = rsi(closes, 14)[i];
-  const m = macd(closes), bb = bollinger(closes), a = atr(highs, lows, closes)[i];
-  const price = closes[i], mh = m.histogram[i], bu = bb.upper[i], bl = bb.lower[i];
-
-  const rules: { w: number; pass: boolean; reason: string }[] = [];
-  if (!Number.isNaN(ef) && !Number.isNaN(es)) rules.push({ w: 2.5, pass: ef > es, reason: ef > es ? "EMA9>EMA21 (trend rritës)" : "EMA9<EMA21 (trend rënës)" });
-  if (!Number.isNaN(mh)) rules.push({ w: 1.5, pass: mh > 0, reason: mh > 0 ? "MACD pozitiv" : "MACD negativ" });
-  if (!Number.isNaN(es)) rules.push({ w: 1, pass: price > es, reason: price > es ? "Çmimi mbi EMA21" : "Çmimi nën EMA21" });
-  if (!Number.isNaN(r)) {
-    if (r < 30) rules.push({ w: 1, pass: true, reason: `RSI ${r.toFixed(1)} (mbishitur)` });
-    else if (r > 70) rules.push({ w: 1, pass: false, reason: `RSI ${r.toFixed(1)} (mbiblerë)` });
-    else rules.push({ w: 0.5, pass: r >= 50, reason: `RSI ${r.toFixed(1)}` });
-  }
-  if (!Number.isNaN(bl) && !Number.isNaN(bu)) {
-    if (price < bl) rules.push({ w: 0.75, pass: true, reason: "Poshtë Bollinger-it" });
-    else if (price > bu) rules.push({ w: 0.75, pass: false, reason: "Mbi Bollinger-in" });
-  }
-  const score = rules.reduce((s, x) => s + (x.pass ? x.w : -x.w), 0);
-  const maxScore = rules.reduce((s, x) => s + x.w, 0) || 1;
-  const confidence = Math.min(1, Math.abs(score) / maxScore);
-  let action: EngineResult["action"] = "HOLD";
-  if (confidence >= 0.25) action = score > 0 ? "BUY" : "SELL";
-
-  const stopDist = Number.isFinite(a) && a > 0 ? a * 1.5 : price * 0.015;
-  const isBuy = action === "BUY";
-  return {
-    action, confidence,
-    entry: price,
-    stopLoss: action === "HOLD" ? NaN : Math.max(0, isBuy ? price - stopDist : price + stopDist),
-    takeProfit: action === "HOLD" ? NaN : Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
-    reasons: rules.map((x) => x.reason),
-  };
-}
+const GOLD_SYMBOL = "XAUUSD";
 
 // Analizë e një periudhe: kthen drejtimin, besueshmërinë, EMA200 dhe ADX.
 interface TFResult { action: "BUY" | "SELL" | "HOLD"; confidence: number; price: number; atr: number; ema200: number; adx: number; reasons: string[]; }
@@ -219,6 +184,104 @@ async function generateStrong(symbol: string): Promise<EngineResult | null> {
   };
 }
 
+// ============================================================================
+// GJENERATORI I DEDIKUAR I ARIT — generateStrong + 4 analiza specifike për arin:
+//   (1) Sesionet e tregut, (2) volatiliteti, (3) trendi ditor D1, (4) nivelet
+//   psikologjike. Çdo filtër mund ta refuzojë sinjalin; harmonia i jep "boost".
+// ============================================================================
+async function generateGold(symbol: string): Promise<EngineResult | null> {
+  const [c15, c1h, c4h, c1d] = await Promise.all([
+    fetchCandles(symbol, "15m"), fetchCandles(symbol, "1h"),
+    fetchCandles(symbol, "4h"), fetchCandles(symbol, "1d"),
+  ]);
+  if (!c15 || !c1h || !c4h) return null;
+  const s15 = analyzeTF(c15), s1h = analyzeTF(c1h), s4h = analyzeTF(c4h);
+  if (!s15 || !s1h || !s4h) return null;
+
+  // Baza: e njëjta logjikë si generateStrong (multi-TF + EMA200 + ADX).
+  const dir = s1h.action;
+  if (dir === "HOLD") return null;
+  if (s15.action !== dir || s4h.action !== dir) return null;
+  const price = s1h.price;
+  const isBuy = dir === "BUY";
+  if (isBuy && !(price > s1h.ema200)) return null;
+  if (!isBuy && !(price < s1h.ema200)) return null;
+  if (s1h.adx < ADX_MIN) return null;
+
+  const reasons: string[] = [
+    `Multi-TF: 15m+1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
+    `Trendi: çmimi ${isBuy ? "mbi" : "nën"} EMA200`,
+    `ADX ${s1h.adx.toFixed(0)} (trend i fortë)`,
+  ];
+
+  // (1) SESIONET — tregto vetëm gjatë Londrës/New York-ut (07:00–21:00 UTC),
+  //     ku ari ka likuiditetin më të lartë. Shmang sesionin e qetë aziatik.
+  const h = new Date().getUTCHours();
+  if (!(h >= 7 && h < 21)) return null;
+  const overlap = h >= 12 && h < 16; // mbivendosja London+NY = lëvizja më e fortë
+  reasons.push(overlap ? "Sesioni London+NY (likuiditet maksimal)" : "Sesion aktiv (London/NY)");
+
+  // (2) VOLATILITETI — ATR(1h) i krahasuar me mesataren e vet. Shmang tregun e
+  //     ngrirë (range pa drejtim) dhe spike-t e papritura nga lajmet.
+  {
+    const highs = c1h.map((c) => c.high), lows = c1h.map((c) => c.low), closes = c1h.map((c) => c.close);
+    const atrArr = atr(highs, lows, closes, 14).filter(Number.isFinite) as number[];
+    if (atrArr.length >= 20) {
+      const atrNow = atrArr[atrArr.length - 1];
+      const recent = atrArr.slice(-50);
+      const atrAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+      if (atrAvg > 0) {
+        const ratio = atrNow / atrAvg;
+        if (ratio < 0.5) return null;  // treg i ngrirë
+        if (ratio > 2.5) return null;  // spike nga lajme — rrezik i lartë
+        reasons.push(`Volatilitet normal (ATR ${((atrNow / price) * 100).toFixed(2)}%)`);
+      }
+    }
+  }
+
+  // (3) TRENDI DITOR (D1) — busulla e madhe. Sinjali duhet në harmoni me trendin
+  //     ditor (çmimi vs EMA50 ditore); përndryshe refuzohet.
+  let d1Boost = 0;
+  if (c1d && c1d.length >= 60) {
+    const dc = c1d.map((c) => c.close);
+    const e50d = ema(dc, 50)[dc.length - 1];
+    if (Number.isFinite(e50d)) {
+      const d1Up = price > e50d;
+      if (isBuy && !d1Up) return null;   // BLEJ kundër trendit ditor rënës
+      if (!isBuy && d1Up) return null;    // SHIT kundër trendit ditor rritës
+      d1Boost = 0.05;
+      reasons.push(`Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})`);
+    }
+  }
+
+  // (4) NIVELET PSIKOLOGJIKE — ari respekton fort nivelet e rrumbullakëta ($10,
+  //     më të forta te $50/$100). Shmang hyrjet që përplasen menjëherë me një
+  //     nivel të fortë kundërshtues.
+  const round10 = Math.round(price / 10) * 10;
+  const nearestAbove = price <= round10 ? round10 : round10 + 10;
+  const nearestBelow = price >= round10 ? round10 : round10 - 10;
+  const TOO_CLOSE = 0.0012; // ~0.12% (≈ $4 te $3300)
+  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) return null;
+  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) return null;
+  reasons.push(`Nivele kyçe: mbështetje ~$${nearestBelow}, rezistencë ~$${nearestAbove}`);
+
+  // Besueshmëria me boost-et e harmonisë së arit.
+  const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
+  const confidence = Math.min(1, base + d1Boost + (overlap ? 0.05 : 0));
+  const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
+  return {
+    action: dir, confidence, entry: price,
+    stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
+    takeProfit: Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
+    reasons,
+  };
+}
+
+// Përzgjedh gjeneratorin: ari → i dedikuar me 4 analizat; të tjerat → standard.
+function generateFor(symbol: string): Promise<EngineResult | null> {
+  return symbol.toUpperCase() === GOLD_SYMBOL ? generateGold(symbol) : generateStrong(symbol);
+}
+
 // ---------- Candles nga Binance (XAUUSD→PAXGUSDT) ----------
 const PAIRS: Record<string, string> = {
   BTCUSD: "BTCUSDT", ETHUSD: "ETHUSDT", SOLUSD: "SOLUSDT", BNBUSD: "BNBUSDT", XRPUSD: "XRPUSDT",
@@ -240,9 +303,9 @@ async function fetchCandles(symbol: string, interval = "1h"): Promise<Candle[] |
 
 interface CfgRow { user_id: string; auto_symbols: string; min_confidence: number; }
 
-// Lista e ndjekur për sinjalet PLATFORM-WIDE (të dukshme nga TË GJITHË klientët).
-// Simbole likuide me qirinj realë; ari via PAXG.
-const PLATFORM_WATCHLIST = ["XAUUSD", "BTCUSD", "ETHUSD", "SOLUSD", "BNBUSD", "XRPUSD"];
+// FOKUS NË AR: sinjalet platform-wide janë vetëm për XAUUSD. Kripto/forex janë
+// pasive — vetëm përdoruesit që i shtojnë manualisht te auto_symbols i marrin.
+const PLATFORM_WATCHLIST = [GOLD_SYMBOL];
 const PLATFORM_MIN_CONF = 0.30;   // pragu i besueshmërisë (0..1)
 const PLATFORM_MAX = 3;            // maksimumi i sinjaleve platform-wide aktive njëkohësisht
 const PLATFORM_DEDUP_H = 4;        // mos krijo sinjal të ri për të njëjtin simbol brenda 4 orëve
@@ -266,13 +329,11 @@ async function platformPass(
     .eq("status", "active");
   if ((activeCount ?? 0) >= PLATFORM_MAX) return;
 
-  // Llogarit sinjalet për watchlist-in dhe rendit sipas besueshmërisë.
-  const candidates: { symbol: string; sig: NonNullable<ReturnType<typeof generateShort>> }[] = [];
+  // Llogarit sinjalet për watchlist-in (ari, me 4 analizat) dhe rendit sipas besueshmërisë.
+  const candidates: { symbol: string; sig: EngineResult }[] = [];
   for (const symbol of PLATFORM_WATCHLIST) {
     try {
-      const candles = await fetchCandles(symbol);
-      if (!candles) continue;
-      const sig = generateShort(candles);
+      const sig = await generateFor(symbol);
       if (sig && sig.action !== "HOLD" && sig.confidence >= PLATFORM_MIN_CONF) candidates.push({ symbol, sig });
     } catch { /* anashkalo simbolin */ }
   }
@@ -337,7 +398,7 @@ Deno.serve(async (req: Request) => {
       // Gjenerues i PËRFORCUAR: multi-timeframe + EMA200 + ADX. Kthen sinjal vetëm
       // kur 15m/1h/4h pajtohen, çmimi në drejtim të trendit (EMA200) dhe ADX≥20.
       let sig: EngineResult | null;
-      try { sig = await generateStrong(symbol); } catch (e) { out.push({ symbol, error: (e as Error).message }); continue; }
+      try { sig = await generateFor(symbol); } catch (e) { out.push({ symbol, error: (e as Error).message }); continue; }
       if (!sig || sig.action === "HOLD") { out.push({ symbol, action: sig?.action ?? "filtruar" }); continue; }
       const confPct = Math.round(sig.confidence * 100);
 
