@@ -48,12 +48,9 @@ const navSections = [
 const pageLabels: Record<ClientPage, string> = {
   dashboard: 'Paneli',
   market_prices: 'MetaTrader 5 Live',
-  ai: 'Analizë AI',
   chart_analysis: 'Analizë grafiku',
   signals: 'Sinjalet',
-  trading: 'MetaTrader 5 Live',
   metatrader: 'Lidhja & Konfigurimi',
-  live_market: 'Grafikë live',
   notifications: 'Njoftimet',
   reports: 'Raporte',
   settings: 'Cilësimet',
