@@ -547,7 +547,7 @@ Deno.serve(async (req: Request) => {
           const thisRisk = slUsd * vpp * volume;
           if (equity > 0 && (openHeat + thisRisk) > equity * (MAX_HEAT_PCT / 100)) { await slog("rejected", `Scalp portfolio heat: rreziku total do kalonte ${MAX_HEAT_PCT}%`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "portfolio_heat" }); continue; }
 
-          const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, takeProfit, comment: SCALP_TAG, clientId: `${SCALP_TAG}_${Date.now()}` };
+          const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, takeProfit, comment: SCALP_TAG };
           try {
             const r = await maTrade(cfg, body);
             if (!r.ok) { await slog("error", `Scalp trade ${r.status}`, null, r.body); summary.push({ user: cfg.user_id, scalp: sym, status: "error" }); continue; }
