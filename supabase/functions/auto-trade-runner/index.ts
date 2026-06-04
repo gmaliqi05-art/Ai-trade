@@ -194,13 +194,25 @@ function scalpSignal(c1m: Candle[], c5m: Candle[], loose = false): { action: "BU
   const last = c1m[i1];
   if (!Number.isFinite(e9_1) || !Number.isFinite(e21_1) || !Number.isFinite(r1) || !Number.isFinite(mh1)) return null;
 
-  // ---- HYRJE NË LËVIZJE TË VOGLA (loose): vetëm trend 5m + drejtim 1m + qiri në drejtim ----
-  // Pa pritur breakout/MACD — hyn në çdo vazhdim të vogël të trendit. Shumë më shumë trade.
+  // ---- HYRJE NË LËVIZJE TË VOGLA (loose): PULLBACK në trend, jo ndjekje rraskapitjeje ----
+  // Përmirësim: (1) kërkon trend real 5m (jo chop); (2) çmimi pranë EMA9(1m) = pullback, jo i
+  // shtrirë; (3) RSI në zonë trendi, JO në klimaks oversold/overbought (ku ndodh kthimi).
   if (loose) {
-    if (dir5 === "up" && price > e9_1 && last.close > last.open && r1 < 80)
-      return { action: "BUY", reason: "Scalp (lëvizje të vogla): vazhdim 1m në trend 5m↑" };
-    if (dir5 === "down" && price < e9_1 && last.close < last.open && r1 > 20)
-      return { action: "SELL", reason: "Scalp (lëvizje të vogla): vazhdim 1m në trend 5m↓" };
+    const hi5 = c5m.map((c) => c.high), lo5 = c5m.map((c) => c.low);
+    const hi1 = c1m.map((c) => c.high), lo1 = c1m.map((c) => c.low);
+    const atr5 = atr(hi5, lo5, cl5, 14)[i5];
+    const atr1 = atr(hi1, lo1, cl1, 14)[i1];
+    // (1) Trend i fortë: EMA9/EMA21 (5m) të ndara mjaftueshëm — përndryshe është treg i sheshtë.
+    if (Number.isFinite(atr5) && atr5 > 0 && Math.abs(e9_5 - e21_5) < 0.30 * atr5) return null;
+    // (2) Jo i shtrirë: çmimi brenda ~1.2×ATR(1m) nga EMA9(1m) — hyn në pullback, jo pas lëvizjes.
+    const band = Number.isFinite(atr1) && atr1 > 0 ? 1.2 * atr1 : 1.5;
+    if (Math.abs(price - e9_1) > band) return null;
+    // (3) SELL: trend↓, qiri rënës, RSI në zonë pullback-u (jo oversold-klimaks 38–68).
+    if (dir5 === "down" && last.close < last.open && r1 >= 38 && r1 <= 68)
+      return { action: "SELL", reason: "Scalp (lëvizje të vogla): pullback në trend 5m↓" };
+    // BUY: pasqyrë — RSI 32–62 (jo overbought-klimaks).
+    if (dir5 === "up" && last.close > last.open && r1 >= 32 && r1 <= 62)
+      return { action: "BUY", reason: "Scalp (lëvizje të vogla): pullback në trend 5m↑" };
     return null;
   }
 
@@ -516,6 +528,12 @@ Deno.serve(async (req: Request) => {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
           if (maxRisk > 0 && dayPnl <= -maxRisk) break; // limit humbjeje ditore
           if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym)) continue; // një scalp për simbol
+          // COOLDOWN: mos hap scalp të ri brenda 3 min nga scalp-i i fundit (shmang grumbullimin në ekstreme).
+          const { data: lastSc } = await db.from("trade_executions").select("created_at")
+            .eq("user_id", cfg.user_id).eq("symbol", sym).eq("status", "executed")
+            .ilike("reason", "Scalp auto%").order("created_at", { ascending: false }).limit(1);
+          const lastT = lastSc && lastSc[0] ? new Date((lastSc[0] as { created_at: string }).created_at).getTime() : 0;
+          if (lastT > 0 && Date.now() - lastT < 3 * 60 * 1000) continue;
           const [c1, c5] = await Promise.all([get1m(sym), get5m(sym)]);
           if (!c1 || !c5) continue;
           const sgl = scalpSignal(c1, c5, cfg.scalp_small_moves === true);
