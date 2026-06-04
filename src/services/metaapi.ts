@@ -79,6 +79,7 @@ export interface OpenPosition {
 /** Deal i mbyllur nga historiku i MT5. */
 export interface HistoryDeal {
   id: string;
+  positionId?: string;
   symbol?: string;
   type?: string;       // DEAL_TYPE_BUY | DEAL_TYPE_SELL
   entryType?: string;  // DEAL_ENTRY_IN | DEAL_ENTRY_OUT
@@ -145,9 +146,9 @@ export function closePosition(positionId: string) {
   return callTrade({ action: 'CLOSE', positionId });
 }
 
-/** Lexon historikun e trade-ve të mbyllura (7 ditët e fundit) nga MT5. */
-export function loadTradeHistory() {
-  return callTrade({ action: 'HISTORY' });
+/** Lexon historikun e trade-ve të mbyllura nga MT5 (parametri days, default 7). */
+export function loadTradeHistory(days = 7) {
+  return callTrade({ action: 'HISTORY', days });
 }
 
 /** Lexon qirinjtë historikë nga MT5 për një simbol + periudhë. */

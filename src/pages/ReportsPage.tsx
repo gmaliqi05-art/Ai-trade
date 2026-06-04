@@ -1,616 +1,304 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, Download, Plus, RefreshCw, Brain, Zap, BarChart2, Clock, CheckCircle, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, Monitor, Activity, Wallet } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
-import { loadTradeHistory, type HistoryDeal } from '../services/metaapi';
+import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar } from 'lucide-react';
+import { loadTradeHistory, checkMetaApiConnection, type HistoryDeal, type AccountInfo } from '../services/metaapi';
 
-// Përmbledh deal-et e mbyllura nga MT5 → numri, fituese/humbëse, % suksesi, P&L neto.
-interface TradeResults { count: number; wins: number; losses: number; winRate: number; net: number; }
-function summarizeDeals(deals: HistoryDeal[]): TradeResults {
-  const closed = deals.filter(d => (d.entryType || '').includes('OUT') || (!d.entryType && (Number(d.profit) || 0) !== 0));
-  let net = 0, wins = 0, losses = 0;
-  for (const d of closed) {
-    const r = (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0);
-    net += r;
-    if (r > 0) wins++; else if (r < 0) losses++;
-  }
-  const decided = wins + losses;
-  return { count: closed.length, wins, losses, winRate: decided ? Math.round((wins / decided) * 100) : 0, net };
-}
-
-interface Report {
+// Një trade i mbyllur, i grupuar nga deal-et IN/OUT të MT5 sipas positionId.
+interface ClosedTrade {
   id: string;
-  title: string;
-  type: string;
-  period_start: string | null;
-  period_end: string | null;
-  data: Record<string, unknown>;
-  format: string;
-  status: string;
-  created_at: string;
-}
-
-interface AIAnalysis {
-  id: string;
-  created_at: string;
-  sentiment: string;
-  confidence: number;
-  prediction: string;
-  analysis_text: string;
-  assets?: { symbol: string; name: string } | null;
-}
-
-interface ChartAnalysis {
-  id: string;
-  created_at: string;
-  signal: string | null;
-  confidence: number | null;
-  entry_price: number | null;
-  target_price: number | null;
-  stop_loss: number | null;
-  timeframe: string;
-  ai_provider: string;
-  status: string;
-  assets?: { symbol: string } | null;
-}
-
-interface Signal {
-  id: string;
-  created_at: string;
-  type: string;
   symbol: string;
-  entry_price: number;
-  target_price: number;
-  stop_loss: number;
-  confidence: number;
-  timeframe: string;
-  status: string;
+  direction: 'BUY' | 'SELL' | '?';
+  openTime?: string;
+  closeTime?: string;
+  volume: number;
+  entryPrice?: number;
+  exitPrice?: number;
+  net: number; // profit + commission + swap
 }
+
+interface DayRow { date: string; count: number; wins: number; losses: number; net: number; pct: number; }
+
+const PERIODS: { v: number; label: string }[] = [
+  { v: 7, label: '7 ditë' },
+  { v: 30, label: '30 ditë' },
+  { v: 90, label: '90 ditë' },
+];
+
+// Grupon deal-et e MT5 në trade të mbyllura (IN = hapje, OUT = mbyllje).
+function groupDeals(deals: HistoryDeal[]): ClosedTrade[] {
+  const m = new Map<string, ClosedTrade>();
+  for (const d of deals) {
+    const pid = d.positionId || d.id;
+    if (!pid) continue;
+    const et = (d.entryType || '').toUpperCase();
+    const g = m.get(pid) || { id: pid, symbol: d.symbol || '—', direction: '?' as const, volume: 0, net: 0 };
+    g.net += (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0);
+    if (et.includes('IN')) {
+      g.direction = (d.type || '').toUpperCase().includes('BUY') ? 'BUY' : 'SELL';
+      g.entryPrice = Number(d.price) || g.entryPrice;
+      g.openTime = d.time || g.openTime;
+      g.volume = Number(d.volume) || g.volume;
+      if (d.symbol) g.symbol = d.symbol;
+    }
+    if (et.includes('OUT')) {
+      g.exitPrice = Number(d.price) || g.exitPrice;
+      g.closeTime = d.time || g.closeTime;
+      if (d.symbol && g.symbol === '—') g.symbol = d.symbol;
+    }
+    m.set(pid, g);
+  }
+  return [...m.values()]
+    .filter(t => t.closeTime) // vetëm trade të mbyllura
+    .sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || ''));
+}
+
+function dailyBreakdown(trades: ClosedTrade[], balance: number): DayRow[] {
+  const byDay = new Map<string, DayRow>();
+  for (const t of trades) {
+    const day = (t.closeTime || '').slice(0, 10);
+    if (!day) continue;
+    const g = byDay.get(day) || { date: day, count: 0, wins: 0, losses: 0, net: 0, pct: 0 };
+    g.count++; g.net += t.net;
+    if (t.net > 0) g.wins++; else if (t.net < 0) g.losses++;
+    byDay.set(day, g);
+  }
+  return [...byDay.values()]
+    .map(d => ({ ...d, pct: balance > 0 ? (d.net / balance) * 100 : 0 }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+const fmtMoney = (n: number, cur = '') => `${n >= 0 ? '+' : ''}${n.toFixed(2)}${cur ? ' ' + cur : ''}`;
+const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
+const fmtDT = (iso?: string) => iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('sq-AL', { weekday: 'short', day: '2-digit', month: 'short' });
+const colr = (n: number) => n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 'text-gray-400';
 
 export default function ReportsPage() {
-  const { user } = useAuth();
-  const [reports, setReports] = useState<Report[]>([]);
+  const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [genType, setGenType] = useState('signals');
-  const [period, setPeriod] = useState('30d');
-  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notConnected, setNotConnected] = useState(false);
+  const [trades, setTrades] = useState<ClosedTrade[]>([]);
+  const [balance, setBalance] = useState(0);
+  const [currency, setCurrency] = useState('');
 
-  const [stats, setStats] = useState<{
-    totalAnalyses: number;
-    totalSignals: number;
-    buySignals: number;
-    sellSignals: number;
-    avgConfidence: number;
-    mtConnections: number;
-  } | null>(null);
-  const [tradeStats, setTradeStats] = useState<TradeResults | null>(null);
-
-  const fetchReports = useCallback(async () => {
-    if (!user) return;
-    const { data } = await supabase
-      .from('reports')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    if (data) setReports(data as Report[]);
-    setLoading(false);
-  }, [user]);
-
-  const fetchStats = useCallback(async () => {
-    if (!user) return;
-    const [aiRes, chartRes, signalsRes, mtRes] = await Promise.all([
-      supabase.from('ai_analyses').select('id, confidence, sentiment').eq('user_id', user.id),
-      supabase.from('chart_analyses').select('id, signal, confidence').eq('user_id', user.id).eq('status', 'completed'),
-      supabase.from('signals').select('id, type, confidence').eq('status', 'active'),
-      supabase.from('metatrader_connections').select('id').eq('user_id', user.id).eq('is_active', true),
-    ]);
-
-    const analyses = [...(aiRes.data || []), ...(chartRes.data || [])];
-    const signals = signalsRes.data || [];
-    const confidenceValues = analyses.map(a => Number(a.confidence)).filter(n => n > 0);
-
-    setStats({
-      totalAnalyses: analyses.length,
-      totalSignals: signals.length,
-      buySignals: signals.filter(s => s.type === 'buy').length,
-      sellSignals: signals.filter(s => s.type === 'sell').length,
-      avgConfidence: confidenceValues.length > 0
-        ? Math.round(confidenceValues.reduce((a, b) => a + b, 0) / confidenceValues.length)
-        : 0,
-      mtConnections: (mtRes.data || []).length,
-    });
-  }, [user]);
-
-  // Rezultatet REALE të trade-ve nga MT5 (deal-et e mbyllura, 7 ditët e fundit).
-  const fetchTradeStats = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoading(true); setError(null); setNotConnected(false);
     try {
-      const res = await loadTradeHistory();
-      const deals = ((res as { deals?: HistoryDeal[] })?.deals || []) as HistoryDeal[];
-      setTradeStats(summarizeDeals(deals));
-    } catch { /* MT5 i palidhur — injoro */ }
-  }, []);
-
-  useEffect(() => {
-    fetchReports();
-    fetchStats();
-    fetchTradeStats();
-  }, [fetchReports, fetchStats, fetchTradeStats]);
-
-  const getDateRange = () => {
-    const end = new Date();
-    const start = new Date();
-    if (period === '7d') start.setDate(start.getDate() - 7);
-    else if (period === '30d') start.setDate(start.getDate() - 30);
-    else if (period === '90d') start.setDate(start.getDate() - 90);
-    else if (period === '1y') start.setFullYear(start.getFullYear() - 1);
-    return { start: start.toISOString(), end: end.toISOString() };
-  };
-
-  const generateReport = async () => {
-    if (!user) return;
-    setGenerating(true);
-    setMsg(null);
-
-    try {
-      const { start, end } = getDateRange();
-      let reportData: Record<string, unknown> = {};
-      let title = '';
-
-      if (genType === 'signals') {
-        const { data: signals } = await supabase
-          .from('signals')
-          .select('id, type, symbol, entry_price, target_price, stop_loss, confidence, timeframe, status, source, created_at')
-          .gte('created_at', start)
-          .lte('created_at', end)
-          .order('created_at', { ascending: false });
-
-        const rows = (signals || []) as Signal[];
-        const buy = rows.filter(s => s.type === 'buy');
-        const sell = rows.filter(s => s.type === 'sell');
-        const avgConf = rows.length > 0
-          ? Math.round(rows.reduce((a, s) => a + s.confidence, 0) / rows.length)
-          : 0;
-
-        title = `Raport sinjalesh AI — ${period}`;
-        reportData = {
-          summary: {
-            total_signals: rows.length,
-            buy_signals: buy.length,
-            sell_signals: sell.length,
-            avg_confidence: avgConf,
-            period_start: start,
-            period_end: end,
-          },
-          signals: rows.map(s => ({
-            date: s.created_at,
-            type: s.type.toUpperCase(),
-            symbol: s.symbol,
-            entry: s.entry_price,
-            target: s.target_price,
-            stop_loss: s.stop_loss,
-            confidence: s.confidence,
-            timeframe: s.timeframe,
-            status: s.status,
-          })),
-        };
-      } else if (genType === 'ai_analyses') {
-        const [aiRes, chartRes] = await Promise.all([
-          supabase.from('ai_analyses')
-            .select('id, created_at, sentiment, confidence, prediction, assets(symbol)')
-            .eq('user_id', user.id)
-            .gte('created_at', start)
-            .lte('created_at', end)
-            .order('created_at', { ascending: false }),
-          supabase.from('chart_analyses')
-            .select('id, created_at, signal, confidence, entry_price, target_price, stop_loss, timeframe, ai_provider, status, assets(symbol)')
-            .eq('user_id', user.id)
-            .eq('status', 'completed')
-            .gte('created_at', start)
-            .lte('created_at', end)
-            .order('created_at', { ascending: false }),
-        ]);
-
-        const aiRows = (aiRes.data || []) as AIAnalysis[];
-        const chartRows = (chartRes.data || []) as ChartAnalysis[];
-
-        title = `Raport analizash AI — ${period}`;
-        reportData = {
-          summary: {
-            total_ai_analyses: aiRows.length,
-            total_chart_analyses: chartRows.length,
-            bullish: aiRows.filter(a => a.sentiment === 'bullish').length,
-            bearish: aiRows.filter(a => a.sentiment === 'bearish').length,
-            neutral: aiRows.filter(a => a.sentiment === 'neutral').length,
-            period_start: start,
-            period_end: end,
-          },
-          ai_analyses: aiRows.map(a => ({
-            date: a.created_at,
-            symbol: (a.assets as { symbol: string } | null)?.symbol || '—',
-            sentiment: a.sentiment,
-            confidence: a.confidence,
-            prediction: a.prediction,
-          })),
-          chart_analyses: chartRows.map(a => ({
-            date: a.created_at,
-            symbol: (a.assets as { symbol: string } | null)?.symbol || '—',
-            signal: a.signal || '—',
-            confidence: a.confidence || 0,
-            entry_price: a.entry_price || 0,
-            target_price: a.target_price || 0,
-            stop_loss: a.stop_loss || 0,
-            timeframe: a.timeframe,
-            provider: a.ai_provider,
-          })),
-        };
-      } else if (genType === 'trades') {
-        // Trade-t e ekzekutuara nga roboti (nga trade_executions) + P&L reale nga MT5.
-        const [execRes, histRes] = await Promise.all([
-          supabase.from('trade_executions')
-            .select('created_at, symbol, action, volume, entry_price, stop_loss, take_profit, status, mode, metaapi_order_id, reason')
-            .eq('user_id', user.id)
-            .eq('status', 'executed')
-            .gte('created_at', start).lte('created_at', end)
-            .order('created_at', { ascending: false }),
-          loadTradeHistory().catch(() => null),
-        ]);
-        const execRows = (execRes.data || []) as Record<string, unknown>[];
-        const deals = ((histRes as { deals?: HistoryDeal[] } | null)?.deals || []) as HistoryDeal[];
-        const tr = summarizeDeals(deals);
-
-        title = `Raport trade-sh reale — ${period}`;
-        reportData = {
-          summary: {
-            executed_trades: execRows.length,
-            mt5_closed_trades_7d: tr.count,
-            wins_7d: tr.wins,
-            losses_7d: tr.losses,
-            win_rate_7d_pct: tr.winRate,
-            net_pnl_7d: Number(tr.net.toFixed(2)),
-            period_start: start,
-            period_end: end,
-          },
-          trades: execRows.map(t => ({
-            date: t.created_at,
-            symbol: t.symbol,
-            action: String(t.action || '').toUpperCase(),
-            volume: t.volume,
-            entry: t.entry_price,
-            stop_loss: t.stop_loss,
-            take_profit: t.take_profit,
-            mode: t.mode,
-            order_id: t.metaapi_order_id || '—',
-          })),
-        };
-      } else {
-        const [aiRes, signalsRes, mtRes] = await Promise.all([
-          supabase.from('ai_analyses').select('id').eq('user_id', user.id).gte('created_at', start).lte('created_at', end),
-          supabase.from('signals').select('id, type, confidence').gte('created_at', start).lte('created_at', end),
-          supabase.from('metatrader_connections').select('id, platform, symbol, is_active, last_ping_at, last_data_at').eq('user_id', user.id),
-        ]);
-
-        title = `Përmbledhje platforme — ${period}`;
-        const allSignals = (signalsRes.data || []) as Signal[];
-        reportData = {
-          summary: {
-            ai_analyses_run: (aiRes.data || []).length,
-            total_signals: allSignals.length,
-            buy_signals: allSignals.filter(s => s.type === 'buy').length,
-            sell_signals: allSignals.filter(s => s.type === 'sell').length,
-            avg_confidence: allSignals.length > 0
-              ? Math.round(allSignals.reduce((a, s) => a + s.confidence, 0) / allSignals.length)
-              : 0,
-            period_start: start,
-            period_end: end,
-          },
-          mt_connections: (mtRes.data || []).map(c => ({
-            platform: (c as Record<string, unknown>).platform,
-            symbol: (c as Record<string, unknown>).symbol,
-            status: (c as Record<string, unknown>).is_active ? 'active' : 'paused',
-            last_data: (c as Record<string, unknown>).last_data_at || 'Never',
-          })),
-        };
+      const [chk, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(days)]);
+      if (chk.error || hist.error) {
+        if ((chk.error || hist.error) === 'metaapi_not_configured') { setNotConnected(true); setTrades([]); return; }
+        setError(chk.message || hist.message || 'S\'u lexuan dot të dhënat e tregtimit.'); return;
       }
-
-      const { data: report, error } = await supabase
-        .from('reports')
-        .insert({
-          user_id: user.id,
-          title,
-          type: genType,
-          period_start: getDateRange().start,
-          period_end: getDateRange().end,
-          data: reportData,
-          format: 'csv',
-          status: 'completed',
-        })
-        .select()
-        .maybeSingle();
-
-      if (!error && report) {
-        setReports(p => [report as Report, ...p]);
-        setMsg({ type: 'success', text: 'Raporti u gjenerua me sukses.' });
-        downloadCSV(report as Report, reportData, genType);
-      } else {
-        setMsg({ type: 'error', text: 'Ruajtja e raportit dështoi.' });
-      }
-    } catch {
-      setMsg({ type: 'error', text: 'Gjenerimi i raportit dështoi.' });
+      const acc = (chk.account || {}) as AccountInfo;
+      setBalance(Number(acc.balance) || 0);
+      setCurrency(acc.currency || '');
+      setTrades(groupDeals((hist.deals || []) as HistoryDeal[]));
+    } catch (e) {
+      setError((e as Error).message || 'Gabim gjatë leximit.');
     } finally {
-      setGenerating(false);
-      setTimeout(() => setMsg(null), 4000);
+      setLoading(false);
     }
-  };
+  }, [days]);
 
-  const downloadCSV = (report: Report, data: Record<string, unknown>, type: string) => {
+  useEffect(() => { load(); }, [load]);
+
+  // Përmbledhja totale.
+  const totalNet = trades.reduce((s, t) => s + t.net, 0);
+  const wins = trades.filter(t => t.net > 0).length;
+  const losses = trades.filter(t => t.net < 0).length;
+  const decided = wins + losses;
+  const winRate = decided ? Math.round((wins / decided) * 100) : 0;
+  const totalPct = balance > 0 ? (totalNet / balance) * 100 : 0;
+  const best = trades.reduce<ClosedTrade | null>((m, t) => (t.net > (m?.net ?? -Infinity) ? t : m), null);
+  const worst = trades.reduce<ClosedTrade | null>((m, t) => (t.net < (m?.net ?? Infinity) ? t : m), null);
+  const days_ = dailyBreakdown(trades, balance);
+
+  const exportCSV = () => {
     const lines: string[] = [];
-    lines.push(`GOLDTRADE AI — ${report.title}`);
-    lines.push(`Generated: ${new Date(report.created_at).toLocaleString()}`);
+    lines.push(`GOLDTRADE — Raport tregtimi (${days} ditët e fundit)`);
+    lines.push(`Gjeneruar: ${new Date().toLocaleString('sq-AL')}`);
+    lines.push(`Balanca: ${balance.toFixed(2)} ${currency}`);
     lines.push('');
-
-    const summary = data.summary as Record<string, unknown>;
-    if (summary) {
-      lines.push('SUMMARY');
-      Object.entries(summary).forEach(([k, v]) => {
-        const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        lines.push(`${label},${v}`);
-      });
-      lines.push('');
-    }
-
-    if (type === 'signals' && Array.isArray(data.signals)) {
-      lines.push('SIGNALS');
-      lines.push('Date,Type,Symbol,Entry,Target,Stop Loss,Confidence,Timeframe,Status');
-      (data.signals as Record<string, unknown>[]).forEach(s => {
-        lines.push(`${new Date(s.date as string).toLocaleDateString()},${s.type},${s.symbol},${s.entry},${s.target},${s.stop_loss},${s.confidence}%,${s.timeframe},${s.status}`);
-      });
-    } else if (type === 'trades' && Array.isArray(data.trades)) {
-      lines.push('TRADE-T E EKZEKUTUARA');
-      lines.push('Date,Symbol,Action,Volume,Entry,Stop Loss,Take Profit,Mode,Order ID');
-      (data.trades as Record<string, unknown>[]).forEach(t => {
-        lines.push(`${new Date(t.date as string).toLocaleString()},${t.symbol},${t.action},${t.volume},${t.entry ?? ''},${t.stop_loss ?? ''},${t.take_profit ?? ''},${t.mode},${t.order_id}`);
-      });
-    } else if (type === 'ai_analyses') {
-      if (Array.isArray(data.ai_analyses)) {
-        lines.push('AI ANALYSES');
-        lines.push('Date,Symbol,Sentiment,Confidence,Prediction');
-        (data.ai_analyses as Record<string, unknown>[]).forEach(a => {
-          lines.push(`${new Date(a.date as string).toLocaleDateString()},${a.symbol},${a.sentiment},${a.confidence}%,"${String(a.prediction).replace(/"/g, '')}"`);
-        });
-        lines.push('');
-      }
-      if (Array.isArray(data.chart_analyses)) {
-        lines.push('CHART ANALYSES');
-        lines.push('Date,Symbol,Signal,Confidence,Entry,Target,Stop Loss,Timeframe,Provider');
-        (data.chart_analyses as Record<string, unknown>[]).forEach(a => {
-          lines.push(`${new Date(a.date as string).toLocaleDateString()},${a.symbol},${a.signal},${a.confidence}%,${a.entry_price},${a.target_price},${a.stop_loss},${a.timeframe},${a.provider}`);
-        });
-      }
-    } else if (type === 'overview' && Array.isArray(data.mt_connections)) {
-      lines.push('METATRADER CONNECTIONS');
-      lines.push('Platform,Symbol,Status,Last Data');
-      (data.mt_connections as Record<string, unknown>[]).forEach(c => {
-        lines.push(`${c.platform},${c.symbol},${c.status},${c.last_data}`);
-      });
-    }
-
+    lines.push('PERMBLEDHJE');
+    lines.push(`Trade gjithsej,${trades.length}`);
+    lines.push(`Fituese,${wins}`);
+    lines.push(`Humbese,${losses}`);
+    lines.push(`Shkalla e suksesit,${winRate}%`);
+    lines.push(`P&L neto,${totalNet.toFixed(2)} ${currency}`);
+    lines.push(`P&L %,${totalPct.toFixed(2)}%`);
+    lines.push('');
+    lines.push('RAPORTI DITOR');
+    lines.push('Data,Trade,Fituese,Humbese,P&L,P&L %');
+    days_.forEach(d => lines.push(`${d.date},${d.count},${d.wins},${d.losses},${d.net.toFixed(2)},${d.pct.toFixed(2)}%`));
+    lines.push('');
+    lines.push('TRADE-T E DETAJUARA');
+    lines.push('Mbyllur,Simboli,Drejtimi,Lot,Hyrje,Dalje,P&L');
+    trades.forEach(t => lines.push(`${t.closeTime ? new Date(t.closeTime).toLocaleString('sq-AL') : ''},${t.symbol},${t.direction},${t.volume},${t.entryPrice ?? ''},${t.exitPrice ?? ''},${t.net.toFixed(2)}`));
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `goldtrade_${report.type}_${Date.now()}.csv`;
-    a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `goldtrade_raport_${days}d_${Date.now()}.csv`; a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const downloadReport = (r: Report) => {
-    if (r.data) downloadCSV(r, r.data, r.type);
   };
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <FileText className="w-6 h-6 text-amber-400" />Raporte
-        </h2>
-        <p className="text-gray-400 text-sm mt-1">Eksporto të dhëna reale nga analizat dhe sinjalet e tua AI</p>
-      </div>
-
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            { label: 'Analiza të bëra', value: stats.totalAnalyses, icon: Brain, color: 'text-amber-400' },
-            { label: 'Sinjale aktive', value: stats.totalSignals, icon: Zap, color: 'text-amber-400' },
-            { label: 'Sinjale BLEJ', value: stats.buySignals, icon: TrendingUp, color: 'text-green-400' },
-            { label: 'Sinjale SHIT', value: stats.sellSignals, icon: TrendingDown, color: 'text-red-400' },
-            { label: 'Besueshmëri mesatare', value: stats.avgConfidence > 0 ? `${stats.avgConfidence}%` : '—', icon: Minus, color: 'text-blue-400' },
-            { label: 'Lidhje MT', value: stats.mtConnections, icon: Monitor, color: 'text-green-400' },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-              <Icon className={`w-4 h-4 ${color} mb-2`} />
-              <div className="text-white font-bold text-xl">{value}</div>
-              <div className="text-gray-500 text-xs mt-0.5">{label}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tradeStats && (
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-amber-400" />Rezultatet reale të trade-ve (MT5 · 7 ditët e fundit)
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <FileText className="w-6 h-6 text-amber-400" />Raporte tregtimi
+          </h2>
+          <p className="text-gray-400 text-sm mt-1">Performanca reale e trade-ve të tua nga MT5 — fitime, humbje, raport ditor me total dhe përqindje.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={load} className="p-2 text-gray-400 hover:text-white bg-gray-900 border border-gray-700 rounded-xl transition-all"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /></button>
+          <button onClick={exportCSV} disabled={trades.length === 0} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-gray-950 font-semibold px-4 py-2 rounded-xl text-sm transition-all"><Download className="w-4 h-4" />Shkarko CSV</button>
+        </div>
+      </div>
+
+      {/* Periudha */}
+      <div className="flex gap-2">
+        {PERIODS.map(p => (
+          <button key={p.v} onClick={() => setDays(p.v)} className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${days === p.v ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{p.label}</button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl flex items-center justify-center py-16"><Loader2 className="w-7 h-7 text-amber-400 animate-spin" /></div>
+      ) : notConnected ? (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
+          <Wallet className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+          <p className="text-white font-medium">Lidh llogarinë MT5</p>
+          <p className="text-gray-500 text-sm mt-1">Raportet ndërtohen nga trade-t reale të MT5. Konfiguro lidhjen te "Lidhja & Konfigurimi".</p>
+        </div>
+      ) : error ? (
+        <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+          <p className="text-red-400 text-sm">{error}</p>
+        </div>
+      ) : (
+        <>
+          {/* Përmbledhja totale */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+              <Activity className="w-4 h-4 text-amber-400 mb-2" />
+              <div className="text-white font-bold text-xl">{trades.length}</div>
+              <div className="text-gray-500 text-xs mt-0.5">Trade të mbyllura</div>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+              <BarChart2 className={`w-4 h-4 mb-2 ${winRate >= 50 ? 'text-green-400' : 'text-red-400'}`} />
+              <div className={`font-bold text-xl ${winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>{decided ? `${winRate}%` : '—'}</div>
+              <div className="text-gray-500 text-xs mt-0.5">Sukses ({wins}F / {losses}H)</div>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+              <Wallet className={`w-4 h-4 mb-2 ${colr(totalNet)}`} />
+              <div className={`font-bold text-xl ${colr(totalNet)}`}>{fmtMoney(totalNet)}</div>
+              <div className="text-gray-500 text-xs mt-0.5">P&L neto {currency}</div>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+              {totalPct >= 0 ? <TrendingUp className="w-4 h-4 text-green-400 mb-2" /> : <TrendingDown className="w-4 h-4 text-red-400 mb-2" />}
+              <div className={`font-bold text-xl ${colr(totalPct)}`}>{fmtPct(totalPct)}</div>
+              <div className="text-gray-500 text-xs mt-0.5">P&L % e balancës</div>
+            </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: 'Trade të mbyllura', value: String(tradeStats.count), icon: Activity, color: 'text-amber-400' },
-              { label: 'Fituese / Humbëse', value: `${tradeStats.wins}/${tradeStats.losses}`, icon: TrendingUp, color: 'text-green-400' },
-              { label: 'Shkalla e suksesit', value: tradeStats.count ? `${tradeStats.winRate}%` : '—', icon: BarChart2, color: tradeStats.winRate >= 50 ? 'text-green-400' : 'text-red-400' },
-              { label: 'Fitim/Humbje neto', value: `${tradeStats.net >= 0 ? '+' : ''}${tradeStats.net.toFixed(2)}`, icon: Wallet, color: tradeStats.net >= 0 ? 'text-green-400' : 'text-red-400' },
-            ].map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-                <Icon className={`w-4 h-4 ${color} mb-2`} />
-                <div className={`font-bold text-xl ${color}`}>{value}</div>
-                <div className="text-gray-500 text-xs mt-0.5">{label}</div>
+
+          {trades.length === 0 ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
+              <FileText className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+              <p className="text-white font-medium">Asnjë trade i mbyllur në këtë periudhë</p>
+              <p className="text-gray-500 text-sm mt-1">Sapo të mbyllen trade, performanca shfaqet këtu automatikisht.</p>
+            </div>
+          ) : (
+            <>
+              {/* Raporti ditor */}
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-amber-400" />
+                  <h3 className="text-white font-semibold text-sm">Raporti ditor</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-500 border-b border-gray-800">
+                        <th className="text-left font-medium px-4 py-2">Data</th>
+                        <th className="text-center font-medium px-4 py-2">Trade</th>
+                        <th className="text-center font-medium px-4 py-2">F / H</th>
+                        <th className="text-right font-medium px-4 py-2">P&L {currency}</th>
+                        <th className="text-right font-medium px-4 py-2">P&L %</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/60">
+                      {days_.map(d => (
+                        <tr key={d.date} className="hover:bg-gray-800/30">
+                          <td className="px-4 py-2.5 text-white capitalize">{fmtDay(d.date)}</td>
+                          <td className="px-4 py-2.5 text-center text-gray-300">{d.count}</td>
+                          <td className="px-4 py-2.5 text-center"><span className="text-green-400">{d.wins}</span> / <span className="text-red-400">{d.losses}</span></td>
+                          <td className={`px-4 py-2.5 text-right font-semibold ${colr(d.net)}`}>{fmtMoney(d.net)}</td>
+                          <td className={`px-4 py-2.5 text-right ${colr(d.pct)}`}>{fmtPct(d.pct)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-gray-700 bg-gray-800/30 font-bold">
+                        <td className="px-4 py-2.5 text-white">TOTAL</td>
+                        <td className="px-4 py-2.5 text-center text-white">{trades.length}</td>
+                        <td className="px-4 py-2.5 text-center"><span className="text-green-400">{wins}</span> / <span className="text-red-400">{losses}</span></td>
+                        <td className={`px-4 py-2.5 text-right ${colr(totalNet)}`}>{fmtMoney(totalNet)}</td>
+                        <td className={`px-4 py-2.5 text-right ${colr(totalPct)}`}>{fmtPct(totalPct)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-        <h3 className="text-white font-semibold mb-4">Gjenero raport</h3>
-        <div className="grid sm:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Lloji i raportit</label>
-            <div className="grid grid-cols-1 gap-2">
-              {[
-                { value: 'trades', label: 'Raport trade-sh reale', desc: 'Trade-t e ekzekutuara nga roboti + fitimi/humbja reale nga MT5', icon: Activity },
-                { value: 'signals', label: 'Raport sinjalesh AI', desc: 'Të gjitha sinjalet blej/shit me hyrje, objektiv dhe stop', icon: Zap },
-                { value: 'ai_analyses', label: 'Raport analizash AI', desc: 'Të gjitha analizat AI dhe të grafikëve me ndjenjë dhe besueshmëri', icon: Brain },
-                { value: 'overview', label: 'Përmbledhje platforme', desc: 'Përmbledhje e gjithë aktivitetit dhe lidhjeve MetaTrader', icon: BarChart2 },
-              ].map(t => (
-                <button
-                  key={t.value}
-                  onClick={() => setGenType(t.value)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
-                    genType === t.value
-                      ? 'bg-amber-500/10 border-amber-500/40 text-white'
-                      : 'bg-gray-800/50 border-gray-700/50 text-gray-400 hover:text-white'
-                  }`}
-                >
-                  <t.icon className={`w-4 h-4 flex-shrink-0 ${genType === t.value ? 'text-amber-400' : 'text-gray-500'}`} />
-                  <div>
-                    <div className="text-sm font-medium">{t.label}</div>
-                    <div className="text-xs text-gray-500">{t.desc}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Periudha</label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { value: '7d', label: '7 ditët e fundit' },
-                { value: '30d', label: '30 ditët e fundit' },
-                { value: '90d', label: '90 ditët e fundit' },
-                { value: '1y', label: 'Viti i fundit' },
-              ].map(p => (
-                <button
-                  key={p.value}
-                  onClick={() => setPeriod(p.value)}
-                  className={`py-2.5 rounded-xl text-sm font-medium border transition-all ${
-                    period === p.value
-                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                      : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+              {/* Trade-t e detajuara */}
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+                  <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />Lëvizjet e tua (trade-t)</h3>
+                  {best && worst && (
+                    <span className="text-xs text-gray-500">Më i miri: <span className="text-green-400">{fmtMoney(best.net)}</span> · Më i keqi: <span className="text-red-400">{fmtMoney(worst.net)}</span></span>
+                  )}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-gray-500 border-b border-gray-800">
+                        <th className="text-left font-medium px-4 py-2">Mbyllur</th>
+                        <th className="text-left font-medium px-4 py-2">Simboli</th>
+                        <th className="text-left font-medium px-4 py-2">Drejtimi</th>
+                        <th className="text-right font-medium px-4 py-2">Lot</th>
+                        <th className="text-right font-medium px-4 py-2">Hyrje</th>
+                        <th className="text-right font-medium px-4 py-2">Dalje</th>
+                        <th className="text-right font-medium px-4 py-2">P&L {currency}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/60">
+                      {trades.map(t => (
+                        <tr key={t.id} className="hover:bg-gray-800/30">
+                          <td className="px-4 py-2.5 text-gray-400">{fmtDT(t.closeTime)}</td>
+                          <td className="px-4 py-2.5 text-white font-medium">{t.symbol}</td>
+                          <td className="px-4 py-2.5">
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${t.direction === 'BUY' ? 'bg-green-500/20 text-green-400' : t.direction === 'SELL' ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-400'}`}>
+                              {t.direction === 'BUY' ? 'BLEJ' : t.direction === 'SELL' ? 'SHIT' : '—'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-gray-300">{t.volume || '—'}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-300">{t.entryPrice != null ? t.entryPrice.toLocaleString() : '—'}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-300">{t.exitPrice != null ? t.exitPrice.toLocaleString() : '—'}</td>
+                          <td className={`px-4 py-2.5 text-right font-bold ${colr(t.net)}`}>{fmtMoney(t.net)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-            <div className="mt-4 bg-gray-800/30 border border-gray-700/30 rounded-xl p-3">
-              <p className="text-gray-500 text-xs">
-                Raportet përmbajnë vetëm <span className="text-white font-medium">të dhëna reale</span> nga analizat e tua AI,
-                grafikët e ngarkuar dhe sinjalet — pa vlera shembull apo të trilluara.
+              <p className="text-gray-600 text-xs text-center">
+                P&L përfshin fitimin + komisionin + swap. Përqindja llogaritet mbi balancën aktuale ({balance.toFixed(2)} {currency}). Të dhënat janë reale nga MT5.
               </p>
-            </div>
-          </div>
-        </div>
-
-        {msg && (
-          <div className={`flex items-center gap-2 mb-4 px-4 py-2.5 rounded-xl text-sm ${msg.type === 'success' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-            {msg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-            {msg.text}
-          </div>
-        )}
-
-        <button
-          onClick={generateReport}
-          disabled={generating}
-          className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2.5 rounded-xl text-sm transition-all"
-        >
-          {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          {generating ? 'Po gjenerohet...' : 'Gjenero & shkarko CSV'}
-        </button>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold">Historiku i raporteve</h3>
-          <button
-            onClick={() => { fetchReports(); fetchStats(); }}
-            className="p-2 text-gray-500 hover:text-white bg-gray-900 border border-gray-700 rounded-xl transition-all"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="space-y-3">
-            {[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-gray-900 rounded-xl animate-pulse" />)}
-          </div>
-        ) : reports.length === 0 ? (
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
-            <FileText className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-            <p className="text-white font-medium">Ende pa raporte</p>
-            <p className="text-gray-500 text-sm mt-1">Gjenero raportin tënd të parë më lart — të dhënat vijnë nga analizat e tua reale</p>
-          </div>
-        ) : (
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="text-left text-gray-500 font-medium px-4 py-3">Raporti</th>
-                  <th className="text-left text-gray-500 font-medium px-4 py-3 hidden sm:table-cell">Periudha</th>
-                  <th className="text-center text-gray-500 font-medium px-4 py-3">Statusi</th>
-                  <th className="text-center text-gray-500 font-medium px-4 py-3">Shkarko</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {reports.map(r => (
-                  <tr key={r.id} className="hover:bg-gray-800/20 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                        <div>
-                          <div className="text-white text-xs font-medium">{r.title}</div>
-                          <div className="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
-                            <Clock className="w-2.5 h-2.5" />
-                            {new Date(r.created_at).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs hidden sm:table-cell">
-                      {r.period_start && r.period_end
-                        ? `${new Date(r.period_start).toLocaleDateString()} — ${new Date(r.period_end).toLocaleDateString()}`
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${r.status === 'completed' ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/10 text-amber-400'}`}>
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {r.status === 'completed' && (
-                        <button
-                          onClick={() => downloadReport(r)}
-                          className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors mx-auto"
-                        >
-                          <Download className="w-3.5 h-3.5" />CSV
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
