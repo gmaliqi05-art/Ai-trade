@@ -479,11 +479,14 @@ Deno.serve(async (req: Request) => {
               continue;
             }
           }
-          // 2) Break-even i shpejtë: +1$ → SL te hyrja; +2$ → mbyll fitimin (entry ±1$). Kurrë kthim në humbje.
+          // 2) Trailing me shkallë (relativ ndaj SL-së = R, default $2): mbron fitimin progresivisht.
+          //    +0.5R → break-even;  +1.0R → mbyll +0.5R;  +1.25R → mbyll +1.0R (p.sh. >+2.5$ → SL +2$).
           if (sl != null) {
+            const R = Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
             let newSL: number | null = null;
-            if (moved >= 2) newSL = isBuy ? entry + 1 : entry - 1;
-            else if (moved >= 1) newSL = isBuy ? entry + 0.05 : entry - 0.05;
+            if (moved >= 1.25 * R) newSL = isBuy ? entry + 1.0 * R : entry - 1.0 * R;
+            else if (moved >= 1.0 * R) newSL = isBuy ? entry + 0.5 * R : entry - 0.5 * R;
+            else if (moved >= 0.5 * R) newSL = isBuy ? entry + 0.025 * R : entry - 0.025 * R;
             if (newSL != null) {
               const better = isBuy ? newSL > sl : newSL < sl;
               if (better) {
