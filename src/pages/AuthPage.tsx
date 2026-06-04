@@ -48,10 +48,10 @@ export default function AuthPage() {
             Tregto më zgjuar me<br /><span className="text-amber-400">inteligjencën AI</span>
           </h2>
           <p className="text-gray-400 text-lg mb-10 leading-relaxed">
-            Sinjale nga motori matematik + arsyetim me Claude AI, çmime reale dhe auto-trade me mbrojtje rreziku për Ar, Forex, Crypto & Indekse.
+            Sinjale nga motori matematik + arsyetim me inteligjencën e Robotit, çmime reale dhe auto-trade me mbrojtje rreziku — fokus 100% në Ar (XAUUSD).
           </p>
           <div className="grid grid-cols-3 gap-4">
-            {[{ value: 'EMA·RSI·MACD', label: 'Indikatorë realë' }, { value: 'Claude AI', label: 'Arsyetim cilësor' }, { value: 'MetaTrader', label: 'Auto-trade (demo)' }].map((s) => (
+            {[{ value: 'EMA·RSI·MACD', label: 'Indikatorë realë' }, { value: 'Roboti AI', label: 'Arsyetim cilësor' }, { value: 'MetaTrader', label: 'Auto-trade (demo)' }].map((s) => (
               <div key={s.label} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
                 <div className="text-lg font-bold text-amber-400">{s.value}</div>
                 <div className="text-gray-400 text-xs mt-1">{s.label}</div>

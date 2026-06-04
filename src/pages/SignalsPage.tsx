@@ -150,9 +150,9 @@ export default function SignalsPage() {
           <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
             <div className="text-xs text-gray-300 leading-relaxed">
-              <span className="font-semibold text-amber-400">Sinjale nga motori matematik mbi çmime LIVE.</span>{' '}
+              <span className="font-semibold text-amber-400">Sinjale nga motori i Robotit mbi çmime LIVE.</span>{' '}
               Indikatorë realë (EMA, RSI, MACD, Bollinger, ATR) → BLEJ / SHIT / PRIT, afatshkurtër + afatgjatë.
-              Ari (XAUUSD) dhe crypto janë 100% live nga tregu (grafikët nga TradingView). Aktivet pa feed live shënohen "VLERËSIM".
+              Ari (XAUUSD) është 100% live nga tregu (grafikët nga TradingView). Aktivet pa feed live shënohen "VLERËSIM".
               Asnjë garanci fitimi — menaxho gjithmonë rrezikun.
             </div>
           </div>

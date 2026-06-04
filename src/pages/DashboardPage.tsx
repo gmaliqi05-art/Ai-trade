@@ -30,8 +30,8 @@ const catColor: Record<string, string> = {
 };
 
 const sourceLabel: Record<string, string> = {
-  engine: 'Motori', ai_analysis: 'Claude AI', ai_chart: 'Grafik AI',
-  metatrader_ai: 'MetaTrader', ai: 'AI',
+  engine: 'Motori', ai_analysis: 'Roboti', ai_chart: 'Analizë Robot',
+  metatrader_ai: 'MetaTrader', ai: 'Robot',
 };
 
 export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
@@ -130,8 +130,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         <StatusCard label="Auto-Trade" value={autoTradeOn ? `Aktiv · ${metaApi?.mode?.toUpperCase()}` : 'I fikur'}
           sub={metaApi?.account_id ? `${positions.length} aktive · ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}` : 'Konfiguro lidhjen'} icon={Cloud}
           status={autoTradeOn ? 'ok' : 'neutral'} onClick={() => onNavigate('market_prices')} />
-        <StatusCard label="Arsyetimi AI (Claude)" value={aiProviderActive ? 'Gati' : 'Pa konfiguruar'}
-          sub={aiProviderActive ? 'Provider aktiv' : 'Shto çelës te Admin'} icon={Brain}
+        <StatusCard label="Arsyetimi i Robotit" value={aiProviderActive ? 'Gati' : 'Pa konfiguruar'}
+          sub={aiProviderActive ? 'Aktiv' : 'Konfiguro te Admin'} icon={Brain}
           status={aiProviderActive ? 'ok' : 'warn'} onClick={() => onNavigate('chart_analysis')} />
         <StatusCard label="Ari (XAU/USD)" value={assets[0]?.current_price ? `$${Number(assets[0].current_price).toLocaleString()}` : '—'}
           sub={assets[0]?.price_change_pct != null ? `${Number(assets[0].price_change_pct) >= 0 ? '+' : ''}${Number(assets[0].price_change_pct).toFixed(2)}% sot` : 'Çmim real'} icon={Activity}
@@ -142,10 +142,10 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-amber-300 font-semibold text-sm">Arsyetimi me Claude AI s'është konfiguruar</p>
+            <p className="text-amber-300 font-semibold text-sm">Arsyetimi i Robotit s'është konfiguruar</p>
             <p className="text-amber-400/80 text-xs mt-0.5">
-              Një administrator duhet të shtojë një çelës API te <strong>Admin → AI Providers</strong> (Anthropic).
-              Motori matematik punon edhe pa të; çelësi shton arsyetimin cilësor të Claude.
+              Një administrator duhet ta aktivizojë inteligjencën e Robotit te paneli <strong>Admin</strong>.
+              Motori matematik punon edhe pa të; kjo shton arsyetimin cilësor të Robotit.
             </p>
           </div>
         </div>
