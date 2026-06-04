@@ -242,7 +242,7 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
       if (atrAvg > 0) {
         const ratio = atrNow / atrAvg;
         if (ratio < 0.5) return null;  // treg i ngrirë
-        if (ratio > 2.5) return null;  // spike nga lajme — rrezik i lartë
+        if (ratio > 3.5) return null;  // vetëm spike EKSTREM (lajme) — lejo lëvizjet e forta
         reasons.push(`Volatilitet normal (ATR ${((atrNow / price) * 100).toFixed(2)}%)`);
       }
     }
