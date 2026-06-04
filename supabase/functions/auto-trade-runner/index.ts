@@ -542,7 +542,11 @@ Deno.serve(async (req: Request) => {
 
           if (volume < 0.01) { await slog("rejected", `Scalp: rreziku i 0.01 lot e tejkalon kufirin ($${maxRisk}) — rrit kufirin ditor`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "too_risky" }); continue; }
           const thisRisk = slUsd * vpp * volume;
-          if (equity > 0 && (openHeat + thisRisk) > equity * (MAX_HEAT_PCT / 100)) { await slog("rejected", `Scalp portfolio heat: rreziku total do kalonte ${MAX_HEAT_PCT}%`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "portfolio_heat" }); continue; }
+          // Mbrojtja 6% (portfolio heat) vlen për lote të mëdha. Lotin MINIMAL e lejojmë sa kohë
+          // rreziku total i hapur mbetet brenda kufirit DITOR (max_daily_loss) — mbrojtja reale për llogari të vogël.
+          const heatCap = equity * (MAX_HEAT_PCT / 100);
+          const withinDaily = maxRisk <= 0 || (openHeat + thisRisk) <= maxRisk;
+          if (equity > 0 && (openHeat + thisRisk) > heatCap && !(volume <= 0.01 && withinDaily)) { await slog("rejected", `Scalp portfolio heat: rreziku total do kalonte ${MAX_HEAT_PCT}%`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "portfolio_heat" }); continue; }
 
           const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, takeProfit, comment: SCALP_TAG, clientId: `${SCALP_TAG}_${Date.now()}` };
           try {
