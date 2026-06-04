@@ -46,6 +46,17 @@ async function metaApiGet(cfg: MetaApiConfig, path: string) {
   return body;
 }
 
+// P&L i REALIZUAR i ditës (që nga 00:00 UTC) — trade-t e mbyllura sot.
+async function realizedToday(cfg: MetaApiConfig): Promise<number> {
+  try {
+    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
+    const deals = await metaApiGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
+    if (!Array.isArray(deals)) return 0;
+    return deals.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
+  } catch { return 0; }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -198,14 +209,15 @@ Deno.serve(async (req: Request) => {
 
     // Gjendja aktuale e llogarisë nga MetaApi (pozicione + humbje e lëvizshme).
     let openTrades = 0;
-    let floatingLoss = 0;
+    let dayPnl = 0; // realized(sot) + floating(tani); negativ = humbje
     try {
       const positions = await metaApiGet(config, "/positions") as Array<{ profit?: number }>;
       openTrades = Array.isArray(positions) ? positions.length : 0;
       const info = await metaApiGet(config, "/account-information") as { balance?: number; equity?: number };
-      if (info?.balance != null && info?.equity != null) {
-        floatingLoss = Math.max(0, Number(info.balance) - Number(info.equity));
-      }
+      const bal = Number(info?.balance), eq = Number(info?.equity);
+      const floatingPnl = Number.isFinite(bal) && Number.isFinite(eq) ? eq - bal : 0;
+      const realized = await realizedToday(config);
+      dayPnl = realized + floatingPnl;
     } catch (e) {
       await logExec("error", `S'u arrit MetaApi: ${(e as Error).message}`, null, null);
       return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
@@ -215,9 +227,10 @@ Deno.serve(async (req: Request) => {
       await logExec("rejected", `Arritur numri maksimal i tregtive të hapura (${config.max_open_trades}).`, null, null);
       return json({ error: "max_open_trades", message: `Arritur limiti i pozicioneve të hapura (${config.max_open_trades}).` }, 403);
     }
-    if (floatingLoss >= config.max_daily_loss) {
-      await logExec("rejected", `Humbja e lëvizshme (${floatingLoss.toFixed(2)}) ka arritur limitin (${config.max_daily_loss}).`, null, null);
-      return json({ error: "max_daily_loss", message: "Arritur limiti i humbjes. Tregtitë e reja u bllokuan." }, 403);
+    const maxDaily = Number(config.max_daily_loss) || 0;
+    if (maxDaily > 0 && dayPnl <= -maxDaily) {
+      await logExec("rejected", `Limit humbjeje ditore arritur (P&L ditor ${dayPnl.toFixed(2)} ≤ -${maxDaily}).`, null, null);
+      return json({ error: "max_daily_loss", message: "Arritur limiti i humbjes ditore. Tregtitë e reja u bllokuan." }, 403);
     }
 
     // --- EKZEKUTIMI ---
