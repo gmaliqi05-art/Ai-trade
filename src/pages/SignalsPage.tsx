@@ -49,6 +49,7 @@ export default function SignalsPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [activeTab, setActiveTab] = useState<'engine' | 'signals' | 'done' | 'alerts'>('engine');
   const [market, setMarket] = useState<MarketKey>('commodity');
+  const [goldOnly, setGoldOnly] = useState(true); // fokus: vetëm ari; të tjerat vetëm manualisht
   const [timeframe, setTimeframe] = useState<Timeframe>('1h');
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -101,13 +102,21 @@ export default function SignalsPage() {
   // i motorit, dërgojmë listë bosh që të mos llogarisim pa nevojë.
   const engineAssets = useMemo<MarketAsset[]>(() => {
     if (activeTab !== 'engine') return [];
+    // Parazgjedhje: VETËM ari. Tregjet e tjera shfaqen vetëm kur përdoruesi i kërkon.
+    if (goldOnly) {
+      return assets
+        .filter(a => a.symbol === 'XAUUSD' && a.current_price > 0)
+        .map(a => ({ symbol: a.symbol, category: a.category || a.type, currentPrice: a.current_price }));
+    }
     return assets
       .filter(a => (a.category || a.type) === market && a.current_price > 0)
       .slice(0, 12)
       .map(a => ({ symbol: a.symbol, category: a.category || a.type, currentPrice: a.current_price }));
-  }, [assets, market, activeTab]);
+  }, [assets, market, activeTab, goldOnly]);
 
   const { analyses, loading: engineLoading, refresh: refreshEngine } = useMarketAnalysis(engineAssets, timeframe);
+  const [engineUpdatedAt, setEngineUpdatedAt] = useState<Date | null>(null);
+  useEffect(() => { if (!engineLoading && engineAssets.length > 0) setEngineUpdatedAt(new Date()); }, [engineLoading, analyses, engineAssets.length]);
   const accountBalance = Number((profile as { balance?: number } | null)?.balance) || 0;
   const catBySymbol = (sym: string) => assets.find(a => a.symbol === sym)?.category || assets.find(a => a.symbol === sym)?.type;
 
@@ -142,18 +151,37 @@ export default function SignalsPage() {
           </div>
 
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex gap-2 flex-wrap">
-              {MARKETS.map(m => (
-                <button key={m.key} onClick={() => setMarket(m.key)}
-                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${market === m.key ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
-                  {m.label}
-                </button>
-              ))}
+            <div className="flex gap-2 flex-wrap items-center">
+              {goldOnly ? (
+                <>
+                  <span className="text-xs px-3 py-1.5 rounded-lg font-semibold bg-amber-500 text-gray-950">🥇 Ari (XAUUSD)</span>
+                  <button onClick={() => { setGoldOnly(false); setMarket('crypto'); }}
+                    className="text-xs px-3 py-1.5 rounded-lg font-medium bg-gray-800 text-gray-400 hover:text-white transition-colors">
+                    + Shfaq tregje të tjera (manual)
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setGoldOnly(true)}
+                    className="text-xs px-3 py-1.5 rounded-lg font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors">
+                    ← Vetëm ari
+                  </button>
+                  {MARKETS.map(m => (
+                    <button key={m.key} onClick={() => setMarket(m.key)}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${market === m.key ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                      {m.label}
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
-            <button onClick={refreshEngine} disabled={engineLoading}
-              className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
-              <RefreshCw className={`w-3.5 h-3.5 ${engineLoading ? 'animate-spin' : ''}`} />Gjenero / Rifresko
-            </button>
+            <div className="flex items-center gap-2">
+              {engineUpdatedAt && <span className="text-[10px] text-gray-500">🕒 Llogaritur: {engineUpdatedAt.toLocaleTimeString('sq-AL', { hour: '2-digit', minute: '2-digit' })}</span>}
+              <button onClick={refreshEngine} disabled={engineLoading}
+                className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                <RefreshCw className={`w-3.5 h-3.5 ${engineLoading ? 'animate-spin' : ''}`} />Gjenero / Rifresko
+              </button>
+            </div>
           </div>
 
           {/* Zgjedhësi i periudhës — klienti kërkon analizë për një periudhë të caktuar */}

@@ -28,6 +28,12 @@ interface Signal {
 const fmtTime = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
+// Freskia e sinjalit: pas 30 min çmimi ka lëvizur dhe hyrje/SL/TP janë të vjetra —
+// mos tregto mbi to (rezultate jo të mira). Roboti auto përdor 15 min.
+const SIGNAL_FRESH_MIN = 30;
+const signalAgeMin = (iso?: string | null) => (iso ? (Date.now() - new Date(iso).getTime()) / 60000 : Infinity);
+const signalIsFresh = (iso?: string | null) => signalAgeMin(iso) <= SIGNAL_FRESH_MIN;
+
 function errText(code: string, message?: string): string {
   const map: Record<string, string> = {
     metaapi_not_configured: 'Lidh llogarinë MT5 te Lidhja & Konfigurimi para se të tregtosh.',
@@ -142,6 +148,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const vol = parseFloat(lot);
     if (isNaN(vol) || vol <= 0) { setTradeMsg({ type: 'error', text: 'Vendos një lot të vlefshëm (p.sh. 0.01).' }); return; }
     if (!metaConfigured) { setTradeMsg({ type: 'error', text: errText('metaapi_not_configured') }); return; }
+    // Nëse tregtia bazohet në një sinjal, sigurohu që sinjali është ende i freskët.
+    if (appliedSignalId) {
+      const applied = signals.find(s => s.id === appliedSignalId);
+      if (applied && !signalIsFresh(applied.created_at)) {
+        setTradeMsg({ type: 'error', text: `Sinjali është vjetërsuar (mbi ${SIGNAL_FRESH_MIN} min) — mos tregto mbi të, prit një sinjal të ri.` });
+        return;
+      }
+    }
     const sl = newSl.trim() ? parseFloat(newSl) : undefined;
     const tp = newTp.trim() ? parseFloat(newTp) : undefined;
     setTradeLoading(true); setTradeMsg(null);
@@ -165,6 +179,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   // Klik mbi një sinjal → mbush formën "Porosi e re" (simbol, drejtim, SL, TP).
   const applySignal = (s: Signal) => {
+    // Mbrojtje: mos lejo tregti mbi sinjale të vjetra/po-skadojnë (çmimi ka lëvizur).
+    if (!signalIsFresh(s.created_at)) {
+      setAppliedSignalId(null);
+      setTradeMsg({ type: 'error', text: `Ky sinjal është i vjetër (mbi ${SIGNAL_FRESH_MIN} min) — çmimi ka lëvizur dhe rezultatet do të ishin të dobëta. Prit një sinjal të ri.` });
+      return;
+    }
     setSelected(s.symbol);
     setTradeType(s.type === 'sell' ? 'sell' : 'buy');
     setNewSl(s.stop_loss != null ? String(s.stop_loss) : '');
@@ -350,6 +370,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   <span className="flex items-center gap-2">
                     <span className="text-white text-sm font-bold">{latestSignal.symbol}</span>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${latestSignal.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{latestSignal.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
+                    {!signalIsFresh(latestSignal.created_at) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">I VJETËR</span>}
                   </span>
                   <span className="text-amber-400 text-xs font-semibold">{latestSignal.confidence}%</span>
                 </div>
@@ -406,12 +427,15 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           <p className="text-gray-600 text-xs text-center py-3">Asnjë sinjal aktiv tani.</p>
         ) : (
           <div className="grid sm:grid-cols-2 gap-2">
-            {signals.map(s => (
-              <button key={s.id} onClick={() => applySignal(s)} className={`text-left rounded-xl px-3 py-2 transition-colors border ${appliedSignalId === s.id ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-800/40 border-transparent hover:bg-gray-800'}`}>
+            {signals.map(s => {
+              const fresh = signalIsFresh(s.created_at);
+              return (
+              <button key={s.id} onClick={() => applySignal(s)} className={`text-left rounded-xl px-3 py-2 transition-colors border ${appliedSignalId === s.id ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-800/40 border-transparent hover:bg-gray-800'} ${fresh ? '' : 'opacity-60'}`}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="flex items-center gap-2">
                     <span className="text-white text-sm font-bold">{s.symbol}</span>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
+                    {!fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">I VJETËR</span>}
                   </span>
                   <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
                 </div>
@@ -420,9 +444,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   {s.target_price && <span>Objektiv: <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
                   {s.stop_loss && <span>Stop: <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
                 </div>
-                <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}</div>
+                <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}{fresh ? '' : ' · mos tregto'}</div>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
         </div>
