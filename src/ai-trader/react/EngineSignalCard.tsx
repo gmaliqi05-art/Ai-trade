@@ -100,7 +100,7 @@ function HorizonBlock({ title, data, category, accountBalance }: { title: string
 
 interface EngineSignalCardProps {
   analysis: AssetAnalysis;
-  /** Nëse jepet, shfaqet butoni "Arsyeto me Claude AI" që e thërret këtë funksion. */
+  /** Nëse jepet, shfaqet butoni "Kërko arsyetimin e Robotit" që e thërret këtë funksion. */
   askAI?: (analysis: AssetAnalysis) => Promise<CardAiReasoning>;
   /** Kategoria e aktivit (për llogaritjen e lotit). */
   category?: string;
@@ -133,13 +133,13 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
         className="w-full flex items-center justify-center gap-2 text-xs font-medium text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl py-2 transition-colors disabled:opacity-50"
       >
         {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-        {loading ? 'Claude po analizon…' : result ? 'Rifresko arsyetimin AI' : 'Arsyeto me Claude AI'}
+        {loading ? 'Roboti po analizon…' : result ? 'Rifresko arsyetimin' : 'Kërko arsyetimin e Robotit'}
       </button>
 
       {error && (
         <p className="mt-2 text-[11px] text-red-400">
           {error === 'no_active_providers' || error.includes('provider')
-            ? 'Asnjë provider AI i konfiguruar. Shto një çelës (p.sh. Anthropic) te Admin → AI Providers.'
+            ? 'Arsyetimi i robotit s\'është i disponueshëm tani. Provo më vonë.'
             : error}
         </p>
       )}
@@ -150,11 +150,10 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
             <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${actionClasses(result.signal.toUpperCase() === 'BUY' ? 'BUY' : result.signal.toUpperCase() === 'SELL' ? 'SELL' : 'HOLD')}`}>
               {result.signal.toUpperCase() === 'BUY' ? 'BLEJ' : result.signal.toUpperCase() === 'SELL' ? 'SHIT' : 'PRIT'}
             </span>
-            <span className="text-purple-300 text-xs font-semibold">{Math.round(result.confidence)}% Claude</span>
+            <span className="text-purple-300 text-xs font-semibold">{Math.round(result.confidence)}% Robot</span>
           </div>
           <p className="text-gray-300 text-[11px] leading-relaxed">{result.analysis_text}</p>
           <p className="text-gray-400 text-[11px] leading-relaxed">{result.reasoning}</p>
-          {result.provider_used && <p className="text-gray-600 text-[10px]">burimi: {result.provider_used}</p>}
         </div>
       )}
     </div>
@@ -175,7 +174,7 @@ export function EngineSignalCard({ analysis, askAI, category, accountBalance }: 
           <span className="text-white font-bold">{analysis.symbol}</span>
         </div>
         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${sourceBadge}`}>
-          {analysis.source === 'live' ? `LIVE · ${analysis.provider}` : 'VLERËSIM'}
+          {analysis.source === 'live' ? 'LIVE' : 'VLERËSIM'}
         </span>
       </div>
 
