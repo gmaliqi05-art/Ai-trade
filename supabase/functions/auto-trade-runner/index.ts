@@ -38,6 +38,17 @@ function marketDataHost(region: string) {
   return `https://mt-market-data-client-api-v1.${(region || "new-york").trim()}.agiliumtrade.ai`;
 }
 
+// Sesioni i arit i ankoruar te Frankfurt (Europe/Berlin) 09:00–23:00, DST automatik.
+// Jashtë sesionit s'hapim trade TË REJA (trailing/break-even vazhdon 24/7).
+function frankfurtHour(d = new Date()): number {
+  const s = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hourCycle: "h23" }).format(d);
+  return parseInt(s, 10) || 0;
+}
+function goldSessionOpen(): boolean {
+  const h = frankfurtHour();
+  return h >= 9 && h < 23;
+}
+
 function valuePerPrice(symbol: string): number {
   const s = (symbol || "").toUpperCase();
   if (s.includes("XAU")) return 100;
@@ -325,6 +336,9 @@ Deno.serve(async (req: Request) => {
         .select("id, symbol, type, confidence, entry_price, target_price, stop_loss, analysis")
         .eq("user_id", cfg.user_id).eq("status", "active").gte("created_at", sinceIso)
         .order("created_at", { ascending: false }).limit(5);
+
+      // Jashtë sesionit të arit s'hapim trade të reja (trailing/break-even u bë më sipër).
+      if (!goldSessionOpen()) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
 
       const candidates = (signals ?? []).filter((s: Signal) =>
         (s.type === "buy" || s.type === "sell") &&

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useMarketAnalysis, type MarketAsset } from '../ai-trader/react/useMarketAnalysis';
 import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
 import CompletedSignals from '../components/CompletedSignals';
+import { isGoldSessionActive, goldWindowLocal } from '../lib/goldSession';
 import type { Timeframe } from '../ai-trader/market/candles';
 import { requestEngineReasoning } from '../services/aiReasoning';
 
@@ -51,6 +52,11 @@ export default function SignalsPage() {
   const [market, setMarket] = useState<MarketKey>('commodity');
   const [goldOnly, setGoldOnly] = useState(true); // fokus: vetëm ari; të tjerat vetëm manualisht
   const [timeframe, setTimeframe] = useState<Timeframe>('1h');
+  // Tik çdo minutë për të rivlerësuar sesionin e arit (09:00–23:00 Frankfurt).
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNowTick(Date.now()), 60_000); return () => clearInterval(t); }, []);
+  const goldSessionOn = isGoldSessionActive(new Date(nowTick));
+  const goldWin = goldWindowLocal(new Date(nowTick));
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ asset_id: '', condition: 'above', target_price: '' });
@@ -104,6 +110,7 @@ export default function SignalsPage() {
     if (activeTab !== 'engine') return [];
     // Parazgjedhje: VETËM ari. Tregjet e tjera shfaqen vetëm kur përdoruesi i kërkon.
     if (goldOnly) {
+      if (!goldSessionOn) return []; // jashtë orarit të arit → asnjë sinjal
       return assets
         .filter(a => a.symbol === 'XAUUSD' && a.current_price > 0)
         .map(a => ({ symbol: a.symbol, category: a.category || a.type, currentPrice: a.current_price }));
@@ -112,7 +119,7 @@ export default function SignalsPage() {
       .filter(a => (a.category || a.type) === market && a.current_price > 0)
       .slice(0, 12)
       .map(a => ({ symbol: a.symbol, category: a.category || a.type, currentPrice: a.current_price }));
-  }, [assets, market, activeTab, goldOnly]);
+  }, [assets, market, activeTab, goldOnly, goldSessionOn]);
 
   const { analyses, loading: engineLoading, refresh: refreshEngine } = useMarketAnalysis(engineAssets, timeframe);
   const [engineUpdatedAt, setEngineUpdatedAt] = useState<Date | null>(null);
@@ -195,7 +202,14 @@ export default function SignalsPage() {
             ))}
           </div>
 
-          {engineLoading ? (
+          {goldOnly && !goldSessionOn ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
+              <Clock className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+              <p className="text-white font-medium">Jashtë orarit të tregtimit të arit 🌙</p>
+              <p className="text-gray-400 text-sm mt-1">Sinjalet e arit gjenerohen vetëm {goldWin.open}–{goldWin.close} {goldWin.sameAsFrankfurt ? '(Frankfurt)' : '(koha jote)'} — sesioni London/New York.</p>
+              <p className="text-gray-600 text-xs mt-2">Jashtë këtij orari likuiditeti është i ulët dhe sinjalet japin rezultate të dobëta.</p>
+            </div>
+          ) : engineLoading ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">{[...Array(6)].map((_, i) => <div key={i} className="h-56 bg-gray-800 rounded-2xl animate-pulse" />)}</div>
           ) : engineAssets.length === 0 ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center"><Cpu className="w-12 h-12 text-gray-700 mx-auto mb-3" /><p className="text-gray-400">Asnjë aktiv në këtë treg</p></div>
