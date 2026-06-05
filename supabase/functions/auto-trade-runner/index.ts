@@ -819,8 +819,11 @@ Deno.serve(async (req: Request) => {
     // sa më shpejt që lejon sistemi (kufiri i cron-it është 1 min). SL ndjek % e fitimit live.
     const trailCfgs = (configs ?? []).map((r) => r as Cfg).filter((c) => c.account_id && c.token && c.trail_enabled !== false);
     if (trailCfgs.length > 0) {
-      for (let i = 0; i < 3; i++) {
-        await new Promise((r) => setTimeout(r, 13000));
+      // ~8 kontrolle brenda minutës (çdo ~7s) → SL ndjek lëvizjen pothuajse në kohë reale.
+      // (Më shpejt do rrezikonte limitet e MetaApi/brokerit.) Ndalon ~52s për të mos kaluar minutën.
+      const deadline = Date.now() + 52_000;
+      for (let i = 0; i < 8 && Date.now() < deadline; i++) {
+        await new Promise((r) => setTimeout(r, 7000));
         for (const c of trailCfgs) {
           try { const m = await trailPositions(c); if (m > 0) summary.push({ user: c.user_id, fast_trail: m, pass: i + 1 }); } catch { /* */ }
         }
