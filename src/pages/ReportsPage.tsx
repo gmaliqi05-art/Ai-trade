@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 
 interface DayRow { date: string; count: number; wins: number; losses: number; net: number; pct: number; }
+interface SigRow { id: string; symbol: string; type: string; status: string; confidence: number | null; result_pct: number | null; closed_at: string | null; }
 
 const PERIODS: { v: number | 'today'; label: string }[] = [
   { v: 'today', label: 'Sot' },
@@ -55,9 +56,17 @@ export default function ReportsPage() {
   const [trades, setTrades] = useState<ClosedTrade[]>([]);
   const [balance, setBalance] = useState(0);
   const [currency, setCurrency] = useState('');
+  const [sigClosed, setSigClosed] = useState<SigRow[]>([]); // sinjalet e mbyllura (TP/SL/skaduar) — pavarësisht MT5
 
   const load = useCallback(async () => {
     setLoading(true); setError(null); setNotConnected(false);
+    // Sinjalet e mbyllura në periudhë (rolling 24h për 'Sot') — ngarkohen GJITHMONË, edhe pa lidhje MT5.
+    const sigSince = new Date(Date.now() - (period === 'today' ? 86400000 : (period as number) * 86400000)).toISOString();
+    supabase.from('signals')
+      .select('id, symbol, type, status, confidence, result_pct, closed_at')
+      .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', sigSince)
+      .order('closed_at', { ascending: false }).limit(100)
+      .then(({ data }) => setSigClosed((data as SigRow[]) || []));
     try {
       const fetchDays = period === 'today' ? 2 : period; // marrë pak më shumë; filtrohet te 'sot'
       const [chk, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(fetchDays)]);
@@ -103,6 +112,13 @@ export default function ReportsPage() {
   const best = shown.reduce<ClosedTrade | null>((m, t) => (t.net > (m?.net ?? -Infinity) ? t : m), null);
   const worst = shown.reduce<ClosedTrade | null>((m, t) => (t.net < (m?.net ?? Infinity) ? t : m), null);
   const days_ = dailyBreakdown(shown, balance);
+
+  // Sinjalet e mbyllura (rezultatet) — pavarësisht lidhjes me MT5.
+  const sigTp = sigClosed.filter(s => s.status === 'hit_tp').length;
+  const sigSl = sigClosed.filter(s => s.status === 'hit_sl').length;
+  const sigExp = sigClosed.filter(s => s.status === 'expired').length;
+  const sigDecided = sigTp + sigSl;
+  const sigWr = sigDecided ? Math.round((sigTp / sigDecided) * 100) : 0;
 
   // Përmbledhje + grupim sipas BURIMIT (auto / sinjal / manual / direkt MT5).
   const SOURCE_ORDER: TradeSource[] = ['auto', 'signal', 'manual', 'mt5'];
@@ -166,6 +182,35 @@ export default function ReportsPage() {
         {PERIODS.map(p => (
           <button key={String(p.v)} onClick={() => setPeriod(p.v)} className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${period === p.v ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{t(p.label)}</button>
         ))}
+      </div>
+
+      {/* Sinjalet e mbyllura — gjithmonë (edhe pa lidhje MT5). Këtu vjen aktiviteti i 24h që fshihet nga Sinjalet. */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+        <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet e mbyllura ({periodLabel})', { periodLabel })}</h3>
+        {sigClosed.length === 0 ? (
+          <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal i mbyllur në këtë periudhë.')}</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-2.5"><div className="text-[11px] text-gray-500">{t('Gjithsej')}</div><div className="text-white font-bold text-lg">{sigClosed.length}</div></div>
+              <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-2.5"><div className="text-[11px] text-gray-500">{t('Arriti TP')}</div><div className="text-green-400 font-bold text-lg">{sigTp}</div></div>
+              <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-2.5"><div className="text-[11px] text-gray-500">{t('Arriti SL')}</div><div className="text-red-400 font-bold text-lg">{sigSl}</div></div>
+              <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-2.5"><div className="text-[11px] text-gray-500">{t('Sukses · Skaduar')}</div><div className="font-bold text-lg"><span className={sigWr >= 50 ? 'text-green-400' : 'text-red-400'}>{sigDecided ? `${sigWr}%` : '—'}</span> <span className="text-gray-600 text-sm">· {sigExp}</span></div></div>
+            </div>
+            <div className="mt-3 space-y-1">
+              {sigClosed.slice(0, 8).map(s => (
+                <div key={s.id} className="flex items-center justify-between text-xs bg-gray-800/30 rounded-lg px-3 py-1.5">
+                  <span className="flex items-center gap-2">
+                    <span className="text-white font-medium">{s.symbol}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${s.status === 'hit_tp' ? 'bg-green-500/15 text-green-400' : s.status === 'hit_sl' ? 'bg-red-500/15 text-red-400' : 'bg-gray-700 text-gray-400'}`}>{s.status === 'hit_tp' ? t('TP') : s.status === 'hit_sl' ? t('SL') : t('Skaduar')}</span>
+                  </span>
+                  <span className="text-gray-500">{fmtDT(s.closed_at || undefined)}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {loading ? (

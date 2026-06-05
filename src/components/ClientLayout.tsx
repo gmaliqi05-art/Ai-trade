@@ -50,8 +50,8 @@ const navSections = [
 // Shiriti i navigimit poshtë për celular/tablet (pamje si-app). E 5-ta ("Më shumë") hap menynë e plotë.
 const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }[] = [
   { id: 'market_prices', label: 'Tregto Live', icon: Activity },
+  { id: 'metatrader', label: 'Konfigurimi', icon: Monitor },
   { id: 'dashboard', label: 'Paneli', icon: LayoutDashboard },
-  { id: 'signals', label: 'Sinjalet', icon: Zap },
   { id: 'reports', label: 'Raporte', icon: FileText },
 ];
 
