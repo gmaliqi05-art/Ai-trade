@@ -28,6 +28,7 @@ interface Cfg {
   trail_enabled?: boolean;   // ndez/fik trailing-un; default true
   trail_lock_pct?: number;   // % e fitimit që mbahet (SL ndjek këtë fraksion); default 50
   trail_start_usd?: number;  // profit minimal ($) para se të fillojë trailing-u; default 1
+  broker_trailing?: boolean; // trailing në anë të MT5/MetaApi (tick-by-tick); default false
   day_start_equity?: number; // ekuiteti në fillim të ditës UTC (për limitin ditor të humbjes)
   day_start_date?: string;   // data UTC e ruajtjes së day_start_equity
 }
@@ -41,6 +42,7 @@ interface Signal {
 interface Position {
   id: string; type?: string; symbol?: string; volume?: number; openPrice?: number; currentPrice?: number;
   stopLoss?: number; takeProfit?: number; profit?: number; comment?: string; clientId?: string;
+  trailingStopLoss?: unknown; // i vendosur kur trailing-u server-side është aktiv
 }
 
 // Shenja që dallon pozicionet e hapura nga strategjia scalp (vendoset te `comment`/`clientId`).
@@ -390,6 +392,21 @@ async function trailPositions(cfg: Cfg): Promise<number> {
   return moves;
 }
 
+// TRAILING NË ANË TË MT5/MetaApi (server-side, tick-by-tick). Vendos një trailing-stop me distancë
+// fikse (në çmim) që MetaApi e mban automatik pas çdo tiku — ndjekje vërtet e vazhdueshme.
+// Distanca = sa $ rri SL-ja pas çmimit (p.sh. = distanca fillestare e SL). Kthen true nëse u vendos.
+async function setBrokerTrailing(cfg: Cfg, positionId: string, distancePrice: number): Promise<boolean> {
+  const dist = Math.max(0.1, Math.round(distancePrice * 100) / 100);
+  try {
+    const r = await maTrade(cfg, {
+      actionType: "POSITION_MODIFY",
+      positionId,
+      trailingStopLoss: { distance: { distance: dist, units: "RELATIVE_PRICE" } },
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
 // Rezultati real i brokerit (10009 = DONE); HTTP 200 fsheh refuzimet.
 function brokerResult(body: unknown): { ok: boolean; code: number; msg: string; orderId: string | null } {
   const o = (body ?? {}) as Record<string, unknown>;
@@ -571,10 +588,18 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // 2) TRAILING i konfigurueshëm — SL ndjek një PJESË të fitimit (trail_lock_pct), pasi profiti
-        //    kalon trail_start_usd. Vlen për ÇDO pozicion (manual, sinjal, swing, scalp + MT5-direkt).
-        //    P.sh. lock 50% → SL mban gjysmën e fitimit aktual; 33% → një të tretën; 25% → një të katërtën.
-        if (sl != null && cfg.trail_enabled !== false) {
+        // 2a) BROKER TRAILING (server-side, tick-by-tick): vendoset NJË herë; MetaApi e ndjek vetë
+        //     pas çdo tiku (ndjekje vërtet e vazhdueshme). Distanca = distanca fillestare e SL-së.
+        if (cfg.broker_trailing && sl != null) {
+          if (!p.trailingStopLoss) {
+            const dist = Math.max(0.3, Math.abs(entry - sl));
+            const ok = await setBrokerTrailing(cfg, p.id, dist);
+            summary.push({ user: cfg.user_id, broker_trail: p.id, dist, ok });
+          }
+        }
+        // 2b) TRAILING ynë (polling) — SL ndjek një PJESË të fitimit (trail_lock_pct), pasi profiti
+        //     kalon trail_start_usd. Përdoret kur broker-trailing-u është OFF. Vlen për ÇDO pozicion.
+        else if (sl != null && cfg.trail_enabled !== false) {
           const startUsd = Math.max(0.1, Number(cfg.trail_start_usd ?? 1));
           const lockFrac = Math.min(0.95, Math.max(0.05, Number(cfg.trail_lock_pct ?? 50) / 100));
           if (moved >= startUsd) {
@@ -817,7 +842,8 @@ Deno.serve(async (req: Request) => {
 
     // TRAILING I SHPEJTË: brenda kësaj minute, ndjek SL-në disa herë (~çdo 13s) që të reagojë
     // sa më shpejt që lejon sistemi (kufiri i cron-it është 1 min). SL ndjek % e fitimit live.
-    const trailCfgs = (configs ?? []).map((r) => r as Cfg).filter((c) => c.account_id && c.token && c.trail_enabled !== false);
+    // Vetëm përdoruesit pa broker-trailing (ata me broker-trailing i ndjek MetaApi vetë, tick-by-tick).
+    const trailCfgs = (configs ?? []).map((r) => r as Cfg).filter((c) => c.account_id && c.token && c.trail_enabled !== false && c.broker_trailing !== true);
     if (trailCfgs.length > 0) {
       // ~8 kontrolle brenda minutës (çdo ~7s) → SL ndjek lëvizjen pothuajse në kohë reale.
       // (Më shpejt do rrezikonte limitet e MetaApi/brokerit.) Ndalon ~52s për të mos kaluar minutën.
