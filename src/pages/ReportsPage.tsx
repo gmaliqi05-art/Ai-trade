@@ -1,36 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar, Bot, Zap, Hand, Server } from 'lucide-react';
 import { loadTradeHistory, checkMetaApiConnection, type HistoryDeal, type AccountInfo } from '../services/metaapi';
+import { groupDeals, attachSource, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
-
-// Burimi i një trade-i: auto (robot), sinjal (klik mbi sinjal), manual (buton), ose direkt në MT5.
-type TradeSource = 'auto' | 'signal' | 'manual' | 'mt5';
-
-interface ExecRow { action: string; symbol: string; signal_id: string | null; reason: string | null; created_at: string; }
-
-// Klasifikon burimin nga arsyeja + signal_id e regjistruar te trade_executions.
-function classifySource(reason: string | null, signalId: string | null): TradeSource {
-  const r = (reason || '').toLowerCase();
-  if (r.startsWith('scalp auto') || r.startsWith('auto (') || r.startsWith('auto(')) return 'auto';
-  if (signalId) return 'signal';
-  return 'manual';
-}
-
-// Një trade i mbyllur, i grupuar nga deal-et IN/OUT të MT5 sipas positionId.
-interface ClosedTrade {
-  id: string;
-  symbol: string;
-  direction: 'BUY' | 'SELL' | '?';
-  openTime?: string;
-  closeTime?: string;
-  volume: number;
-  entryPrice?: number;
-  exitPrice?: number;
-  net: number; // profit + commission + swap
-  source?: TradeSource;
-}
 
 interface DayRow { date: string; count: number; wins: number; losses: number; net: number; pct: number; }
 
@@ -48,34 +22,7 @@ const isToday = (iso?: string) => {
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
 };
 
-// Grupon deal-et e MT5 në trade të mbyllura (IN = hapje, OUT = mbyllje).
-function groupDeals(deals: HistoryDeal[]): ClosedTrade[] {
-  const m = new Map<string, ClosedTrade>();
-  for (const d of deals) {
-    const pid = d.positionId || d.id;
-    if (!pid) continue;
-    const et = (d.entryType || '').toUpperCase();
-    const g = m.get(pid) || { id: pid, symbol: d.symbol || '—', direction: '?' as const, volume: 0, net: 0 };
-    g.net += (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0);
-    if (et.includes('IN')) {
-      g.direction = (d.type || '').toUpperCase().includes('BUY') ? 'BUY' : 'SELL';
-      g.entryPrice = Number(d.price) || g.entryPrice;
-      g.openTime = d.time || g.openTime;
-      g.volume = Number(d.volume) || g.volume;
-      if (d.symbol) g.symbol = d.symbol;
-    }
-    if (et.includes('OUT')) {
-      g.exitPrice = Number(d.price) || g.exitPrice;
-      g.closeTime = d.time || g.closeTime;
-      if (d.symbol && g.symbol === '—') g.symbol = d.symbol;
-    }
-    m.set(pid, g);
-  }
-  return [...m.values()]
-    .filter(t => t.closeTime) // vetëm trade të mbyllura
-    .sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || ''));
-}
-
+// Grupon deal-et e MT5 në trade të mbyllura — te `services/closedTrades`.
 function dailyBreakdown(trades: ClosedTrade[], balance: number): DayRow[] {
   const byDay = new Map<string, DayRow>();
   for (const t of trades) {
@@ -89,24 +36,6 @@ function dailyBreakdown(trades: ClosedTrade[], balance: number): DayRow[] {
   return [...byDay.values()]
     .map(d => ({ ...d, pct: balance > 0 ? (d.net / balance) * 100 : 0 }))
     .sort((a, b) => b.date.localeCompare(a.date));
-}
-
-// Lidh secilin trade me burimin e tij duke përputhur ekzekutimet (simbol + drejtim + kohë afër hapjes).
-function attachSource(trades: ClosedTrade[], execs: ExecRow[]): void {
-  const used = new Set<ExecRow>();
-  for (const tr of trades) {
-    const openMs = tr.openTime ? new Date(tr.openTime).getTime() : (tr.closeTime ? new Date(tr.closeTime).getTime() : 0);
-    let best: ExecRow | null = null, bestDiff = Infinity;
-    for (const e of execs) {
-      if (used.has(e)) continue;
-      if ((e.symbol || '').toUpperCase() !== (tr.symbol || '').toUpperCase()) continue;
-      if (e.action !== tr.direction) continue;
-      const diff = Math.abs(new Date(e.created_at).getTime() - openMs);
-      if (diff < bestDiff) { bestDiff = diff; best = e; }
-    }
-    if (best && bestDiff < 10 * 60 * 1000) { used.add(best); tr.source = classifySource(best.reason, best.signal_id); }
-    else tr.source = 'mt5';
-  }
 }
 
 const fmtMoney = (n: number, cur = '') => `${n >= 0 ? '+' : ''}${n.toFixed(2)}${cur ? ' ' + cur : ''}`;

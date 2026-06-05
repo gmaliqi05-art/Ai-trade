@@ -715,4 +715,7 @@ export const en: Record<string, string> = {
   "ADX i fortë (≥25)": "Strong ADX (≥25)",
   "RSI me hapësirë ({n})": "RSI has room ({n})",
   "MACD në harmoni": "MACD aligned",
+  "Auto": "Auto",
+  "Signal": "Signal",
+  "MT5": "MT5",
 };
