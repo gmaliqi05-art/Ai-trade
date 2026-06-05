@@ -55,19 +55,24 @@ interface SignalRow {
   expires_at: string | null;
 }
 
+// Ekzekutimet REALE nga MT5 (trade_executions) — jo tabela e vjetër boshe `trades`.
 interface TradeRow {
   id: string;
-  type: string;
-  quantity: number;
-  price: number;
-  total: number;
-  fee: number;
-  status: string;
-  executed_at: string;
+  symbol: string | null;
+  action: string;   // BUY | SELL
+  volume: number;
+  status: string;   // executed | pending | rejected | error
+  mode: string;     // demo | live
   created_at: string;
-  assets: { symbol: string } | null;
-  profiles: { full_name: string } | null;
 }
+
+// Planet reale të abonimit (subscription_plans) — për përzgjedhësin e planit te përdoruesit.
+interface PlanRow { slug: string; name: string; price_monthly: number; }
+const FALLBACK_PLANS: PlanRow[] = [
+  { slug: 'free', name: 'Free', price_monthly: 0 },
+  { slug: 'standard', name: 'Standard', price_monthly: 29 },
+  { slug: 'premium', name: 'Premium', price_monthly: 79 },
+];
 
 interface AuditRow {
   id: string;
@@ -110,6 +115,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [trades, setTrades] = useState<TradeRow[]>([]);
+  const [plans, setPlans] = useState<PlanRow[]>([]);
   const [aiProviders, setAIProviders] = useState<AIProviderRow[]>([]);
   const [auditLog, setAuditLog] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -179,13 +185,20 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   }, []);
 
   const fetchTrades = useCallback(async () => {
-    const { data } = await supabase.from('trades').select('*, assets(symbol), profiles(full_name)').order('created_at', { ascending: false }).limit(100);
+    const { data } = await supabase.from('trade_executions')
+      .select('id, symbol, action, volume, status, mode, created_at')
+      .order('created_at', { ascending: false }).limit(100);
     if (data) setTrades(data as TradeRow[]);
   }, []);
 
   const fetchAudit = useCallback(async () => {
     const { data } = await supabase.from('admin_audit_log').select('*, profiles(full_name)').order('created_at', { ascending: false }).limit(50);
     if (data) setAuditLog(data as AuditRow[]);
+  }, []);
+
+  const fetchPlans = useCallback(async () => {
+    const { data } = await supabase.from('subscription_plans').select('slug, name, price_monthly').eq('is_active', true).order('price_monthly');
+    if (data && data.length) setPlans(data as PlanRow[]);
   }, []);
 
   const fetchAIProviders = useCallback(async () => {
@@ -197,7 +210,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     setLoading(true);
     const load = async () => {
       await fetchOverview();
-      if (tab === 'users') await fetchUsers();
+      if (tab === 'users') { await fetchUsers(); await fetchPlans(); }
       else if (tab === 'assets') await fetchAssets();
       else if (tab === 'signals') { await fetchSignals(); await fetchAssets(); }
       else if (tab === 'trades') await fetchTrades();
@@ -206,7 +219,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       setLoading(false);
     };
     load();
-  }, [tab, fetchOverview, fetchUsers, fetchAssets, fetchSignals, fetchTrades, fetchAudit, fetchAIProviders]);
+  }, [tab, fetchOverview, fetchUsers, fetchAssets, fetchSignals, fetchTrades, fetchAudit, fetchAIProviders, fetchPlans]);
 
   const saveProvider = async (p: AIProviderRow) => {
     setSaving(true);
@@ -567,9 +580,9 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                                 <div>
                                   <label className="text-xs text-gray-400 block mb-1">{t('Abonimi')}</label>
                                   <select value={editUserForm.subscription_tier} onChange={e => setEditUserForm(f => ({ ...f, subscription_tier: e.target.value }))} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500">
-                                    <option value="free">Free</option>
-                                    <option value="pro">Pro</option>
-                                    <option value="elite">Elite</option>
+                                    {(plans.length ? plans : FALLBACK_PLANS).map(p => (
+                                      <option key={p.slug} value={p.slug}>{p.name} {p.price_monthly > 0 ? `($${p.price_monthly}/${t('muaj')})` : `(${t('falas')})`}</option>
+                                    ))}
                                   </select>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -846,31 +859,34 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Përdoruesi')}</th>
                     <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Aktivi')}</th>
                     <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Lloji')}</th>
-                    <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Sasia')}</th>
-                    <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Çmimi')}</th>
-                    <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Totali')}</th>
+                    <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Vëllimi (lot)')}</th>
+                    <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Statusi')}</th>
+                    <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Modaliteti')}</th>
                     <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Data')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
-                  {trades.map(t => (
+                  {trades.map(t => {
+                    const isBuy = (t.action || '').toUpperCase().includes('BUY');
+                    return (
                     <tr key={t.id} className="hover:bg-gray-800/30 transition-colors">
-                      <td className="px-4 py-3 text-gray-300 text-sm">{t.profiles?.full_name || '—'}</td>
-                      <td className="px-4 py-3 text-white font-medium">{t.assets?.symbol || '—'}</td>
+                      <td className="px-4 py-3 text-white font-medium">{t.symbol || '—'}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${t.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{t.type}</span>
+                        <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${isBuy ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{isBuy ? 'BUY' : 'SELL'}</span>
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-300">{Number(t.quantity).toFixed(4)}</td>
-                      <td className="px-4 py-3 text-right text-gray-300">${Number(t.price).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                      <td className="px-4 py-3 text-right text-white font-medium">${Number(t.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                      <td className="px-4 py-3 text-right text-gray-300">{Number(t.volume || 0)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full ${t.status === 'executed' ? 'bg-green-500/15 text-green-400' : t.status === 'rejected' || t.status === 'error' ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'}`}>{t.status}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-400 text-xs uppercase">{t.mode}</td>
                       <td className="px-4 py-3 text-right text-gray-500 text-xs whitespace-nowrap">
-                        {new Date(t.executed_at || t.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {new Date(t.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             )}
