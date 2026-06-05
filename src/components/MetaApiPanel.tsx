@@ -289,6 +289,15 @@ export default function MetaApiPanel() {
           </div>
           <p className="text-[10px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">ℹ️ Si punon:</span> roboti e kontrollon çdo minutë; sapo fitimi kalon pragun, SL zhvendoset për të mbajtur përqindjen e zgjedhur të fitimit, dhe ngjitet vetëm përpara (kurrë mbrapa). Vlen për të gjitha trade-t e hapura — manual, sinjal, swing, scalp.') }} />
         </div>
+
+        {/* Trailing në anë të MT5 (tick-by-tick) — opsional, eksperimental */}
+        <div className={`flex items-center justify-between rounded-xl border p-3 mt-1 ${cfg.broker_trailing ? 'bg-amber-500/10 border-amber-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+          <div className="pr-3">
+            <span className="text-[12px] font-semibold text-white">{t('Trailing në anë të MT5 (tick-by-tick)')}</span>
+            <p className="text-[10px] text-gray-500 mt-0.5 leading-snug">{t('MetaApi e ndjek SL-në pas çdo tiku në kohë reale (më i shpejtë se roboti). Distanca = distanca fillestare e SL. ⚠️ Eksperimental — provoje në DEMO; jo çdo broker e mbështet.')}</p>
+          </div>
+          <TogglePill on={cfg.broker_trailing} onClick={() => setAndSave('broker_trailing', !cfg.broker_trailing)} t={t} />
+        </div>
       </Section>
 
       {msg && (

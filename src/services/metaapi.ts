@@ -42,6 +42,8 @@ export interface MetaApiConfig {
   trail_lock_pct: number;
   /** Profit minimal ($) para se të fillojë trailing-u. Default 1. */
   trail_start_usd: number;
+  /** Trailing në anë të MT5/MetaApi (tick-by-tick, server-side). Default OFF. */
+  broker_trailing: boolean;
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
@@ -52,7 +54,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   risk_per_trade_pct: 1,
   strategy_swing: true, strategy_scalp: false,
   scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_max_trades: 2, scalp_small_moves: false,
-  trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1,
+  trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1, broker_trailing: false,
 };
 
 export interface TradeExecution {
@@ -85,6 +87,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     trail_enabled: data.trail_enabled ?? true,
     trail_lock_pct: Number(data.trail_lock_pct ?? 50),
     trail_start_usd: Number(data.trail_start_usd ?? 1),
+    broker_trailing: !!data.broker_trailing,
   };
 }
 
