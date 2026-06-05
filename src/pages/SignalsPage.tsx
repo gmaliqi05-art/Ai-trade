@@ -77,16 +77,18 @@ export default function SignalsPage() {
   const fetchData = async () => {
     setLoading(true);
     const now = new Date().toISOString();
+    const since24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString(); // sinjalet > 24h fshihen (kalojnë te Raportet)
     const [sr, ar, alr, dr] = await Promise.all([
       supabase.from('signals').select('id, type, symbol, entry_price, target_price, stop_loss, confidence, timeframe, analysis, status, source, created_at, expires_at')
         .eq('status', 'active')
         .or(`expires_at.is.null,expires_at.gt.${now}`)
+        .gte('created_at', since24)
         .order('confidence', { ascending: false }),
       supabase.from('assets').select('id, symbol, name, current_price, category, type'),
       user ? supabase.from('alerts').select('*').eq('user_id', user.id).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
-      // Sinjale të përfunduara (TP/SL/skaduar) për raportim.
+      // Sinjale të përfunduara (TP/SL/skaduar) të 24h të fundit — historiku i plotë te Raportet.
       supabase.from('signals').select('id, type, symbol, entry_price, target_price, stop_loss, confidence, timeframe, analysis, status, source, created_at, outcome, result_pct, closed_at')
-        .in('status', ['hit_tp', 'hit_sl', 'expired']).order('closed_at', { ascending: false }).limit(30),
+        .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', since24).order('closed_at', { ascending: false }).limit(30),
     ]);
     if (sr.data) setSignals(sr.data as Signal[]);
     if (ar.data) { setAssets(ar.data); if (ar.data.length > 0 && !form.asset_id) setForm(f => ({ ...f, asset_id: ar.data[0].id })); }

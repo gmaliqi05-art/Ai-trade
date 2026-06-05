@@ -100,13 +100,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   const fetchBase = useCallback(async () => {
     const now = new Date().toISOString();
+    const since24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString(); // sinjalet > 24h fshihen
     const [ar, sr, dr] = await Promise.all([
       supabase.from('assets').select('id, symbol, name, category, current_price').gt('current_price', 0),
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, timeframe, analysis')
-        .eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${now}`).order('confidence', { ascending: false }).limit(8),
-      // Sinjalet e PËRFUNDUARA (TP/SL/skaduar) — për raportim suksesi.
+        .eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${now}`).gte('created_at', since24).order('confidence', { ascending: false }).limit(8),
+      // Sinjalet e PËRFUNDUARA (TP/SL/skaduar) të 24h të fundit — historiku i plotë te Raportet.
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, outcome, result_pct, closed_at')
-        .in('status', ['hit_tp', 'hit_sl', 'expired']).order('closed_at', { ascending: false }).limit(12),
+        .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', since24).order('closed_at', { ascending: false }).limit(12),
     ]);
     if (ar.data) setAssets(goldFirst(ar.data as Asset[]));
     if (sr.data) setSignals(sr.data as Signal[]);
@@ -414,11 +415,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             <button onClick={() => setTradeType('sell')} className={`flex-1 py-2 text-sm font-semibold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('SHIT')}</button>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-gray-400 text-xs shrink-0">{t('Lot')}</label>
+            <label className="text-gray-400 text-xs shrink-0 w-8">{t('Lot')}</label>
             <input type="number" value={lot} onChange={e => setLot(e.target.value)} min="0.01" step="0.01"
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500" />
+              className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500" />
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
             {['0.01', '0.05', '0.10', '0.25'].map(v => (
-              <button key={v} onClick={() => setLot(v)} className={`text-[11px] px-2 py-1.5 rounded-lg transition-colors ${lot === v ? 'bg-amber-500 text-gray-950 font-medium' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white'}`}>{v}</button>
+              <button key={v} onClick={() => setLot(v)} className={`text-[11px] py-1.5 rounded-lg transition-colors ${lot === v ? 'bg-amber-500 text-gray-950 font-medium' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white'}`}>{v}</button>
             ))}
           </div>
           {/* Çmimi i hyrjes — nëse çmimi s'është aty, vendoset porosi NË PRITJE (hyn automatik kur arrin) */}
