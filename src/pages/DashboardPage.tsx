@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import {
-  Brain, Zap, TrendingUp, TrendingDown, Upload,
+  Brain, Zap, TrendingUp, TrendingDown,
   Activity, ArrowRight, RefreshCw, Wifi, WifiOff,
   AlertTriangle, BarChart3, Cloud, ShieldCheck
 } from 'lucide-react';
@@ -322,28 +322,6 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                 ))}
               </div>
             )}
-          </div>
-
-          {/* Veprime të shpejta */}
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-3 text-sm">{t('Veprime të shpejta')}</h3>
-            <div className="space-y-2">
-              {[
-                { label: 'Shiko sinjalet (Motori AI)', icon: Zap, page: 'signals' as Page, color: 'bg-amber-500 hover:bg-amber-400 text-gray-950', bold: true },
-                { label: 'Lidh / menaxho Auto-Trade', icon: Cloud, page: 'metatrader' as Page, color: 'bg-gray-800 hover:bg-gray-700 text-white', bold: false },
-                { label: 'Analizo grafik me AI', icon: Upload, page: 'chart_analysis' as Page, color: 'bg-gray-800 hover:bg-gray-700 text-white', bold: false },
-                { label: 'Çmimet e tregut', icon: BarChart3, page: 'market_prices' as Page, color: 'bg-gray-800 hover:bg-gray-700 text-white', bold: false },
-              ].map(a => {
-                const Icon = a.icon;
-                return (
-                  <button key={a.label} onClick={() => onNavigate(a.page)} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-all ${a.color}`}>
-                    <Icon className="w-4 h-4 flex-shrink-0" />
-                    <span className={a.bold ? 'font-semibold' : 'font-medium'}>{t(a.label)}</span>
-                    <ArrowRight className="w-3.5 h-3.5 ml-auto opacity-60" />
-                  </button>
-                );
-              })}
-            </div>
           </div>
         </div>
       </div>

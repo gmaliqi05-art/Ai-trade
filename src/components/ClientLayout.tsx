@@ -20,8 +20,8 @@ const navSections = [
   {
     label: 'Kryesore',
     items: [
+      { id: 'market_prices' as ClientPage, label: 'Tregto Live', icon: Activity },
       { id: 'dashboard' as ClientPage, label: 'Paneli', icon: LayoutDashboard },
-      { id: 'market_prices' as ClientPage, label: 'MetaTrader 5 Live', icon: Activity },
     ],
   },
   {
@@ -49,7 +49,7 @@ const navSections = [
 
 const pageLabels: Record<ClientPage, string> = {
   dashboard: 'Paneli',
-  market_prices: 'MetaTrader 5 Live',
+  market_prices: 'Tregto Live',
   chart_analysis: 'Analizë grafiku',
   signals: 'Sinjalet',
   metatrader: 'Lidhja & Konfigurimi',

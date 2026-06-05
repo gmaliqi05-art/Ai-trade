@@ -5,7 +5,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save,
-  Eye, EyeOff, Layers, ChevronDown, Gauge, TrendingUp, Zap,
+  Eye, EyeOff, Layers, ChevronDown, Gauge, TrendingUp, Zap, Plus, X, Lock, Check,
 } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
@@ -208,9 +208,9 @@ export default function MetaApiPanel() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <NumField label={t('Besueshmëri minimale (%)')} hint={t('Vetëm sinjalet me besueshmëri ≥ këtij pragu ekzekutohen auto.')}
             value={cfg.min_confidence} step="1" min="0" max="100" onChange={v => set('min_confidence', v)} onBlur={save} />
-          <Field label={t('Simbolet e lejuara (me presje)')}>
-            <input value={cfg.auto_symbols} onChange={e => set('auto_symbols', e.target.value)} onBlur={save} placeholder="XAUUSD" className="inp" />
-            <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{t('Vetëm këto simbole tregtohen automatik (p.sh. XAUUSD).')}</p>
+          <Field label={t('Simbolet e lejuara')}>
+            <SymbolPicker value={cfg.auto_symbols} onChange={v => setAndSave('auto_symbols', v)} />
+            <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{t('Ari (XAUUSD) është default. Shto të tjera vetëm nëse i mbështet brokeri yt.')}</p>
           </Field>
         </div>
       </Section>
@@ -475,6 +475,78 @@ function TogglePill({ on, onClick, t }: { on: boolean; onClick: () => void; t: (
       className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${on ? 'bg-green-500/15 text-green-400 border-green-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
       {on ? t('AKTIV') : t('JOAKTIV')}
     </button>
+  );
+}
+
+// Simbolet që mbështet platforma, të grupuara. Ari (XAUUSD) është default i palëvizshëm.
+const SYMBOL_GROUPS: { cat: string; syms: [string, string][] }[] = [
+  { cat: 'Ari & Mallra', syms: [['XAUUSD', 'Ari'], ['XAGUSD', 'Argjend']] },
+  { cat: 'Forex', syms: [['EURUSD', 'Euro'], ['GBPUSD', 'Sterlina'], ['USDJPY', 'Jeni']] },
+  { cat: 'Crypto', syms: [['BTCUSD', 'Bitcoin'], ['ETHUSD', 'Ethereum'], ['SOLUSD', 'Solana'], ['BNBUSD', 'BNB'], ['XRPUSD', 'XRP']] },
+  { cat: 'Indekse & Aksione', syms: [['US30', 'Dow 30'], ['NAS100', 'Nasdaq 100'], ['SPX500', 'S&P 500'], ['GER40', 'DAX 40'], ['AAPL', 'Apple'], ['MSFT', 'Microsoft'], ['TSLA', 'Tesla']] },
+];
+const DEFAULT_SYMBOL = 'XAUUSD';
+
+// Përzgjedhës simbolesh: Ari gjithmonë default; të tjerat shtohen nga një menu që hapet me klik.
+function SymbolPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+
+  // Lista e zgjedhur — Ari gjithmonë i pranishëm dhe i pari.
+  const raw = (value || DEFAULT_SYMBOL).split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  const selected = [DEFAULT_SYMBOL, ...raw.filter(s => s !== DEFAULT_SYMBOL)];
+
+  const commit = (arr: string[]) => onChange([DEFAULT_SYMBOL, ...arr.filter(s => s !== DEFAULT_SYMBOL)].join(','));
+  const toggle = (sym: string) => {
+    if (sym === DEFAULT_SYMBOL) return; // Ari i palëvizshëm
+    commit(selected.includes(sym) ? selected.filter(s => s !== sym) : [...selected, sym]);
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* Chips të zgjedhura + butoni hamburger për të hapur menunë */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {selected.map(sym => (
+          <span key={sym} className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg border ${sym === DEFAULT_SYMBOL ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-gray-700/50 text-gray-200 border-gray-600'}`}>
+            {sym === DEFAULT_SYMBOL && <Lock className="w-3 h-3" />}
+            {sym}
+            {sym !== DEFAULT_SYMBOL && (
+              <button onClick={() => toggle(sym)} className="text-gray-400 hover:text-red-400" title={t('Hiq')}><X className="w-3 h-3" /></button>
+            )}
+          </span>
+        ))}
+        <button onClick={() => setOpen(o => !o)}
+          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-600 bg-gray-800 text-gray-300 hover:text-white transition-colors">
+          <Plus className="w-3 h-3" />{t('Shto simbol')}
+          <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      {/* Menyja (hamburger) — hapet vetëm me klik */}
+      {open && (
+        <div className="rounded-xl border border-gray-700 bg-gray-900 p-2 space-y-2 max-h-64 overflow-y-auto">
+          {SYMBOL_GROUPS.map(g => (
+            <div key={g.cat}>
+              <div className="px-1 mb-1 text-[10px] text-gray-500 font-semibold tracking-wide uppercase">{t(g.cat)}</div>
+              <div className="grid grid-cols-2 gap-1">
+                {g.syms.map(([sym, name]) => {
+                  const on = selected.includes(sym);
+                  const locked = sym === DEFAULT_SYMBOL;
+                  return (
+                    <button key={sym} onClick={() => toggle(sym)} disabled={locked}
+                      className={`flex items-center justify-between gap-1 text-left text-[11px] px-2 py-1.5 rounded-lg border transition-colors ${on ? 'bg-amber-500/10 border-amber-500/30 text-white' : 'bg-gray-800/60 border-gray-700 text-gray-300 hover:border-gray-500'} ${locked ? 'opacity-80' : ''}`}>
+                      <span className="truncate"><span className="font-semibold">{sym}</span> <span className="text-gray-500">{name}</span></span>
+                      {locked ? <Lock className="w-3 h-3 text-amber-400 shrink-0" /> : on ? <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <Plus className="w-3 h-3 text-gray-500 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <button onClick={() => setOpen(false)} className="w-full text-[11px] font-medium text-gray-300 hover:text-white bg-gray-800 rounded-lg py-1.5 transition-colors">{t('Mbyll')}</button>
+        </div>
+      )}
+    </div>
   );
 }
 
