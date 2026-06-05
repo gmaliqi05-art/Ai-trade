@@ -54,7 +54,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [signals, setSignals] = useState<Signal[]>([]);
   const [doneSignals, setDoneSignals] = useState<Signal[]>([]);
   const [selected, setSelected] = useState('XAUUSD');
-  const [tf, setTf] = useState('15m');
+  const [tf, setTf] = useState('1m');
+  // Simbolet e lejuara nga cilësimet (auto_symbols). Ari default; të tjerat shtohen te Cilësimet.
+  const [allowedSymbols, setAllowedSymbols] = useState<string[]>(['XAUUSD']);
 
   const [metaConfigured, setMetaConfigured] = useState(false);
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
@@ -117,6 +119,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const configured = !!(cfg.account_id && cfg.token);
     setMetaConfigured(configured);
     setMtMode(cfg.mode);
+    // Lista e simboleve për tab-et — Ari gjithmonë + ato që ka aktivizuar përdoruesi te Cilësimet.
+    setAllowedSymbols(['XAUUSD', ...(cfg.auto_symbols || '').split(',').map(s => s.trim().toUpperCase()).filter(s => s && s !== 'XAUUSD')]);
     if (configured) {
       const [acc, hist, pos] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions()]);
       if (!acc.error && acc.account) setAccount(acc.account);
@@ -366,7 +370,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 flex-wrap gap-2">
               <div className="flex gap-1.5 flex-wrap">
-                {assets.slice(0, 7).map(a => (
+                {assets.filter(a => allowedSymbols.includes(a.symbol)).map(a => (
                   <button key={a.id} onClick={() => pickSymbol(a.symbol)}
                     className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${selected === a.symbol ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
                     {a.symbol}
@@ -383,7 +387,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               {candles.length === 0 ? (
                 <div className="h-[460px] flex items-center justify-center text-gray-600 text-sm">{t('Po ngarkohet grafiku…')}</div>
               ) : (
-                <Mt5Chart candles={candles} lines={chartLines} height={460} />
+                <Mt5Chart candles={candles} lines={chartLines} height={460} fitKey={`${selected}_${tf}`} />
               )}
             </div>
             {posForSymbol && (

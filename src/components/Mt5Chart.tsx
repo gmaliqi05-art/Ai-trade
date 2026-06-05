@@ -18,16 +18,19 @@ export interface PriceLineDef {
   title: string;
 }
 
-export default function Mt5Chart({ candles, lines = [], height = 380 }: {
+export default function Mt5Chart({ candles, lines = [], height = 380, fitKey }: {
   candles: ChartCandle[];
   lines?: PriceLineDef[];
   height?: number;
+  /** Kur ndryshon (p.sh. simboli ose periudha), grafiku ri-përshtatet; përndryshe ruan zoom-in manual. */
+  fitKey?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const linePricesRef = useRef<number[]>([]); // çmimet e Hyrje/SL/TP për auto-scale
+  const lastFitRef = useRef<string | null>(null); // fitKey-i i fundit për të cilin u ri-përshtat
 
   // Krijo grafikun një herë.
   useEffect(() => {
@@ -36,7 +39,9 @@ export default function Mt5Chart({ candles, lines = [], height = 380 }: {
       layout: { background: { type: ColorType.Solid, color: '#111827' }, textColor: '#9ca3af', attributionLogo: false },
       grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
       rightPriceScale: { borderColor: '#374151' },
-      timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false },
+      // rightOffset: lë hapësirë mes qiririt të fundit dhe boshtit të çmimit (qiriri NUK futet nën etiketat).
+      // lockVisibleTimeRangeOnResize: ruan pamjen kur ndryshon madhësia.
+      timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7, lockVisibleTimeRangeOnResize: true },
       crosshair: { mode: 1 },
       autoSize: true,
     });
@@ -71,8 +76,17 @@ export default function Mt5Chart({ candles, lines = [], height = 380 }: {
     seriesRef.current.setData(
       candles.map(c => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })),
     );
-    chartRef.current?.timeScale().fitContent();
-  }, [candles]);
+    // Ri-përshtat VETËM kur ndryshon simboli/periudha (fitKey). Përndryshe ruaj zoom/pan-in manual
+    // të përdoruesit — grafiku nuk kërcen vetë te çdo përditësim çmimi.
+    const key = fitKey ?? '__static__';
+    if (lastFitRef.current !== key) {
+      // Trego një dritare të lexueshme të qirinjve të fundit me një hapësirë të vogël në të djathtë
+      // (qiriri i fundit NUK ngjitet te boshti) dhe çmimi i fundit mbetet i dukshëm.
+      const n = candles.length;
+      chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 100), to: n + 3 });
+      lastFitRef.current = key;
+    }
+  }, [candles, fitKey]);
 
   // Përditëso linjat Hyrje/SL/TP.
   useEffect(() => {
