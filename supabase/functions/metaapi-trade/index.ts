@@ -124,6 +124,17 @@ Deno.serve(async (req: Request) => {
     }
     const config = cfg as MetaApiConfig;
 
+    // Regjistro thirrjen te MetaApi (best-effort) — për panelin e kostove te admin-i.
+    // MetaApi tarifon për thirrje; këtu numërojmë çdo thirrje + një vlerësim kostoje.
+    try {
+      await db.from("metaapi_usage_log").insert({
+        user_id: user.id,
+        action,
+        symbol: body.symbol || null,
+        cost_usd: 0.0005,
+      });
+    } catch (_e) { /* injoro — s'duhet të ndalë tregtimin */ }
+
     // CHECK — testo lidhjen, kthe info të llogarisë.
     if (action === "CHECK") {
       try {

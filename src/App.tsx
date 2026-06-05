@@ -17,6 +17,7 @@ import SettingsPage from './pages/SettingsPage';
 import AdminOverviewPage from './admin/AdminOverviewPage';
 import AdminSettingsPage from './admin/AdminSettingsPage';
 import AdminMetaTraderPage from './admin/AdminMetaTraderPage';
+import AdminCostPage from './admin/AdminCostPage';
 import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
@@ -25,13 +26,13 @@ export type ClientPage =
 
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_assets' | 'admin_signals'
-  | 'admin_trades' | 'admin_ai' | 'admin_broadcast' | 'admin_metatrader'
+  | 'admin_trades' | 'admin_ai' | 'admin_cost' | 'admin_broadcast' | 'admin_metatrader'
   | 'admin_audit' | 'admin_settings';
 
 export type Page = ClientPage | AdminPage;
 
 const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'chart_analysis', 'signals', 'metatrader', 'notifications', 'reports', 'settings'];
-const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_assets', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_broadcast', 'admin_metatrader', 'admin_audit', 'admin_settings'];
+const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_assets', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_audit', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
 function usePersistedPage<T extends string>(storageKey: string, valid: T[], fallback: T): [T, (p: T) => void] {
@@ -60,6 +61,7 @@ function AdminApp() {
       {currentPage === 'admin_signals' && <AdminPageTab tab="signals" />}
       {currentPage === 'admin_trades' && <AdminPageTab tab="trades" />}
       {currentPage === 'admin_ai' && <AdminPageTab tab="ai_providers" />}
+      {currentPage === 'admin_cost' && <AdminCostPage />}
       {currentPage === 'admin_broadcast' && <AdminPageTab tab="notifications" />}
       {currentPage === 'admin_metatrader' && <AdminMetaTraderPage />}
       {currentPage === 'admin_audit' && <AdminPageTab tab="audit" />}
@@ -73,7 +75,7 @@ function AdminPageTab({ tab }: { tab: string }) {
 }
 
 function ClientApp() {
-  const [currentPage, setCurrentPage] = usePersistedPage<ClientPage>('client_current_page', CLIENT_PAGES, 'dashboard');
+  const [currentPage, setCurrentPage] = usePersistedPage<ClientPage>('client_current_page', CLIENT_PAGES, 'market_prices');
 
   return (
     <ClientLayout currentPage={currentPage} onNavigate={setCurrentPage}>

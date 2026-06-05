@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
-  Bell, Settings, Monitor, ChevronDown
+  Bell, Settings, Monitor, ChevronDown, Coins
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -23,6 +23,7 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_signals', label: 'Sinjalet', icon: Zap, section: 'Menaxhimi' },
   { id: 'admin_trades', label: 'Tregtitë', icon: Activity, section: 'Menaxhimi' },
   { id: 'admin_ai', label: 'AI Providers', icon: Brain, section: 'Platforma' },
+  { id: 'admin_cost', label: 'Kostot & API', icon: Coins, section: 'Platforma' },
   { id: 'admin_broadcast', label: 'Broadcast', icon: Megaphone, section: 'Platforma' },
   { id: 'admin_metatrader', label: 'MetaTrader', icon: Monitor, section: 'Platforma' },
   { id: 'admin_audit', label: 'Regjistri i auditit', icon: Shield, section: 'Siguria' },
@@ -36,6 +37,7 @@ const pageLabels: Record<AdminPage, string> = {
   admin_signals: 'Menaxhimi i sinjaleve',
   admin_trades: 'Monitorimi i tregtive',
   admin_ai: 'AI Providers',
+  admin_cost: 'Kostot & përdorimi (API)',
   admin_broadcast: 'Broadcast',
   admin_metatrader: 'Lidhjet MetaTrader',
   admin_audit: 'Regjistri i auditit',

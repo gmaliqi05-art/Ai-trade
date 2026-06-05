@@ -68,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    // Çdo hyrje fillon te faqja e parazgjedhur (Tregto Live), jo te faqja e fundit e ruajtur.
+    if (!error) { try { localStorage.removeItem('client_current_page'); } catch { /* injoro */ } }
     return { error };
   };
 
@@ -85,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
       if (signInErr) return { error: signInErr };
     }
+    try { localStorage.removeItem('client_current_page'); } catch { /* injoro */ }
     return { error: null };
   };
 
