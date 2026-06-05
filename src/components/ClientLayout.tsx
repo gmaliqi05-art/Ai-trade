@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { ClientPage } from '../App';
 import { useI18n } from '../i18n/i18n';
 import LanguageSwitcher from '../i18n/LanguageSwitcher';
+import { getReadBroadcasts } from '../lib/broadcastReads';
 
 interface ClientLayoutProps {
   currentPage: ClientPage;
@@ -75,15 +76,25 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
 
   const fetchUnread = useCallback(async () => {
     if (!user) return;
-    const { count } = await supabase
+    const { data } = await supabase
       .from('notifications')
-      .select('id', { count: 'exact' })
+      .select('id, is_broadcast')
       .or(`user_id.eq.${user.id},is_broadcast.eq.true`)
       .eq('is_read', false);
-    setUnreadCount(count || 0);
+    // Përjashto broadcast-et që përdoruesi i ka lexuar lokalisht (RLS s'lejon update të tyre).
+    const readSet = getReadBroadcasts(user.id);
+    const rows = (data as { id: string; is_broadcast: boolean }[] | null) || [];
+    setUnreadCount(rows.filter(r => !(r.is_broadcast && readSet.has(r.id))).length);
   }, [user]);
 
   useEffect(() => { fetchUnread(); }, [fetchUnread, currentPage]);
+
+  // Rifresko numrin sapo njoftimet ndryshojnë (klik "lexuar", "lexo të gjitha", fshirje).
+  useEffect(() => {
+    const h = () => fetchUnread();
+    window.addEventListener('notifications-updated', h);
+    return () => window.removeEventListener('notifications-updated', h);
+  }, [fetchUnread]);
 
   const NavItem = ({ item }: { item: { id: ClientPage; label: string; icon: React.ElementType } }) => {
     const active = currentPage === item.id;
