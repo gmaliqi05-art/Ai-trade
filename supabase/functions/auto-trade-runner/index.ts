@@ -16,6 +16,7 @@ interface Cfg {
   default_lot: number; max_lot: number; max_daily_loss: number; max_open_trades: number;
   kill_switch: boolean; min_confidence: number; auto_symbols: string;
   dynamic_lot?: boolean; lot_conf_70?: number; lot_conf_80?: number; lot_conf_90?: number;
+  lot_conf_t1?: number; lot_conf_t2?: number; lot_conf_t3?: number; // pragjet e besueshmërisë (default 70/80/90)
   risk_per_trade_pct?: number; // % e kapitalit për trade (fixed-fractional); default 1%
   // Dy strategjitë: afat-gjatë (swing, sinjale 15m/1h/4h) dhe afat-shkurt (scalp, momentum 1m/5m).
   strategy_swing?: boolean;  // default true
@@ -86,9 +87,10 @@ function lotForConfidence(cfg: Cfg, conf: number): number {
   if (cfg.dynamic_lot === false) {
     lot = Number(cfg.default_lot) || 0.01;
   } else {
-    lot = Number(cfg.lot_conf_70 ?? 0.01);
-    if (conf >= 80) lot = Number(cfg.lot_conf_80 ?? 0.02);
-    if (conf >= 90) lot = Number(cfg.lot_conf_90 ?? 0.05);
+    const t1 = Number(cfg.lot_conf_t1 ?? 70), t2 = Number(cfg.lot_conf_t2 ?? 80), t3 = Number(cfg.lot_conf_t3 ?? 90);
+    lot = Number(cfg.lot_conf_70 ?? 0.01); // banda bazë (besueshmëri ≥ t1)
+    if (conf >= t2) lot = Number(cfg.lot_conf_80 ?? 0.02);
+    if (conf >= t3) lot = Number(cfg.lot_conf_90 ?? 0.05);
   }
   const maxLot = Number(cfg.max_lot) || lot;
   lot = Math.min(lot, maxLot);
