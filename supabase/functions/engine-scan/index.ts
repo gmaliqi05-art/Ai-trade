@@ -157,7 +157,7 @@ function analyzeTF(candles: Candle[]): TFResult | null {
 //  - Konfirmim shumë-periudhash: 15m + 1h + 4h duhet të pajtohen.
 //  - Filtër trendi: çmimi mbi EMA200 për BLEJ, nën EMA200 për SHIT (në 1h).
 //  - Filtër force: ADX(1h) ≥ 20 (vetëm trende të forta).
-const ADX_MIN = 20;
+const ADX_MIN = 18;
 async function generateStrong(symbol: string): Promise<EngineResult | null> {
   const [c15, c1h, c4h] = await Promise.all([
     fetchCandles(symbol, "15m"), fetchCandles(symbol, "1h"), fetchCandles(symbol, "4h"),
@@ -168,8 +168,9 @@ async function generateStrong(symbol: string): Promise<EngineResult | null> {
 
   const dir = s1h.action;
   if (dir === "HOLD") return null;
-  // 1) Të treja periudhat në të njëjtin drejtim.
-  if (s15.action !== dir || s4h.action !== dir) return null;
+  // 1) Trendi afat-gjatë: 1h + 4h duhet të pajtohen (4h = busull). 15m s'është kusht
+  //    i fortë (është periudhë afat-shkurt që shpesh kundërshton trendin); hyn vetëm te besueshmëria.
+  if (s4h.action !== dir) return null;
   // 2) Filtër trendi EMA200 (1h).
   const price = s1h.price;
   if (dir === "BUY" && !(price > s1h.ema200)) return null;
@@ -185,7 +186,7 @@ async function generateStrong(symbol: string): Promise<EngineResult | null> {
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
     takeProfit: Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
     reasons: [
-      `Multi-TF: 15m+1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
+      `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
       `Trendi: çmimi ${isBuy ? "mbi" : "nën"} EMA200`,
       `ADX ${s1h.adx.toFixed(0)} (trend i fortë)`,
       ...s1h.reasons.slice(0, 2),
@@ -210,7 +211,7 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
   // Baza: e njëjta logjikë si generateStrong (multi-TF + EMA200 + ADX).
   const dir = s1h.action;
   if (dir === "HOLD") return null;
-  if (s15.action !== dir || s4h.action !== dir) return null;
+  if (s4h.action !== dir) return null; // 1h+4h pajtohen (4h busull); 15m vetëm te besueshmëria
   const price = s1h.price;
   const isBuy = dir === "BUY";
   if (isBuy && !(price > s1h.ema200)) return null;
@@ -218,7 +219,7 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
   if (s1h.adx < ADX_MIN) return null;
 
   const reasons: string[] = [
-    `Multi-TF: 15m+1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
+    `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
     `Trendi: çmimi ${isBuy ? "mbi" : "nën"} EMA200`,
     `ADX ${s1h.adx.toFixed(0)} (trend i fortë)`,
   ];
