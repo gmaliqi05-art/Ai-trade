@@ -1,16 +1,50 @@
 <!doctype html>
-<html lang="en">
+<html lang="sq">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Trade Analysis Platform</title>
-    <meta property="og:image" content="https://bolt.new/static/og_default.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <title>AI Trade — Analizë & Tregtim me AI (XAUUSD)</title>
+    <meta name="description" content="Platformë analize dhe tregtimi me AI për arin (XAUUSD) përmes MT5 — sinjale live, auto-trade dhe mbrojtje rreziku." />
+
+    <!-- Ikona & PWA -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AI Trade" />
+
+    <!-- Pamja e ndarjes (WhatsApp / Facebook / Twitter) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AI Trade" />
+    <meta property="og:title" content="AI Trade — Analizë & Tregtim me AI" />
+    <meta property="og:description" content="Sinjale live, auto-trade dhe mbrojtje rreziku për arin (XAUUSD) përmes MT5." />
+    <meta property="og:url" content="https://gmaliqi05-art-ai-tra-iglg.bolt.host/" />
+    <meta property="og:image" content="https://gmaliqi05-art-ai-tra-iglg.bolt.host/og-image.png" />
+    <meta property="og:image:secure_url" content="https://gmaliqi05-art-ai-tra-iglg.bolt.host/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="https://bolt.new/static/og_default.png" />
+    <meta name="twitter:title" content="AI Trade — Analizë & Tregtim me AI" />
+    <meta name="twitter:description" content="Sinjale live, auto-trade dhe mbrojtje rreziku për arin (XAUUSD) përmes MT5." />
+    <meta name="twitter:image" content="https://gmaliqi05-art-ai-tra-iglg.bolt.host/og-image.png" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Regjistro service worker-in për PWA (instalim në telefon si app).
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () { /* injoro */ });
+        });
+      }
+    </script>
   </body>
 </html>
