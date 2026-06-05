@@ -277,6 +277,7 @@ export const en: Record<string, string> = {
   "hapet {time}": "opens {time}",
   "s'ka mjaft të dhëna": "not enough data",
   "Lot i sugjeruar (rrezik 1%)": "Suggested lot (1% risk)",
+  "Lot i sugjeruar (rrezik {pct}%)": "Suggested lot ({pct}% risk)",
   "rrezik ~${money}": "risk ~${money}",
   "Asnjë pozicion (sinjal i dobët)": "No position (weak signal)",
   "Arsyet": "Reasons",

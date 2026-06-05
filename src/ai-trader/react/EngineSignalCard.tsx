@@ -29,8 +29,8 @@ export interface EngineEnterInput {
   horizon: 'short' | 'long';
 }
 
-function HorizonBlock({ title, data, category, accountBalance, symbol, horizon, onEnter }: {
-  title: string; data: HorizonAnalysis | null; category?: string; accountBalance?: number;
+function HorizonBlock({ title, data, category, accountBalance, riskPercent, symbol, horizon, onEnter }: {
+  title: string; data: HorizonAnalysis | null; category?: string; accountBalance?: number; riskPercent?: number;
   symbol?: string; horizon: 'short' | 'long';
   onEnter?: (i: EngineEnterInput) => Promise<{ ok: boolean; msg: string }>;
 }) {
@@ -54,8 +54,9 @@ function HorizonBlock({ title, data, category, accountBalance, symbol, horizon, 
 
   const { signal, plan } = data;
   const isActionable = signal.action !== 'HOLD';
+  const riskPct = riskPercent && riskPercent > 0 ? riskPercent : 0.01;
   const lot = isActionable && accountBalance
-    ? suggestLot(category, accountBalance, plan.entry, plan.stopLoss)
+    ? suggestLot(category, accountBalance, plan.entry, plan.stopLoss, riskPct)
     : null;
 
   const doEnter = async () => {
@@ -107,7 +108,7 @@ function HorizonBlock({ title, data, category, accountBalance, symbol, horizon, 
 
       {isActionable && lot && (
         <div className="flex items-center justify-between text-[11px] bg-gray-900/40 rounded-lg px-2 py-1">
-          <span className="text-gray-400 flex items-center gap-1"><Layers className="w-3 h-3 text-amber-400" />{t('Lot i sugjeruar (rrezik 1%)')}</span>
+          <span className="text-gray-400 flex items-center gap-1"><Layers className="w-3 h-3 text-amber-400" />{t('Lot i sugjeruar (rrezik {pct}%)', { pct: +(riskPct * 100).toFixed(2) })}</span>
           <span className="text-white font-semibold">{lot.lot} <span className="text-gray-500">· {t('rrezik ~${money}', { money: lot.moneyAtRisk.toFixed(0) })}</span></span>
         </div>
       )}
@@ -155,8 +156,10 @@ interface EngineSignalCardProps {
   askAI?: (analysis: AssetAnalysis) => Promise<CardAiReasoning>;
   /** Kategoria e aktivit (për llogaritjen e lotit). */
   category?: string;
-  /** Balanca e llogarisë (për sugjerimin e lotit me rrezik 1%). */
+  /** Balanca e llogarisë (për sugjerimin e lotit). */
   accountBalance?: number;
+  /** Rreziku per-trade si fraksion (p.sh. 0.01 = 1%), nga cilësimet. Default 1%. */
+  riskPercent?: number;
   /** Nëse jepet, shfaqet butoni "Hyr" që ekzekuton trade-in direkt. */
   onEnter?: (i: EngineEnterInput) => Promise<{ ok: boolean; msg: string }>;
 }
@@ -214,7 +217,7 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
   );
 }
 
-export function EngineSignalCard({ analysis, askAI, category, accountBalance, onEnter }: EngineSignalCardProps) {
+export function EngineSignalCard({ analysis, askAI, category, accountBalance, riskPercent, onEnter }: EngineSignalCardProps) {
   const { t } = useI18n();
   const sourceBadge =
     analysis.source === 'live'
@@ -233,8 +236,8 @@ export function EngineSignalCard({ analysis, askAI, category, accountBalance, on
         </span>
       </div>
 
-      <HorizonBlock title={t('Afatshkurtër')} data={analysis.short} category={category} accountBalance={accountBalance} symbol={analysis.symbol} horizon="short" onEnter={onEnter} />
-      <HorizonBlock title={t('Afatgjatë')} data={analysis.long} category={category} accountBalance={accountBalance} symbol={analysis.symbol} horizon="long" onEnter={onEnter} />
+      <HorizonBlock title={t('Afatshkurtër')} data={analysis.short} category={category} accountBalance={accountBalance} riskPercent={riskPercent} symbol={analysis.symbol} horizon="short" onEnter={onEnter} />
+      <HorizonBlock title={t('Afatgjatë')} data={analysis.long} category={category} accountBalance={accountBalance} riskPercent={riskPercent} symbol={analysis.symbol} horizon="long" onEnter={onEnter} />
 
       {askAI && (analysis.short || analysis.long) && <AiReasoningBlock analysis={analysis} askAI={askAI} />}
     </div>

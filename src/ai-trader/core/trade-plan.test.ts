@@ -42,4 +42,13 @@ describe('buildTradePlan', () => {
     expect(plan.stopDistance).toBeCloseTo(2); // 100 * 0.02
     expect(plan.stopLoss).toBeCloseTo(98);
   });
+
+  it('distancat FIKSE nga cilësimet mbivendosin ATR-në', () => {
+    // SL fiks 3$, TP fiks 6$ (p.sh. scalp_sl_usd / scalp_tp_usd) — pavarësisht ATR-së.
+    const plan = buildTradePlan(makeSignal('BUY', 100, 2), { atrMultiplier: 1.5, fixedStopDistance: 3, fixedTakeProfitDistance: 6 });
+    expect(plan.stopDistance).toBeCloseTo(3);
+    expect(plan.stopLoss).toBeCloseTo(97); // 100 - 3
+    expect(plan.takeProfit).toBeCloseTo(106); // 100 + 6
+    expect(plan.riskReward).toBe(2); // 6/3
+  });
 });

@@ -29,6 +29,10 @@ export interface AnalyzeAssetInput {
   currentPrice: number;
   timeframe?: Timeframe;
   planOptions?: TradePlanOptions;
+  /** Opsione plani vetëm për horizontin afatshkurtër (p.sh. SL/TP fikse të scalp-it). */
+  shortPlanOptions?: TradePlanOptions;
+  /** Opsione plani vetëm për horizontin afatgjatë (swing). */
+  longPlanOptions?: TradePlanOptions;
 }
 
 /** Llogarit sinjalin + planin për një horizont, ose null nëse s'ka mjaft qirinj. */
@@ -45,7 +49,7 @@ function analyzeHorizon(
 
 /** Merr qirinjtë për aktivin dhe prodhon analizën afatshkurtër + afatgjatë. */
 export async function analyzeAsset(input: AnalyzeAssetInput): Promise<AssetAnalysis> {
-  const { symbol, category, currentPrice, timeframe = '1h', planOptions } = input;
+  const { symbol, category, currentPrice, timeframe = '1h', planOptions, shortPlanOptions, longPlanOptions } = input;
   const { candles, source, provider } = await fetchCandles({
     symbol,
     category,
@@ -59,8 +63,8 @@ export async function analyzeAsset(input: AnalyzeAssetInput): Promise<AssetAnaly
     source,
     provider,
     candleCount: candles.length,
-    short: analyzeHorizon(candles, 'short', planOptions),
-    long: analyzeHorizon(candles, 'long', planOptions),
+    short: analyzeHorizon(candles, 'short', shortPlanOptions ?? planOptions),
+    long: analyzeHorizon(candles, 'long', longPlanOptions ?? planOptions),
     generatedAt: Date.now(),
   };
 }

@@ -8,7 +8,8 @@ import CompletedSignals from '../components/CompletedSignals';
 import { isGoldSessionActive, goldWindowLocal } from '../lib/goldSession';
 import type { Timeframe } from '../ai-trader/market/candles';
 import { requestEngineReasoning } from '../services/aiReasoning';
-import { executeTrade } from '../services/metaapi';
+import { executeTrade, loadMetaApiConfig, DEFAULT_CONFIG, type MetaApiConfig } from '../services/metaapi';
+import type { MarketAnalysisOptions } from '../ai-trader/react/useMarketAnalysis';
 import type { EngineEnterInput } from '../ai-trader/react/EngineSignalCard';
 import { useI18n } from '../i18n/i18n';
 
@@ -66,6 +67,10 @@ export default function SignalsPage() {
   const [form, setForm] = useState({ asset_id: '', condition: 'above', target_price: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+
+  // Cilësimet e MetaApi (SL/TP të scalp-it, rreziku %) — për të ndërtuar planet e sinjaleve sipas tyre.
+  const [cfg, setCfg] = useState<MetaApiConfig>(DEFAULT_CONFIG);
+  useEffect(() => { if (user) loadMetaApiConfig(user.id).then(setCfg); }, [user]);
 
   useEffect(() => { fetchData(); }, [user]);
 
@@ -125,7 +130,17 @@ export default function SignalsPage() {
       .map(a => ({ symbol: a.symbol, category: a.category || a.type, currentPrice: a.current_price }));
   }, [assets, market, activeTab, goldOnly, goldSessionOn]);
 
-  const { analyses, loading: engineLoading, refresh: refreshEngine } = useMarketAnalysis(engineAssets, timeframe);
+  // SL/TP të sinjaleve SIPAS CILËSIMEVE:
+  //  • Afatshkurtër (scalp) → distanca fikse $ nga scalp_sl_usd / scalp_tp_usd.
+  //  • Afatgjatë (swing)   → ATR (i gjerë), siç është modeli swing.
+  const planOptions = useMemo<MarketAnalysisOptions>(() => ({
+    shortPlanOptions: (cfg.scalp_sl_usd > 0)
+      ? { fixedStopDistance: cfg.scalp_sl_usd, fixedTakeProfitDistance: cfg.scalp_tp_usd > 0 ? cfg.scalp_tp_usd : undefined }
+      : undefined,
+    longPlanOptions: undefined,
+  }), [cfg.scalp_sl_usd, cfg.scalp_tp_usd]);
+
+  const { analyses, loading: engineLoading, refresh: refreshEngine } = useMarketAnalysis(engineAssets, timeframe, planOptions);
   const [engineUpdatedAt, setEngineUpdatedAt] = useState<Date | null>(null);
   useEffect(() => { if (!engineLoading && engineAssets.length > 0) setEngineUpdatedAt(new Date()); }, [engineLoading, analyses, engineAssets.length]);
   const accountBalance = Number((profile as { balance?: number } | null)?.balance) || 0;
@@ -243,6 +258,7 @@ export default function SignalsPage() {
                   analysis={a}
                   category={catBySymbol(a.symbol)}
                   accountBalance={accountBalance}
+                  riskPercent={cfg.risk_per_trade_pct > 0 ? cfg.risk_per_trade_pct / 100 : 0.01}
                   onEnter={handleEnter}
                   askAI={(an) => requestEngineReasoning(an, { assetId: assets.find(x => x.symbol === an.symbol)?.id })}
                 />
