@@ -715,9 +715,13 @@ export const en: Record<string, string> = {
   "ADX i fortë (≥25)": "Strong ADX (≥25)",
   "RSI me hapësirë ({n})": "RSI has room ({n})",
   "MACD në harmoni": "MACD aligned",
+<<<<<<< Updated upstream
   "Auto": "Auto",
   "Signal": "Signal",
   "MT5": "MT5",
   "Trailing në anë të MT5 (tick-by-tick)": "Broker-side trailing (tick-by-tick)",
   "MetaApi e ndjek SL-në pas çdo tiku në kohë reale (më i shpejtë se roboti). Distanca = distanca fillestare e SL. ⚠️ Eksperimental — provoje në DEMO; jo çdo broker e mbështet.": "MetaApi follows the SL on every tick in real time (faster than the robot). Distance = the initial SL distance. ⚠️ Experimental — test it on DEMO; not every broker supports it.",
+=======
+  "Lot kur ≥": "Lot when ≥",
+>>>>>>> Stashed changes
 };

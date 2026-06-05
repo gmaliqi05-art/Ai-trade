@@ -170,9 +170,21 @@ export default function MetaApiPanel() {
       <Section icon={Gauge} title={t('3. Madhësia sipas besueshmërisë')} subtitle={t('Sa më e fortë analiza, aq më i madh loti.')}
         right={<TogglePill on={cfg.dynamic_lot} onClick={() => setAndSave('dynamic_lot', !cfg.dynamic_lot)} t={t} />}>
         <div className={`grid grid-cols-1 sm:grid-cols-3 gap-2.5 transition-opacity ${cfg.dynamic_lot ? '' : 'opacity-40 pointer-events-none'}`}>
-          <NumField label={t('Lot kur ≥ 70%')} hint={t('Besueshmëri e mesme → pozicion bazë.')} value={cfg.lot_conf_70} step="0.01" min="0.01" onChange={v => set('lot_conf_70', v)} onBlur={save} />
-          <NumField label={t('Lot kur ≥ 80%')} hint={t('Besueshmëri e mirë → pozicion më i madh.')} value={cfg.lot_conf_80} step="0.01" min="0.01" onChange={v => set('lot_conf_80', v)} onBlur={save} />
-          <NumField label={t('Lot kur ≥ 90%')} hint={t('Besueshmëri shumë e lartë → pozicioni maksimal.')} value={cfg.lot_conf_90} step="0.01" min="0.01" onChange={v => set('lot_conf_90', v)} onBlur={save} />
+          {([
+            { thr: 'lot_conf_t1', lot: 'lot_conf_70', hint: t('Besueshmëri e mesme → pozicion bazë.') },
+            { thr: 'lot_conf_t2', lot: 'lot_conf_80', hint: t('Besueshmëri e mirë → pozicion më i madh.') },
+            { thr: 'lot_conf_t3', lot: 'lot_conf_90', hint: t('Besueshmëri shumë e lartë → pozicioni maksimal.') },
+          ] as const).map((b) => (
+            <div key={b.lot} className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-2.5">
+              <label className="flex items-center gap-1 text-[11px] font-medium text-gray-300 mb-1">
+                {t('Lot kur ≥')}
+                <input type="number" step="1" min="1" max="100" value={cfg[b.thr]} onChange={e => set(b.thr, +e.target.value)} onBlur={save}
+                  className="w-12 bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-white text-[11px] text-center focus:outline-none focus:border-amber-500" />%
+              </label>
+              <input type="number" step="0.01" min="0.01" value={cfg[b.lot]} onChange={e => set(b.lot, +e.target.value)} onBlur={save} className="inp" />
+              <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{b.hint}</p>
+            </div>
+          ))}
         </div>
         <p className="text-[11px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Loti nuk kalon kurrë <span class="text-gray-300">Lot maksimal</span>. Kur <span class="text-gray-300">JOAKTIV</span>, përdoret gjithmonë <span class="text-gray-300">Lot default</span>.') }} />
       </Section>

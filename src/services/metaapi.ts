@@ -19,9 +19,12 @@ export interface MetaApiConfig {
   auto_symbols: string;
   /** Madhësia e pozicionit dinamike sipas % të analizës (përndryshe përdor default_lot). */
   dynamic_lot: boolean;
-  lot_conf_70: number;  // lot kur besueshmëria ≥ 70%
-  lot_conf_80: number;  // lot kur besueshmëria ≥ 80%
-  lot_conf_90: number;  // lot kur besueshmëria ≥ 90%
+  lot_conf_70: number;  // lot për bandën e parë (besueshmëri ≥ lot_conf_t1)
+  lot_conf_80: number;  // lot për bandën e dytë (≥ lot_conf_t2)
+  lot_conf_90: number;  // lot për bandën e tretë (≥ lot_conf_t3)
+  lot_conf_t1: number;  // pragu i parë i besueshmërisë (default 70)
+  lot_conf_t2: number;  // pragu i dytë (default 80)
+  lot_conf_t3: number;  // pragu i tretë (default 90)
   /** Rreziku per-trade si % e kapitalit (fixed-fractional). Default 1%. */
   risk_per_trade_pct: number;
   /** Strategjia afat-gjatë (swing): sinjalet 15m/1h/4h nga motori. Default ON. */
@@ -51,6 +54,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   default_lot: 0.01, max_lot: 0.1, max_daily_loss: 100, max_open_trades: 3, kill_switch: false,
   min_confidence: 70, auto_symbols: 'XAUUSD',
   dynamic_lot: true, lot_conf_70: 0.01, lot_conf_80: 0.02, lot_conf_90: 0.05,
+  lot_conf_t1: 70, lot_conf_t2: 80, lot_conf_t3: 90,
   risk_per_trade_pct: 1,
   strategy_swing: true, strategy_scalp: false,
   scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_max_trades: 2, scalp_small_moves: false,
@@ -77,6 +81,9 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     lot_conf_70: Number(data.lot_conf_70 ?? 0.01),
     lot_conf_80: Number(data.lot_conf_80 ?? 0.02),
     lot_conf_90: Number(data.lot_conf_90 ?? 0.05),
+    lot_conf_t1: Number(data.lot_conf_t1 ?? 70),
+    lot_conf_t2: Number(data.lot_conf_t2 ?? 80),
+    lot_conf_t3: Number(data.lot_conf_t3 ?? 90),
     risk_per_trade_pct: Number(data.risk_per_trade_pct ?? 1),
     strategy_swing: data.strategy_swing ?? true,
     strategy_scalp: !!data.strategy_scalp,
