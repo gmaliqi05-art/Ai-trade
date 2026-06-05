@@ -8,6 +8,7 @@ import { requestEngineReasoning } from '../services/aiReasoning';
 import type { Timeframe } from '../ai-trader/market/candles';
 import TradingViewChart from '../components/TradingViewChart';
 import { isGoldSessionActive, goldWindowLocal } from '../lib/goldSession';
+import { useI18n } from '../i18n/i18n';
 
 interface Asset {
   id: string;
@@ -30,6 +31,7 @@ const LIVE_TIMEFRAMES: { v: Timeframe; label: string }[] = [
 ];
 
 export default function ChartAnalysisPage() {
+  const { t } = useI18n();
   const { user, profile } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selectedAsset, setSelectedAsset] = useState('');
@@ -71,10 +73,10 @@ export default function ChartAnalysisPage() {
     <div className="p-4 sm:p-6 space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Brain className="w-6 h-6 text-amber-400" />Analizë e Robotit
+          <Brain className="w-6 h-6 text-amber-400" />{t('Analizë e Robotit')}
         </h2>
         <p className="text-gray-400 text-sm mt-1">
-          Roboti gjeneron analizë automatikisht nga të dhënat live të tregut — indikatorë realë teknikë, pa nevojë për foto.
+          {t('Roboti gjeneron analizë automatikisht nga të dhënat live të tregut — indikatorë realë teknikë, pa nevojë për foto.')}
         </p>
       </div>
 
@@ -82,23 +84,23 @@ export default function ChartAnalysisPage() {
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
             <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-              <Activity className="w-4 h-4 text-amber-400" />Cilësimet e analizës
+              <Activity className="w-4 h-4 text-amber-400" />{t('Cilësimet e analizës')}
             </h3>
 
             <div>
-              <label className="text-xs text-gray-400 block mb-1.5">Aktivi / Simboli</label>
+              <label className="text-xs text-gray-400 block mb-1.5">{t('Aktivi / Simboli')}</label>
               <select value={selectedAsset} onChange={e => setSelectedAsset(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500">
                 {assets.map(a => <option key={a.id} value={a.id}>{a.symbol} — {a.name}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="text-xs text-gray-400 block mb-1.5">Periudha e analizës</label>
+              <label className="text-xs text-gray-400 block mb-1.5">{t('Periudha e analizës')}</label>
               <div className="flex flex-wrap gap-2">
-                {LIVE_TIMEFRAMES.map(t => (
-                  <button key={t.v} onClick={() => setLiveTimeframe(t.v)}
-                    className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${liveTimeframe === t.v ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
-                    {t.label}
+                {LIVE_TIMEFRAMES.map(tf => (
+                  <button key={tf.v} onClick={() => setLiveTimeframe(tf.v)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${liveTimeframe === tf.v ? 'bg-amber-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                    {t(tf.label)}
                   </button>
                 ))}
               </div>
@@ -110,11 +112,11 @@ export default function ChartAnalysisPage() {
               className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-gray-950 font-bold py-3 rounded-xl text-sm transition-all"
             >
               {liveLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-              {liveLoading ? 'Roboti po analizon…' : 'Gjenero analizë'}
+              {liveLoading ? t('Roboti po analizon…') : t('Gjenero analizë')}
             </button>
 
             <div className="text-[11px] text-gray-500 bg-gray-800/40 border border-gray-700/50 rounded-xl p-3 leading-relaxed">
-              Roboti lexon çmime reale (ari/XAUUSD përmes PAXG) dhe llogarit indikatorët teknikë automatikisht (EMA, RSI, MACD, Bollinger, ATR, ADX). Pastaj mund të kërkosh arsyetimin e plotë të robotit brenda kartës.
+              {t('Roboti lexon çmime reale (ari/XAUUSD përmes PAXG) dhe llogarit indikatorët teknikë automatikisht (EMA, RSI, MACD, Bollinger, ATR, ADX). Pastaj mund të kërkosh arsyetimin e plotë të robotit brenda kartës.')}
             </div>
           </div>
         </div>
@@ -129,19 +131,19 @@ export default function ChartAnalysisPage() {
           {blockedOutOfSession ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
               <Clock className="w-10 h-10 text-gray-600" />
-              <p className="text-white font-medium">Jashtë orarit të tregtimit të arit 🌙</p>
-              <p className="text-gray-400 text-sm max-w-sm">Analiza e arit gjenerohet vetëm {goldWin.open}–{goldWin.close} {goldWin.sameAsFrankfurt ? '(Frankfurt)' : '(koha jote)'} — sesioni London/New York me likuiditet të lartë.</p>
+              <p className="text-white font-medium">{t('Jashtë orarit të tregtimit të arit 🌙')}</p>
+              <p className="text-gray-400 text-sm max-w-sm">{t('Analiza e arit gjenerohet vetëm {open}–{close} {label} — sesioni London/New York me likuiditet të lartë.', { open: goldWin.open, close: goldWin.close, label: goldWin.sameAsFrankfurt ? t('(Frankfurt)') : t('(koha jote)') })}</p>
             </div>
           ) : liveLoading ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl flex flex-col items-center justify-center py-16 gap-4">
               <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
-              <p className="text-amber-400 text-sm animate-pulse">Roboti po lexon çmimet live dhe po llogarit indikatorët…</p>
+              <p className="text-amber-400 text-sm animate-pulse">{t('Roboti po lexon çmimet live dhe po llogarit indikatorët…')}</p>
             </div>
           ) : liveError ? (
             <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
               <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-red-400 font-medium text-sm">S'u gjenerua dot analiza</p>
+                <p className="text-red-400 font-medium text-sm">{t("S'u gjenerua dot analiza")}</p>
                 <p className="text-red-400/70 text-xs mt-1">{liveError}</p>
               </div>
             </div>
@@ -155,7 +157,7 @@ export default function ChartAnalysisPage() {
           ) : (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl flex flex-col items-center justify-center py-16 gap-3 text-center">
               <Activity className="w-10 h-10 text-amber-400/50" />
-              <p className="text-gray-400 text-sm max-w-xs">Zgjidh një aktiv dhe periudhën, pastaj kliko “Gjenero analizë”.</p>
+              <p className="text-gray-400 text-sm max-w-xs">{t('Zgjidh një aktiv dhe periudhën, pastaj kliko “Gjenero analizë”.')}</p>
             </div>
           )}
         </div>
