@@ -15,6 +15,7 @@ import {
   type AccountInfo, type HistoryDeal, type OpenPosition,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
+import { groupDeals, attachSource, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
 import { useI18n } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -58,7 +59,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [metaConfigured, setMetaConfigured] = useState(false);
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
   const [account, setAccount] = useState<AccountInfo | null>(null);
-  const [history, setHistory] = useState<HistoryDeal[]>([]);
+  const [history, setHistory] = useState<ClosedTrade[]>([]);
   const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [candles, setCandles] = useState<ChartCandle[]>([]);
   const [slInput, setSlInput] = useState('');
@@ -108,10 +109,16 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       const [acc, hist, pos] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions()]);
       if (!acc.error && acc.account) setAccount(acc.account);
       if (!hist.error && Array.isArray(hist.deals)) {
-        const closed = hist.deals
-          .filter(d => d.entryType === 'DEAL_ENTRY_OUT' || (d.profit != null && d.profit !== 0))
-          .sort((a, b) => (b.time || '').localeCompare(a.time || ''));
-        setHistory(closed);
+        // Grupon deal-et në trade me DREJTIMIN REAL (jo nga deal-i mbyllës) + lidh burimin.
+        const grouped = groupDeals(hist.deals as HistoryDeal[]);
+        const sinceIso = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
+        const { data: execs } = await supabase
+          .from('trade_executions')
+          .select('action, symbol, signal_id, reason, created_at')
+          .eq('user_id', user.id).eq('status', 'executed')
+          .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(500);
+        attachSource(grouped, (execs as ExecRow[]) || []);
+        setHistory(grouped);
       }
       if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
     }
@@ -189,6 +196,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       fetchMeta();
     }
     setTradeLoading(false);
+  };
+
+  // Etiketa e burimit të trade-it (Auto / Signal / Manual / MT5).
+  const srcMeta: Record<TradeSource, { label: string; cls: string }> = {
+    auto: { label: t('Auto'), cls: 'bg-amber-500/20 text-amber-400' },
+    signal: { label: t('Signal'), cls: 'bg-blue-500/20 text-blue-400' },
+    manual: { label: t('Manual'), cls: 'bg-green-500/20 text-green-400' },
+    mt5: { label: t('MT5'), cls: 'bg-gray-600/40 text-gray-400' },
   };
 
   // Horizonti: periudha të shkurtra (1m/5m/15m) = afat-shkurt; përndryshe afat-gjatë (swing).
@@ -520,24 +535,26 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                     <tr className="text-gray-500 border-b border-gray-800">
                       <th className="text-left font-medium py-2">{t('Simboli')}</th>
                       <th className="text-left font-medium py-2">{t('Lloji')}</th>
+                      <th className="text-left font-medium py-2">{t('Burimi')}</th>
                       <th className="text-right font-medium py-2">{t('Lot')}</th>
-                      <th className="text-right font-medium py-2">{t('Çmimi')}</th>
+                      <th className="text-right font-medium py-2">{t('Hyrje')}</th>
                       <th className="text-right font-medium py-2">{t('Fitim/Humbje')}</th>
                       <th className="text-right font-medium py-2">{t('Koha')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800/60">
                     {(showAllHistory ? history : history.slice(0, 10)).map(d => {
-                      const isBuy = (d.type || '').includes('BUY');
-                      const profit = Number(d.profit ?? 0);
+                      const isBuy = d.direction === 'BUY';
+                      const src = srcMeta[d.source || 'mt5'];
                       return (
                         <tr key={d.id} className="hover:bg-gray-800/30">
                           <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
-                          <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span></td>
-                          <td className="py-2 text-right text-gray-300">{d.volume ?? '—'}</td>
-                          <td className="py-2 text-right text-gray-300">{d.price ?? '—'}</td>
-                          <td className={`py-2 text-right font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)}</td>
-                          <td className="py-2 text-right text-gray-500">{d.time ? new Date(d.time).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                          <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : d.direction === 'SELL' ? 'text-red-400' : 'text-gray-400'}`}>{isBuy ? t('BLEJ') : d.direction === 'SELL' ? t('SHIT') : '—'}</span></td>
+                          <td className="py-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${src.cls}`}>{src.label}</span></td>
+                          <td className="py-2 text-right text-gray-300">{d.volume || '—'}</td>
+                          <td className="py-2 text-right text-gray-300">{d.entryPrice != null ? d.entryPrice : '—'}</td>
+                          <td className={`py-2 text-right font-semibold ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
+                          <td className="py-2 text-right text-gray-500">{d.closeTime ? new Date(d.closeTime).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                         </tr>
                       );
                     })}
