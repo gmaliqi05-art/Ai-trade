@@ -192,10 +192,10 @@ export default function MetaApiPanel() {
             <div key={b.lot} className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-2.5">
               <label className="flex items-center gap-1 text-[11px] font-medium text-gray-300 mb-1">
                 {t('Lot kur ≥')}
-                <input type="number" step="1" min="1" max="100" value={cfg[b.thr]} onChange={e => set(b.thr, +e.target.value)} onBlur={save}
+                <NumberBox value={cfg[b.thr]} onChange={v => set(b.thr, v)} onCommit={save} step="1" min="1" max="100"
                   className="w-12 bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-white text-[11px] text-center focus:outline-none focus:border-amber-500" />%
               </label>
-              <input type="number" step="0.01" min="0.01" value={cfg[b.lot]} onChange={e => set(b.lot, +e.target.value)} onBlur={save} className="inp" />
+              <NumberBox value={cfg[b.lot]} onChange={v => set(b.lot, v)} onCommit={save} step="0.01" min="0.01" />
               <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{b.hint}</p>
             </div>
           ))}
@@ -331,7 +331,7 @@ export default function MetaApiPanel() {
                     className={`flex-1 text-[11px] py-1 rounded-lg border transition-colors ${Math.round(cfg.trail_lock_pct) === o.p ? 'bg-amber-500 text-gray-950 border-amber-500 font-semibold' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{o.l} ({o.p}%)</button>
                 ))}
               </div>
-              <input type="number" step="1" min="5" max="95" value={cfg.trail_lock_pct} onChange={e => set('trail_lock_pct', +e.target.value)} onBlur={save} className="inp" />
+              <NumberBox value={cfg.trail_lock_pct} onChange={v => set('trail_lock_pct', v)} onCommit={save} step="1" min="5" max="95" />
               <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{t('Sa shumë e fitimit mban SL ndërsa trade-i ecën. P.sh. 50% → kur je +10$, SL mban +5$; kur je +20$, SL mban +10$.')}</p>
             </div>
             <NumField label={t('Fillon pas (+$ fitim)')} hint={t('Trailing-u nis vetëm pasi fitimi kalon këtë shumë ($) — që SL të mos lëvizë nga zhurma e vogël.')}
@@ -427,9 +427,45 @@ function NumField({ label, hint, value, onChange, onBlur, step, min, max, full }
   return (
     <div className={`bg-gray-800/40 border border-gray-700/50 rounded-xl p-2.5 ${full ? 'sm:col-span-2' : ''}`}>
       <label className="block text-[11px] font-medium text-gray-300 mb-1">{label}</label>
-      <input type="number" step={step} min={min} max={max} value={value} onChange={e => onChange(+e.target.value)} onBlur={onBlur} className="inp" />
+      <NumberBox value={value} onChange={onChange} onCommit={onBlur} step={step} min={min} max={max} />
       {hint && <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{hint}</p>}
     </div>
+  );
+}
+
+// Fushë numerike e kontrolluar me BUFFER teksti: kur e fshin, mbetet bosh (pa "0" të detyruar
+// para numrit) dhe ruan vetëm një numër të vlefshëm. Normalizohet (heq zerat udhëheqës) në blur.
+function NumberBox({ value, onChange, onCommit, step, min, max, className }: {
+  value: number; onChange: (v: number) => void; onCommit?: () => void;
+  step?: string; min?: string; max?: string; className?: string;
+}) {
+  const [text, setText] = useState<string>(Number.isFinite(value) ? String(value) : '');
+
+  // Sinkronizo vetëm kur vlera e jashtme (p.sh. butonat preset) ndryshon nga ajo që shfaqet.
+  useEffect(() => {
+    if (Number(text) !== value) setText(Number.isFinite(value) ? String(value) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <input
+      type="number" inputMode="decimal" step={step} min={min} max={max}
+      className={className ?? 'inp'} value={text}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setText(raw);
+        // Gjendje të ndërmjetme gjatë shkrimit — mos ruaj numër ende.
+        if (raw === '' || raw === '-' || raw === '.' || raw === '-.' || raw.endsWith('.')) return;
+        const n = Number(raw);
+        if (Number.isFinite(n)) onChange(n);
+      }}
+      onBlur={() => {
+        const n = Number(text);
+        // Bosh ose jo-numër → kthehu te vlera aktuale; ndryshe normalizo pamjen.
+        setText(text === '' || !Number.isFinite(n) ? (Number.isFinite(value) ? String(value) : '') : String(n));
+        onCommit?.();
+      }}
+    />
   );
 }
 
