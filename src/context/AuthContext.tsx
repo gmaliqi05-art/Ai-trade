@@ -72,18 +72,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (!error && data.user) {
-      await supabase.from('profiles').insert({
-        id: data.user.id,
-        full_name: fullName,
-        username: email.split('@')[0],
-        balance: 10000.00,
-        subscription_tier: 'free',
-        is_admin: false,
-      });
+    // Emri kalon te metadata → trigger-i `handle_new_user` e mbush profilin automatikisht.
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName, username: email.split('@')[0] } },
+    });
+    if (error) return { error };
+    // Përdoruesit auto-konfirmohen (shih migrimin) → nëse s'ka session nga signUp,
+    // hyr menjëherë me kredencialet që sapo u vendosën, që të hapet dashboard-i.
+    if (!data.session) {
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInErr) return { error: signInErr };
     }
-    return { error };
+    return { error: null };
   };
 
   const signOut = async () => {
