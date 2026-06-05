@@ -24,6 +24,10 @@ interface Cfg {
   scalp_tp_usd?: number;     // distanca e TP në çmim ($), default 4
   scalp_max_trades?: number; // pozicione scalp njëkohësisht, default 2
   scalp_small_moves?: boolean; // hyn edhe në lëvizje të vogla (kushte më të lehta); default false
+  // Trailing i SL (ndjekja e fitimit) — i konfigurueshëm nga përdoruesi.
+  trail_enabled?: boolean;   // ndez/fik trailing-un; default true
+  trail_lock_pct?: number;   // % e fitimit që mbahet (SL ndjek këtë fraksion); default 50
+  trail_start_usd?: number;  // profit minimal ($) para se të fillojë trailing-u; default 1
   day_start_equity?: number; // ekuiteti në fillim të ditës UTC (për limitin ditor të humbjes)
   day_start_date?: string;   // data UTC e ruajtjes së day_start_equity
 }
@@ -516,24 +520,14 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // 2) TRAILING progresiv RELATIV NDAJ TP-së — për ÇDO pozicion (manual, sinjal, swing, scalp,
-        //    madje edhe ata të hapur direkt në MT5). SL ndjek profitin: +¼ TP → break-even;
-        //    +½ TP → mbyll +¼ TP; +¾ TP → mbyll +½ TP. (Pa TP: bie te R nga distanca e SL-së.)
-        if (sl != null) {
-          const tp = p.takeProfit != null ? Number(p.takeProfit) : null;
-          const tpDist = (tp != null && Number.isFinite(tp)) ? Math.abs(tp - entry) : 0;
-          let newSL: number | null = null;
-          if (tpDist > 0) {
-            if (moved >= 0.75 * tpDist) newSL = isBuy ? entry + 0.5 * tpDist : entry - 0.5 * tpDist;
-            else if (moved >= 0.5 * tpDist) newSL = isBuy ? entry + 0.25 * tpDist : entry - 0.25 * tpDist;
-            else if (moved >= 0.25 * tpDist) newSL = isBuy ? entry + 0.02 * tpDist : entry - 0.02 * tpDist; // ~break-even
-          } else {
-            const R = Math.max(0.3, Math.abs(entry - sl) || Number(cfg.scalp_sl_usd ?? 2));
-            if (moved >= 1.25 * R) newSL = isBuy ? entry + 1.0 * R : entry - 1.0 * R;
-            else if (moved >= 1.0 * R) newSL = isBuy ? entry + 0.5 * R : entry - 0.5 * R;
-            else if (moved >= 0.5 * R) newSL = isBuy ? entry + 0.025 * R : entry - 0.025 * R;
-          }
-          if (newSL != null) {
+        // 2) TRAILING i konfigurueshëm — SL ndjek një PJESË të fitimit (trail_lock_pct), pasi profiti
+        //    kalon trail_start_usd. Vlen për ÇDO pozicion (manual, sinjal, swing, scalp + MT5-direkt).
+        //    P.sh. lock 50% → SL mban gjysmën e fitimit aktual; 33% → një të tretën; 25% → një të katërtën.
+        if (sl != null && cfg.trail_enabled !== false) {
+          const startUsd = Math.max(0.1, Number(cfg.trail_start_usd ?? 1));
+          const lockFrac = Math.min(0.95, Math.max(0.05, Number(cfg.trail_lock_pct ?? 50) / 100));
+          if (moved >= startUsd) {
+            const newSL = isBuy ? entry + moved * lockFrac : entry - moved * lockFrac;
             const better = isBuy ? newSL > sl : newSL < sl;
             if (better) {
               const beSL = Math.round(newSL * 100) / 100;

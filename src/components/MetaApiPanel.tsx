@@ -267,6 +267,30 @@ export default function MetaApiPanel() {
         </div>
       </Section>
 
+      {/* ======= 6. MBROJTJA E FITIMIT (TRAILING SL) ======= */}
+      <Section icon={TrendingUp} title={t('6. Mbrojtja e fitimit (Trailing SL)')}
+        subtitle={t('SL ndjek profitin automatik te ÇDO trade — mban një pjesë të fitimit kur çmimi ecën në favor.')}
+        right={<TogglePill on={cfg.trail_enabled} onClick={() => setAndSave('trail_enabled', !cfg.trail_enabled)} t={t} />}>
+        <div className={`space-y-3 transition-opacity ${cfg.trail_enabled ? '' : 'opacity-40 pointer-events-none'}`}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-2.5">
+              <label className="block text-[11px] font-medium text-gray-300 mb-1">{t('% e fitimit që mban SL')}</label>
+              <div className="flex gap-1.5 mb-1.5">
+                {[{ p: 25, l: '¼' }, { p: 33, l: '⅓' }, { p: 50, l: '½' }, { p: 66, l: '⅔' }].map(o => (
+                  <button key={o.p} onClick={() => setAndSave('trail_lock_pct', o.p)}
+                    className={`flex-1 text-[11px] py-1 rounded-lg border transition-colors ${Math.round(cfg.trail_lock_pct) === o.p ? 'bg-amber-500 text-gray-950 border-amber-500 font-semibold' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{o.l} ({o.p}%)</button>
+                ))}
+              </div>
+              <input type="number" step="1" min="5" max="95" value={cfg.trail_lock_pct} onChange={e => set('trail_lock_pct', +e.target.value)} onBlur={save} className="inp" />
+              <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{t('Sa shumë e fitimit mban SL ndërsa trade-i ecën. P.sh. 50% → kur je +10$, SL mban +5$; kur je +20$, SL mban +10$.')}</p>
+            </div>
+            <NumField label={t('Fillon pas (+$ fitim)')} hint={t('Trailing-u nis vetëm pasi fitimi kalon këtë shumë ($) — që SL të mos lëvizë nga zhurma e vogël.')}
+              value={cfg.trail_start_usd} step="0.1" min="0.1" onChange={v => set('trail_start_usd', v)} onBlur={save} />
+          </div>
+          <p className="text-[10px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">ℹ️ Si punon:</span> roboti e kontrollon çdo minutë; sapo fitimi kalon pragun, SL zhvendoset për të mbajtur përqindjen e zgjedhur të fitimit, dhe ngjitet vetëm përpara (kurrë mbrapa). Vlen për të gjitha trade-t e hapura — manual, sinjal, swing, scalp.') }} />
+        </div>
+      </Section>
+
       {msg && (
         <div className={`flex items-center gap-2 text-xs rounded-xl px-3 py-2 ${msg.type === 'success' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
           {msg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}{msg.text}
