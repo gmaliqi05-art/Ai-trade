@@ -397,14 +397,17 @@ async function trailPositions(cfg: Cfg): Promise<number> {
 // TRAILING NË ANË TË MT5/MetaApi (server-side, tick-by-tick). Vendos një trailing-stop me distancë
 // fikse (në çmim) që MetaApi e mban automatik pas çdo tiku — ndjekje vërtet e vazhdueshme.
 // Distanca = sa $ rri SL-ja pas çmimit (p.sh. = distanca fillestare e SL). Kthen true nëse u vendos.
-async function setBrokerTrailing(cfg: Cfg, positionId: string, distancePrice: number): Promise<boolean> {
+async function setBrokerTrailing(cfg: Cfg, positionId: string, distancePrice: number, stopLoss?: number | null): Promise<boolean> {
   const dist = Math.max(0.1, Math.round(distancePrice * 100) / 100);
   try {
-    const r = await maTrade(cfg, {
+    const body: Record<string, unknown> = {
       actionType: "POSITION_MODIFY",
       positionId,
       trailingStopLoss: { distance: { distance: dist, units: "RELATIVE_PRICE" } },
-    });
+    };
+    // Mbaj edhe një SL statike si DYSHEME — që pozicioni të mos mbetet kurrë pa SL nëse brokeri s'e mban trailing-un.
+    if (stopLoss != null && Number.isFinite(stopLoss)) body.stopLoss = Math.round(stopLoss * 100) / 100;
+    const r = await maTrade(cfg, body);
     return r.ok;
   } catch { return false; }
 }
@@ -598,7 +601,7 @@ Deno.serve(async (req: Request) => {
             .eq("user_id", cfg.user_id).eq("metaapi_order_id", p.id).ilike("reason", "Broker-trailing%").limit(1);
           if (!already || already.length === 0) {
             const dist = Math.max(0.3, Math.abs(entry - sl));
-            const ok = await setBrokerTrailing(cfg, p.id, dist);
+            const ok = await setBrokerTrailing(cfg, p.id, dist, sl);
             // LOG I DUKSHËM te "Ekzekutimet e fundit" — që përdoruesi ta konfirmojë nëse punoi.
             try {
               await db.from("trade_executions").insert({

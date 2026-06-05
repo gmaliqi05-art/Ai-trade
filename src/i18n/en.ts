@@ -726,4 +726,5 @@ export const en: Record<string, string> = {
   "SL": "SL",
   "TP": "TP",
   "Vendos SL/TP default": "Set default SL/TP",
+  "<span class=\"font-semibold\">\"Trailing në anë të MT5\" është AKTIV</span> → MT5 ndjek SL-në me <span class=\"text-white\">distancë fikse</span> (= distanca fillestare e SL), jo me përqindje. Përqindja poshtë <span class=\"text-white\">NUK zbatohet</span> tani. Fike toggle-in e MT5 (poshtë) për të përdorur përqindjen e robotit.": "<span class=\"font-semibold\">\"Broker-side trailing\" is ON</span> → MT5 follows the SL at a <span class=\"text-white\">fixed distance</span> (= the initial SL distance), not by percentage. The percentage below <span class=\"text-white\">does NOT apply</span> now. Turn off the MT5 toggle (below) to use the robot's percentage.",
 };
