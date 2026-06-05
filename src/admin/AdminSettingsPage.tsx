@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Save, Loader2, Check, Globe, Bell, Shield, Database, RefreshCw } from 'lucide-react';
+import { Settings, Save, Loader2, Check, Globe, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
@@ -188,8 +188,7 @@ export default function AdminSettingsPage() {
         <div className="p-5 space-y-3">
           {[
             { label: t('Emri i platformës'), value: 'GOLDTRADE AI' },
-            { label: t('Versioni'), value: '2.0.0' },
-            { label: t('Mjedisi'), value: 'Production' },
+            { label: t('Mjedisi'), value: import.meta.env.PROD ? 'Production' : 'Development' },
             { label: t('Databaza'), value: 'Supabase PostgreSQL' },
             { label: t('Provider Auth'), value: 'Supabase Auth' },
           ].map(item => (
@@ -199,29 +198,6 @@ export default function AdminSettingsPage() {
             </div>
           ))}
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { icon: Database, label: t('Databaza'), desc: 'Supabase PostgreSQL', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', status: t('E lidhur') },
-          { icon: Bell, label: t('Njoftimet'), desc: t('Real-time aktive'), color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', status: t('Aktive') },
-          { icon: RefreshCw, label: 'Auto-sync', desc: t('Të dhënat e tregut'), color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', status: t('Në punë') },
-        ].map(item => {
-          const Icon = item.icon;
-          return (
-            <div key={item.label} className={`bg-gray-900 border ${item.border} rounded-xl p-4`}>
-              <div className={`w-9 h-9 ${item.bg} rounded-lg flex items-center justify-center mb-3`}>
-                <Icon className={`w-4 h-4 ${item.color}`} />
-              </div>
-              <div className="text-white text-sm font-semibold">{item.label}</div>
-              <div className="text-gray-500 text-xs mt-0.5">{item.desc}</div>
-              <div className={`text-xs font-medium mt-2 flex items-center gap-1.5 ${item.color}`}>
-                <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                {item.status}
-              </div>
-            </div>
-          );
-        })}
       </div>
     </div>
   );

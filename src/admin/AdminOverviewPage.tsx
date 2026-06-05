@@ -9,18 +9,19 @@ import { AdminPage } from '../App';
 import { useI18n } from '../i18n/i18n';
 
 interface RecentTrade {
-  id: string; type: string; total: number; executed_at: string;
+  id: string; type: string; volume: number; status: string; executed_at: string;
   symbol: string | null; full_name: string | null;
 }
 interface Stats {
   totalUsers: number; proUsers: number; freeUsers: number; totalBalance: number;
-  totalTrades: number; buyVolume: number; activeSignals: number; totalAssets: number;
-  aiAnalyses: number; autoTradeUsers: number; recentTrades: RecentTrade[];
+  executions: number; executionsToday: number; activeSignals: number; totalAssets: number;
+  autoTradeUsers: number; aiCostMonth: number; aiCallsMonth: number; metaCallsMonth: number;
+  recentTrades: RecentTrade[];
 }
 
 const EMPTY: Stats = {
-  totalUsers: 0, proUsers: 0, freeUsers: 0, totalBalance: 0, totalTrades: 0,
-  buyVolume: 0, activeSignals: 0, totalAssets: 0, aiAnalyses: 0, autoTradeUsers: 0, recentTrades: [],
+  totalUsers: 0, proUsers: 0, freeUsers: 0, totalBalance: 0, executions: 0, executionsToday: 0,
+  activeSignals: 0, totalAssets: 0, autoTradeUsers: 0, aiCostMonth: 0, aiCallsMonth: 0, metaCallsMonth: 0, recentTrades: [],
 };
 
 export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: AdminPage) => void }) {
@@ -40,14 +41,16 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
 
   const fmt = (n: number) => Number(n || 0).toLocaleString('en-US');
   const fmtK = (n: number) => `$${((n || 0) / 1000).toFixed(1)}K`;
+  const fmtUsd = (n: number) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: (n || 0) < 1 ? 4 : 2, maximumFractionDigits: 4 })}`;
 
   const statCards = [
     { label: t('Përdorues gjithsej'), value: fmt(stats.totalUsers), sub: t('{pro} me pagesë · {free} falas', { pro: stats.proUsers, free: stats.freeUsers }), icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
     { label: t('Balanca totale'), value: fmtK(stats.totalBalance), sub: t('Fondet e përdoruesve'), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
-    { label: t('Tregti gjithsej'), value: fmt(stats.totalTrades), sub: t('{vol} vëllim blerjeje', { vol: fmtK(stats.buyVolume) }), icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+    { label: t('Ekzekutime (MT5)'), value: fmt(stats.executions), sub: t('{n} sot', { n: stats.executionsToday }), icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
     { label: t('Sinjale aktive'), value: fmt(stats.activeSignals), sub: t('{n} aktive të listuara', { n: stats.totalAssets }), icon: Zap, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
     { label: t('Auto-Trade aktiv'), value: fmt(stats.autoTradeUsers), sub: t('Përdorues me MetaApi'), icon: Cloud, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
-    { label: t('Analiza AI'), value: fmt(stats.aiAnalyses), sub: t('Gjeneruar gjithsej'), icon: Brain, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
+    { label: t('Kosto AI (muaji)'), value: fmtUsd(stats.aiCostMonth), sub: t('{calls} thirrje sot', { calls: stats.aiCallsMonth }), icon: Brain, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
+    { label: t('MetaApi (muaji)'), value: fmt(stats.metaCallsMonth), sub: t('thirrje gjithsej'), icon: Cloud, color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20' },
   ];
 
   const quickLinks: { label: string; icon: React.ElementType; desc: string; page: AdminPage; color: string; bg: string; border: string }[] = [
@@ -118,7 +121,7 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
                     <div className="text-gray-500 text-xs truncate">{trade.full_name || '—'}</div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <div className="text-white text-sm font-semibold">${Number(trade.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                    <div className="text-white text-sm font-semibold">{Number(trade.volume || 0)} {t('lot')}</div>
                     <div className="text-gray-600 text-[10px]">{trade.executed_at ? new Date(trade.executed_at).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</div>
                   </div>
                 </div>
