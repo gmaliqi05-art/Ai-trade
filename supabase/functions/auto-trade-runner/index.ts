@@ -345,6 +345,23 @@ async function realizedToday(cfg: Cfg): Promise<number> {
   } catch { return 0; }
 }
 
+// Humbja BRUTO e ditës — shuma e trade-ve HUMBËSE sot (pa i kompensuar me fitimet).
+// Përdoret për ndalues më të rreptë: "kur humbjet kalojnë X, ndalo" (pavarësisht fitimeve).
+async function grossLossToday(cfg: Cfg): Promise<number> {
+  try {
+    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
+    const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
+    if (!Array.isArray(deals)) return 0;
+    let loss = 0;
+    for (const d of deals) {
+      const net = (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0);
+      if (net < 0) loss += -net;
+    }
+    return loss;
+  } catch { return 0; }
+}
+
 // Rezultati real i brokerit (10009 = DONE); HTTP 200 fsheh refuzimet.
 function brokerResult(body: unknown): { ok: boolean; code: number; msg: string; orderId: string | null } {
   const o = (body ?? {}) as Record<string, unknown>;
@@ -458,6 +475,7 @@ Deno.serve(async (req: Request) => {
 
       let positions: Position[] = [];
       let dayPnl = 0; // P&L i ditës = equity_tani − equity_fillimi (përfshin realized + floating)
+      let grossLoss = 0; // humbja BRUTO e ditës (vetëm trade-t humbëse)
       let equity = 0; // kapitali aktual (për position sizing 1%)
       try {
         positions = (await maGet(cfg, "/positions") as Position[]) ?? [];
@@ -478,10 +496,15 @@ Deno.serve(async (req: Request) => {
           }
           dayPnl = (Number.isFinite(dayStartEq) && dayStartEq > 0) ? equity - dayStartEq : 0;
         }
+        // Humbja BRUTO e ditës — ndalues më i rreptë (kur humbjet kalojnë limitin, pavarësisht fitimeve).
+        grossLoss = await grossLossToday(cfg);
       } catch (e) {
         summary.push({ user: cfg.user_id, error: `metaapi: ${(e as Error).message}` });
         continue;
       }
+      // NDALUES DITOR: ndalon kur humbja NETO (ekuiteti) OSE humbja BRUTO kalon kufirin.
+      const maxDailyRisk = Number(cfg.max_daily_loss) || 0;
+      const dailyStop = maxDailyRisk > 0 && (dayPnl <= -maxDailyRisk || grossLoss >= maxDailyRisk);
       let openTrades = positions.length;
       const scalpOn = cfg.strategy_scalp === true;
       const swingOn = cfg.strategy_swing !== false; // default ON
@@ -554,7 +577,7 @@ Deno.serve(async (req: Request) => {
         const maxRisk = Number(cfg.max_daily_loss) || 0;
         for (const rawSym of allowed) {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
-          if (maxRisk > 0 && dayPnl <= -maxRisk) break; // limit humbjeje ditore
+          if (dailyStop) break; // limit humbjeje ditore (neto te ekuiteti OSE bruto e trade-ve humbëse)
           // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301").
           const sym = await resolveSymbol(cfg, rawSym);
           if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym.toUpperCase())) continue; // një scalp për simbol
@@ -722,7 +745,7 @@ Deno.serve(async (req: Request) => {
         }
         if (openTrades >= cfg.max_open_trades) { await log("rejected", `Max pozicione (${cfg.max_open_trades})`, null, null); continue; }
         // Limit REAL i humbjes ditore: realized(sot) + floating(tani).
-        if (maxRisk > 0 && dayPnl <= -maxRisk) { await log("rejected", `Limit humbjeje ditore arritur (P&L ditor ${dayPnl.toFixed(2)} ≤ -${maxRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
+        if (dailyStop) { await log("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDailyRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
         // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
         if (netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
         // KONFIRMIM DOLLARI (DXY via EURUSD) — refuzo kur dollari shkon qartë kundër arit.
