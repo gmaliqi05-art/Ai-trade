@@ -136,6 +136,10 @@ interface TradeResponse {
   order_id?: string | null; account?: AccountInfo; positions?: OpenPosition[];
   deals?: HistoryDeal[]; candles?: Mt5Candle[];
   price?: { symbol?: string; bid?: number; ask?: number; brokerTime?: string; time?: string };
+  /** True nëse u vendos porosi NË PRITJE (limit/stop) sepse çmimi s'ishte ende te hyrja. */
+  pending?: boolean;
+  /** Çmimi i hapjes së porosisë në pritje (kur pending=true). */
+  open_price?: number | null;
 }
 
 async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> {
@@ -191,10 +195,14 @@ export function modifyPosition(positionId: string, stopLoss?: number, takeProfit
   return callTrade({ action: 'MODIFY', positionId, stopLoss, takeProfit });
 }
 
-/** Ekzekuton një tregti në MT5 via MetaApi (me mbrojtjet e rrezikut në server). */
+/**
+ * Ekzekuton një tregti në MT5 via MetaApi (me mbrojtjet e rrezikut në server).
+ * `entryPrice` (opsionale): nëse jepet dhe çmimi s'është ende aty, vendoset POROSI NË PRITJE
+ * te ai nivel (hyn automatik kur çmimi e arrin); përndryshe → porosi tregu menjëherë.
+ */
 export function executeTrade(input: {
   action: 'BUY' | 'SELL'; symbol: string; volume?: number;
-  stopLoss?: number; takeProfit?: number; signalId?: string;
+  stopLoss?: number; takeProfit?: number; signalId?: string; entryPrice?: number;
 }) {
   return callTrade({ ...input });
 }

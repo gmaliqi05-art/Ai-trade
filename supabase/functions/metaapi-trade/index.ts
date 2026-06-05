@@ -246,11 +246,34 @@ Deno.serve(async (req: Request) => {
     }
 
     // --- EKZEKUTIMI ---
-    const tradeBody: Record<string, unknown> = {
-      actionType: action === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL",
-      symbol,
-      volume,
-    };
+    // Lloji i porosisë: TREG (menjëherë) ose NË PRITJE (kur çmimi s'është ende te hyrja e dhënë).
+    // Nëse `entryPrice` jepet dhe ndryshon nga çmimi aktual, vendoset porosi LIMIT/STOP te ai nivel
+    // (hyn vetëm kur çmimi e arrin). Përndryshe → porosi tregu menjëherë.
+    const entryPrice: number | undefined =
+      body.entryPrice != null && Number.isFinite(Number(body.entryPrice)) ? Number(body.entryPrice) : undefined;
+    let actionType = action === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL";
+    let openPrice: number | undefined;
+    let pending = false;
+    if (entryPrice != null) {
+      try {
+        const pr = await metaApiGet(config, `/symbols/${encodeURIComponent(symbol)}/current-price`) as { ask?: number; bid?: number };
+        const ask = Number(pr?.ask), bid = Number(pr?.bid);
+        const ref = action === "BUY" ? (Number.isFinite(ask) ? ask : bid) : (Number.isFinite(bid) ? bid : ask);
+        const spread = (Number.isFinite(ask) && Number.isFinite(bid)) ? Math.abs(ask - bid) : 0;
+        if (Number.isFinite(ref) && ref > 0) {
+          const tol = Math.max(spread * 1.5, ref * 0.0002); // ~afër çmimit → trajtoje si treg
+          if (Math.abs(entryPrice - ref) > tol) {
+            pending = true;
+            openPrice = Math.round(entryPrice * 100) / 100;
+            if (action === "BUY") actionType = entryPrice < ref ? "ORDER_TYPE_BUY_LIMIT" : "ORDER_TYPE_BUY_STOP";
+            else actionType = entryPrice > ref ? "ORDER_TYPE_SELL_LIMIT" : "ORDER_TYPE_SELL_STOP";
+          }
+        }
+      } catch { /* nëse s'merret çmimi live, biem te porosia e tregut */ }
+    }
+
+    const tradeBody: Record<string, unknown> = { actionType, symbol, volume };
+    if (pending && openPrice != null) tradeBody.openPrice = openPrice;
     if (stopLoss != null && Number.isFinite(stopLoss)) tradeBody.stopLoss = stopLoss;
     if (takeProfit != null && Number.isFinite(takeProfit)) tradeBody.takeProfit = takeProfit;
 
@@ -282,11 +305,12 @@ Deno.serve(async (req: Request) => {
       return json({ error: "broker_rejected", code, message: brokerMsg || "Urdhri u refuzua nga brokeri.", result: respBody }, 200);
     }
 
-    await logExec("executed", `OK (${config.mode})`, orderId, respBody);
+    await logExec("executed", pending ? `Porosi në pritje @ ${openPrice} (${config.mode})` : `OK (${config.mode})`, orderId, respBody);
     return json({
       success: true,
       mode: config.mode,
       symbol, action, volume,
+      pending, open_price: openPrice ?? null,
       order_id: orderId,
       result: respBody,
     });
