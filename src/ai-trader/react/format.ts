@@ -1,6 +1,7 @@
 // Ndihmës formatimi për UI-në e motorit.
 
 import type { Action } from '../core/types';
+import { tr } from '../../i18n/tr';
 
 export function fmtPrice(value: number): string {
   if (!Number.isFinite(value)) return '—';
@@ -14,9 +15,9 @@ export function fmtPct(value0to1: number): string {
   return `${Math.round(value0to1 * 100)}%`;
 }
 
-/** Etiketa shqip për veprimin. */
+/** Etiketa e veprimit (e përkthyer sipas gjuhës). */
 export function actionLabel(action: Action): string {
-  return action === 'BUY' ? 'BLEJ' : action === 'SELL' ? 'SHIT' : 'PRIT';
+  return action === 'BUY' ? tr('BLEJ') : action === 'SELL' ? tr('SHIT') : tr('PRIT');
 }
 
 /** Klasat Tailwind për ngjyrën e veprimit. */
