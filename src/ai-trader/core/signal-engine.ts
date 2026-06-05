@@ -3,6 +3,7 @@
 
 import { atr, bollinger, ema, macd, rsi } from './indicators';
 import type { Candle, Horizon, IndicatorSnapshot, Signal } from './types';
+import { tr } from '../../i18n/tr';
 
 interface Profile {
   emaFast: number;
@@ -75,8 +76,8 @@ export function generateSignal(candles: Candle[], horizon: Horizon): Signal {
       weight: 2.5,
       passed: bullish,
       reason: bullish
-        ? `EMA${profile.emaFast} mbi EMA${profile.emaSlow} (trend rritës)`
-        : `EMA${profile.emaFast} nën EMA${profile.emaSlow} (trend rënës)`,
+        ? tr('EMA{fast} mbi EMA{slow} (trend rritës)', { fast: profile.emaFast, slow: profile.emaSlow })
+        : tr('EMA{fast} nën EMA{slow} (trend rënës)', { fast: profile.emaFast, slow: profile.emaSlow }),
     });
   }
 
@@ -86,7 +87,7 @@ export function generateSignal(candles: Candle[], horizon: Horizon): Signal {
     rules.push({
       weight: 1.5,
       passed: bullish,
-      reason: bullish ? 'MACD mbi sinjal (momentum pozitiv)' : 'MACD nën sinjal (momentum negativ)',
+      reason: bullish ? tr('MACD mbi sinjal (momentum pozitiv)') : tr('MACD nën sinjal (momentum negativ)'),
     });
   }
 
@@ -96,7 +97,7 @@ export function generateSignal(candles: Candle[], horizon: Horizon): Signal {
     rules.push({
       weight: 1,
       passed: bullish,
-      reason: bullish ? 'Çmimi mbi EMA-në e ngadaltë' : 'Çmimi nën EMA-në e ngadaltë',
+      reason: bullish ? tr('Çmimi mbi EMA-në e ngadaltë') : tr('Çmimi nën EMA-në e ngadaltë'),
     });
   }
 
@@ -105,21 +106,21 @@ export function generateSignal(candles: Candle[], horizon: Horizon): Signal {
   // 4) RSI: ekstremet janë paralajmërim kthimi; pjesa tjetër pjerrtësi e butë.
   if (!Number.isNaN(snap.rsi)) {
     if (snap.rsi < 30) {
-      rules.push({ weight: 1, passed: true, reason: `RSI ${snap.rsi.toFixed(1)} (i mbishitur — kthim i mundshëm lart)` });
+      rules.push({ weight: 1, passed: true, reason: tr('RSI {v} (i mbishitur — kthim i mundshëm lart)', { v: snap.rsi.toFixed(1) }) });
     } else if (snap.rsi > 70) {
-      rules.push({ weight: 1, passed: false, reason: `RSI ${snap.rsi.toFixed(1)} (i mbiblerë — kujdes nga kthimi)` });
+      rules.push({ weight: 1, passed: false, reason: tr('RSI {v} (i mbiblerë — kujdes nga kthimi)', { v: snap.rsi.toFixed(1) }) });
     } else {
       const lean = snap.rsi >= 50;
-      rules.push({ weight: 0.5, passed: lean, reason: `RSI ${snap.rsi.toFixed(1)} (${lean ? 'pjerrtësi lart' : 'pjerrtësi poshtë'})` });
+      rules.push({ weight: 0.5, passed: lean, reason: tr('RSI {v} ({lean})', { v: snap.rsi.toFixed(1), lean: lean ? tr('pjerrtësi lart') : tr('pjerrtësi poshtë') }) });
     }
   }
 
   // 5) Dalja jashtë brezave të Bollinger-it (kujdes nga teprimi).
   if (!Number.isNaN(snap.bbLower) && !Number.isNaN(snap.bbUpper)) {
     if (snap.price < snap.bbLower) {
-      rules.push({ weight: 0.75, passed: true, reason: 'Çmimi poshtë brezit të poshtëm (kthim i mundshëm lart)' });
+      rules.push({ weight: 0.75, passed: true, reason: tr('Çmimi poshtë brezit të poshtëm (kthim i mundshëm lart)') });
     } else if (snap.price > snap.bbUpper) {
-      rules.push({ weight: 0.75, passed: false, reason: 'Çmimi mbi brezit të sipërm (kthim i mundshëm poshtë)' });
+      rules.push({ weight: 0.75, passed: false, reason: tr('Çmimi mbi brezit të sipërm (kthim i mundshëm poshtë)') });
     }
   }
 
