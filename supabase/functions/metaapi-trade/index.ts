@@ -46,6 +46,28 @@ async function metaApiGet(cfg: MetaApiConfig, path: string) {
   return body;
 }
 
+// Disa brokerë (p.sh. Vantage) e quajnë arin me prapashtesë (XAUUSD+, XAUUSD., GOLD…).
+// Gjen emrin REAL të simbolit te lista e brokerit; përndryshe kthen të kërkuarin.
+async function resolveSymbol(cfg: MetaApiConfig, requested: string): Promise<string> {
+  try {
+    const list = await metaApiGet(cfg, `/symbols`) as unknown;
+    if (!Array.isArray(list) || list.length === 0) return requested;
+    const names = list.map(String);
+    const req = requested.toUpperCase();
+    const exact = names.find(s => s.toUpperCase() === req);
+    if (exact) return exact;
+    // Varianti me prapashtesë: XAUUSD+, XAUUSD., XAUUSDm, XAUUSD.r ...
+    const prefixed = names.find(s => s.toUpperCase().startsWith(req));
+    if (prefixed) return prefixed;
+    // Alias-et e arit.
+    if (req.includes("XAU")) {
+      const goldish = names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()));
+      if (goldish) return goldish;
+    }
+    return requested;
+  } catch { return requested; }
+}
+
 // P&L i REALIZUAR i ditës (që nga 00:00 UTC) — trade-t e mbyllura sot.
 async function realizedToday(cfg: MetaApiConfig): Promise<number> {
   try {
@@ -108,7 +130,7 @@ Deno.serve(async (req: Request) => {
 
     // PRICE — çmimi REAL live i brokerit (bid/ask) për një simbol (përkon me app-in MT5).
     if (action === "PRICE") {
-      const symbol = body.symbol || "XAUUSD";
+      const symbol = await resolveSymbol(config, body.symbol || "XAUUSD");
       try {
         const price = await metaApiGet(config, `/symbols/${encodeURIComponent(symbol)}/current-price`);
         return json({ success: true, mode: config.mode, price });
@@ -133,7 +155,7 @@ Deno.serve(async (req: Request) => {
 
     // CANDLES — qirinj historikë nga MT5 (për grafikun me linja SL/TP).
     if (action === "CANDLES") {
-      const symbol = body.symbol || "XAUUSD";
+      const symbol = await resolveSymbol(config, body.symbol || "XAUUSD");
       const timeframe = body.timeframe || "15m";
       const limit = Math.min(Number(body.limit) || 300, 1000);
       try {
@@ -195,7 +217,9 @@ Deno.serve(async (req: Request) => {
       return json({ error: "bad_action", message: "action duhet BUY, SELL ose CHECK" }, 400);
     }
 
-    const symbol: string = body.symbol || "XAUUSD";
+    let symbol: string = body.symbol || "XAUUSD";
+    // Zgjidh emrin REAL të simbolit te brokeri (rregullon "Unknown symbol 4301").
+    symbol = await resolveSymbol(config, symbol);
     const signalId: string | null = body.signalId ?? null;
     const stopLoss: number | undefined = body.stopLoss != null ? Number(body.stopLoss) : undefined;
     const takeProfit: number | undefined = body.takeProfit != null ? Number(body.takeProfit) : undefined;
