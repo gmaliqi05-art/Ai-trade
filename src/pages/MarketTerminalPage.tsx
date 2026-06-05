@@ -66,6 +66,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
   const [lot, setLot] = useState('0.01');
+  const [newEntry, setNewEntry] = useState('');   // Çmimi i hyrjes (porosi në pritje nëse s'është aty)
   const [newSl, setNewSl] = useState('');         // SL për porosinë e re (manuale)
   const [newTp, setNewTp] = useState('');         // TP për porosinë e re (manuale)
   const [appliedSignalId, setAppliedSignalId] = useState<string | null>(null);
@@ -158,15 +159,22 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     }
     const sl = newSl.trim() ? parseFloat(newSl) : undefined;
     const tp = newTp.trim() ? parseFloat(newTp) : undefined;
+    const entry = newEntry.trim() ? parseFloat(newEntry) : undefined;
     setTradeLoading(true); setTradeMsg(null);
     const r = await executeTrade({
       action: tradeType === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: vol,
-      stopLoss: sl, takeProfit: tp,
+      stopLoss: sl, takeProfit: tp, entryPrice: entry,
       signalId: appliedSignalId ?? undefined,
     });
     if (r.error) setTradeMsg({ type: 'error', text: errText(r.error, r.message) });
     else {
-      setTradeMsg({ type: 'success', text: `Urdhër ${tradeType === 'buy' ? 'BLEJ' : 'SHIT'} ${selected} (${vol} lot)${sl ? ` · SL ${sl}` : ''}${tp ? ` · TP ${tp}` : ''} dërguar (${r.mode}).` });
+      const dir = tradeType === 'buy' ? 'BLEJ' : 'SHIT';
+      const extra = `${sl ? ` · SL ${sl}` : ''}${tp ? ` · TP ${tp}` : ''}`;
+      if (r.pending) {
+        setTradeMsg({ type: 'success', text: `Porosi në pritje ${dir} ${selected} (${vol} lot) @ ${r.open_price ?? entry}${extra} — hyn automatik kur çmimi e arrin (${r.mode}).` });
+      } else {
+        setTradeMsg({ type: 'success', text: `Urdhër ${dir} ${selected} (${vol} lot)${extra} dërguar (${r.mode}).` });
+      }
       fetchMeta();
     }
     setTradeLoading(false);
@@ -187,6 +195,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     }
     setSelected(s.symbol);
     setTradeType(s.type === 'sell' ? 'sell' : 'buy');
+    setNewEntry(s.entry_price != null ? String(s.entry_price) : '');
     setNewSl(s.stop_loss != null ? String(s.stop_loss) : '');
     setNewTp(s.target_price != null ? String(s.target_price) : '');
     setAppliedSignalId(s.id);
@@ -197,7 +206,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const pickSymbol = (sym: string) => {
     setSelected(sym);
     setAppliedSignalId(null);
-    setNewSl(''); setNewTp('');
+    setNewEntry(''); setNewSl(''); setNewTp('');
   };
 
   // Pozicioni i hapur për simbolin e zgjedhur → linjat Hyrje/SL/TP + modifikim.
@@ -335,6 +344,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               <button key={v} onClick={() => setLot(v)} className={`text-xs py-1.5 rounded-lg transition-colors ${lot === v ? 'bg-amber-500 text-gray-950 font-medium' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white'}`}>{v}</button>
             ))}
           </div>
+          {/* Çmimi i hyrjes — nëse çmimi s'është aty, vendoset porosi NË PRITJE (hyn automatik kur arrin) */}
+          <div>
+            <label className="block text-[10px] text-amber-400 mb-1">Çmimi i hyrjes <span className="text-gray-600">(bosh = tregu tani)</span></label>
+            <input type="number" step="0.01" value={newEntry} onChange={e => setNewEntry(e.target.value)} placeholder="hyrje tregu"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-amber-500" />
+          </div>
           {/* SL / TP për porosinë e re (si te sistemi automatik; opsionale, ndryshoji lirisht) */}
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -348,7 +363,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
             </div>
           </div>
-          {appliedSignalId && <p className="text-[10px] text-amber-400/80">SL/TP u mbushën nga sinjali — mund t'i ndryshosh para se të tregtosh.</p>}
+          {appliedSignalId && <p className="text-[10px] text-amber-400/80">Hyrja, SL dhe TP u mbushën nga sinjali. Nëse çmimi s'është te hyrja, vendoset porosi në pritje që hyn automatik. Mund t'i ndryshosh para se të tregtosh.</p>}
           {tradeMsg && (
             <div className={`text-xs rounded-xl px-3 py-2 ${tradeMsg.type === 'success' ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-red-900/30 text-red-400 border border-red-800/50'}`}>{tradeMsg.text}</div>
           )}
