@@ -335,8 +335,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             )}
       </div>
 
-      {/* Porosi e re (nën grafik) + lista e sinjaleve */}
-      <div className="grid lg:grid-cols-3 gap-5">
+      {/* Porosi e re (nën grafik) */}
+      <div className="lg:max-w-md">
         {/* Porosia BLEJ/SHIT */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3 h-fit">
           <h3 className="text-white font-semibold text-sm">{t('Porosi e re — {sym}', { sym: selected })}</h3>
@@ -441,41 +441,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             </div>
           )}
         </div>
-
-        {/* Sinjalet (lista e plotë) — klik për të mbushur formën Porosi e re */}
-        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-4 h-fit">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet')}</h3>
-          <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300">{t('Të gjitha')}</button>
-        </div>
-        {signals.length === 0 ? (
-          <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal aktiv tani.')}</p>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-2">
-            {signals.map(s => {
-              const fresh = signalIsFresh(s.created_at);
-              return (
-              <button key={s.id} onClick={() => applySignal(s)} className={`text-left rounded-xl px-3 py-2 transition-colors border ${appliedSignalId === s.id ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-800/40 border-transparent hover:bg-gray-800'} ${fresh ? '' : 'opacity-60'}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="flex items-center gap-2">
-                    <span className="text-white text-sm font-bold">{s.symbol}</span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
-                    {!fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
-                  </span>
-                  <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
-                </div>
-                <div className="flex gap-3 text-[11px] text-gray-400 flex-wrap">
-                  {s.entry_price && <span>{t('Hyrje:')} <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
-                  {s.target_price && <span>{t('Objektiv:')} <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
-                  {s.stop_loss && <span>{t('Stop:')} <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
-                </div>
-                <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}{fresh ? '' : t(' · mos tregto')}</div>
-              </button>
-              );
-            })}
-          </div>
-        )}
-        </div>
       </div>
 
       {/* 1) Pozicionet e hapura (live) — menjëherë nën sinjalet */}
@@ -530,7 +495,42 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
-      {/* 3) Sinjalet e vjetra (të përfunduara) — nën tabelën e trade-ve të mbyllura */}
+      {/* 3) Sinjalet aktive (lista e plotë) — nën Trade-t e mbyllura (sinjale të vjetra, klik për të mbushur formën) */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet')}</h3>
+          <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300">{t('Të gjitha')}</button>
+        </div>
+        {signals.length === 0 ? (
+          <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal aktiv tani.')}</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {signals.map(s => {
+              const fresh = signalIsFresh(s.created_at);
+              return (
+              <button key={s.id} onClick={() => applySignal(s)} className={`text-left rounded-xl px-3 py-2 transition-colors border ${appliedSignalId === s.id ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-800/40 border-transparent hover:bg-gray-800'} ${fresh ? '' : 'opacity-60'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-2">
+                    <span className="text-white text-sm font-bold">{s.symbol}</span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
+                    {!fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
+                  </span>
+                  <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
+                </div>
+                <div className="flex gap-3 text-[11px] text-gray-400 flex-wrap">
+                  {s.entry_price && <span>{t('Hyrje:')} <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
+                  {s.target_price && <span>{t('Objektiv:')} <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
+                  {s.stop_loss && <span>{t('Stop:')} <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
+                </div>
+                <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}{fresh ? '' : t(' · mos tregto')}</div>
+              </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 4) Sinjalet e vjetra (të përfunduara) */}
       <CompletedSignals signals={doneSignals} variant="compact" />
 
       {/* 4) Ekzekutimet e fundit — në fund */}
