@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { ClientPage as Page } from '../App';
 import TradingViewChart from '../components/TradingViewChart';
 import GoldSessionBadge from '../components/GoldSessionBadge';
+import OpenPositionsPanel from '../components/OpenPositionsPanel';
 import { loadOpenPositions, loadSymbolPrice, type OpenPosition } from '../services/metaapi';
 import { useI18n } from '../i18n/i18n';
 
@@ -323,6 +324,9 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
               </div>
             )}
           </div>
+
+          {/* Ekzekutimet e fundit (zhvendosur këtu nga Tregto Live) */}
+          <OpenPositionsPanel configured={!!metaApi?.account_id} section="executions" />
         </div>
       </div>
     </div>

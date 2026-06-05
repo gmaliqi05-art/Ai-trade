@@ -545,6 +545,7 @@ export const en: Record<string, string> = {
   "Kryesore": "Main",
   "MetaTrader 5 Live": "MetaTrader 5 Live",
   "Tregto Live": "Trade Live",
+  "Klik për të shfaqur/fshehur": "Click to show/hide",
   "Simbolet e lejuara": "Allowed symbols",
   "Ari (XAUUSD) është default. Shto të tjera vetëm nëse i mbështet brokeri yt.": "Gold (XAUUSD) is the default. Add others only if your broker supports them.",
   "Shto simbol": "Add symbol",
