@@ -160,6 +160,39 @@ function buildUserMessage(data: MarketData): string {
   return msg;
 }
 
+// —— Përdorimi i tokenave + kosto (për panelin e admin-it) ——
+interface Usage { prompt_tokens: number; completion_tokens: number; total_tokens: number; }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const usageFromOpenAI = (d: any): Usage => {
+  const i = d?.usage?.prompt_tokens ?? 0, o = d?.usage?.completion_tokens ?? 0;
+  return { prompt_tokens: i, completion_tokens: o, total_tokens: d?.usage?.total_tokens ?? (i + o) };
+};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const usageFromAnthropic = (d: any): Usage => {
+  const i = d?.usage?.input_tokens ?? 0, o = d?.usage?.output_tokens ?? 0;
+  return { prompt_tokens: i, completion_tokens: o, total_tokens: i + o };
+};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const usageFromGemini = (d: any): Usage => {
+  const m = d?.usageMetadata || {}; const i = m.promptTokenCount ?? 0, o = m.candidatesTokenCount ?? 0;
+  return { prompt_tokens: i, completion_tokens: o, total_tokens: m.totalTokenCount ?? (i + o) };
+};
+// Kosto e përafërt në USD sipas modelit ($ për 1M tokena: input/output).
+function aiCostUsd(model: string, u: Usage): number {
+  const m = (model || "").toLowerCase();
+  let inP = 1, outP = 3; // default
+  if (m.includes("opus")) { inP = 15; outP = 75; }
+  else if (m.includes("sonnet")) { inP = 3; outP = 15; }
+  else if (m.includes("3-5-haiku") || m.includes("3.5-haiku")) { inP = 0.8; outP = 4; }
+  else if (m.includes("haiku")) { inP = 0.25; outP = 1.25; }
+  else if (m.includes("gpt-4o-mini") || m.includes("4o-mini")) { inP = 0.15; outP = 0.6; }
+  else if (m.includes("gpt-4o") || m.includes("gpt-4.1")) { inP = 2.5; outP = 10; }
+  else if (m.includes("gemini") && m.includes("pro")) { inP = 1.25; outP = 5; }
+  else if (m.includes("gemini") || m.includes("flash")) { inP = 0.075; outP = 0.3; }
+  const c = (u.prompt_tokens / 1e6) * inP + (u.completion_tokens / 1e6) * outP;
+  return Math.round(c * 1e6) / 1e6;
+}
+
 async function callGenericOpenAICompat(
   apiKey: string,
   model: string,
@@ -167,7 +200,7 @@ async function callGenericOpenAICompat(
   systemPrompt: string,
   userMessage: string,
   providerName: string
-): Promise<AnalysisResult> {
+): Promise<{ parsed: AnalysisResult; usage: Usage }> {
   const resp = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -194,10 +227,10 @@ async function callGenericOpenAICompat(
   const data = await resp.json();
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error(`${providerName} returned empty content`);
-  return JSON.parse(content) as AnalysisResult;
+  return { parsed: JSON.parse(content) as AnalysisResult, usage: usageFromOpenAI(data) };
 }
 
-async function callAnthropic(apiKey: string, model: string, systemPrompt: string, userMessage: string): Promise<AnalysisResult> {
+async function callAnthropic(apiKey: string, model: string, systemPrompt: string, userMessage: string): Promise<{ parsed: AnalysisResult; usage: Usage }> {
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -225,10 +258,10 @@ async function callAnthropic(apiKey: string, model: string, systemPrompt: string
   if (!content) throw new Error("Anthropic returned empty content");
   const match = content.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("No JSON found in Anthropic response");
-  return JSON.parse(match[0]) as AnalysisResult;
+  return { parsed: JSON.parse(match[0]) as AnalysisResult, usage: usageFromAnthropic(data) };
 }
 
-async function callGemini(apiKey: string, model: string, systemPrompt: string, userMessage: string): Promise<AnalysisResult> {
+async function callGemini(apiKey: string, model: string, systemPrompt: string, userMessage: string): Promise<{ parsed: AnalysisResult; usage: Usage }> {
   const geminiModel = model || "gemini-1.5-flash";
   const resp = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`,
@@ -256,7 +289,7 @@ async function callGemini(apiKey: string, model: string, systemPrompt: string, u
   if (!content) throw new Error("Gemini returned empty content");
   const match = content.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("No JSON found in Gemini response");
-  return JSON.parse(match[0]) as AnalysisResult;
+  return { parsed: JSON.parse(match[0]) as AnalysisResult, usage: usageFromGemini(data) };
 }
 
 const OPENAI_COMPAT_ENDPOINTS: Record<string, string> = {
@@ -285,24 +318,24 @@ const DEFAULT_MODELS: Record<string, string> = {
   fireworks: "accounts/fireworks/models/llama-v3p1-70b-instruct",
 };
 
-async function callProvider(provider: AIProvider, userMessage: string): Promise<AnalysisResult & { provider_used: string }> {
+async function callProvider(provider: AIProvider, userMessage: string): Promise<AnalysisResult & { provider_used: string; model_used: string; usage: Usage }> {
   const systemPrompt = buildSystemPrompt(provider.system_prompt);
   const apiKey = provider.api_key_encrypted;
   if (!apiKey || apiKey.trim() === '') throw new Error(`No API key for ${provider.slug}`);
 
   const model = provider.model || DEFAULT_MODELS[provider.slug] || "gpt-4o-mini";
-  let result: AnalysisResult;
+  let out: { parsed: AnalysisResult; usage: Usage };
 
   if (provider.slug === "anthropic") {
-    result = await callAnthropic(apiKey, model, systemPrompt, userMessage);
+    out = await callAnthropic(apiKey, model, systemPrompt, userMessage);
   } else if (provider.slug === "gemini") {
-    result = await callGemini(apiKey, model, systemPrompt, userMessage);
+    out = await callGemini(apiKey, model, systemPrompt, userMessage);
   } else {
     const endpoint = OPENAI_COMPAT_ENDPOINTS[provider.slug] || `https://api.${provider.slug}.com/v1/chat/completions`;
-    result = await callGenericOpenAICompat(apiKey, model, endpoint, systemPrompt, userMessage, provider.slug);
+    out = await callGenericOpenAICompat(apiKey, model, endpoint, systemPrompt, userMessage, provider.slug);
   }
 
-  return { ...result, provider_used: provider.slug };
+  return { ...out.parsed, provider_used: provider.slug, model_used: model, usage: out.usage };
 }
 
 function enforceRealPrice(result: AnalysisResult, realCurrentPrice: number): AnalysisResult {
@@ -428,12 +461,16 @@ Deno.serve(async (req: Request) => {
     }
 
     let result: (AnalysisResult & { provider_used: string }) | null = null;
+    let usedModel = "";
+    let usedUsage: Usage | null = null;
     const errors: string[] = [];
 
     for (const provider of orderedProviders) {
       try {
         const raw = await callProvider(provider as AIProvider, userMessage);
         result = { ...enforceRealPrice(raw, realCurrentPrice), provider_used: raw.provider_used };
+        usedModel = raw.model_used;
+        usedUsage = raw.usage;
         break;
       } catch (err) {
         const msg = (err as Error).message;
@@ -473,6 +510,24 @@ Deno.serve(async (req: Request) => {
       .insert(analysisRecord)
       .select()
       .maybeSingle();
+
+    // Regjistro përdorimin e tokenave + kosto (best-effort; s'e ndal asnjë rrjedhë).
+    try {
+      if (usedUsage) {
+        await db.from("ai_usage_log").insert({
+          user_id: user.id,
+          provider: result.provider_used,
+          model: usedModel,
+          prompt_tokens: usedUsage.prompt_tokens,
+          completion_tokens: usedUsage.completion_tokens,
+          total_tokens: usedUsage.total_tokens,
+          cost_usd: aiCostUsd(usedModel, usedUsage),
+          kind: engine ? "engine" : "analysis",
+        });
+      }
+    } catch (e) {
+      console.error("ai_usage_log insert failed:", (e as Error).message);
+    }
 
     await db.from("ai_analyses").insert({
       user_id: user.id,
