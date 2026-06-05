@@ -1,7 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar } from 'lucide-react';
+import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar, Bot, Zap, Hand, Server } from 'lucide-react';
 import { loadTradeHistory, checkMetaApiConnection, type HistoryDeal, type AccountInfo } from '../services/metaapi';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
+
+// Burimi i një trade-i: auto (robot), sinjal (klik mbi sinjal), manual (buton), ose direkt në MT5.
+type TradeSource = 'auto' | 'signal' | 'manual' | 'mt5';
+
+interface ExecRow { action: string; symbol: string; signal_id: string | null; reason: string | null; created_at: string; }
+
+// Klasifikon burimin nga arsyeja + signal_id e regjistruar te trade_executions.
+function classifySource(reason: string | null, signalId: string | null): TradeSource {
+  const r = (reason || '').toLowerCase();
+  if (r.startsWith('scalp auto') || r.startsWith('auto (') || r.startsWith('auto(')) return 'auto';
+  if (signalId) return 'signal';
+  return 'manual';
+}
 
 // Një trade i mbyllur, i grupuar nga deal-et IN/OUT të MT5 sipas positionId.
 interface ClosedTrade {
@@ -14,6 +29,7 @@ interface ClosedTrade {
   entryPrice?: number;
   exitPrice?: number;
   net: number; // profit + commission + swap
+  source?: TradeSource;
 }
 
 interface DayRow { date: string; count: number; wins: number; losses: number; net: number; pct: number; }
@@ -75,6 +91,24 @@ function dailyBreakdown(trades: ClosedTrade[], balance: number): DayRow[] {
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
+// Lidh secilin trade me burimin e tij duke përputhur ekzekutimet (simbol + drejtim + kohë afër hapjes).
+function attachSource(trades: ClosedTrade[], execs: ExecRow[]): void {
+  const used = new Set<ExecRow>();
+  for (const tr of trades) {
+    const openMs = tr.openTime ? new Date(tr.openTime).getTime() : (tr.closeTime ? new Date(tr.closeTime).getTime() : 0);
+    let best: ExecRow | null = null, bestDiff = Infinity;
+    for (const e of execs) {
+      if (used.has(e)) continue;
+      if ((e.symbol || '').toUpperCase() !== (tr.symbol || '').toUpperCase()) continue;
+      if (e.action !== tr.direction) continue;
+      const diff = Math.abs(new Date(e.created_at).getTime() - openMs);
+      if (diff < bestDiff) { bestDiff = diff; best = e; }
+    }
+    if (best && bestDiff < 10 * 60 * 1000) { used.add(best); tr.source = classifySource(best.reason, best.signal_id); }
+    else tr.source = 'mt5';
+  }
+}
+
 const fmtMoney = (n: number, cur = '') => `${n >= 0 ? '+' : ''}${n.toFixed(2)}${cur ? ' ' + cur : ''}`;
 const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 const fmtDT = (iso?: string) => iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -83,6 +117,7 @@ const colr = (n: number) => n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 
 
 export default function ReportsPage() {
   const { t } = useI18n();
+  const { user } = useAuth();
   const [period, setPeriod] = useState<number | 'today'>('today');
   const periodLabel = period === 'today' ? t('Sot') : t('{period} ditët e fundit', { period });
   const [loading, setLoading] = useState(true);
@@ -104,13 +139,25 @@ export default function ReportsPage() {
       const acc = (chk.account || {}) as AccountInfo;
       setBalance(Number(acc.balance) || 0);
       setCurrency(acc.currency || '');
-      setTrades(groupDeals((hist.deals || []) as HistoryDeal[]));
+      const grouped = groupDeals((hist.deals || []) as HistoryDeal[]);
+      // Lidh çdo trade me burimin (auto/sinjal/manual) nga trade_executions.
+      if (user) {
+        const sinceMs = (period === 'today' ? Date.now() - 2 * 86400000 : Date.now() - (fetchDays as number) * 86400000) - 6 * 3600 * 1000;
+        const { data: execs } = await supabase
+          .from('trade_executions')
+          .select('action, symbol, signal_id, reason, created_at')
+          .eq('user_id', user.id).eq('status', 'executed')
+          .gte('created_at', new Date(sinceMs).toISOString())
+          .order('created_at', { ascending: false }).limit(500);
+        attachSource(grouped, (execs as ExecRow[]) || []);
+      }
+      setTrades(grouped);
     } catch (e) {
       setError((e as Error).message || t('Gabim gjatë leximit.'));
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, user]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -127,6 +174,21 @@ export default function ReportsPage() {
   const best = shown.reduce<ClosedTrade | null>((m, t) => (t.net > (m?.net ?? -Infinity) ? t : m), null);
   const worst = shown.reduce<ClosedTrade | null>((m, t) => (t.net < (m?.net ?? Infinity) ? t : m), null);
   const days_ = dailyBreakdown(shown, balance);
+
+  // Përmbledhje + grupim sipas BURIMIT (auto / sinjal / manual / direkt MT5).
+  const SOURCE_ORDER: TradeSource[] = ['auto', 'signal', 'manual', 'mt5'];
+  const sourceMeta: Record<TradeSource, { label: string; icon: typeof Bot; color: string }> = {
+    auto: { label: t('Auto (Roboti)'), icon: Bot, color: 'text-amber-400' },
+    signal: { label: t('Nga sinjali'), icon: Zap, color: 'text-blue-400' },
+    manual: { label: t('Manual'), icon: Hand, color: 'text-green-400' },
+    mt5: { label: t('Direkt në MT5'), icon: Server, color: 'text-gray-400' },
+  };
+  const bySource = SOURCE_ORDER.map(src => {
+    const list = shown.filter(tr => (tr.source || 'mt5') === src);
+    const net = list.reduce((s, tr) => s + tr.net, 0);
+    const w = list.filter(tr => tr.net > 0).length, l = list.filter(tr => tr.net < 0).length;
+    return { src, list, net, wins: w, losses: l };
+  }).filter(g => g.list.length > 0);
 
   const exportCSV = () => {
     const lines: string[] = [];
@@ -147,8 +209,8 @@ export default function ReportsPage() {
     days_.forEach(d => lines.push(`${d.date},${d.count},${d.wins},${d.losses},${d.net.toFixed(2)},${d.pct.toFixed(2)}%`));
     lines.push('');
     lines.push(t('TRADE-T E DETAJUARA'));
-    lines.push(t('Mbyllur,Simboli,Drejtimi,Lot,Hyrje,Dalje,P&L'));
-    shown.forEach(t => lines.push(`${t.closeTime ? new Date(t.closeTime).toLocaleString('sq-AL') : ''},${t.symbol},${t.direction},${t.volume},${t.entryPrice ?? ''},${t.exitPrice ?? ''},${t.net.toFixed(2)}`));
+    lines.push(t('Mbyllur,Simboli,Drejtimi,Burimi,Lot,Hyrje,Dalje,P&L'));
+    shown.forEach(tr => lines.push(`${tr.closeTime ? new Date(tr.closeTime).toLocaleString('sq-AL') : ''},${tr.symbol},${tr.direction},${sourceMeta[tr.source || 'mt5'].label},${tr.volume},${tr.entryPrice ?? ''},${tr.exitPrice ?? ''},${tr.net.toFixed(2)}`));
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `goldtrade_raport_${period === 'today' ? 'sot' : period + 'd'}_${Date.now()}.csv`; a.click();
@@ -265,7 +327,29 @@ export default function ReportsPage() {
                 </div>
               </div>
 
-              {/* Trade-t e detajuara */}
+              {/* Përmbledhje sipas burimit — cila mënyrë po sjell më shumë fitim */}
+              {bySource.length > 0 && (
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+                  <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><BarChart2 className="w-4 h-4 text-amber-400" />{t('Sipas burimit')}</h3>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {bySource.map(g => {
+                      const Icon = sourceMeta[g.src].icon;
+                      const dec = g.wins + g.losses;
+                      const wr = dec ? Math.round((g.wins / dec) * 100) : 0;
+                      return (
+                        <div key={g.src} className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-3">
+                          <div className={`flex items-center gap-1.5 text-xs font-semibold ${sourceMeta[g.src].color}`}><Icon className="w-3.5 h-3.5" />{sourceMeta[g.src].label}</div>
+                          <div className={`font-bold text-lg mt-1 ${colr(g.net)}`}>{fmtMoney(g.net)}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">{t('{count} trade · {wins}F/{losses}H · {wr}%', { count: g.list.length, wins: g.wins, losses: g.losses, wr })}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-gray-600 mt-2">{t('Krahaso burimet: numri pozitiv = fitim. Kështu sheh cila mënyrë (auto, sinjal, manual) po punon më mirë për ty.')}</p>
+                </div>
+              )}
+
+              {/* Trade-t e detajuara — të grupuara sipas burimit me vijë ndarëse */}
               <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
                   <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />{t('Lëvizjet e tua (trade-t)')}</h3>
@@ -287,21 +371,35 @@ export default function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800/60">
-                      {shown.map(tr => (
-                        <tr key={tr.id} className="hover:bg-gray-800/30">
-                          <td className="px-4 py-2.5 text-gray-400">{fmtDT(tr.closeTime)}</td>
-                          <td className="px-4 py-2.5 text-white font-medium">{tr.symbol}</td>
-                          <td className="px-4 py-2.5">
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${tr.direction === 'BUY' ? 'bg-green-500/20 text-green-400' : tr.direction === 'SELL' ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-400'}`}>
-                              {tr.direction === 'BUY' ? t('BLEJ') : tr.direction === 'SELL' ? t('SHIT') : '—'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-right text-gray-300">{tr.volume || '—'}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-300">{tr.entryPrice != null ? tr.entryPrice.toLocaleString() : '—'}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-300">{tr.exitPrice != null ? tr.exitPrice.toLocaleString() : '—'}</td>
-                          <td className={`px-4 py-2.5 text-right font-bold ${colr(tr.net)}`}>{fmtMoney(tr.net)}</td>
-                        </tr>
-                      ))}
+                      {bySource.map(g => {
+                        const Icon = sourceMeta[g.src].icon;
+                        return [
+                          // Vija ndarëse / titulli i grupit
+                          <tr key={`${g.src}-h`} className="bg-gray-800/50 border-t-2 border-gray-700">
+                            <td colSpan={6} className="px-4 py-2">
+                              <span className={`flex items-center gap-1.5 text-xs font-bold ${sourceMeta[g.src].color}`}>
+                                <Icon className="w-3.5 h-3.5" />{sourceMeta[g.src].label} · {g.list.length}
+                              </span>
+                            </td>
+                            <td className={`px-4 py-2 text-right font-bold text-xs ${colr(g.net)}`}>{fmtMoney(g.net)}</td>
+                          </tr>,
+                          ...g.list.map(tr => (
+                            <tr key={tr.id} className="hover:bg-gray-800/30">
+                              <td className="px-4 py-2.5 text-gray-400">{fmtDT(tr.closeTime)}</td>
+                              <td className="px-4 py-2.5 text-white font-medium">{tr.symbol}</td>
+                              <td className="px-4 py-2.5">
+                                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${tr.direction === 'BUY' ? 'bg-green-500/20 text-green-400' : tr.direction === 'SELL' ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-400'}`}>
+                                  {tr.direction === 'BUY' ? t('BLEJ') : tr.direction === 'SELL' ? t('SHIT') : '—'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-gray-300">{tr.volume || '—'}</td>
+                              <td className="px-4 py-2.5 text-right text-gray-300">{tr.entryPrice != null ? tr.entryPrice.toLocaleString() : '—'}</td>
+                              <td className="px-4 py-2.5 text-right text-gray-300">{tr.exitPrice != null ? tr.exitPrice.toLocaleString() : '—'}</td>
+                              <td className={`px-4 py-2.5 text-right font-bold ${colr(tr.net)}`}>{fmtMoney(tr.net)}</td>
+                            </tr>
+                          )),
+                        ];
+                      })}
                     </tbody>
                   </table>
                 </div>

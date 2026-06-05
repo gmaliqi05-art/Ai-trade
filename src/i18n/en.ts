@@ -683,4 +683,12 @@ export const en: Record<string, string> = {
   "pjerrtësi poshtë": "leaning down",
   "Çmimi poshtë brezit të poshtëm (kthim i mundshëm lart)": "Price below the lower band (possible bounce up)",
   "Çmimi mbi brezit të sipërm (kthim i mundshëm poshtë)": "Price above the upper band (possible pullback down)",
+  "Auto (Roboti)": "Auto (Robot)",
+  "Nga sinjali": "From signal",
+  "Manual": "Manual",
+  "Direkt në MT5": "Direct in MT5",
+  "Sipas burimit": "By source",
+  "{count} trade · {wins}F/{losses}H · {wr}%": "{count} trades · {wins}W/{losses}L · {wr}%",
+  "Krahaso burimet: numri pozitiv = fitim. Kështu sheh cila mënyrë (auto, sinjal, manual) po punon më mirë për ty.": "Compare the sources: a positive number = profit. This shows which method (auto, signal, manual) works best for you.",
+  "Mbyllur,Simboli,Drejtimi,Burimi,Lot,Hyrje,Dalje,P&L": "Closed,Symbol,Direction,Source,Lot,Entry,Exit,P&L",
 };
