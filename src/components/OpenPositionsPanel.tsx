@@ -170,16 +170,22 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
 // Rresht i një ekzekutimi (i përbashkët për të dy seksionet).
 function renderExecution(t: (k: string) => string) {
   return (e: TradeExecution) => (
-    <div key={e.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-2">
-      <span className="flex items-center gap-2">
-        <span className={`font-bold ${e.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{e.action === 'BUY' ? t('BLEJ') : t('SHIT')}</span>
-        <span className="text-white">{e.symbol}</span>
-        <span className="text-gray-500">{e.volume} {t('lot')} · {e.mode}</span>
-        {e.reason?.startsWith('auto') && <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">AUTO</span>}
-      </span>
-      <span className={`px-2 py-0.5 rounded-full ${e.status === 'executed' ? 'bg-green-500/15 text-green-400' : e.status === 'rejected' ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>
-        {e.status}
-      </span>
+    <div key={e.id} className="text-xs bg-gray-800/40 rounded-lg px-3 py-2">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-2">
+          <span className={`font-bold ${e.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{e.action === 'BUY' ? t('BLEJ') : t('SHIT')}</span>
+          <span className="text-white">{e.symbol}</span>
+          <span className="text-gray-500">{e.volume} {t('lot')} · {e.mode}</span>
+          {e.reason?.startsWith('auto') && <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">AUTO</span>}
+        </span>
+        <span className={`px-2 py-0.5 rounded-full ${e.status === 'executed' ? 'bg-green-500/15 text-green-400' : e.status === 'rejected' ? 'bg-amber-500/15 text-amber-400' : e.status === 'info' ? 'bg-blue-500/15 text-blue-400' : 'bg-red-500/15 text-red-400'}`}>
+          {e.status}
+        </span>
+      </div>
+      {/* Arsyeja shfaqet për rreshtat info/rejected (p.sh. broker-trailing, refuzime) */}
+      {e.reason && e.status !== 'executed' && (
+        <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">{e.reason}</div>
+      )}
     </div>
   );
 }

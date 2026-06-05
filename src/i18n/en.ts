@@ -720,4 +720,9 @@ export const en: Record<string, string> = {
   "MT5": "MT5",
   "Trailing në anë të MT5 (tick-by-tick)": "Broker-side trailing (tick-by-tick)",
   "MetaApi e ndjek SL-në pas çdo tiku në kohë reale (më i shpejtë se roboti). Distanca = distanca fillestare e SL. ⚠️ Eksperimental — provoje në DEMO; jo çdo broker e mbështet.": "MetaApi follows the SL on every tick in real time (faster than the robot). Distance = the initial SL distance. ⚠️ Experimental — test it on DEMO; not every broker supports it.",
+  "⚠️ Ky trade s'ka {what} — pa këtë mbrojtje rrezikon humbje të pakontrolluar. Kliko \"Vendos SL/TP default\", plotësoji vetë, ose kliko sërish BLEJ/SHIT për të vazhduar pa to.": "⚠️ This trade has no {what} — without this protection you risk an uncontrolled loss. Click \"Set default SL/TP\", fill them in yourself, or click BUY/SELL again to continue without them.",
+  "SL dhe TP": "SL and TP",
+  "SL": "SL",
+  "TP": "TP",
+  "Vendos SL/TP default": "Set default SL/TP",
 };
