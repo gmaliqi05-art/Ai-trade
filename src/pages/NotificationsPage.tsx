@@ -3,6 +3,7 @@ import { Bell, Check, CheckCheck, Zap, Brain, AlertCircle, Crown, Megaphone, Ref
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
+import { getReadBroadcasts, markBroadcastRead, notifyNotificationsChanged } from '../lib/broadcastReads';
 
 interface Notification {
   id: string;
@@ -45,7 +46,11 @@ export default function NotificationsPage() {
       .or(`user_id.eq.${user.id},is_broadcast.eq.true`)
       .order('created_at', { ascending: false })
       .limit(50);
-    if (data) setNotifications(data as Notification[]);
+    if (data) {
+      // Zbato gjendjen lokale "lexuar" për njoftimet broadcast (RLS s'lejon update nga përdoruesi).
+      const readSet = getReadBroadcasts(user.id);
+      setNotifications((data as Notification[]).map(n => (n.is_broadcast && readSet.has(n.id) ? { ...n, is_read: true } : n)));
+    }
     setLoading(false);
     setRefreshing(false);
   }, [user]);
@@ -53,19 +58,26 @@ export default function NotificationsPage() {
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   const markRead = async (id: string) => {
-    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-    setNotifications(p => p.map(n => n.id === id ? { ...n, is_read: true } : n));
+    const n = notifications.find(x => x.id === id);
+    if (user && n?.is_broadcast) markBroadcastRead(user.id, id);   // broadcast → lokal
+    else await supabase.from('notifications').update({ is_read: true }).eq('id', id); // i yti → DB
+    setNotifications(p => p.map(x => x.id === id ? { ...x, is_read: true } : x));
+    notifyNotificationsChanged();
   };
 
   const markAllRead = async () => {
     if (!user) return;
+    const bcIds = notifications.filter(n => n.is_broadcast && !n.is_read).map(n => n.id);
+    if (bcIds.length) markBroadcastRead(user.id, ...bcIds);
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false);
     setNotifications(p => p.map(n => ({ ...n, is_read: true })));
+    notifyNotificationsChanged();
   };
 
   const deleteNotification = async (id: string) => {
     await supabase.from('notifications').delete().eq('id', id);
     setNotifications(p => p.filter(n => n.id !== id));
+    notifyNotificationsChanged();
   };
 
   const displayed = filter === 'unread' ? notifications.filter(n => !n.is_read) : notifications;
