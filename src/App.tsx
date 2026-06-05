@@ -30,8 +30,27 @@ export type AdminPage =
 
 export type Page = ClientPage | AdminPage;
 
+const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'chart_analysis', 'signals', 'metatrader', 'notifications', 'reports', 'settings'];
+const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_assets', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_broadcast', 'admin_metatrader', 'admin_audit', 'admin_settings'];
+
+// Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
+function usePersistedPage<T extends string>(storageKey: string, valid: T[], fallback: T): [T, (p: T) => void] {
+  const [page, setPage] = useState<T>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey) as T | null;
+      if (saved && valid.includes(saved)) return saved;
+    } catch { /* injoro */ }
+    return fallback;
+  });
+  const update = (p: T) => {
+    try { localStorage.setItem(storageKey, p); } catch { /* injoro */ }
+    setPage(p);
+  };
+  return [page, update];
+}
+
 function AdminApp() {
-  const [currentPage, setCurrentPage] = useState<AdminPage>('admin_overview');
+  const [currentPage, setCurrentPage] = usePersistedPage<AdminPage>('admin_current_page', ADMIN_PAGES, 'admin_overview');
 
   return (
     <AdminLayout currentPage={currentPage} onNavigate={setCurrentPage}>
@@ -54,7 +73,7 @@ function AdminPageTab({ tab }: { tab: string }) {
 }
 
 function ClientApp() {
-  const [currentPage, setCurrentPage] = useState<ClientPage>('dashboard');
+  const [currentPage, setCurrentPage] = usePersistedPage<ClientPage>('client_current_page', CLIENT_PAGES, 'dashboard');
 
   return (
     <ClientLayout currentPage={currentPage} onNavigate={setCurrentPage}>

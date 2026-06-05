@@ -46,9 +46,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
   const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [mt5Gold, setMt5Gold] = useState<number | null>(null); // çmimi REAL i brokerit (XAUUSD)
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [chartTf, setChartTf] = useState('15m');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Rifreskim manual me reagim vizual (spinner).
+  const refresh = async () => { setRefreshing(true); try { await fetchData(); } finally { setRefreshing(false); } };
 
   const fetchData = async () => {
     const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
@@ -126,8 +130,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <GoldSessionBadge />
-          <button onClick={fetchData} className="flex items-center gap-2 text-gray-400 hover:text-white text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-all">
-            <RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}
+          <button onClick={refresh} disabled={refreshing} className="flex items-center gap-2 text-gray-400 hover:text-white text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-all disabled:opacity-60">
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />{t('Rifresko')}
           </button>
         </div>
       </div>
