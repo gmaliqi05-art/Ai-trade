@@ -530,11 +530,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
-      {/* 3) Ekzekutimet e fundit — nën tabelën e trade-ve të mbyllura */}
-      <OpenPositionsPanel configured={metaConfigured} section="executions" />
-
-      {/* Sinjale të përfunduara — raportim suksesi. Në FUND të faqes; s'ka nevojë të shihen vazhdimisht. */}
+      {/* 3) Sinjalet e vjetra (të përfunduara) — nën tabelën e trade-ve të mbyllura */}
       <CompletedSignals signals={doneSignals} variant="compact" />
+
+      {/* 4) Ekzekutimet e fundit — në fund */}
+      <OpenPositionsPanel configured={metaConfigured} section="executions" />
     </div>
   );
 }

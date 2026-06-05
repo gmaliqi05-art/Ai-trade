@@ -27,6 +27,7 @@ export default function Mt5Chart({ candles, lines = [], height = 380 }: {
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const linePricesRef = useRef<number[]>([]); // çmimet e Hyrje/SL/TP për auto-scale
 
   // Krijo grafikun një herë.
   useEffect(() => {
@@ -43,6 +44,21 @@ export default function Mt5Chart({ candles, lines = [], height = 380 }: {
       upColor: '#22c55e', downColor: '#ef4444',
       borderUpColor: '#22c55e', borderDownColor: '#ef4444',
       wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+      // Shtri auto-scale-in që linjat Hyrje/SL/TP të jenë GJITHMONË brenda pamjes
+      // (me pak hapësirë sipër/poshtë) — që mos të dalin jashtë gjatë lëvizjes së çmimit.
+      autoscaleInfoProvider: (original) => {
+        const res = original();
+        const prices = linePricesRef.current;
+        if (!res || prices.length === 0) return res;
+        let minValue = res.priceRange.minValue;
+        let maxValue = res.priceRange.maxValue;
+        for (const p of prices) {
+          if (p < minValue) minValue = p;
+          if (p > maxValue) maxValue = p;
+        }
+        const pad = (maxValue - minValue) * 0.12 || 1; // ~12% hapësirë → linjat rrinë drejt mesit
+        return { ...res, priceRange: { minValue: minValue - pad, maxValue: maxValue + pad } };
+      },
     });
     chartRef.current = chart;
     seriesRef.current = series;
@@ -63,16 +79,18 @@ export default function Mt5Chart({ candles, lines = [], height = 380 }: {
     const series = seriesRef.current;
     if (!series) return;
     priceLinesRef.current.forEach(pl => series.removePriceLine(pl));
-    priceLinesRef.current = lines
-      .filter(l => Number.isFinite(l.price) && l.price > 0)
-      .map(l => series.createPriceLine({
-        price: l.price,
-        color: l.color,
-        lineWidth: 2,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: l.title,
-      }));
+    const valid = lines.filter(l => Number.isFinite(l.price) && l.price > 0);
+    priceLinesRef.current = valid.map(l => series.createPriceLine({
+      price: l.price,
+      color: l.color,
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: l.title,
+    }));
+    // Ruaj çmimet dhe forco rillogaritjen e shkallës që linjat të jenë brenda pamjes.
+    linePricesRef.current = valid.map(l => l.price);
+    chartRef.current?.priceScale('right').applyOptions({ autoScale: true });
   }, [lines]);
 
   return <div ref={containerRef} style={{ height }} className="w-full" />;
