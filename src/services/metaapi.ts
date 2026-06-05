@@ -36,6 +36,12 @@ export interface MetaApiConfig {
   scalp_max_trades: number;
   /** Scalp hyn edhe në lëvizje të vogla (kushte më të lehta, më shumë trade). Default OFF. */
   scalp_small_moves: boolean;
+  /** Trailing i SL (ndjekja e fitimit) — ndez/fik. Default ON. */
+  trail_enabled: boolean;
+  /** % e fitimit që mbahet nga SL (50 = gjysma, 33 = një e treta, 25 = një e katërta). Default 50. */
+  trail_lock_pct: number;
+  /** Profit minimal ($) para se të fillojë trailing-u. Default 1. */
+  trail_start_usd: number;
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
@@ -46,6 +52,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   risk_per_trade_pct: 1,
   strategy_swing: true, strategy_scalp: false,
   scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_max_trades: 2, scalp_small_moves: false,
+  trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1,
 };
 
 export interface TradeExecution {
@@ -75,6 +82,9 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     scalp_tp_usd: Number(data.scalp_tp_usd ?? 4),
     scalp_max_trades: Number(data.scalp_max_trades ?? 2),
     scalp_small_moves: !!data.scalp_small_moves,
+    trail_enabled: data.trail_enabled ?? true,
+    trail_lock_pct: Number(data.trail_lock_pct ?? 50),
+    trail_start_usd: Number(data.trail_start_usd ?? 1),
   };
 }
 

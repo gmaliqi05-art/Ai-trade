@@ -663,4 +663,11 @@ export const en: Record<string, string> = {
   "Porositë në pritje": "Pending orders",
   "Porosia u anulua.": "Order cancelled.",
   "Anulimi dështoi.": "Cancel failed.",
+  "6. Mbrojtja e fitimit (Trailing SL)": "6. Profit protection (Trailing SL)",
+  "SL ndjek profitin automatik te ÇDO trade — mban një pjesë të fitimit kur çmimi ecën në favor.": "The SL follows profit automatically on EVERY trade — keeps part of the profit as price moves in your favor.",
+  "% e fitimit që mban SL": "% of profit the SL keeps",
+  "Sa shumë e fitimit mban SL ndërsa trade-i ecën. P.sh. 50% → kur je +10$, SL mban +5$; kur je +20$, SL mban +10$.": "How much of the profit the SL keeps as the trade moves. E.g. 50% → at +$10 the SL keeps +$5; at +$20 it keeps +$10.",
+  "Fillon pas (+$ fitim)": "Starts after (+$ profit)",
+  "Trailing-u nis vetëm pasi fitimi kalon këtë shumë ($) — që SL të mos lëvizë nga zhurma e vogël.": "Trailing only starts after profit passes this amount ($) — so the SL is not moved by small noise.",
+  "<span class=\"text-amber-400 font-semibold\">ℹ️ Si punon:</span> roboti e kontrollon çdo minutë; sapo fitimi kalon pragun, SL zhvendoset për të mbajtur përqindjen e zgjedhur të fitimit, dhe ngjitet vetëm përpara (kurrë mbrapa). Vlen për të gjitha trade-t e hapura — manual, sinjal, swing, scalp.": "<span class=\"text-amber-400 font-semibold\">ℹ️ How it works:</span> the robot checks every minute; once profit passes the threshold, the SL moves to keep the chosen percentage of profit, and only advances forward (never back). It applies to all open trades — manual, signal, swing, scalp.",
 };
