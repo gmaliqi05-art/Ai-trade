@@ -33,10 +33,12 @@ export default function NotificationsPage() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
+    setRefreshing(true);
     const { data } = await supabase
       .from('notifications')
       .select('*')
@@ -45,6 +47,7 @@ export default function NotificationsPage() {
       .limit(50);
     if (data) setNotifications(data as Notification[]);
     setLoading(false);
+    setRefreshing(false);
   }, [user]);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
@@ -86,8 +89,8 @@ export default function NotificationsPage() {
               <CheckCheck className="w-4 h-4" />{t('Shëno të gjitha si të lexuara')}
             </button>
           )}
-          <button onClick={fetchNotifications} className="p-2 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white transition-all">
-            <RefreshCw className="w-4 h-4" />
+          <button onClick={fetchNotifications} disabled={refreshing} className="p-2 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white transition-all disabled:opacity-60">
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>

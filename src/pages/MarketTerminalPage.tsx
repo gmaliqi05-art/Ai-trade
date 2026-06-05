@@ -75,6 +75,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeMsg, setTradeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const goldFirst = (arr: Asset[]) =>
     [...arr].sort((a, b) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2) - (b.symbol === 'XAUUSD' ? 0 : b.category === 'commodity' ? 1 : 2));
@@ -114,6 +115,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     }
     setLastUpdated(new Date());
   }, [user]);
+
+  // Rifreskim manual i të dhënave (me reagim vizual).
+  const refreshAll = async () => {
+    setRefreshing(true);
+    try { await Promise.all([fetchBase(), fetchMeta()]); } finally { setRefreshing(false); }
+  };
 
   // Qirinjtë: provo nga MT5 (saktë); nëse s'ka, bie te feed-i i motorit (PAXG/treg).
   const loadChart = useCallback(async () => {
@@ -259,7 +266,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             !metaConfigured ? 'bg-gray-700/50 text-gray-400 border-gray-600'
             : mtMode === 'live' ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
           }`}>{!metaConfigured ? t('PA LIDHJE') : mtMode === 'live' ? t('● LIVE') : t('● DEMO')}</span>
-          <button onClick={() => { fetchBase(); fetchMeta(); }} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all"><RefreshCw className="w-4 h-4" /></button>
+          <button onClick={refreshAll} disabled={refreshing} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all disabled:opacity-60"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /></button>
         </div>
       </div>
 
