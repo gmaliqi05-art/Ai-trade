@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Activity, RefreshCw, Loader2, TrendingUp, Zap, Brain,
-  Wallet, AlertCircle, History, ChevronDown,
+  Wallet, AlertCircle, History, ChevronDown, ShieldCheck,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -79,6 +79,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [refreshing, setRefreshing] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [showSignalInfo, setShowSignalInfo] = useState(false);
+  const [confirmNoSLTP, setConfirmNoSLTP] = useState(false);
+
+  // Plotëson SL/TP default rreth çmimit aktual (gold: SL $3, TP $6), sipas drejtimit.
+  const fillDefaultProtection = () => {
+    const px = candles.length ? candles[candles.length - 1].close : (assets.find(a => a.symbol === selected)?.current_price || 0);
+    if (!(px > 0)) return;
+    const slD = 3, tpD = 6;
+    if (tradeType === 'buy') { setNewSl((px - slD).toFixed(2)); setNewTp((px + tpD).toFixed(2)); }
+    else { setNewSl((px + slD).toFixed(2)); setNewTp((px - tpD).toFixed(2)); }
+    setConfirmNoSLTP(false);
+    setTradeMsg(null);
+  };
 
   const goldFirst = (arr: Asset[]) =>
     [...arr].sort((a, b) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2) - (b.symbol === 'XAUUSD' ? 0 : b.category === 'commodity' ? 1 : 2));
@@ -178,7 +190,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const sl = newSl.trim() ? parseFloat(newSl) : undefined;
     const tp = newTp.trim() ? parseFloat(newTp) : undefined;
     const entry = newEntry.trim() ? parseFloat(newEntry) : undefined;
-    setTradeLoading(true); setTradeMsg(null);
+    // Paralajmërim: trade pa SL/TP = pa mbrojtje. Kërko konfirmim ose plotësim default.
+    if ((sl == null || tp == null) && !confirmNoSLTP) {
+      const what = sl == null && tp == null ? t('SL dhe TP') : sl == null ? t('SL') : t('TP');
+      setConfirmNoSLTP(true);
+      setTradeMsg({ type: 'error', text: t('⚠️ Ky trade s\'ka {what} — pa këtë mbrojtje rrezikon humbje të pakontrolluar. Kliko "Vendos SL/TP default", plotësoji vetë, ose kliko sërish BLEJ/SHIT për të vazhduar pa to.', { what }) });
+      return;
+    }
+    setTradeLoading(true); setTradeMsg(null); setConfirmNoSLTP(false);
     const r = await executeTrade({
       action: tradeType === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: vol,
       stopLoss: sl, takeProfit: tp, entryPrice: entry,
@@ -417,6 +436,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           {appliedSignalId && <p className="text-[10px] text-amber-400/80">{t("Hyrja, SL dhe TP u mbushën nga sinjali. Nëse çmimi s'është te hyrja, vendoset porosi në pritje që hyn automatik. Mund t'i ndryshosh para se të tregtosh.")}</p>}
           {tradeMsg && (
             <div className={`text-xs rounded-xl px-3 py-2 ${tradeMsg.type === 'success' ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-red-900/30 text-red-400 border border-red-800/50'}`}>{tradeMsg.text}</div>
+          )}
+          {confirmNoSLTP && (
+            <button onClick={fillDefaultProtection} className="w-full flex items-center justify-center gap-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 rounded-xl py-2 text-xs font-semibold transition-colors">
+              <ShieldCheck className="w-3.5 h-3.5" />{t('Vendos SL/TP default')}
+            </button>
           )}
           <button onClick={handleTrade} disabled={tradeLoading || !metaConfigured}
             className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${tradeType === 'buy' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>

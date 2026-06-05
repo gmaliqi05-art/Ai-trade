@@ -593,9 +593,22 @@ Deno.serve(async (req: Request) => {
         // 2a) BROKER TRAILING (server-side, tick-by-tick): vendoset NJË herë; MetaApi e ndjek vetë
         //     pas çdo tiku (ndjekje vërtet e vazhdueshme). Distanca = distanca fillestare e SL-së.
         if (cfg.broker_trailing && sl != null) {
-          if (!p.trailingStopLoss) {
+          // Vendoset NJË herë për pozicion: kontrollojmë te log-u (që mos të ripërsëritet çdo minutë).
+          const { data: already } = await db.from("trade_executions").select("id")
+            .eq("user_id", cfg.user_id).eq("metaapi_order_id", p.id).ilike("reason", "Broker-trailing%").limit(1);
+          if (!already || already.length === 0) {
             const dist = Math.max(0.3, Math.abs(entry - sl));
             const ok = await setBrokerTrailing(cfg, p.id, dist);
+            // LOG I DUKSHËM te "Ekzekutimet e fundit" — që përdoruesi ta konfirmojë nëse punoi.
+            try {
+              await db.from("trade_executions").insert({
+                user_id: cfg.user_id, symbol: p.symbol || "XAUUSD", action: isBuy ? "BUY" : "SELL",
+                volume: p.volume ?? 0.01, stop_loss: sl, take_profit: p.takeProfit ?? null, mode: cfg.mode,
+                status: ok ? "info" : "rejected",
+                reason: ok ? `Broker-trailing AKTIV (MT5 ndjek SL-në çdo tik, distancë ${dist.toFixed(2)}$)` : "Broker-trailing DËSHTOI — brokeri s'e mbështet (përdor trailing-un e robotit)",
+                metaapi_order_id: p.id, raw_response: null,
+              });
+            } catch { /* */ }
             summary.push({ user: cfg.user_id, broker_trail: p.id, dist, ok });
           }
         }
