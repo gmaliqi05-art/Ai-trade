@@ -1,13 +1,15 @@
 // Paneli i pozicioneve të hapura LIVE nga MT5 (përmes MetaApi) + ekzekutimet e fundit.
-// Përdoret te faqja "Tregto Live". Lexon pozicionet reale çdo 20s dhe lejon mbyllje.
-
+// Përdoret te faqja "Tregto Live". Mund të shfaqet i ndarë me `section`:
+//  - "positions"  → vetëm pozicionet e hapura (me mbyllje)
+//  - "executions" → vetëm ekzekutimet e fundit
+//  - "both" (default) → të dyja bashkë
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCircle } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
 import { loadOpenPositions, closePosition, loadExecutions, type OpenPosition, type TradeExecution } from '../services/metaapi';
 
-export default function OpenPositionsPanel({ configured }: { configured: boolean }) {
+export default function OpenPositionsPanel({ configured, section = 'both' }: { configured: boolean; section?: 'positions' | 'executions' | 'both' }) {
   const { t } = useI18n();
   const { user } = useAuth();
   const [positions, setPositions] = useState<OpenPosition[]>([]);
@@ -15,6 +17,9 @@ export default function OpenPositionsPanel({ configured }: { configured: boolean
   const [posLoading, setPosLoading] = useState(false);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const showPositions = section === 'positions' || section === 'both';
+  const showExecutions = section === 'executions' || section === 'both';
 
   const refreshPositions = useCallback(async () => {
     if (!configured) return;
@@ -31,11 +36,14 @@ export default function OpenPositionsPanel({ configured }: { configured: boolean
 
   useEffect(() => {
     if (!configured) return;
-    refreshPositions();
-    refreshExecutions();
-    const id = setInterval(() => { refreshPositions(); refreshExecutions(); }, 20000);
+    if (showPositions) refreshPositions();
+    if (showExecutions) refreshExecutions();
+    const id = setInterval(() => {
+      if (showPositions) refreshPositions();
+      if (showExecutions) refreshExecutions();
+    }, 20000);
     return () => clearInterval(id);
-  }, [configured, refreshPositions, refreshExecutions]);
+  }, [configured, showPositions, showExecutions, refreshPositions, refreshExecutions]);
 
   const handleClose = async (posId: string) => {
     setClosingId(posId); setMsg(null);
@@ -47,6 +55,21 @@ export default function OpenPositionsPanel({ configured }: { configured: boolean
 
   if (!configured) return null;
 
+  // —— Vetëm ekzekutimet (seksion i veçantë) ——
+  if (section === 'executions') {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+        <div className="text-white font-semibold text-sm mb-3">{t('Ekzekutimet e fundit')}</div>
+        {executions.length === 0 ? (
+          <div className="text-[11px] text-gray-600 bg-gray-800/30 rounded-lg px-3 py-3 text-center">{t('Asnjë ekzekutim ende.')}</div>
+        ) : (
+          <div className="space-y-1.5">{executions.map(renderExecution(t))}</div>
+        )}
+      </div>
+    );
+  }
+
+  // —— Pozicionet (+ ekzekutimet vetëm kur section='both') ——
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -99,26 +122,29 @@ export default function OpenPositionsPanel({ configured }: { configured: boolean
         </div>
       )}
 
-      {executions.length > 0 && (
+      {showExecutions && executions.length > 0 && (
         <div className="pt-2 border-t border-gray-800">
           <div className="text-xs text-gray-400 mb-2">{t('Ekzekutimet e fundit')}</div>
-          <div className="space-y-1.5">
-            {executions.map(e => (
-              <div key={e.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-2">
-                <span className="flex items-center gap-2">
-                  <span className={`font-bold ${e.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{e.action === 'BUY' ? t('BLEJ') : t('SHIT')}</span>
-                  <span className="text-white">{e.symbol}</span>
-                  <span className="text-gray-500">{e.volume} {t('lot')} · {e.mode}</span>
-                  {e.reason?.startsWith('auto') && <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">AUTO</span>}
-                </span>
-                <span className={`px-2 py-0.5 rounded-full ${e.status === 'executed' ? 'bg-green-500/15 text-green-400' : e.status === 'rejected' ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>
-                  {e.status}
-                </span>
-              </div>
-            ))}
-          </div>
+          <div className="space-y-1.5">{executions.map(renderExecution(t))}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Rresht i një ekzekutimi (i përbashkët për të dy seksionet).
+function renderExecution(t: (k: string) => string) {
+  return (e: TradeExecution) => (
+    <div key={e.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-2">
+      <span className="flex items-center gap-2">
+        <span className={`font-bold ${e.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{e.action === 'BUY' ? t('BLEJ') : t('SHIT')}</span>
+        <span className="text-white">{e.symbol}</span>
+        <span className="text-gray-500">{e.volume} {t('lot')} · {e.mode}</span>
+        {e.reason?.startsWith('auto') && <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">AUTO</span>}
+      </span>
+      <span className={`px-2 py-0.5 rounded-full ${e.status === 'executed' ? 'bg-green-500/15 text-green-400' : e.status === 'rejected' ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>
+        {e.status}
+      </span>
     </div>
   );
 }

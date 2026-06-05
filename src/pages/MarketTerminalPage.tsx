@@ -76,6 +76,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [tradeMsg, setTradeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   const goldFirst = (arr: Asset[]) =>
     [...arr].sort((a, b) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2) - (b.symbol === 'XAUUSD' ? 0 : b.category === 'commodity' ? 1 : 2));
@@ -477,49 +478,60 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       </div>
 
-      {/* Pozicionet e hapura (live) + mbyllje */}
-      <OpenPositionsPanel configured={metaConfigured} />
+      {/* 1) Pozicionet e hapura (live) — menjëherë nën sinjalet */}
+      <OpenPositionsPanel configured={metaConfigured} section="positions" />
 
-      {/* Trade-t e mbyllura (historiku real nga MT5) */}
+      {/* 2) Trade-t e mbyllura (historiku real nga MT5) — 10 të parat, me buton për të zgjeruar */}
       {metaConfigured && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
           <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><History className="w-4 h-4 text-amber-400" />{t('Trade-t e mbyllura (7 ditët e fundit)')}</h3>
           {history.length === 0 ? (
             <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë trade i mbyllur ende.')}</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-gray-500 border-b border-gray-800">
-                    <th className="text-left font-medium py-2">{t('Simboli')}</th>
-                    <th className="text-left font-medium py-2">{t('Lloji')}</th>
-                    <th className="text-right font-medium py-2">{t('Lot')}</th>
-                    <th className="text-right font-medium py-2">{t('Çmimi')}</th>
-                    <th className="text-right font-medium py-2">{t('Fitim/Humbje')}</th>
-                    <th className="text-right font-medium py-2">{t('Koha')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/60">
-                  {history.slice(0, 25).map(d => {
-                    const isBuy = (d.type || '').includes('BUY');
-                    const profit = Number(d.profit ?? 0);
-                    return (
-                      <tr key={d.id} className="hover:bg-gray-800/30">
-                        <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
-                        <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span></td>
-                        <td className="py-2 text-right text-gray-300">{d.volume ?? '—'}</td>
-                        <td className="py-2 text-right text-gray-300">{d.price ?? '—'}</td>
-                        <td className={`py-2 text-right font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)}</td>
-                        <td className="py-2 text-right text-gray-500">{d.time ? new Date(d.time).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-gray-800">
+                      <th className="text-left font-medium py-2">{t('Simboli')}</th>
+                      <th className="text-left font-medium py-2">{t('Lloji')}</th>
+                      <th className="text-right font-medium py-2">{t('Lot')}</th>
+                      <th className="text-right font-medium py-2">{t('Çmimi')}</th>
+                      <th className="text-right font-medium py-2">{t('Fitim/Humbje')}</th>
+                      <th className="text-right font-medium py-2">{t('Koha')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/60">
+                    {(showAllHistory ? history : history.slice(0, 10)).map(d => {
+                      const isBuy = (d.type || '').includes('BUY');
+                      const profit = Number(d.profit ?? 0);
+                      return (
+                        <tr key={d.id} className="hover:bg-gray-800/30">
+                          <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
+                          <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span></td>
+                          <td className="py-2 text-right text-gray-300">{d.volume ?? '—'}</td>
+                          <td className="py-2 text-right text-gray-300">{d.price ?? '—'}</td>
+                          <td className={`py-2 text-right font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)}</td>
+                          <td className="py-2 text-right text-gray-500">{d.time ? new Date(d.time).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {history.length > 10 && (
+                <button onClick={() => setShowAllHistory(s => !s)}
+                  className="mt-3 w-full text-xs text-amber-400 hover:text-amber-300 bg-gray-800/40 hover:bg-gray-800 rounded-lg py-2 transition-colors">
+                  {showAllHistory ? t('Shfaq më pak') : t('Shfaq të gjitha ({n})', { n: history.length })}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
+
+      {/* 3) Ekzekutimet e fundit — nën tabelën e trade-ve të mbyllura */}
+      <OpenPositionsPanel configured={metaConfigured} section="executions" />
 
       {/* Sinjale të përfunduara — raportim suksesi. Në FUND të faqes; s'ka nevojë të shihen vazhdimisht. */}
       <CompletedSignals signals={doneSignals} variant="compact" />

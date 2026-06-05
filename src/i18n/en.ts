@@ -654,4 +654,7 @@ export const en: Record<string, string> = {
   "Merr fitimin kur ari shkon kaq $ në favor (p.sh. 4).": "Takes profit when gold goes this many $ in your favor (e.g. 4).",
   "Sa pozicione scalp lejohen në të njëjtën kohë.": "How many scalp positions are allowed at the same time.",
   "<span class=\"text-amber-400 font-semibold\">ℹ️ Mbrojtja \"qëndro në profit\":</span> sapo trade-i shkon në fitim, SL ngrihet drejt hyrjes; nëse momentumi kthehet, mbyllet që të mbash fitimin. <span class=\"text-gray-400\">SL shumë i ngushtë (p.sh. 2$) preket shpesh nga zhurma — normale për scalp.</span>": "<span class=\"text-amber-400 font-semibold\">ℹ️ \"Stay in profit\" protection:</span> as soon as the trade is in profit, the SL moves toward entry; if momentum reverses, it closes to keep your profit. <span class=\"text-gray-400\">A very tight SL (e.g. $2) is hit often by noise — normal for scalp.</span>",
+  "Shfaq më pak": "Show less",
+  "Shfaq të gjitha ({n})": "Show all ({n})",
+  "Asnjë ekzekutim ende.": "No executions yet.",
 };
