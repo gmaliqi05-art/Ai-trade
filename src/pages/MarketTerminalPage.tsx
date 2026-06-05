@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Activity, RefreshCw, Loader2, TrendingUp, Zap, Brain,
-  Wallet, AlertCircle, History,
+  Wallet, AlertCircle, History, ChevronDown,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -21,7 +21,7 @@ interface Asset { id: string; symbol: string; name: string; category: string; cu
 interface Signal {
   id: string; type: string; symbol: string; confidence: number;
   entry_price: number | null; target_price: number | null; stop_loss: number | null;
-  source: string; created_at: string;
+  source: string; created_at: string; timeframe?: string | null; analysis?: string | null;
   status?: string; outcome?: string | null; result_pct?: number | null; closed_at?: string | null;
 }
 
@@ -77,6 +77,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [showSignalInfo, setShowSignalInfo] = useState(false);
 
   const goldFirst = (arr: Asset[]) =>
     [...arr].sort((a, b) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2) - (b.symbol === 'XAUUSD' ? 0 : b.category === 'commodity' ? 1 : 2));
@@ -85,7 +86,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const now = new Date().toISOString();
     const [ar, sr, dr] = await Promise.all([
       supabase.from('assets').select('id, symbol, name, category, current_price').gt('current_price', 0),
-      supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at')
+      supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, timeframe, analysis')
         .eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${now}`).order('confidence', { ascending: false }).limit(8),
       // Sinjalet e PËRFUNDUARA (TP/SL/skaduar) — për raportim suksesi.
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, outcome, result_pct, closed_at')
@@ -189,6 +190,31 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     }
     setTradeLoading(false);
   };
+
+  // Horizonti: periudha të shkurtra (1m/5m/15m) = afat-shkurt; përndryshe afat-gjatë (swing).
+  const SHORT_TFS = ['1m', '5m', '15m'];
+  const isShortHorizon = (tf?: string | null) => !!tf && SHORT_TFS.includes(tf);
+  const horizonLabel = (tf?: string | null) => isShortHorizon(tf) ? t('Afat-shkurt') : t('Afat-gjatë');
+
+  // Përkthen një pjesë të analizës së motorit (vocabular i njohur) — përndryshe e kthen si është.
+  const translateReason = (raw: string): string => {
+    let s = raw.trim().replace(/^Motori( AI)?:\s*/i, '');
+    let m: RegExpMatchArray | null;
+    if ((m = s.match(/^Confluence (\d+)\/(\d+) \((\d+)%\)/))) return t('Konfluencë {a}/{b} ({p}%)', { a: m[1], b: m[2], p: m[3] });
+    if ((m = s.match(/^Multi-TF: 1h\+4h pajtohen \((BLEJ|SHIT)\)/))) return t('Multi-TF: 1h+4h pajtohen ({dir})', { dir: m[1] === 'BLEJ' ? t('BLEJ') : t('SHIT') });
+    if ((m = s.match(/^Trendi: çmimi (mbi|nën) EMA200/))) return t('Trendi: çmimi {pos} EMA200', { pos: m[1] === 'mbi' ? t('mbi') : t('nën') });
+    if ((m = s.match(/^ADX (\d+) \(trend i fortë\)/))) return t('ADX {n} (trend i fortë)', { n: m[1] });
+    if (/^Sesioni London\+NY/.test(s)) return t('Sesioni London+NY (likuiditet maksimal)');
+    if (/^Sesion aktiv/.test(s)) return t('Sesion aktiv (Frankfurt/Europë)');
+    if ((m = s.match(/^Volatilitet normal \(ATR (.+?)%\)/))) return t('Volatilitet normal (ATR {x}%)', { x: m[1] });
+    if ((m = s.match(/^Në harmoni me trendin ditor \((rritës|rënës)\)/))) return t('Në harmoni me trendin ditor ({d})', { d: m[1] === 'rritës' ? t('rritës') : t('rënës') });
+    if ((m = s.match(/^Nivele kyçe: mbështetje ~\$(.+?), rezistencë ~\$(.+)/))) return t('Nivele kyçe: mbështetje ~${a}, rezistencë ~${b}', { a: m[1], b: m[2] });
+    if (/^ADX i fortë/.test(s)) return t('ADX i fortë (≥25)');
+    if ((m = s.match(/^RSI me hapësirë \((\d+)\)/))) return t('RSI me hapësirë ({n})', { n: m[1] });
+    if (/^MACD në harmoni/.test(s)) return t('MACD në harmoni');
+    return s;
+  };
+  const analysisParts = (a?: string | null) => (a || '').split(';').map(p => p.trim()).filter(Boolean).map(translateReason);
 
   // Sinjali i fundit i gjeneruar nga sistemi (sipas kohës), për tregti manuale me një klik.
   const latestSignal = signals.length
@@ -395,6 +421,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   <span className="flex items-center gap-2">
                     <span className="text-white text-sm font-bold">{latestSignal.symbol}</span>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${latestSignal.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{latestSignal.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isShortHorizon(latestSignal.timeframe) ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{horizonLabel(latestSignal.timeframe)}</span>
                     {!signalIsFresh(latestSignal.created_at) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
                   </span>
                   <span className="text-amber-400 text-xs font-semibold">{latestSignal.confidence}%</span>
@@ -408,6 +435,39 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               </button>
             ) : (
               <p className="text-gray-600 text-xs text-center py-2">{t('Asnjë sinjal i gjeneruar ende.')}</p>
+            )}
+
+            {/* Raporti i analizës — si u krijua sinjali + filtrat që kaloi */}
+            {latestSignal && (
+              <>
+                <button onClick={() => setShowSignalInfo(s => !s)}
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] text-amber-400 hover:text-amber-300 bg-gray-800/40 hover:bg-gray-800 rounded-lg py-1.5 transition-colors">
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSignalInfo ? 'rotate-180' : ''}`} />{t('Si u krijua ky sinjal')}
+                </button>
+                {showSignalInfo && (
+                  <div className="mt-2 bg-gray-800/40 border border-gray-700/50 rounded-xl p-3 space-y-2">
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div><span className="text-gray-500">{t('Lloji')}: </span><span className={isShortHorizon(latestSignal.timeframe) ? 'text-amber-400' : 'text-blue-400'}>{horizonLabel(latestSignal.timeframe)}</span></div>
+                      <div><span className="text-gray-500">{t('Periudha')}: </span><span className="text-white">{latestSignal.timeframe || '1h'}</span></div>
+                      <div><span className="text-gray-500">{t('Burimi')}: </span><span className="text-white">{latestSignal.source === 'engine' ? t('Motori AI') : latestSignal.source}</span></div>
+                      <div><span className="text-gray-500">{t('Besueshmëria')}: </span><span className="text-amber-400 font-semibold">{latestSignal.confidence}%</span></div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-gray-500 mb-1 font-semibold uppercase tracking-wide">{t('Filtrat që kaloi')}</div>
+                      {analysisParts(latestSignal.analysis).length > 0 ? (
+                        <ul className="space-y-1">
+                          {analysisParts(latestSignal.analysis).map((p, i) => (
+                            <li key={i} className="text-[11px] text-gray-300 flex gap-1.5"><span className="text-green-400">✓</span>{p}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-[11px] text-gray-500">{t('Pa detaje analize.')}</p>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-gray-600 leading-snug">{t('Sinjali u gjenerua nga motori mbi çmime LIVE kur këto filtra u plotësuan njëkohësisht. Afat-gjatë = mbahet më gjatë (orë/ditë); afat-shkurt = lëvizje e shpejtë.')}</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -513,6 +573,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   <span className="flex items-center gap-2">
                     <span className="text-white text-sm font-bold">{s.symbol}</span>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isShortHorizon(s.timeframe) ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{horizonLabel(s.timeframe)}</span>
                     {!fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
                   </span>
                   <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
