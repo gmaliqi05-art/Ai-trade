@@ -384,7 +384,7 @@ async function platformPass(
       user_id: null, symbol, type: sig.action.toLowerCase(),
       entry_price: sig.entry, target_price: sig.takeProfit, stop_loss: sig.stopLoss,
       confidence: Math.round(sig.confidence * 100), timeframe: "1h",
-      analysis: `Motori AI: ${sig.reasons.slice(0, 3).join("; ")}`,
+      analysis: `Motori AI: ${sig.reasons.slice(0, 8).join("; ")}`,
       source: "engine", status: "active",
       expires_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
     });
@@ -445,7 +445,7 @@ Deno.serve(async (req: Request) => {
           user_id: u.user_id, symbol, type: sig.action.toLowerCase(),
           entry_price: sig.entry, target_price: sig.takeProfit, stop_loss: sig.stopLoss,
           confidence: confPct, timeframe: "1h",
-          analysis: `Motori: ${sig.reasons.slice(0, 3).join("; ")}`,
+          analysis: `Motori: ${sig.reasons.slice(0, 8).join("; ")}`,
           source: "engine", status: "active",
           expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
         });
