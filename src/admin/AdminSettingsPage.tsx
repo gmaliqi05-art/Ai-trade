@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Settings, Save, Loader2, Check, Globe, Bell, Shield, Database, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useI18n } from '../i18n/i18n';
 
 export default function AdminSettingsPage() {
+  const { t } = useI18n();
   const { profile, user, refreshProfile } = useAuth();
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -30,7 +32,7 @@ export default function AdminSettingsPage() {
     }).eq('id', user.id);
     if (!error) {
       await refreshProfile();
-      flash('success', 'Profili u përditësua me sukses.');
+      flash('success', t('Profili u përditësua me sukses.'));
     } else {
       flash('error', error.message);
     }
@@ -39,18 +41,18 @@ export default function AdminSettingsPage() {
 
   const changePassword = async () => {
     if (!form.newPassword || form.newPassword !== form.confirmPassword) {
-      flash('error', 'Fjalëkalimet nuk përputhen.');
+      flash('error', t('Fjalëkalimet nuk përputhen.'));
       return;
     }
     if (form.newPassword.length < 6) {
-      flash('error', 'Fjalëkalimi duhet të paktën 6 karaktere.');
+      flash('error', t('Fjalëkalimi duhet të paktën 6 karaktere.'));
       return;
     }
     setSaving(true);
     const { error } = await supabase.auth.updateUser({ password: form.newPassword });
     if (!error) {
       setForm(f => ({ ...f, currentPassword: '', newPassword: '', confirmPassword: '' }));
-      flash('success', 'Fjalëkalimi u ndryshua me sukses.');
+      flash('success', t('Fjalëkalimi u ndryshua me sukses.'));
     } else {
       flash('error', error.message);
     }
@@ -65,9 +67,9 @@ export default function AdminSettingsPage() {
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-red-400" />
-            Cilësimet e platformës
+            {t('Cilësimet e platformës')}
           </h2>
-          <p className="text-gray-500 text-sm mt-1">Menaxho llogarinë admin dhe preferencat e platformës</p>
+          <p className="text-gray-500 text-sm mt-1">{t('Menaxho llogarinë admin dhe preferencat e platformës')}</p>
         </div>
         {msg && (
           <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium ${
@@ -84,7 +86,7 @@ export default function AdminSettingsPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-2">
           <Shield className="w-4 h-4 text-red-400" />
-          <span className="text-white font-semibold text-sm">Profili i adminit</span>
+          <span className="text-white font-semibold text-sm">{t('Profili i adminit')}</span>
         </div>
         <div className="p-5 space-y-4">
           <div className="flex items-center gap-4 pb-4 border-b border-gray-800">
@@ -95,19 +97,19 @@ export default function AdminSettingsPage() {
               <div className="text-white font-semibold">{profile?.full_name}</div>
               <div className="text-red-400 text-sm flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                Super Administrator
+                {t('Super Administrator')}
               </div>{/* role */}
               <div className="text-gray-500 text-xs mt-0.5">{user?.email}</div>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-gray-400 font-medium mb-1.5">Emri i plotë</label>
+              <label className="block text-xs text-gray-400 font-medium mb-1.5">{t('Emri i plotë')}</label>
               <input
                 value={form.full_name}
                 onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
                 className={inputClass}
-                placeholder="Emri yt"
+                placeholder={t('Emri yt')}
               />
             </div>
             <div>
@@ -124,8 +126,8 @@ export default function AdminSettingsPage() {
               <input value={user?.email || ''} disabled className={`${inputClass} opacity-50 cursor-not-allowed`} />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 font-medium mb-1.5">Roli</label>
-              <input value="Super Administrator" disabled className={`${inputClass} opacity-50 cursor-not-allowed text-red-400`} />
+              <label className="block text-xs text-gray-400 font-medium mb-1.5">{t('Roli')}</label>
+              <input value={t('Super Administrator')} disabled className={`${inputClass} opacity-50 cursor-not-allowed text-red-400`} />
             </div>
           </div>
           <button
@@ -134,7 +136,7 @@ export default function AdminSettingsPage() {
             className="flex items-center gap-2 bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-all"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Ruaj profilin
+            {t('Ruaj profilin')}
           </button>
         </div>
       </div>
@@ -142,28 +144,28 @@ export default function AdminSettingsPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-2">
           <Shield className="w-4 h-4 text-amber-400" />
-          <span className="text-white font-semibold text-sm">Ndrysho fjalëkalimin</span>
+          <span className="text-white font-semibold text-sm">{t('Ndrysho fjalëkalimin')}</span>
         </div>
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className="block text-xs text-gray-400 font-medium mb-1.5">Fjalëkalimi i ri</label>
+              <label className="block text-xs text-gray-400 font-medium mb-1.5">{t('Fjalëkalimi i ri')}</label>
               <input
                 type="password"
                 value={form.newPassword}
                 onChange={e => setForm(f => ({ ...f, newPassword: e.target.value }))}
                 className={inputClass}
-                placeholder="Min. 6 karaktere"
+                placeholder={t('Min. 6 karaktere')}
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs text-gray-400 font-medium mb-1.5">Konfirmo fjalëkalimin e ri</label>
+              <label className="block text-xs text-gray-400 font-medium mb-1.5">{t('Konfirmo fjalëkalimin e ri')}</label>
               <input
                 type="password"
                 value={form.confirmPassword}
                 onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
                 className={inputClass}
-                placeholder="Përsërit fjalëkalimin"
+                placeholder={t('Përsërit fjalëkalimin')}
               />
             </div>
           </div>
@@ -173,7 +175,7 @@ export default function AdminSettingsPage() {
             className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-all"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-            Ndrysho fjalëkalimin
+            {t('Ndrysho fjalëkalimin')}
           </button>
         </div>
       </div>
@@ -181,15 +183,15 @@ export default function AdminSettingsPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-2">
           <Globe className="w-4 h-4 text-blue-400" />
-          <span className="text-white font-semibold text-sm">Informacioni i platformës</span>
+          <span className="text-white font-semibold text-sm">{t('Informacioni i platformës')}</span>
         </div>
         <div className="p-5 space-y-3">
           {[
-            { label: 'Emri i platformës', value: 'GOLDTRADE AI' },
-            { label: 'Versioni', value: '2.0.0' },
-            { label: 'Mjedisi', value: 'Production' },
-            { label: 'Databaza', value: 'Supabase PostgreSQL' },
-            { label: 'Provider Auth', value: 'Supabase Auth' },
+            { label: t('Emri i platformës'), value: 'GOLDTRADE AI' },
+            { label: t('Versioni'), value: '2.0.0' },
+            { label: t('Mjedisi'), value: 'Production' },
+            { label: t('Databaza'), value: 'Supabase PostgreSQL' },
+            { label: t('Provider Auth'), value: 'Supabase Auth' },
           ].map(item => (
             <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
               <span className="text-gray-400 text-sm">{item.label}</span>
@@ -201,9 +203,9 @@ export default function AdminSettingsPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: Database, label: 'Databaza', desc: 'Supabase PostgreSQL', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', status: 'E lidhur' },
-          { icon: Bell, label: 'Njoftimet', desc: 'Real-time aktive', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', status: 'Aktive' },
-          { icon: RefreshCw, label: 'Auto-sync', desc: 'Të dhënat e tregut', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', status: 'Në punë' },
+          { icon: Database, label: t('Databaza'), desc: 'Supabase PostgreSQL', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', status: t('E lidhur') },
+          { icon: Bell, label: t('Njoftimet'), desc: t('Real-time aktive'), color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', status: t('Aktive') },
+          { icon: RefreshCw, label: 'Auto-sync', desc: t('Të dhënat e tregut'), color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', status: t('Në punë') },
         ].map(item => {
           const Icon = item.icon;
           return (

@@ -7,6 +7,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { AdminPage } from '../App';
+import { useI18n } from '../i18n/i18n';
+import LanguageSwitcher from '../i18n/LanguageSwitcher';
 
 interface AdminLayoutProps {
   currentPage: AdminPage;
@@ -46,6 +48,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
   const [unreadCount, setUnreadCount] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const { profile, user, signOut } = useAuth();
+  const { t } = useI18n();
 
   const fetchUnread = useCallback(async () => {
     if (!user) return;
@@ -74,7 +77,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
         }`}
       >
         <Icon className={`w-4 h-4 flex-shrink-0 transition-colors ${active ? 'text-red-400' : 'text-gray-600 group-hover:text-gray-400'}`} />
-        {!collapsed && <span className="text-sm font-medium truncate">{item.label}</span>}
+        {!collapsed && <span className="text-sm font-medium truncate">{t(item.label)}</span>}
         {active && !collapsed && <div className="ml-auto w-1 h-1 rounded-full bg-red-400" />}
       </button>
     );
@@ -100,7 +103,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
           return (
             <div key={section}>
               {!collapsed && (
-                <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{section}</div>
+                <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{t(section)}</div>
               )}
               <div className="space-y-0.5">
                 {items.map(item => <NavItem key={item.id} item={item} />)}
@@ -139,7 +142,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
                 className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-all text-sm"
               >
                 <LogOut className="w-4 h-4" />
-                Dil
+                {t('Dil')}
               </button>
             </div>
           )}
@@ -180,15 +183,16 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
             <div className="flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-red-500 to-orange-500 rounded-full" />
               <h1 className="font-semibold text-sm text-white">
-                {pageLabels[currentPage]}
+                {t(pageLabels[currentPage])}
               </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <LanguageSwitcher />
             <div className="hidden sm:flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">
               <Shield className="w-3.5 h-3.5 text-red-400" />
-              <span className="text-red-400 text-xs font-semibold">Administrator</span>{/* badge */}
+              <span className="text-red-400 text-xs font-semibold">{t('Administrator')}</span>{/* badge */}
             </div>
             <button className="relative p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
               <Bell className="w-5 h-5" />

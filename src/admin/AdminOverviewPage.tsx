@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AdminPage } from '../App';
+import { useI18n } from '../i18n/i18n';
 
 interface RecentTrade {
   id: string; type: string; total: number; executed_at: string;
@@ -23,6 +24,7 @@ const EMPTY: Stats = {
 };
 
 export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: AdminPage) => void }) {
+  const { t } = useI18n();
   const [stats, setStats] = useState<Stats>(EMPTY);
   const [loading, setLoading] = useState(true);
 
@@ -40,21 +42,21 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
   const fmtK = (n: number) => `$${((n || 0) / 1000).toFixed(1)}K`;
 
   const statCards = [
-    { label: 'Përdorues gjithsej', value: fmt(stats.totalUsers), sub: `${stats.proUsers} me pagesë · ${stats.freeUsers} falas`, icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-    { label: 'Balanca totale', value: fmtK(stats.totalBalance), sub: 'Fondet e përdoruesve', icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
-    { label: 'Tregti gjithsej', value: fmt(stats.totalTrades), sub: `${fmtK(stats.buyVolume)} vëllim blerjeje`, icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-    { label: 'Sinjale aktive', value: fmt(stats.activeSignals), sub: `${stats.totalAssets} aktive të listuara`, icon: Zap, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
-    { label: 'Auto-Trade aktiv', value: fmt(stats.autoTradeUsers), sub: 'Përdorues me MetaApi', icon: Cloud, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
-    { label: 'Analiza AI', value: fmt(stats.aiAnalyses), sub: 'Gjeneruar gjithsej', icon: Brain, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
+    { label: t('Përdorues gjithsej'), value: fmt(stats.totalUsers), sub: t('{pro} me pagesë · {free} falas', { pro: stats.proUsers, free: stats.freeUsers }), icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+    { label: t('Balanca totale'), value: fmtK(stats.totalBalance), sub: t('Fondet e përdoruesve'), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+    { label: t('Tregti gjithsej'), value: fmt(stats.totalTrades), sub: t('{vol} vëllim blerjeje', { vol: fmtK(stats.buyVolume) }), icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+    { label: t('Sinjale aktive'), value: fmt(stats.activeSignals), sub: t('{n} aktive të listuara', { n: stats.totalAssets }), icon: Zap, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+    { label: t('Auto-Trade aktiv'), value: fmt(stats.autoTradeUsers), sub: t('Përdorues me MetaApi'), icon: Cloud, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
+    { label: t('Analiza AI'), value: fmt(stats.aiAnalyses), sub: t('Gjeneruar gjithsej'), icon: Brain, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
   ];
 
   const quickLinks: { label: string; icon: React.ElementType; desc: string; page: AdminPage; color: string; bg: string; border: string }[] = [
-    { label: 'Menaxho përdoruesit', icon: Users, desc: 'Balanca, plane & leje', page: 'admin_users', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-    { label: 'Aktivet & tregjet', icon: BarChart2, desc: 'Çmime, instrumente', page: 'admin_assets', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-    { label: 'Sinjalet', icon: Zap, desc: 'Krijo/menaxho sinjale', page: 'admin_signals', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
-    { label: 'AI Providers', icon: Brain, desc: 'Çelësa API & prompt', page: 'admin_ai', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
-    { label: 'Broadcast', icon: Megaphone, desc: 'Mesazh për të gjithë', page: 'admin_broadcast', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
-    { label: 'Audit Log', icon: Shield, desc: 'Veprimet e adminit', page: 'admin_audit', color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-700' },
+    { label: t('Menaxho përdoruesit'), icon: Users, desc: t('Balanca, plane & leje'), page: 'admin_users', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+    { label: t('Aktivet & tregjet'), icon: BarChart2, desc: t('Çmime, instrumente'), page: 'admin_assets', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+    { label: t('Sinjalet'), icon: Zap, desc: t('Krijo/menaxho sinjale'), page: 'admin_signals', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+    { label: 'AI Providers', icon: Brain, desc: t('Çelësa API & prompt'), page: 'admin_ai', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+    { label: 'Broadcast', icon: Megaphone, desc: t('Mesazh për të gjithë'), page: 'admin_broadcast', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+    { label: 'Audit Log', icon: Shield, desc: t('Veprimet e adminit'), page: 'admin_audit', color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-700' },
   ];
 
   const paidPct = stats.totalUsers > 0 ? Math.round((stats.proUsers / stats.totalUsers) * 100) : 0;
@@ -65,12 +67,12 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-orange-500 rounded-xl flex items-center justify-center"><TrendingUp className="w-4 h-4 text-white" /></div>
-            Përmbledhja e platformës
+            {t('Përmbledhja e platformës')}
           </h2>
-          <p className="text-gray-500 text-sm mt-1">Shëndeti dhe statistikat reale të platformës</p>
+          <p className="text-gray-500 text-sm mt-1">{t('Shëndeti dhe statistikat reale të platformës')}</p>
         </div>
         <button onClick={fetchData} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-gray-400 hover:text-white text-sm transition-all disabled:opacity-50">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Rifresko
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />{t('Rifresko')}
         </button>
       </div>
 
@@ -94,14 +96,14 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
         {/* Tregtitë e fundit */}
         <div className="lg:col-span-3 bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-            <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />Tregtitë e fundit</h3>
-            <span className="text-gray-500 text-xs">8 të fundit</span>
+            <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />{t('Tregtitë e fundit')}</h3>
+            <span className="text-gray-500 text-xs">{t('8 të fundit')}</span>
           </div>
           <div className="divide-y divide-gray-800/50">
             {loading ? (
               [...Array(5)].map((_, i) => <div key={i} className="px-5 py-3"><div className="w-full h-8 bg-gray-800 rounded-lg animate-pulse" /></div>)
             ) : stats.recentTrades.length === 0 ? (
-              <div className="px-5 py-8 text-center text-gray-500 text-sm">Ende pa tregti</div>
+              <div className="px-5 py-8 text-center text-gray-500 text-sm">{t('Ende pa tregti')}</div>
             ) : (
               stats.recentTrades.map(trade => (
                 <div key={trade.id} className="px-5 py-3 flex items-center gap-3 hover:bg-gray-800/30 transition-colors">
@@ -111,7 +113,7 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-white text-sm font-medium">{trade.symbol || '—'}</span>
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-md ${trade.type === 'buy' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>{trade.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-md ${trade.type === 'buy' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>{trade.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
                     </div>
                     <div className="text-gray-500 text-xs truncate">{trade.full_name || '—'}</div>
                   </div>
@@ -128,11 +130,11 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
         {/* Shpërndarja e përdoruesve (reale) */}
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2"><Crown className="w-4 h-4 text-amber-400" />Përdoruesit sipas planit</h3>
+            <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2"><Crown className="w-4 h-4 text-amber-400" />{t('Përdoruesit sipas planit')}</h3>
             <div className="space-y-2.5">
               {[
-                { label: 'Falas', count: stats.freeUsers, color: 'bg-gray-500', textColor: 'text-gray-400' },
-                { label: 'Me pagesë (Pro/Premium)', count: stats.proUsers, color: 'bg-amber-500', textColor: 'text-amber-400' },
+                { label: t('Falas'), count: stats.freeUsers, color: 'bg-gray-500', textColor: 'text-gray-400' },
+                { label: t('Me pagesë (Pro/Premium)'), count: stats.proUsers, color: 'bg-amber-500', textColor: 'text-amber-400' },
               ].map(tier => {
                 const pct = stats.totalUsers > 0 ? (tier.count / stats.totalUsers) * 100 : 0;
                 return (
@@ -148,14 +150,14 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
                 );
               })}
             </div>
-            <div className="mt-3 pt-3 border-t border-gray-800 text-xs text-gray-500">Konvertim me pagesë: <span className="text-amber-400 font-semibold">{paidPct}%</span></div>
+            <div className="mt-3 pt-3 border-t border-gray-800 text-xs text-gray-500">{t('Konvertim me pagesë:')} <span className="text-amber-400 font-semibold">{paidPct}%</span></div>
           </div>
         </div>
       </div>
 
       {/* Veprime të shpejta (funksionale) */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-        <h3 className="text-white font-semibold text-sm mb-4">Veprime të shpejta</h3>
+        <h3 className="text-white font-semibold text-sm mb-4">{t('Veprime të shpejta')}</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {quickLinks.map(link => {
             const Icon = link.icon;

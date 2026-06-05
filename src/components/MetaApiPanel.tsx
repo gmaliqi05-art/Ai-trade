@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save, Eye, EyeOff, Layers } from 'lucide-react';
+import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
 import {
   loadMetaApiConfig, saveMetaApiConfig, checkMetaApiConnection,
@@ -12,6 +13,7 @@ import {
 const REGIONS = ['new-york', 'london', 'singapore'];
 
 export default function MetaApiPanel() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const [cfg, setCfg] = useState<MetaApiConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
@@ -39,7 +41,7 @@ export default function MetaApiPanel() {
     setMsg(null);
     try {
       await saveMetaApiConfig(user.id, next);
-      setMsg({ type: 'success', text: 'U ruajt automatikisht.' });
+      setMsg({ type: 'success', text: t('U ruajt automatikisht.') });
     } catch (e) {
       setMsg({ type: 'error', text: (e as Error).message });
     }
@@ -48,7 +50,7 @@ export default function MetaApiPanel() {
   const save = async () => {
     if (!user) return;
     setSaving(true); setMsg(null);
-    try { await saveMetaApiConfig(user.id, cfg); setMsg({ type: 'success', text: 'Cilësimet u ruajtën.' }); }
+    try { await saveMetaApiConfig(user.id, cfg); setMsg({ type: 'success', text: t('Cilësimet u ruajtën.') }); }
     catch (e) { setMsg({ type: 'error', text: (e as Error).message }); }
     setSaving(false);
   };
@@ -56,8 +58,8 @@ export default function MetaApiPanel() {
   const testConnection = async () => {
     setBusy('check'); setMsg(null);
     const r = await checkMetaApiConnection();
-    if (r.error) setMsg({ type: 'error', text: errText(r.error, r.message) });
-    else setMsg({ type: 'success', text: `Lidhja OK (${r.mode}). Llogaria u arrit.` });
+    if (r.error) setMsg({ type: 'error', text: errText(t, r.error, r.message) });
+    else setMsg({ type: 'success', text: t('Lidhja OK ({mode}). Llogaria u arrit.', { mode: r.mode }) });
     setBusy(null);
   };
 
@@ -68,67 +70,54 @@ export default function MetaApiPanel() {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-white font-semibold flex items-center gap-2"><Cloud className="w-5 h-5 text-amber-400" />Lidhja & Konfigurimi (MetaApi)</h3>
+        <h3 className="text-white font-semibold flex items-center gap-2"><Cloud className="w-5 h-5 text-amber-400" />{t('Lidhja & Konfigurimi (MetaApi)')}</h3>
         <span className={`text-xs px-2.5 py-1 rounded-full border ${cfg.mode === 'demo' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'bg-red-500/15 text-red-400 border-red-500/30'}`}>
-          {cfg.mode === 'demo' ? 'DEMO' : 'LIVE — para reale'}
+          {cfg.mode === 'demo' ? t('DEMO') : t('LIVE — para reale')}
         </span>
       </div>
 
-      <p className="text-xs text-gray-400 leading-relaxed">
-        Këtu lidh dhe konfiguron llogarinë MT5 (Vantage) përmes <span className="text-amber-400">MetaApi.cloud</span>.
-        Tregtimi (BLEJ/SHIT) dhe pozicionet e hapura janë te faqja <span className="text-amber-400 font-medium">Tregto Live</span>.
-      </p>
+      <p className="text-xs text-gray-400 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Këtu lidh dhe konfiguron llogarinë MT5 (Vantage) përmes <span class="text-amber-400">MetaApi.cloud</span>. Tregtimi (BLEJ/SHIT) dhe pozicionet e hapura janë te faqja <span class="text-amber-400 font-medium">Tregto Live</span>.') }} />
 
       {/* Udhëzues hap-pas-hapi me lidhje korrekte */}
       <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-4 space-y-2.5">
         <div className="text-xs font-semibold text-white flex items-center gap-2">
-          <Cloud className="w-4 h-4 text-amber-400" />Si të lidhësh robotin me MT5 (4 hapa)
+          <Cloud className="w-4 h-4 text-amber-400" />{t('Si të lidhësh robotin me MT5 (4 hapa)')}
         </div>
         <ol className="space-y-2 text-[11px] text-gray-300 leading-relaxed">
           <li className="flex gap-2">
             <span className="text-amber-400 font-bold">1.</span>
-            <span>
-              <strong className="text-white">Llogaria MT5 (Vantage)</strong> — duhet ta kesh tashmë (Login, Password, Server p.sh. <code className="text-amber-300">VantageInternational-Demo</code>).
-              Nëse jo, hape te <a href="https://www.vantagemarkets.com/" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline">vantagemarkets.com</a> ose shkarko <a href="https://www.metatrader5.com/en/download" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline">MetaTrader 5</a>.
-            </span>
+            <span dangerouslySetInnerHTML={{ __html: t('<strong class="text-white">Llogaria MT5 (Vantage)</strong> — duhet ta kesh tashmë (Login, Password, Server p.sh. <code class="text-amber-300">VantageInternational-Demo</code>). Nëse jo, hape te <a href="https://www.vantagemarkets.com/" target="_blank" rel="noopener noreferrer" class="text-amber-400 underline">vantagemarkets.com</a> ose shkarko <a href="https://www.metatrader5.com/en/download" target="_blank" rel="noopener noreferrer" class="text-amber-400 underline">MetaTrader 5</a>.') }} />
           </li>
           <li className="flex gap-2">
             <span className="text-amber-400 font-bold">2.</span>
-            <span>
-              Hap <a href="https://app.metaapi.cloud/accounts" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-semibold">app.metaapi.cloud/accounts</a> → krijo llogari falas →
-              <strong className="text-white"> Add account</strong> → zgjidh MT5 dhe fut Login/Password/Server-in e Vantage. MetaApi e lidh në cloud dhe të jep një <strong className="text-white">Account ID</strong>.
-            </span>
+            <span dangerouslySetInnerHTML={{ __html: t('Hap <a href="https://app.metaapi.cloud/accounts" target="_blank" rel="noopener noreferrer" class="text-amber-400 underline font-semibold">app.metaapi.cloud/accounts</a> → krijo llogari falas → <strong class="text-white"> Add account</strong> → zgjidh MT5 dhe fut Login/Password/Server-in e Vantage. MetaApi e lidh në cloud dhe të jep një <strong class="text-white">Account ID</strong>.') }} />
           </li>
           <li className="flex gap-2">
             <span className="text-amber-400 font-bold">3.</span>
-            <span>
-              Hap <a href="https://app.metaapi.cloud/token" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-semibold">app.metaapi.cloud/token</a> → krijo një <strong className="text-white">API Token</strong> dhe kopjoje.
-            </span>
+            <span dangerouslySetInnerHTML={{ __html: t('Hap <a href="https://app.metaapi.cloud/token" target="_blank" rel="noopener noreferrer" class="text-amber-400 underline font-semibold">app.metaapi.cloud/token</a> → krijo një <strong class="text-white">API Token</strong> dhe kopjoje.') }} />
           </li>
           <li className="flex gap-2">
             <span className="text-amber-400 font-bold">4.</span>
-            <span>
-              Ngjit <strong className="text-white">Account ID</strong> + <strong className="text-white">Token</strong> poshtë, zgjidh rajonin, kliko <strong className="text-white">Ruaj</strong> → <strong className="text-white">Testo lidhjen</strong>.
-            </span>
+            <span dangerouslySetInnerHTML={{ __html: t('Ngjit <strong class="text-white">Account ID</strong> + <strong class="text-white">Token</strong> poshtë, zgjidh rajonin, kliko <strong class="text-white">Ruaj</strong> → <strong class="text-white">Testo lidhjen</strong>.') }} />
           </li>
         </ol>
       </div>
 
       {/* Kredencialet */}
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="MetaApi Account ID">
-          <input value={cfg.account_id} onChange={e => set('account_id', e.target.value)} placeholder="p.sh. 0a1b2c3d-..."
+        <Field label={t('MetaApi Account ID')}>
+          <input value={cfg.account_id} onChange={e => set('account_id', e.target.value)} placeholder={t('p.sh. 0a1b2c3d-...')}
             className="inp" />
         </Field>
-        <Field label="Rajoni (i njëjti si te MetaApi)">
+        <Field label={t('Rajoni (i njëjti si te MetaApi)')}>
           <select value={cfg.region} onChange={e => set('region', e.target.value)} className="inp">
             {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </Field>
-        <Field label="MetaApi Token" full>
+        <Field label={t('MetaApi Token')} full>
           <div className="relative">
             <input type={showToken ? 'text' : 'password'} value={cfg.token} onChange={e => set('token', e.target.value)}
-              placeholder="token-i nga metaapi.cloud" className="inp pr-9" />
+              placeholder={t('token-i nga metaapi.cloud')} className="inp pr-9" />
             <button onClick={() => setShowToken(s => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
               {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
@@ -138,132 +127,123 @@ export default function MetaApiPanel() {
 
       {/* Mbrojtja e rrezikut */}
       <div>
-        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><ShieldAlert className="w-4 h-4 text-amber-400" />Mbrojtja e rrezikut</div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><ShieldAlert className="w-4 h-4 text-amber-400" />{t('Mbrojtja e rrezikut')}</div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Field label="Lot default"><input type="number" step="0.01" value={cfg.default_lot} onChange={e => set('default_lot', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="Lot maksimal"><input type="number" step="0.01" value={cfg.max_lot} onChange={e => set('max_lot', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="Humbja maks. ditore ($)"><input type="number" step="1" value={cfg.max_daily_loss} onChange={e => set('max_daily_loss', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="Pozicione maks. njëkohësisht"><input type="number" step="1" value={cfg.max_open_trades} onChange={e => set('max_open_trades', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="Rreziku per-trade (%)"><input type="number" step="0.1" value={cfg.risk_per_trade_pct} onChange={e => set('risk_per_trade_pct', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Lot default')}><input type="number" step="0.01" value={cfg.default_lot} onChange={e => set('default_lot', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Lot maksimal')}><input type="number" step="0.01" value={cfg.max_lot} onChange={e => set('max_lot', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Humbja maks. ditore ($)')}><input type="number" step="1" value={cfg.max_daily_loss} onChange={e => set('max_daily_loss', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Pozicione maks. njëkohësisht')}><input type="number" step="1" value={cfg.max_open_trades} onChange={e => set('max_open_trades', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Rreziku per-trade (%)')}><input type="number" step="0.1" value={cfg.risk_per_trade_pct} onChange={e => set('risk_per_trade_pct', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
         </div>
         {/* Sqarimi i fushave të rrezikut */}
         <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
-          <li><span className="text-gray-300">Lot default:</span> madhësia e çdo trade-i (0.01 = më i vogli, rrezik minimal).</li>
-          <li><span className="text-gray-300">Lot maksimal:</span> kufiri i sipërm — asnjë trade s'kalon këtë lot.</li>
-          <li><span className="text-gray-300">Humbja maks. ditore ($):</span> shumë <strong className="text-amber-400">në para</strong> (monedha e llogarisë). P.sh. <code className="text-amber-300">5</code> = (1) kur humbja e ditës arrin ~5$, roboti <strong>ndalon trade-t e reja</strong>; dhe (2) <strong>SL-ja e çdo trade-i auto kufizohet</strong> që humbja maks. e tij të mos kalojë ~5$. Vendos sa je gati të humbasësh maksimumi.</li>
-          <li><span className="text-gray-300">Pozicione maks.:</span> sa trade mund të jenë hapur njëkohësisht (p.sh. 3).</li>
-          <li><span className="text-gray-300">Rreziku per-trade (%):</span> sa % e kapitalit rrezikon çdo trade (profesionalisht <strong className="text-amber-400">1%</strong>). Lot-i llogaritet automatikisht nga kjo + distanca e SL-së, dhe kurrë s'e kalon "Humbjen maks. ditore".</li>
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">Lot default:</span> madhësia e çdo trade-i (0.01 = më i vogli, rrezik minimal).') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">Lot maksimal:</span> kufiri i sipërm — asnjë trade s\'kalon këtë lot.') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">Humbja maks. ditore ($):</span> shumë <strong class="text-amber-400">në para</strong> (monedha e llogarisë). P.sh. <code class="text-amber-300">5</code> = (1) kur humbja e ditës arrin ~5$, roboti <strong>ndalon trade-t e reja</strong>; dhe (2) <strong>SL-ja e çdo trade-i auto kufizohet</strong> që humbja maks. e tij të mos kalojë ~5$. Vendos sa je gati të humbasësh maksimumi.') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">Pozicione maks.:</span> sa trade mund të jenë hapur njëkohësisht (p.sh. 3).') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">Rreziku per-trade (%):</span> sa % e kapitalit rrezikon çdo trade (profesionalisht <strong class="text-amber-400">1%</strong>). Lot-i llogaritet automatikisht nga kjo + distanca e SL-së, dhe kurrë s\'e kalon "Humbjen maks. ditore".') }} />
         </ul>
       </div>
 
       {/* Madhësia e pozicionit sipas besueshmërisë */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 text-xs text-gray-400"><Layers className="w-4 h-4 text-amber-400" />Madhësia sipas besueshmërisë</div>
+          <div className="flex items-center gap-2 text-xs text-gray-400"><Layers className="w-4 h-4 text-amber-400" />{t('Madhësia sipas besueshmërisë')}</div>
           <button onClick={() => set('dynamic_lot', !cfg.dynamic_lot)}
             className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${cfg.dynamic_lot ? 'bg-green-500/15 text-green-400 border-green-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
-            {cfg.dynamic_lot ? 'AKTIV' : 'JOAKTIV'}
+            {cfg.dynamic_lot ? t('AKTIV') : t('JOAKTIV')}
           </button>
         </div>
         <div className={`grid grid-cols-3 gap-3 transition-opacity ${cfg.dynamic_lot ? '' : 'opacity-40 pointer-events-none'}`}>
-          <Field label="Lot kur ≥ 70%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_70} onChange={e => set('lot_conf_70', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="Lot kur ≥ 80%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_80} onChange={e => set('lot_conf_80', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="Lot kur ≥ 90%"><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_90} onChange={e => set('lot_conf_90', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Lot kur ≥ 70%')}><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_70} onChange={e => set('lot_conf_70', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Lot kur ≥ 80%')}><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_80} onChange={e => set('lot_conf_80', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Lot kur ≥ 90%')}><input type="number" step="0.01" min="0.01" value={cfg.lot_conf_90} onChange={e => set('lot_conf_90', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
         </div>
         <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
-          <li>Sa më e lartë besueshmëria e analizës, aq më i madh loti — më shumë besim, pozicion më i madh.</li>
-          <li><span className="text-amber-400 font-semibold">ℹ️ 0.01 / 0.02 / 0.05 janë rekomandimi i robotit</span> — i ndryshueshëm: ndrysho çdo fushë sipas dëshirës (ruhet vetë kur largohesh nga fusha).</li>
-          <li>Loti nuk kalon kurrë <span className="text-gray-300">Lot maksimal</span>. Kur <span className="text-gray-300">JOAKTIV</span>, përdoret gjithmonë <span className="text-gray-300">Lot default</span>.</li>
+          <li>{t('Sa më e lartë besueshmëria e analizës, aq më i madh loti — më shumë besim, pozicion më i madh.')}</li>
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">ℹ️ 0.01 / 0.02 / 0.05 janë rekomandimi i robotit</span> — i ndryshueshëm: ndrysho çdo fushë sipas dëshirës (ruhet vetë kur largohesh nga fusha).') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('Loti nuk kalon kurrë <span class="text-gray-300">Lot maksimal</span>. Kur <span class="text-gray-300">JOAKTIV</span>, përdoret gjithmonë <span class="text-gray-300">Lot default</span>.') }} />
         </ul>
       </div>
 
       {/* Auto-execute mbi sinjale */}
       <div>
-        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><Play className="w-4 h-4 text-amber-400" />Auto-execute mbi sinjale</div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><Play className="w-4 h-4 text-amber-400" />{t('Auto-execute mbi sinjale')}</div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Besueshmëri minimale (%)"><input type="number" step="1" min="0" max="100" value={cfg.min_confidence} onChange={e => set('min_confidence', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="Simbolet e lejuara (me presje)"><input value={cfg.auto_symbols} onChange={e => set('auto_symbols', e.target.value)} onBlur={() => save()} placeholder="XAUUSD" className="inp" /></Field>
+          <Field label={t('Besueshmëri minimale (%)')}><input type="number" step="1" min="0" max="100" value={cfg.min_confidence} onChange={e => set('min_confidence', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Simbolet e lejuara (me presje)')}><input value={cfg.auto_symbols} onChange={e => set('auto_symbols', e.target.value)} onBlur={() => save()} placeholder="XAUUSD" className="inp" /></Field>
         </div>
-        <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
-          Kur <span className="text-amber-400">Auto-trade</span> është ON, sinjalet BLEJ/SHIT për këto simbole me besueshmëri ≥ pragut
-          ekzekutohen <span className="text-white">automatikisht</span> në MT5 (çdo minutë), brenda mbrojtjeve të rrezikut sipër.
-        </p>
+        <p className="text-[11px] text-gray-500 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Kur <span class="text-amber-400">Auto-trade</span> është ON, sinjalet BLEJ/SHIT për këto simbole me besueshmëri ≥ pragut ekzekutohen <span class="text-white">automatikisht</span> në MT5 (çdo minutë), brenda mbrojtjeve të rrezikut sipër.') }} />
       </div>
 
       {/* Metodat e tregtimit — afat-gjatë (swing) dhe afat-shkurt (scalp) */}
       <div>
-        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><Layers className="w-4 h-4 text-amber-400" />Metodat e tregtimit</div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2"><Layers className="w-4 h-4 text-amber-400" />{t('Metodat e tregtimit')}</div>
         <div className="grid sm:grid-cols-2 gap-3">
           {/* Afat-gjatë */}
           <div className={`rounded-xl border p-3 transition-colors ${cfg.strategy_swing ? 'bg-green-500/10 border-green-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-white">Afat-gjatë (swing)</span>
+              <span className="text-sm font-semibold text-white">{t('Afat-gjatë (swing)')}</span>
               <button onClick={() => setAndSave('strategy_swing', !cfg.strategy_swing)}
                 className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.strategy_swing ? 'bg-green-500/15 text-green-400 border-green-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
-                {cfg.strategy_swing ? 'AKTIV' : 'JOAKTIV'}
+                {cfg.strategy_swing ? t('AKTIV') : t('JOAKTIV')}
               </button>
             </div>
-            <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-              Analiza klasike e robotit në grafikët <span className="text-gray-300">15m / 1h / 4h</span>. Trade më të rralla, SL/TP të gjera (nga ATR), të konfirmuara nga Roboti. Më e qëndrueshme.
-            </p>
+            <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Analiza klasike e robotit në grafikët <span class="text-gray-300">15m / 1h / 4h</span>. Trade më të rralla, SL/TP të gjera (nga ATR), të konfirmuara nga Roboti. Më e qëndrueshme.') }} />
           </div>
           {/* Afat-shkurt */}
           <div className={`rounded-xl border p-3 transition-colors ${cfg.strategy_scalp ? 'bg-amber-500/10 border-amber-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-white">Afat-shkurt (scalp)</span>
+              <span className="text-sm font-semibold text-white">{t('Afat-shkurt (scalp)')}</span>
               <button onClick={() => setAndSave('strategy_scalp', !cfg.strategy_scalp)}
                 className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.strategy_scalp ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
-                {cfg.strategy_scalp ? 'AKTIV' : 'JOAKTIV'}
+                {cfg.strategy_scalp ? t('AKTIV') : t('JOAKTIV')}
               </button>
             </div>
-            <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-              Roboti përcjell tregun çdo minutë në <span className="text-gray-300">1m / 5m</span> dhe hyn në lëvizje të shpejta me SL/TP të ngushtë. Del herët për të mbajtur profitin. Më shumë trade, më aktiv.
-            </p>
+            <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Roboti përcjell tregun çdo minutë në <span class="text-gray-300">1m / 5m</span> dhe hyn në lëvizje të shpejta me SL/TP të ngushtë. Del herët për të mbajtur profitin. Më shumë trade, më aktiv.') }} />
           </div>
         </div>
 
         {/* Hyrja në lëvizje të vogla — buton i veçantë brenda scalp */}
         <div className={`flex items-center justify-between rounded-xl border p-3 mt-3 transition-opacity ${cfg.strategy_scalp ? '' : 'opacity-40 pointer-events-none'} ${cfg.scalp_small_moves ? 'bg-amber-500/10 border-amber-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
           <div className="pr-3">
-            <span className="text-sm font-semibold text-white">Hyr edhe në lëvizje të vogla</span>
-            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-              Kur AKTIV, scalp-i hyn me kushte më të lehta (vetëm trend + drejtim, pa pritur breakout). <span className="text-amber-400">Shumë më shumë trade</span> — edhe në treg të qetë — por më shumë humbje të vogla. Kur JOAKTIV, pret vetëm lëvizje të forta (breakout).
-            </p>
+            <span className="text-sm font-semibold text-white">{t('Hyr edhe në lëvizje të vogla')}</span>
+            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Kur AKTIV, scalp-i hyn me kushte më të lehta (vetëm trend + drejtim, pa pritur breakout). <span class="text-amber-400">Shumë më shumë trade</span> — edhe në treg të qetë — por më shumë humbje të vogla. Kur JOAKTIV, pret vetëm lëvizje të forta (breakout).') }} />
           </div>
           <button onClick={() => setAndSave('scalp_small_moves', !cfg.scalp_small_moves)}
             className={`shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.scalp_small_moves ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
-            {cfg.scalp_small_moves ? 'AKTIV' : 'JOAKTIV'}
+            {cfg.scalp_small_moves ? t('AKTIV') : t('JOAKTIV')}
           </button>
         </div>
 
         {/* Parametrat e scalp — vetëm kur është aktiv */}
         <div className={`grid grid-cols-3 gap-3 mt-3 transition-opacity ${cfg.strategy_scalp ? '' : 'opacity-40 pointer-events-none'}`}>
-          <Field label="SL scalp ($ lëvizje)"><input type="number" step="0.1" min="0.3" value={cfg.scalp_sl_usd} onChange={e => set('scalp_sl_usd', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="TP scalp ($ lëvizje)"><input type="number" step="0.1" min="0.3" value={cfg.scalp_tp_usd} onChange={e => set('scalp_tp_usd', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
-          <Field label="Scalp maks. njëkohësisht"><input type="number" step="1" min="1" value={cfg.scalp_max_trades} onChange={e => set('scalp_max_trades', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('SL scalp ($ lëvizje)')}><input type="number" step="0.1" min="0.3" value={cfg.scalp_sl_usd} onChange={e => set('scalp_sl_usd', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('TP scalp ($ lëvizje)')}><input type="number" step="0.1" min="0.3" value={cfg.scalp_tp_usd} onChange={e => set('scalp_tp_usd', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
+          <Field label={t('Scalp maks. njëkohësisht')}><input type="number" step="1" min="1" value={cfg.scalp_max_trades} onChange={e => set('scalp_max_trades', +e.target.value)} onBlur={() => save()} className="inp" /></Field>
         </div>
         <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 leading-relaxed">
-          <li><span className="text-gray-300">SL/TP scalp:</span> distancë në çmim — sa <strong className="text-amber-400">$</strong> lëviz ari nga hyrja. P.sh. SL <code className="text-amber-300">2</code> = mbyll nëse ari shkon 2$ kundër; TP <code className="text-amber-300">4</code> = merr fitimin te +4$.</li>
-          <li><span className="text-amber-400 font-semibold">ℹ️ Mbrojtja "qëndro në profit":</span> sapo trade-i shkon +1$, SL ngrihet te hyrja (s'kthehet në humbje); nëse momentumi kthehet ndërsa je në fitim, mbyllet menjëherë.</li>
-          <li><span className="text-gray-300">⚠️ Kujdes:</span> SL prej 2$ është shumë i ngushtë për arin — zhurma e tregut mund të prekë SL-në shpesh. Disa trade do mbyllen me humbje të vogël; kjo është normale për scalp.</li>
-          <li>Mund t'i mbash <strong className="text-white">të dyja aktive</strong> njëkohësisht — secila punon e pavarur brenda mbrojtjeve të rrezikut sipër.</li>
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">SL/TP scalp:</span> distancë në çmim — sa <strong class="text-amber-400">$</strong> lëviz ari nga hyrja. P.sh. SL <code class="text-amber-300">2</code> = mbyll nëse ari shkon 2$ kundër; TP <code class="text-amber-300">4</code> = merr fitimin te +4$.') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">ℹ️ Mbrojtja "qëndro në profit":</span> sapo trade-i shkon +1$, SL ngrihet te hyrja (s\'kthehet në humbje); nëse momentumi kthehet ndërsa je në fitim, mbyllet menjëherë.') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">⚠️ Kujdes:</span> SL prej 2$ është shumë i ngushtë për arin — zhurma e tregut mund të prekë SL-në shpesh. Disa trade do mbyllen me humbje të vogël; kjo është normale për scalp.') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('Mund t\'i mbash <strong class="text-white">të dyja aktive</strong> njëkohësisht — secila punon e pavarur brenda mbrojtjeve të rrezikut sipër.') }} />
         </ul>
       </div>
 
       {/* Toggles të sigurisë */}
       <div className="flex flex-wrap gap-3">
         <Toggle on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo')}
-          label={cfg.mode === 'demo' ? 'Mode: DEMO' : 'Mode: LIVE'} danger={cfg.mode === 'live'} icon={Cloud} />
-        <Toggle on={cfg.auto_trade} onClick={() => setAndSave('auto_trade', !cfg.auto_trade)} label="Auto-trade" icon={Play} />
-        <Toggle on={cfg.kill_switch} onClick={() => setAndSave('kill_switch', !cfg.kill_switch)} label="Kill-switch" danger icon={Power} />
+          label={cfg.mode === 'demo' ? t('Mode: DEMO') : t('Mode: LIVE')} danger={cfg.mode === 'live'} icon={Cloud} />
+        <Toggle on={cfg.auto_trade} onClick={() => setAndSave('auto_trade', !cfg.auto_trade)} label={t('Auto-trade')} icon={Play} />
+        <Toggle on={cfg.kill_switch} onClick={() => setAndSave('kill_switch', !cfg.kill_switch)} label={t('Kill-switch')} danger icon={Power} />
       </div>
       <p className="text-[11px] text-gray-500 -mt-2 flex items-center gap-1">
-        <Power className="w-3 h-3 text-amber-400" /> Këto 3 butona ruhen <span className="text-gray-300">menjëherë</span>. <span className="text-gray-300">Kill-switch ON</span> ndalon çdo trade (urgjencë).
+        <Power className="w-3 h-3 text-amber-400" /> <span dangerouslySetInnerHTML={{ __html: t('Këto 3 butona ruhen <span class="text-gray-300">menjëherë</span>. <span class="text-gray-300">Kill-switch ON</span> ndalon çdo trade (urgjencë).') }} />
       </p>
 
       {cfg.mode === 'live' && (
         <div className="flex items-center gap-2 text-xs bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-red-400">
-          <AlertCircle className="w-4 h-4" /> Mode LIVE përdor para reale. Sigurohu që e ke testuar në demo.
+          <AlertCircle className="w-4 h-4" /> {t('Mode LIVE përdor para reale. Sigurohu që e ke testuar në demo.')}
         </div>
       )}
 
@@ -276,10 +256,10 @@ export default function MetaApiPanel() {
       {/* Veprimet — vetëm ruajtja dhe testi i lidhjes */}
       <div className="flex flex-wrap gap-2">
         <button onClick={save} disabled={saving} className="btn-amber">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}Ruaj cilësimet
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{t('Ruaj cilësimet')}
         </button>
         <button onClick={testConnection} disabled={!configured || !!busy} className="btn-ghost">
-          {busy === 'check' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}Testo lidhjen
+          {busy === 'check' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}{t('Testo lidhjen')}
         </button>
       </div>
 
@@ -318,10 +298,10 @@ function Toggle({ on, onClick, label, icon: Icon, danger }: { on: boolean; onCli
   );
 }
 
-function errText(code: string, message?: string): string {
+function errText(t: (key: string, params?: Record<string, string | number>) => string, code: string, message?: string): string {
   const map: Record<string, string> = {
-    metaapi_not_configured: 'Plotëso Account ID dhe Token, pastaj ruaj.',
-    metaapi_unreachable: 'S\'u arrit MetaApi — kontrollo token-in, account-id dhe rajonin.',
+    metaapi_not_configured: t('Plotëso Account ID dhe Token, pastaj ruaj.'),
+    metaapi_unreachable: t('S\'u arrit MetaApi — kontrollo token-in, account-id dhe rajonin.'),
   };
   return map[code] || message || code;
 }

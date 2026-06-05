@@ -10,6 +10,7 @@ import { ClientPage as Page } from '../App';
 import TradingViewChart from '../components/TradingViewChart';
 import GoldSessionBadge from '../components/GoldSessionBadge';
 import { loadOpenPositions, loadSymbolPrice, type OpenPosition } from '../services/metaapi';
+import { useI18n } from '../i18n/i18n';
 
 interface Asset {
   id: string; symbol: string; name: string; category: string;
@@ -35,6 +36,7 @@ const sourceLabel: Record<string, string> = {
 };
 
 export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
+  const { t } = useI18n();
   const { user, profile } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -101,7 +103,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         <div>
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-2xl font-bold text-white">
-              Mirë se erdhe, {profile?.full_name?.split(' ')[0] || 'Trader'}
+              {t('Mirë se erdhe, {name}', { name: profile?.full_name?.split(' ')[0] || 'Trader' })}
             </h2>
             {metaApi?.account_id ? (
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
@@ -109,38 +111,38 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                   ? 'bg-red-500/15 text-red-400 border-red-500/30'
                   : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
               }`}>
-                {metaApi.mode === 'live' ? '● LIVE · para reale' : '● DEMO'}
+                {metaApi.mode === 'live' ? t('● LIVE · para reale') : t('● DEMO')}
               </span>
             ) : (
               <span className="text-xs font-medium px-2.5 py-1 rounded-full border bg-gray-700/50 text-gray-400 border-gray-600">
-                Pa llogari trade
+                {t('Pa llogari trade')}
               </span>
             )}
           </div>
           <p className="text-gray-400 text-sm mt-1">
-            Platformë analize tregu dhe sinjalesh me AI
-            {lastUpdated && <span className="ml-2 text-gray-600 text-xs">· përditësuar {lastUpdated.toLocaleTimeString()}</span>}
+            {t('Platformë analize tregu dhe sinjalesh me AI')}
+            {lastUpdated && <span className="ml-2 text-gray-600 text-xs">{t('· përditësuar {time}', { time: lastUpdated.toLocaleTimeString() })}</span>}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <GoldSessionBadge />
           <button onClick={fetchData} className="flex items-center gap-2 text-gray-400 hover:text-white text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-all">
-            <RefreshCw className="w-3.5 h-3.5" />Rifresko
+            <RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatusCard label="Sinjale aktive" value={signals.length.toString()} sub="Nga motori + AI" icon={Zap}
+        <StatusCard label={t('Sinjale aktive')} value={signals.length.toString()} sub={t('Nga motori + AI')} icon={Zap}
           status={signals.length > 0 ? 'ok' : 'neutral'} onClick={() => onNavigate('signals')} />
-        <StatusCard label="Auto-Trade" value={autoTradeOn ? `Aktiv · ${metaApi?.mode?.toUpperCase()}` : 'I fikur'}
-          sub={metaApi?.account_id ? `${positions.length} aktive · ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}` : 'Konfiguro lidhjen'} icon={Cloud}
+        <StatusCard label={t('Auto-Trade')} value={autoTradeOn ? t('Aktiv · {mode}', { mode: metaApi?.mode?.toUpperCase() }) : t('I fikur')}
+          sub={metaApi?.account_id ? t('{count} aktive · {pnl}', { count: positions.length, pnl: `${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}` }) : t('Konfiguro lidhjen')} icon={Cloud}
           status={autoTradeOn ? 'ok' : 'neutral'} onClick={() => onNavigate('market_prices')} />
-        <StatusCard label="Arsyetimi i Robotit" value={aiProviderActive ? 'Gati' : 'Pa konfiguruar'}
-          sub={aiProviderActive ? 'Aktiv' : 'Konfiguro te Admin'} icon={Brain}
+        <StatusCard label={t('Arsyetimi i Robotit')} value={aiProviderActive ? t('Gati') : t('Pa konfiguruar')}
+          sub={aiProviderActive ? t('Aktiv') : t('Konfiguro te Admin')} icon={Brain}
           status={aiProviderActive ? 'ok' : 'warn'} onClick={() => onNavigate('chart_analysis')} />
-        <StatusCard label="Ari (XAU/USD)" value={mt5Gold != null ? `$${mt5Gold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : assets[0]?.current_price ? `$${Number(assets[0].current_price).toLocaleString()}` : '—'}
-          sub={mt5Gold != null ? 'Live nga MT5 (broker)' : 'Çmim reference (spot)'} icon={Activity}
+        <StatusCard label={t('Ari (XAU/USD)')} value={mt5Gold != null ? `$${mt5Gold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : assets[0]?.current_price ? `$${Number(assets[0].current_price).toLocaleString()}` : '—'}
+          sub={mt5Gold != null ? t('Live nga MT5 (broker)') : t('Çmim reference (spot)')} icon={Activity}
           status="neutral" onClick={() => onNavigate('market_prices')} />
       </div>
 
@@ -148,11 +150,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-amber-300 font-semibold text-sm">Arsyetimi i Robotit s'është konfiguruar</p>
-            <p className="text-amber-400/80 text-xs mt-0.5">
-              Një administrator duhet ta aktivizojë inteligjencën e Robotit te paneli <strong>Admin</strong>.
-              Motori matematik punon edhe pa të; kjo shton arsyetimin cilësor të Robotit.
-            </p>
+            <p className="text-amber-300 font-semibold text-sm">{t('Arsyetimi i Robotit s\'është konfiguruar')}</p>
+            <p className="text-amber-400/80 text-xs mt-0.5" dangerouslySetInnerHTML={{ __html: t('Një administrator duhet ta aktivizojë inteligjencën e Robotit te paneli <strong>Admin</strong>. Motori matematik punon edhe pa të; kjo shton arsyetimin cilësor të Robotit.') }} />
           </div>
         </div>
       )}
@@ -160,7 +159,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
       {/* Grafiku kryesor — Ari (XAUUSD) nga TradingView */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800 flex-wrap gap-2">
-          <h3 className="text-white font-semibold flex items-center gap-2"><BarChart3 className="w-4 h-4 text-amber-400" />Ari — XAU/USD</h3>
+          <h3 className="text-white font-semibold flex items-center gap-2"><BarChart3 className="w-4 h-4 text-amber-400" />{t('Ari — XAU/USD')}</h3>
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
               {[
@@ -173,7 +172,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                 </button>
               ))}
             </div>
-            <button onClick={() => onNavigate('market_prices')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">Tregto <ArrowRight className="w-3 h-3" /></button>
+            <button onClick={() => onNavigate('market_prices')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">{t('Tregto')} <ArrowRight className="w-3 h-3" /></button>
           </div>
         </div>
         <div className="h-[440px]"><TradingViewChart symbol="XAUUSD" timeframe={chartTf} /></div>
@@ -184,8 +183,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
           {/* Çmimet e tregut */}
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />Çmimet e tregut</h3>
-              <button onClick={() => onNavigate('market_prices')} className="text-amber-400 text-xs hover:text-amber-300 transition-colors flex items-center gap-1">Të gjitha <ArrowRight className="w-3 h-3" /></button>
+              <h3 className="text-white font-semibold flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />{t('Çmimet e tregut')}</h3>
+              <button onClick={() => onNavigate('market_prices')} className="text-amber-400 text-xs hover:text-amber-300 transition-colors flex items-center gap-1">{t('Të gjitha')} <ArrowRight className="w-3 h-3" /></button>
             </div>
             {loading ? (
               <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-11 bg-gray-800 rounded-xl animate-pulse" />)}</div>
@@ -212,14 +211,14 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
 
           {/* Statusi MetaTrader / Auto-Trade */}
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Cloud className="w-4 h-4 text-blue-400" />Auto-Trade (MetaTrader)</h3>
+            <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Cloud className="w-4 h-4 text-blue-400" />{t('Auto-Trade (MetaTrader)')}</h3>
             {!metaApi?.account_id ? (
               <div className="bg-gray-800/50 rounded-xl p-4 flex items-start gap-3">
                 <WifiOff className="w-5 h-5 text-gray-500 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-gray-300 text-sm font-medium">MetaTrader s'është i lidhur</p>
-                  <p className="text-gray-500 text-xs mt-0.5">Lidh llogarinë tënde MT5 (via MetaApi) për ekzekutim automatik me mbrojtje rreziku — demo i pari.</p>
-                  <button onClick={() => onNavigate('metatrader')} className="mt-2 text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">Lidh tani <ArrowRight className="w-3 h-3" /></button>
+                  <p className="text-gray-300 text-sm font-medium">{t('MetaTrader s\'është i lidhur')}</p>
+                  <p className="text-gray-500 text-xs mt-0.5">{t('Lidh llogarinë tënde MT5 (via MetaApi) për ekzekutim automatik me mbrojtje rreziku — demo i pari.')}</p>
+                  <button onClick={() => onNavigate('metatrader')} className="mt-2 text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">{t('Lidh tani')} <ArrowRight className="w-3 h-3" /></button>
                 </div>
               </div>
             ) : (
@@ -227,30 +226,30 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                 <div className="flex items-center justify-between px-3 py-2.5 bg-gray-800/50 rounded-xl">
                   <span className="flex items-center gap-2 text-sm">
                     {autoTradeOn ? <Wifi className="w-4 h-4 text-green-400" /> : <WifiOff className="w-4 h-4 text-gray-500" />}
-                    <span className="text-white font-medium">Auto-Trade</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${autoTradeOn ? 'bg-green-500/15 text-green-400' : 'bg-gray-700 text-gray-400'}`}>{autoTradeOn ? 'aktiv' : 'i fikur'}</span>
+                    <span className="text-white font-medium">{t('Auto-Trade')}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${autoTradeOn ? 'bg-green-500/15 text-green-400' : 'bg-gray-700 text-gray-400'}`}>{autoTradeOn ? t('aktiv') : t('i fikur')}</span>
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${metaApi?.mode === 'demo' ? 'bg-blue-500/15 text-blue-400' : 'bg-red-500/15 text-red-400'}`}>{metaApi?.mode?.toUpperCase()}</span>
                 </div>
                 {metaApi?.kill_switch && (
                   <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-                    <ShieldCheck className="w-4 h-4" />Kill-switch aktiv — tregtitë e bllokuara.
+                    <ShieldCheck className="w-4 h-4" />{t('Kill-switch aktiv — tregtitë e bllokuara.')}
                   </div>
                 )}
                 {/* Pozicionet aktive REALE + fitim/humbje live */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="bg-gray-800/50 rounded-xl px-3 py-2 text-center">
-                    <div className="text-gray-500 text-[10px]">Aktive tani</div>
+                    <div className="text-gray-500 text-[10px]">{t('Aktive tani')}</div>
                     <div className="text-white font-bold text-sm">{positions.length}</div>
                   </div>
                   <div className="bg-gray-800/50 rounded-xl px-3 py-2 text-center">
-                    <div className="text-gray-500 text-[10px]">Fitim/Humbje</div>
+                    <div className="text-gray-500 text-[10px]">{t('Fitim/Humbje')}</div>
                     <div className={`font-bold text-sm ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)}
                     </div>
                   </div>
                   <div className="bg-gray-800/50 rounded-xl px-3 py-2 text-center">
-                    <div className="text-gray-500 text-[10px]">Ekzekutime sot</div>
+                    <div className="text-gray-500 text-[10px]">{t('Ekzekutime sot')}</div>
                     <div className="text-white font-bold text-sm">{autoTradesToday}</div>
                   </div>
                 </div>
@@ -262,9 +261,9 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                       return (
                         <div key={p.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-1.5">
                           <span className="flex items-center gap-2">
-                            <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? 'BLEJ' : 'SHIT'}</span>
+                            <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
                             <span className="text-white">{p.symbol}</span>
-                            <span className="text-gray-500">{p.volume} lot</span>
+                            <span className="text-gray-500">{t('{vol} lot', { vol: p.volume })}</span>
                           </span>
                           <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)}</span>
                         </div>
@@ -272,7 +271,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                     })}
                   </div>
                 )}
-                <button onClick={() => onNavigate('market_prices')} className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">Menaxho te Tregto Live <ArrowRight className="w-3 h-3" /></button>
+                <button onClick={() => onNavigate('market_prices')} className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">{t('Menaxho te Tregto Live')} <ArrowRight className="w-3 h-3" /></button>
               </div>
             )}
           </div>
@@ -282,17 +281,17 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
           {/* Sinjalet e fundit */}
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />Sinjalet e fundit</h3>
-              <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">Të gjitha <ArrowRight className="w-3 h-3" /></button>
+              <h3 className="text-white font-semibold flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet e fundit')}</h3>
+              <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1">{t('Të gjitha')} <ArrowRight className="w-3 h-3" /></button>
             </div>
             {loading ? (
               <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-20 bg-gray-800 rounded-xl animate-pulse" />)}</div>
             ) : signals.length === 0 ? (
               <div className="text-center py-8">
                 <Zap className="w-8 h-8 text-gray-700 mx-auto mb-2" />
-                <p className="text-gray-500 text-sm">Asnjë sinjal aktiv</p>
-                <p className="text-gray-600 text-xs mt-1">Shiko tab-in "Motori AI" te Sinjalet</p>
-                <button onClick={() => onNavigate('signals')} className="mt-3 text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 mx-auto"><Zap className="w-3 h-3" />Shko te Sinjalet</button>
+                <p className="text-gray-500 text-sm">{t('Asnjë sinjal aktiv')}</p>
+                <p className="text-gray-600 text-xs mt-1">{t('Shiko tab-in "Motori AI" te Sinjalet')}</p>
+                <button onClick={() => onNavigate('signals')} className="mt-3 text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 mx-auto"><Zap className="w-3 h-3" />{t('Shko te Sinjalet')}</button>
               </div>
             ) : (
               <div className="space-y-2">
@@ -301,20 +300,20 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2">
                         <span className="text-white text-sm font-bold">{s.symbol}</span>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? 'BLEJ' : s.type === 'sell' ? 'SHIT' : s.type}</span>
-                        <span className="text-[10px] text-gray-500 bg-gray-700/50 px-1.5 py-0.5 rounded">{sourceLabel[s.source] || s.source}</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : s.type === 'sell' ? t('SHIT') : s.type}</span>
+                        <span className="text-[10px] text-gray-500 bg-gray-700/50 px-1.5 py-0.5 rounded">{sourceLabel[s.source] ? t(sourceLabel[s.source]) : s.source}</span>
                       </div>
                       <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
                     </div>
                     {(s.entry_price || s.target_price) && (
                       <div className="flex items-center gap-3 mb-1 text-xs flex-wrap">
-                        {s.entry_price && <span className="text-gray-400">Hyrje: <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
-                        {s.target_price && <span className="text-gray-400">Objektiv: <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
-                        {s.stop_loss && <span className="text-gray-400">Stop: <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
+                        {s.entry_price && <span className="text-gray-400">{t('Hyrje:')} <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
+                        {s.target_price && <span className="text-gray-400">{t('Objektiv:')} <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
+                        {s.stop_loss && <span className="text-gray-400">{t('Stop:')} <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
                       </div>
                     )}
                     <p className="text-gray-500 text-xs line-clamp-1">{s.analysis}</p>
-                    <div className="text-[10px] text-gray-600 mt-1">🕒 Gjeneruar: {new Date(s.created_at).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                    <div className="text-[10px] text-gray-600 mt-1">🕒 {t('Gjeneruar: {time}', { time: new Date(s.created_at).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) })}</div>
                   </button>
                 ))}
               </div>
@@ -323,7 +322,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
 
           {/* Veprime të shpejta */}
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-3 text-sm">Veprime të shpejta</h3>
+            <h3 className="text-white font-semibold mb-3 text-sm">{t('Veprime të shpejta')}</h3>
             <div className="space-y-2">
               {[
                 { label: 'Shiko sinjalet (Motori AI)', icon: Zap, page: 'signals' as Page, color: 'bg-amber-500 hover:bg-amber-400 text-gray-950', bold: true },
@@ -335,7 +334,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                 return (
                   <button key={a.label} onClick={() => onNavigate(a.page)} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-all ${a.color}`}>
                     <Icon className="w-4 h-4 flex-shrink-0" />
-                    <span className={a.bold ? 'font-semibold' : 'font-medium'}>{a.label}</span>
+                    <span className={a.bold ? 'font-semibold' : 'font-medium'}>{t(a.label)}</span>
                     <ArrowRight className="w-3.5 h-3.5 ml-auto opacity-60" />
                   </button>
                 );

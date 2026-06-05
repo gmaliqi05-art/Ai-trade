@@ -15,6 +15,7 @@ import {
   type AccountInfo, type HistoryDeal, type OpenPosition,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
+import { useI18n } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
 interface Signal {
@@ -34,19 +35,20 @@ const SIGNAL_FRESH_MIN = 30;
 const signalAgeMin = (iso?: string | null) => (iso ? (Date.now() - new Date(iso).getTime()) / 60000 : Infinity);
 const signalIsFresh = (iso?: string | null) => signalAgeMin(iso) <= SIGNAL_FRESH_MIN;
 
-function errText(code: string, message?: string): string {
+function errText(t: (k: string) => string, code: string, message?: string): string {
   const map: Record<string, string> = {
-    metaapi_not_configured: 'Lidh llogarinë MT5 te Lidhja & Konfigurimi para se të tregtosh.',
-    metaapi_unreachable: "S'u arrit MetaApi — kontrollo lidhjen.",
-    kill_switch: 'Kill-switch është aktiv — çaktivizoje te Lidhja & Konfigurimi.',
-    max_open_trades: 'Arritur limiti i pozicioneve të hapura.',
-    max_daily_loss: 'Arritur limiti i humbjes ditore.',
+    metaapi_not_configured: t('Lidh llogarinë MT5 te Lidhja & Konfigurimi para se të tregtosh.'),
+    metaapi_unreachable: t("S'u arrit MetaApi — kontrollo lidhjen."),
+    kill_switch: t('Kill-switch është aktiv — çaktivizoje te Lidhja & Konfigurimi.'),
+    max_open_trades: t('Arritur limiti i pozicioneve të hapura.'),
+    max_daily_loss: t('Arritur limiti i humbjes ditore.'),
   };
   return map[code] || message || code;
 }
 
 export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: ClientPage) => void }) {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [doneSignals, setDoneSignals] = useState<Signal[]>([]);
@@ -147,13 +149,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   const handleTrade = async () => {
     const vol = parseFloat(lot);
-    if (isNaN(vol) || vol <= 0) { setTradeMsg({ type: 'error', text: 'Vendos një lot të vlefshëm (p.sh. 0.01).' }); return; }
-    if (!metaConfigured) { setTradeMsg({ type: 'error', text: errText('metaapi_not_configured') }); return; }
+    if (isNaN(vol) || vol <= 0) { setTradeMsg({ type: 'error', text: t('Vendos një lot të vlefshëm (p.sh. 0.01).') }); return; }
+    if (!metaConfigured) { setTradeMsg({ type: 'error', text: errText(t, 'metaapi_not_configured') }); return; }
     // Nëse tregtia bazohet në një sinjal, sigurohu që sinjali është ende i freskët.
     if (appliedSignalId) {
       const applied = signals.find(s => s.id === appliedSignalId);
       if (applied && !signalIsFresh(applied.created_at)) {
-        setTradeMsg({ type: 'error', text: `Sinjali është vjetërsuar (mbi ${SIGNAL_FRESH_MIN} min) — mos tregto mbi të, prit një sinjal të ri.` });
+        setTradeMsg({ type: 'error', text: t('Sinjali është vjetërsuar (mbi {min} min) — mos tregto mbi të, prit një sinjal të ri.', { min: SIGNAL_FRESH_MIN }) });
         return;
       }
     }
@@ -166,14 +168,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       stopLoss: sl, takeProfit: tp, entryPrice: entry,
       signalId: appliedSignalId ?? undefined,
     });
-    if (r.error) setTradeMsg({ type: 'error', text: errText(r.error, r.message) });
+    if (r.error) setTradeMsg({ type: 'error', text: errText(t, r.error, r.message) });
     else {
-      const dir = tradeType === 'buy' ? 'BLEJ' : 'SHIT';
+      const dir = tradeType === 'buy' ? t('BLEJ') : t('SHIT');
       const extra = `${sl ? ` · SL ${sl}` : ''}${tp ? ` · TP ${tp}` : ''}`;
       if (r.pending) {
-        setTradeMsg({ type: 'success', text: `Porosi në pritje ${dir} ${selected} (${vol} lot) @ ${r.open_price ?? entry}${extra} — hyn automatik kur çmimi e arrin (${r.mode}).` });
+        setTradeMsg({ type: 'success', text: t('Porosi në pritje {dir} {sym} ({vol} lot) @ {price}{extra} — hyn automatik kur çmimi e arrin ({mode}).', { dir, sym: selected, vol, price: r.open_price ?? entry ?? '', extra, mode: r.mode ?? '' }) });
       } else {
-        setTradeMsg({ type: 'success', text: `Urdhër ${dir} ${selected} (${vol} lot)${extra} dërguar (${r.mode}).` });
+        setTradeMsg({ type: 'success', text: t('Urdhër {dir} {sym} ({vol} lot){extra} dërguar ({mode}).', { dir, sym: selected, vol, extra, mode: r.mode ?? '' }) });
       }
       fetchMeta();
     }
@@ -190,7 +192,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     // Mbrojtje: mos lejo tregti mbi sinjale të vjetra/po-skadojnë (çmimi ka lëvizur).
     if (!signalIsFresh(s.created_at)) {
       setAppliedSignalId(null);
-      setTradeMsg({ type: 'error', text: `Ky sinjal është i vjetër (mbi ${SIGNAL_FRESH_MIN} min) — çmimi ka lëvizur dhe rezultatet do të ishin të dobëta. Prit një sinjal të ri.` });
+      setTradeMsg({ type: 'error', text: t('Ky sinjal është i vjetër (mbi {min} min) — çmimi ka lëvizur dhe rezultatet do të ishin të dobëta. Prit një sinjal të ri.', { min: SIGNAL_FRESH_MIN }) });
       return;
     }
     setSelected(s.symbol);
@@ -232,8 +234,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       slInput ? parseFloat(slInput) : undefined,
       tpInput ? parseFloat(tpInput) : undefined,
     );
-    if (r.error) setModifyMsg({ type: 'error', text: errText(r.error, r.message) });
-    else { setModifyMsg({ type: 'success', text: 'SL/TP u përditësuan në MT5.' }); fetchMeta(); }
+    if (r.error) setModifyMsg({ type: 'error', text: errText(t, r.error, r.message) });
+    else { setModifyMsg({ type: 'success', text: t('SL/TP u përditësuan në MT5.') }); fetchMeta(); }
     setModifyBusy(false);
   };
 
@@ -245,10 +247,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Activity className="w-6 h-6 text-amber-400" />MetaTrader 5 — Live
+            <Activity className="w-6 h-6 text-amber-400" />{t('MetaTrader 5 — Live')}
           </h2>
           <p className="text-gray-400 text-sm mt-1">
-            Llogaria jote reale MT5, grafiku, tregtimi dhe trade-t — live
+            {t('Llogaria jote reale MT5, grafiku, tregtimi dhe trade-t — live')}
             {lastUpdated && <span className="ml-2 text-gray-600 text-xs">· {lastUpdated.toLocaleTimeString()}</span>}
           </p>
         </div>
@@ -256,7 +258,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
             !metaConfigured ? 'bg-gray-700/50 text-gray-400 border-gray-600'
             : mtMode === 'live' ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
-          }`}>{!metaConfigured ? 'PA LIDHJE' : mtMode === 'live' ? '● LIVE' : '● DEMO'}</span>
+          }`}>{!metaConfigured ? t('PA LIDHJE') : mtMode === 'live' ? t('● LIVE') : t('● DEMO')}</span>
           <button onClick={() => { fetchBase(); fetchMeta(); }} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all"><RefreshCw className="w-4 h-4" /></button>
         </div>
       </div>
@@ -265,9 +267,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
           <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-amber-300 font-medium text-sm">MT5 s'është i lidhur</p>
-            <p className="text-amber-400/80 text-xs mt-0.5">Lidh llogarinë tënde MT5 (Vantage) te <strong>Lidhja & Konfigurimi</strong> për ta parë live këtu.</p>
-            <button onClick={() => onNavigate('metatrader')} className="mt-2 text-xs text-amber-400 hover:text-amber-300 underline">Shko te Lidhja & Konfigurimi</button>
+            <p className="text-amber-300 font-medium text-sm">{t("MT5 s'është i lidhur")}</p>
+            <p className="text-amber-400/80 text-xs mt-0.5" dangerouslySetInnerHTML={{ __html: t('Lidh llogarinë tënde MT5 (Vantage) te <strong>Lidhja & Konfigurimi</strong> për ta parë live këtu.') }} />
+            <button onClick={() => onNavigate('metatrader')} className="mt-2 text-xs text-amber-400 hover:text-amber-300 underline">{t('Shko te Lidhja & Konfigurimi')}</button>
           </div>
         </div>
       )}
@@ -276,10 +278,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {metaConfigured && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: 'Balanca', value: `${money(account?.balance)} ${cur}`, icon: Wallet, cls: 'text-white' },
-            { label: 'Equity', value: `${money(account?.equity)} ${cur}`, icon: Activity, cls: 'text-white' },
-            { label: 'Fitim/Humbje', value: `${(account?.profit ?? 0) >= 0 ? '+' : ''}${money(account?.profit)}`, icon: TrendingUp, cls: (account?.profit ?? 0) >= 0 ? 'text-green-400' : 'text-red-400' },
-            { label: 'Marzh i lirë', value: `${money(account?.freeMargin)} ${cur}`, icon: Wallet, cls: 'text-white' },
+            { label: t('Balanca'), value: `${money(account?.balance)} ${cur}`, icon: Wallet, cls: 'text-white' },
+            { label: t('Equity'), value: `${money(account?.equity)} ${cur}`, icon: Activity, cls: 'text-white' },
+            { label: t('Fitim/Humbje'), value: `${(account?.profit ?? 0) >= 0 ? '+' : ''}${money(account?.profit)}`, icon: TrendingUp, cls: (account?.profit ?? 0) >= 0 ? 'text-green-400' : 'text-red-400' },
+            { label: t('Marzh i lirë'), value: `${money(account?.freeMargin)} ${cur}`, icon: Wallet, cls: 'text-white' },
           ].map(c => {
             const Icon = c.icon;
             return (
@@ -311,16 +313,16 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             </div>
             <div className="px-2 pb-2">
               {candles.length === 0 ? (
-                <div className="h-[460px] flex items-center justify-center text-gray-600 text-sm">Po ngarkohet grafiku…</div>
+                <div className="h-[460px] flex items-center justify-center text-gray-600 text-sm">{t('Po ngarkohet grafiku…')}</div>
               ) : (
                 <Mt5Chart candles={candles} lines={chartLines} height={460} />
               )}
             </div>
             {posForSymbol && (
               <div className="flex items-center gap-3 px-4 py-1.5 border-t border-gray-800 text-[11px] flex-wrap">
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-500" />Hyrje {posForSymbol.openPrice}</span>
-                {posForSymbol.stopLoss ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500" />SL {posForSymbol.stopLoss}</span> : <span className="text-gray-600">SL pa vendosur</span>}
-                {posForSymbol.takeProfit ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500" />TP {posForSymbol.takeProfit}</span> : <span className="text-gray-600">TP pa vendosur</span>}
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-500" />{t('Hyrje')} {posForSymbol.openPrice}</span>
+                {posForSymbol.stopLoss ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500" />SL {posForSymbol.stopLoss}</span> : <span className="text-gray-600">{t('SL pa vendosur')}</span>}
+                {posForSymbol.takeProfit ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500" />TP {posForSymbol.takeProfit}</span> : <span className="text-gray-600">{t('TP pa vendosur')}</span>}
               </div>
             )}
       </div>
@@ -329,13 +331,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       <div className="grid lg:grid-cols-3 gap-5">
         {/* Porosia BLEJ/SHIT */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3 h-fit">
-          <h3 className="text-white font-semibold text-sm">Porosi e re — {selected}</h3>
+          <h3 className="text-white font-semibold text-sm">{t('Porosi e re — {sym}', { sym: selected })}</h3>
           <div className="flex rounded-xl overflow-hidden border border-gray-700">
-            <button onClick={() => setTradeType('buy')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>BLEJ</button>
-            <button onClick={() => setTradeType('sell')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>SHIT</button>
+            <button onClick={() => setTradeType('buy')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('BLEJ')}</button>
+            <button onClick={() => setTradeType('sell')} className={`flex-1 py-2.5 text-sm font-semibold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('SHIT')}</button>
           </div>
           <div>
-            <label className="block text-gray-400 text-xs mb-1.5">Lot (madhësia)</label>
+            <label className="block text-gray-400 text-xs mb-1.5">{t('Lot (madhësia)')}</label>
             <input type="number" value={lot} onChange={e => setLot(e.target.value)} min="0.01" step="0.01"
               className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
           </div>
@@ -346,58 +348,58 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           </div>
           {/* Çmimi i hyrjes — nëse çmimi s'është aty, vendoset porosi NË PRITJE (hyn automatik kur arrin) */}
           <div>
-            <label className="block text-[10px] text-amber-400 mb-1">Çmimi i hyrjes <span className="text-gray-600">(bosh = tregu tani)</span></label>
-            <input type="number" step="0.01" value={newEntry} onChange={e => setNewEntry(e.target.value)} placeholder="hyrje tregu"
+            <label className="block text-[10px] text-amber-400 mb-1">{t('Çmimi i hyrjes')} <span className="text-gray-600">{t('(bosh = tregu tani)')}</span></label>
+            <input type="number" step="0.01" value={newEntry} onChange={e => setNewEntry(e.target.value)} placeholder={t('hyrje tregu')}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-amber-500" />
           </div>
           {/* SL / TP për porosinë e re (si te sistemi automatik; opsionale, ndryshoji lirisht) */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-red-400 mb-1">Stop Loss</label>
-              <input type="number" step="0.01" value={newSl} onChange={e => setNewSl(e.target.value)} placeholder="opsionale"
+              <label className="block text-[10px] text-red-400 mb-1">{t('Stop Loss')}</label>
+              <input type="number" step="0.01" value={newSl} onChange={e => setNewSl(e.target.value)} placeholder={t('opsionale')}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-red-500" />
             </div>
             <div>
-              <label className="block text-[10px] text-green-400 mb-1">Take Profit</label>
-              <input type="number" step="0.01" value={newTp} onChange={e => setNewTp(e.target.value)} placeholder="opsionale"
+              <label className="block text-[10px] text-green-400 mb-1">{t('Take Profit')}</label>
+              <input type="number" step="0.01" value={newTp} onChange={e => setNewTp(e.target.value)} placeholder={t('opsionale')}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
             </div>
           </div>
-          {appliedSignalId && <p className="text-[10px] text-amber-400/80">Hyrja, SL dhe TP u mbushën nga sinjali. Nëse çmimi s'është te hyrja, vendoset porosi në pritje që hyn automatik. Mund t'i ndryshosh para se të tregtosh.</p>}
+          {appliedSignalId && <p className="text-[10px] text-amber-400/80">{t("Hyrja, SL dhe TP u mbushën nga sinjali. Nëse çmimi s'është te hyrja, vendoset porosi në pritje që hyn automatik. Mund t'i ndryshosh para se të tregtosh.")}</p>}
           {tradeMsg && (
             <div className={`text-xs rounded-xl px-3 py-2 ${tradeMsg.type === 'success' ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-red-900/30 text-red-400 border border-red-800/50'}`}>{tradeMsg.text}</div>
           )}
           <button onClick={handleTrade} disabled={tradeLoading || !metaConfigured}
             className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${tradeType === 'buy' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
-            {tradeLoading && <Loader2 className="w-4 h-4 animate-spin" />}{tradeType === 'buy' ? 'BLEJ' : 'SHIT'} {selected}
+            {tradeLoading && <Loader2 className="w-4 h-4 animate-spin" />}{tradeType === 'buy' ? t('BLEJ') : t('SHIT')} {selected}
           </button>
           <button onClick={() => onNavigate('chart_analysis')} className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-xl py-2 text-xs font-medium transition-colors">
-            <Brain className="w-3.5 h-3.5" />Analizë AI për {selected}
+            <Brain className="w-3.5 h-3.5" />{t('Analizë AI për {sym}', { sym: selected })}
           </button>
 
           {/* Sinjali i fundit i gjeneruar nga sistemi — klik për ta tregtuar manualisht */}
           <div className="pt-3 border-t border-gray-800">
-            <div className="text-[11px] text-gray-500 mb-2 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />Sinjali i fundit (klik për ta tregtuar)</div>
+            <div className="text-[11px] text-gray-500 mb-2 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
             {latestSignal ? (
               <button onClick={() => applySignal(latestSignal)}
                 className={`w-full text-left rounded-xl px-3 py-2.5 border transition-colors ${appliedSignalId === latestSignal.id ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-800/40 border-gray-700/50 hover:bg-gray-800'}`}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="flex items-center gap-2">
                     <span className="text-white text-sm font-bold">{latestSignal.symbol}</span>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${latestSignal.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{latestSignal.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
-                    {!signalIsFresh(latestSignal.created_at) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">I VJETËR</span>}
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${latestSignal.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{latestSignal.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
+                    {!signalIsFresh(latestSignal.created_at) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
                   </span>
                   <span className="text-amber-400 text-xs font-semibold">{latestSignal.confidence}%</span>
                 </div>
                 <div className="flex gap-3 text-[10px] text-gray-400 flex-wrap">
-                  {latestSignal.entry_price && <span>Hyrje: <span className="text-white">{Number(latestSignal.entry_price).toLocaleString()}</span></span>}
+                  {latestSignal.entry_price && <span>{t('Hyrje:')} <span className="text-white">{Number(latestSignal.entry_price).toLocaleString()}</span></span>}
                   {latestSignal.target_price && <span>TP: <span className="text-green-400">{Number(latestSignal.target_price).toLocaleString()}</span></span>}
                   {latestSignal.stop_loss && <span>SL: <span className="text-red-400">{Number(latestSignal.stop_loss).toLocaleString()}</span></span>}
                 </div>
-                <div className="text-[10px] text-gray-600 mt-1">🕒 Gjeneruar: {fmtTime(latestSignal.created_at)}</div>
+                <div className="text-[10px] text-gray-600 mt-1">🕒 {t('Gjeneruar:')} {fmtTime(latestSignal.created_at)}</div>
               </button>
             ) : (
-              <p className="text-gray-600 text-xs text-center py-2">Asnjë sinjal i gjeneruar ende.</p>
+              <p className="text-gray-600 text-xs text-center py-2">{t('Asnjë sinjal i gjeneruar ende.')}</p>
             )}
           </div>
 
@@ -405,17 +407,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           {posForSymbol && (
             <div className="pt-3 border-t border-gray-800 space-y-2">
               <div className="text-xs font-semibold text-white flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] ${(posForSymbol.type || '').includes('BUY') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{(posForSymbol.type || '').includes('BUY') ? 'BLEJ' : 'SHIT'}</span>
-                Ndrysho SL / TP ({posForSymbol.volume} lot)
+                <span className={`px-2 py-0.5 rounded-full text-[10px] ${(posForSymbol.type || '').includes('BUY') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{(posForSymbol.type || '').includes('BUY') ? t('BLEJ') : t('SHIT')}</span>
+                {t('Ndrysho SL / TP ({vol} lot)', { vol: posForSymbol.volume })}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] text-red-400 mb-1">Stop Loss</label>
+                  <label className="block text-[10px] text-red-400 mb-1">{t('Stop Loss')}</label>
                   <input type="number" step="0.01" value={slInput} onChange={e => setSlInput(e.target.value)} placeholder="—"
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-red-500" />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-green-400 mb-1">Take Profit</label>
+                  <label className="block text-[10px] text-green-400 mb-1">{t('Take Profit')}</label>
                   <input type="number" step="0.01" value={tpInput} onChange={e => setTpInput(e.target.value)} placeholder="—"
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-green-500" />
                 </div>
@@ -425,9 +427,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               )}
               <button onClick={handleModify} disabled={modifyBusy}
                 className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold py-2 rounded-lg text-xs transition-all">
-                {modifyBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}Ruaj SL/TP në MT5
+                {modifyBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}{t('Ruaj SL/TP në MT5')}
               </button>
-              <p className="text-[10px] text-gray-600">Linjat duken në grafik: Hyrje (blu), SL (kuq), TP (jeshil).</p>
+              <p className="text-[10px] text-gray-600">{t('Linjat duken në grafik: Hyrje (blu), SL (kuq), TP (jeshil).')}</p>
             </div>
           )}
         </div>
@@ -435,11 +437,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         {/* Sinjalet (lista e plotë) — klik për të mbushur formën Porosi e re */}
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-4 h-fit">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />Sinjalet</h3>
-          <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300">Të gjitha</button>
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet')}</h3>
+          <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300">{t('Të gjitha')}</button>
         </div>
         {signals.length === 0 ? (
-          <p className="text-gray-600 text-xs text-center py-3">Asnjë sinjal aktiv tani.</p>
+          <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal aktiv tani.')}</p>
         ) : (
           <div className="grid sm:grid-cols-2 gap-2">
             {signals.map(s => {
@@ -449,17 +451,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 <div className="flex items-center justify-between mb-1">
                   <span className="flex items-center gap-2">
                     <span className="text-white text-sm font-bold">{s.symbol}</span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
-                    {!fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">I VJETËR</span>}
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
+                    {!fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
                   </span>
                   <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
                 </div>
                 <div className="flex gap-3 text-[11px] text-gray-400 flex-wrap">
-                  {s.entry_price && <span>Hyrje: <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
-                  {s.target_price && <span>Objektiv: <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
-                  {s.stop_loss && <span>Stop: <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
+                  {s.entry_price && <span>{t('Hyrje:')} <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
+                  {s.target_price && <span>{t('Objektiv:')} <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
+                  {s.stop_loss && <span>{t('Stop:')} <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
                 </div>
-                <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}{fresh ? '' : ' · mos tregto'}</div>
+                <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}{fresh ? '' : t(' · mos tregto')}</div>
               </button>
               );
             })}
@@ -474,20 +476,20 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* Trade-t e mbyllura (historiku real nga MT5) */}
       {metaConfigured && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><History className="w-4 h-4 text-amber-400" />Trade-t e mbyllura (7 ditët e fundit)</h3>
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><History className="w-4 h-4 text-amber-400" />{t('Trade-t e mbyllura (7 ditët e fundit)')}</h3>
           {history.length === 0 ? (
-            <p className="text-gray-600 text-xs text-center py-3">Asnjë trade i mbyllur ende.</p>
+            <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë trade i mbyllur ende.')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-gray-500 border-b border-gray-800">
-                    <th className="text-left font-medium py-2">Simboli</th>
-                    <th className="text-left font-medium py-2">Lloji</th>
-                    <th className="text-right font-medium py-2">Lot</th>
-                    <th className="text-right font-medium py-2">Çmimi</th>
-                    <th className="text-right font-medium py-2">Fitim/Humbje</th>
-                    <th className="text-right font-medium py-2">Koha</th>
+                    <th className="text-left font-medium py-2">{t('Simboli')}</th>
+                    <th className="text-left font-medium py-2">{t('Lloji')}</th>
+                    <th className="text-right font-medium py-2">{t('Lot')}</th>
+                    <th className="text-right font-medium py-2">{t('Çmimi')}</th>
+                    <th className="text-right font-medium py-2">{t('Fitim/Humbje')}</th>
+                    <th className="text-right font-medium py-2">{t('Koha')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/60">
@@ -497,7 +499,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                     return (
                       <tr key={d.id} className="hover:bg-gray-800/30">
                         <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
-                        <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? 'BLEJ' : 'SHIT'}</span></td>
+                        <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span></td>
                         <td className="py-2 text-right text-gray-300">{d.volume ?? '—'}</td>
                         <td className="py-2 text-right text-gray-300">{d.price ?? '—'}</td>
                         <td className={`py-2 text-right font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)}</td>

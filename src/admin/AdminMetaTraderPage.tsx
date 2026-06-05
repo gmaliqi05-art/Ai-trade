@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Monitor, RefreshCw, Wifi, WifiOff, User, Clock, Activity, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useI18n } from '../i18n/i18n';
 
 interface MTConnection {
   id: string;
@@ -17,6 +18,7 @@ interface MTConnection {
 }
 
 export default function AdminMetaTraderPage() {
+  const { t } = useI18n();
   const [connections, setConnections] = useState<MTConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -54,9 +56,9 @@ export default function AdminMetaTraderPage() {
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Monitor className="w-5 h-5 text-red-400" />
-            Lidhjet MetaTrader
+            {t('Lidhjet MetaTrader')}
           </h2>
-          <p className="text-gray-500 text-sm mt-1">Monitoro të gjitha lidhjet MT4/MT5 të përdoruesve</p>
+          <p className="text-gray-500 text-sm mt-1">{t('Monitoro të gjitha lidhjet MT4/MT5 të përdoruesve')}</p>
         </div>
         <button
           onClick={fetchConnections}
@@ -64,15 +66,15 @@ export default function AdminMetaTraderPage() {
           className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-gray-400 hover:text-white text-sm transition-all"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Rifresko
+          {t('Rifresko')}
         </button>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Lidhje gjithsej', value: connections.length, icon: Monitor, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-          { label: 'Online tani', value: online, icon: Wifi, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-          { label: 'Aktive', value: active, icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+          { label: t('Lidhje gjithsej'), value: connections.length, icon: Monitor, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+          { label: t('Online tani'), value: online, icon: Wifi, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+          { label: t('Aktive'), value: active, icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10' },
         ].map(stat => {
           const Icon = stat.icon;
           return (
@@ -95,7 +97,7 @@ export default function AdminMetaTraderPage() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Kërko sipas përdoruesit, simbolit, serverit..."
+            placeholder={t('Kërko sipas përdoruesit, simbolit, serverit...')}
             className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-500/50 placeholder-gray-600"
           />
         </div>
@@ -111,12 +113,12 @@ export default function AdminMetaTraderPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="text-left text-gray-500 font-medium px-5 py-3">Përdoruesi</th>
-                  <th className="text-left text-gray-500 font-medium px-5 py-3">Platforma</th>
-                  <th className="text-left text-gray-500 font-medium px-5 py-3">Serveri</th>
-                  <th className="text-left text-gray-500 font-medium px-5 py-3">Simboli</th>
-                  <th className="text-center text-gray-500 font-medium px-5 py-3">Statusi</th>
-                  <th className="text-right text-gray-500 font-medium px-5 py-3">Ping i fundit</th>
+                  <th className="text-left text-gray-500 font-medium px-5 py-3">{t('Përdoruesi')}</th>
+                  <th className="text-left text-gray-500 font-medium px-5 py-3">{t('Platforma')}</th>
+                  <th className="text-left text-gray-500 font-medium px-5 py-3">{t('Serveri')}</th>
+                  <th className="text-left text-gray-500 font-medium px-5 py-3">{t('Simboli')}</th>
+                  <th className="text-center text-gray-500 font-medium px-5 py-3">{t('Statusi')}</th>
+                  <th className="text-right text-gray-500 font-medium px-5 py-3">{t('Ping i fundit')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/50">
@@ -147,7 +149,7 @@ export default function AdminMetaTraderPage() {
                             : <WifiOff className="w-3.5 h-3.5 text-gray-600" />
                           }
                           <span className={`text-xs font-medium ${online ? 'text-emerald-400' : 'text-gray-500'}`}>
-                            {online ? 'Online' : conn.is_active ? 'Në pritje' : 'Joaktiv'}
+                            {online ? t('Online') : conn.is_active ? t('Në pritje') : t('Joaktiv')}
                           </span>
                         </div>
                       </td>
@@ -158,7 +160,7 @@ export default function AdminMetaTraderPage() {
                             {new Date(conn.last_ping_at).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </div>
                         ) : (
-                          <span className="text-gray-600 text-xs">Asnjëherë</span>
+                          <span className="text-gray-600 text-xs">{t('Asnjëherë')}</span>
                         )}
                       </td>
                     </tr>
@@ -168,7 +170,7 @@ export default function AdminMetaTraderPage() {
             </table>
           )}
           {!loading && filtered.length === 0 && (
-            <div className="text-center py-12 text-gray-500 text-sm">Asnjë lidhje MetaTrader e gjetur</div>
+            <div className="text-center py-12 text-gray-500 text-sm">{t('Asnjë lidhje MetaTrader e gjetur')}</div>
           )}
         </div>
       </div>

@@ -7,6 +7,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { ClientPage } from '../App';
+import { useI18n } from '../i18n/i18n';
+import LanguageSwitcher from '../i18n/LanguageSwitcher';
 
 interface ClientLayoutProps {
   currentPage: ClientPage;
@@ -61,6 +63,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const { profile, user, signOut } = useAuth();
+  const { t } = useI18n();
 
   const fetchUnread = useCallback(async () => {
     if (!user) return;
@@ -87,7 +90,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
         }`}
       >
         <Icon className="w-4 h-4 flex-shrink-0" />
-        {!collapsed && <span className="text-sm font-medium truncate">{item.label}</span>}
+        {!collapsed && <span className="text-sm font-medium truncate">{t(item.label)}</span>}
         {active && !collapsed && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-gray-950 opacity-60" />}
         {item.id === 'notifications' && unreadCount > 0 && (
           <span className={`${collapsed ? 'absolute -top-1 -right-1' : 'ml-auto'} bg-amber-500 text-gray-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center`}>
@@ -107,7 +110,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
         {!collapsed && (
           <div>
             <div className="text-white font-bold text-sm leading-none">GOLDTRADE</div>
-            <div className="text-amber-400 text-[10px] font-semibold tracking-[0.2em] uppercase mt-0.5">Sinjale AI</div>
+            <div className="text-amber-400 text-[10px] font-semibold tracking-[0.2em] uppercase mt-0.5">{t('Sinjale AI')}</div>
           </div>
         )}
       </div>
@@ -116,7 +119,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
         {navSections.map(section => (
           <div key={section.label} className="mb-4">
             {!collapsed && (
-              <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{section.label}</div>
+              <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{t(section.label)}</div>
             )}
             <div className="space-y-0.5">
               {section.items.map(item => <NavItem key={item.id} item={item} />)}
@@ -133,7 +136,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-white text-xs font-medium truncate">{profile?.full_name || 'Trader'}</div>
-              <div className="text-gray-500 text-[10px] capitalize">Plani {profile?.subscription_tier || 'free'}</div>
+              <div className="text-gray-500 text-[10px] capitalize">{t('Plani {tier}', { tier: profile?.subscription_tier || 'free' })}</div>
             </div>
           </div>
         )}
@@ -142,7 +145,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-all"
         >
           <LogOut className="w-4 h-4 flex-shrink-0" />
-          {!collapsed && <span className="text-sm font-medium">Dil</span>}
+          {!collapsed && <span className="text-sm font-medium">{t('Dil')}</span>}
         </button>
       </div>
     </div>
@@ -177,10 +180,11 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
             <button onClick={() => setMobileOpen(true)} className="lg:hidden text-gray-400 hover:text-white">
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="font-semibold text-sm text-white">{pageLabels[currentPage] || currentPage}</h1>
+            <h1 className="font-semibold text-sm text-white">{t(pageLabels[currentPage] || currentPage)}</h1>
           </div>
 
           <div className="flex items-center gap-2">
+            <LanguageSwitcher />
             <button
               onClick={() => onNavigate('notifications')}
               className="relative p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
