@@ -432,7 +432,6 @@ async function inNewsBlackout(): Promise<boolean> {
   return times.some((t) => now >= t - NEWS_BEFORE_MIN * 60000 && now <= t + NEWS_AFTER_MIN * 60000);
 }
 
-const BREAKEVEN_R = 1.0;
 const MAX_HEAT_PCT = 6; // rreziku total i hapur (portfolio heat) s'kalon 6% të kapitalit
 
 Deno.serve(async (req: Request) => {
@@ -504,58 +503,44 @@ Deno.serve(async (req: Request) => {
         const sl = p.stopLoss != null ? Number(p.stopLoss) : null;
         if (!Number.isFinite(entry) || !Number.isFinite(cur)) continue;
 
-        // ---- SCALP: "qëndro gjithmonë në profit" (dalje e shpejtë + break-even agresiv) ----
-        if (isScalpPosition(p)) {
-          const moved = isBuy ? cur - entry : entry - cur; // $ në favor
-          const sym = (p.symbol || "XAUUSD").toUpperCase();
-          // 1) Dil nëse momentum-i 1m kthehet ndërsa jemi në profit (mbylle në fitim).
-          if (moved > 0.3) {
-            const c1 = await get1m(sym);
-            if (c1 && scalpReversal(c1, isBuy)) {
-              try { const r = await maTrade(cfg, { actionType: "POSITION_CLOSE_ID", positionId: p.id }); summary.push({ user: cfg.user_id, scalp_exit: p.id, reason: "reversal_lock_profit", ok: r.ok }); } catch { /* */ }
-              continue;
-            }
+        // ---- MENAXHIM I PËRBASHKËT: trailing progresiv për ÇDO pozicion ----
+        const moved = isBuy ? cur - entry : entry - cur; // $ në favor
+        const scalp = isScalpPosition(p);
+
+        // 1) SCALP: dil shpejt nëse momentum-i 1m kthehet ndërsa je në profit (mbylle në fitim).
+        if (scalp && moved > 0.3) {
+          const c1 = await get1m((p.symbol || "XAUUSD").toUpperCase());
+          if (c1 && scalpReversal(c1, isBuy)) {
+            try { const r = await maTrade(cfg, { actionType: "POSITION_CLOSE_ID", positionId: p.id }); summary.push({ user: cfg.user_id, scalp_exit: p.id, reason: "reversal_lock_profit", ok: r.ok }); } catch { /* */ }
+            continue;
           }
-          // 2) Trailing me shkallë RELATIV NDAJ TP-së (fitimit të synuar): mbron fitimin progresivisht.
-          //    +¼ TP → break-even; +½ TP → mbyll +¼ TP; +¾ TP → mbyll +½ TP. (Nëse s'ka TP: bie te R.)
-          if (sl != null) {
-            const tp = p.takeProfit != null ? Number(p.takeProfit) : null;
-            const tpDist = (tp != null && Number.isFinite(tp)) ? Math.abs(tp - entry) : 0;
-            let newSL: number | null = null;
-            if (tpDist > 0) {
-              if (moved >= 0.75 * tpDist) newSL = isBuy ? entry + 0.5 * tpDist : entry - 0.5 * tpDist;
-              else if (moved >= 0.5 * tpDist) newSL = isBuy ? entry + 0.25 * tpDist : entry - 0.25 * tpDist;
-              else if (moved >= 0.25 * tpDist) newSL = isBuy ? entry + 0.02 * tpDist : entry - 0.02 * tpDist; // ~break-even
-            } else {
-              const R = Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
-              if (moved >= 1.25 * R) newSL = isBuy ? entry + 1.0 * R : entry - 1.0 * R;
-              else if (moved >= 1.0 * R) newSL = isBuy ? entry + 0.5 * R : entry - 0.5 * R;
-              else if (moved >= 0.5 * R) newSL = isBuy ? entry + 0.025 * R : entry - 0.025 * R;
-            }
-            if (newSL != null) {
-              const better = isBuy ? newSL > sl : newSL < sl;
-              if (better) {
-                const beSL = Math.round(newSL * 100) / 100;
-                try { const r = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: p.id, stopLoss: beSL, takeProfit: p.takeProfit ?? undefined }); summary.push({ user: cfg.user_id, scalp_trail: p.id, sl: beSL, ok: r.ok }); } catch { /* */ }
-              }
-            }
-          }
-          continue; // scalp s'kalon te break-even-i swing
         }
 
-        // ---- SWING: BREAK-EVEN te +1R (ekzistues) ----
-        if (sl == null) continue;
-        const riskDist = Math.abs(entry - sl);
-        if (!(riskDist > 0)) continue;
-        const moved = isBuy ? cur - entry : entry - cur;
-        if (moved < riskDist * BREAKEVEN_R) continue;
-        const alreadyBE = isBuy ? sl >= entry : sl <= entry;
-        if (alreadyBE) continue;
-        const beSL = Math.round((isBuy ? entry + 0.1 * riskDist : entry - 0.1 * riskDist) * 100) / 100;
-        try {
-          const r = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: p.id, stopLoss: beSL, takeProfit: p.takeProfit ?? undefined });
-          summary.push({ user: cfg.user_id, trailing: p.id, breakeven: r.ok });
-        } catch { /* injoro */ }
+        // 2) TRAILING progresiv RELATIV NDAJ TP-së — për ÇDO pozicion (manual, sinjal, swing, scalp,
+        //    madje edhe ata të hapur direkt në MT5). SL ndjek profitin: +¼ TP → break-even;
+        //    +½ TP → mbyll +¼ TP; +¾ TP → mbyll +½ TP. (Pa TP: bie te R nga distanca e SL-së.)
+        if (sl != null) {
+          const tp = p.takeProfit != null ? Number(p.takeProfit) : null;
+          const tpDist = (tp != null && Number.isFinite(tp)) ? Math.abs(tp - entry) : 0;
+          let newSL: number | null = null;
+          if (tpDist > 0) {
+            if (moved >= 0.75 * tpDist) newSL = isBuy ? entry + 0.5 * tpDist : entry - 0.5 * tpDist;
+            else if (moved >= 0.5 * tpDist) newSL = isBuy ? entry + 0.25 * tpDist : entry - 0.25 * tpDist;
+            else if (moved >= 0.25 * tpDist) newSL = isBuy ? entry + 0.02 * tpDist : entry - 0.02 * tpDist; // ~break-even
+          } else {
+            const R = Math.max(0.3, Math.abs(entry - sl) || Number(cfg.scalp_sl_usd ?? 2));
+            if (moved >= 1.25 * R) newSL = isBuy ? entry + 1.0 * R : entry - 1.0 * R;
+            else if (moved >= 1.0 * R) newSL = isBuy ? entry + 0.5 * R : entry - 0.5 * R;
+            else if (moved >= 0.5 * R) newSL = isBuy ? entry + 0.025 * R : entry - 0.025 * R;
+          }
+          if (newSL != null) {
+            const better = isBuy ? newSL > sl : newSL < sl;
+            if (better) {
+              const beSL = Math.round(newSL * 100) / 100;
+              try { const r = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: p.id, stopLoss: beSL, takeProfit: p.takeProfit ?? undefined }); summary.push({ user: cfg.user_id, trail: p.id, sl: beSL, ok: r.ok }); } catch { /* */ }
+            }
+          }
+        }
       }
 
       const allowed = new Set((cfg.auto_symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
