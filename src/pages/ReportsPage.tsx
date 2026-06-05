@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar } from 'lucide-react';
 import { loadTradeHistory, checkMetaApiConnection, type HistoryDeal, type AccountInfo } from '../services/metaapi';
+import { useI18n } from '../i18n/i18n';
 
 // Një trade i mbyllur, i grupuar nga deal-et IN/OUT të MT5 sipas positionId.
 interface ClosedTrade {
@@ -81,8 +82,9 @@ const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('sq-A
 const colr = (n: number) => n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 'text-gray-400';
 
 export default function ReportsPage() {
+  const { t } = useI18n();
   const [period, setPeriod] = useState<number | 'today'>('today');
-  const periodLabel = period === 'today' ? 'Sot' : `${period} ditët e fundit`;
+  const periodLabel = period === 'today' ? t('Sot') : t('{period} ditët e fundit', { period });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
@@ -97,14 +99,14 @@ export default function ReportsPage() {
       const [chk, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(fetchDays)]);
       if (chk.error || hist.error) {
         if ((chk.error || hist.error) === 'metaapi_not_configured') { setNotConnected(true); setTrades([]); return; }
-        setError(chk.message || hist.message || 'S\'u lexuan dot të dhënat e tregtimit.'); return;
+        setError(chk.message || hist.message || t('S\'u lexuan dot të dhënat e tregtimit.')); return;
       }
       const acc = (chk.account || {}) as AccountInfo;
       setBalance(Number(acc.balance) || 0);
       setCurrency(acc.currency || '');
       setTrades(groupDeals((hist.deals || []) as HistoryDeal[]));
     } catch (e) {
-      setError((e as Error).message || 'Gabim gjatë leximit.');
+      setError((e as Error).message || t('Gabim gjatë leximit.'));
     } finally {
       setLoading(false);
     }
@@ -128,24 +130,24 @@ export default function ReportsPage() {
 
   const exportCSV = () => {
     const lines: string[] = [];
-    lines.push(`GOLDTRADE — Raport tregtimi (${periodLabel})`);
-    lines.push(`Gjeneruar: ${new Date().toLocaleString('sq-AL')}`);
-    lines.push(`Balanca: ${balance.toFixed(2)} ${currency}`);
+    lines.push(t('GOLDTRADE — Raport tregtimi ({periodLabel})', { periodLabel }));
+    lines.push(t('Gjeneruar: {date}', { date: new Date().toLocaleString('sq-AL') }));
+    lines.push(t('Balanca: {balance} {currency}', { balance: balance.toFixed(2), currency }));
     lines.push('');
-    lines.push('PERMBLEDHJE');
-    lines.push(`Trade gjithsej,${shown.length}`);
-    lines.push(`Fituese,${wins}`);
-    lines.push(`Humbese,${losses}`);
-    lines.push(`Shkalla e suksesit,${winRate}%`);
-    lines.push(`P&L neto,${totalNet.toFixed(2)} ${currency}`);
-    lines.push(`P&L %,${totalPct.toFixed(2)}%`);
+    lines.push(t('PERMBLEDHJE'));
+    lines.push(t('Trade gjithsej,{count}', { count: shown.length }));
+    lines.push(t('Fituese,{wins}', { wins }));
+    lines.push(t('Humbese,{losses}', { losses }));
+    lines.push(t('Shkalla e suksesit,{winRate}%', { winRate }));
+    lines.push(t('P&L neto,{net} {currency}', { net: totalNet.toFixed(2), currency }));
+    lines.push(t('P&L %,{pct}%', { pct: totalPct.toFixed(2) }));
     lines.push('');
-    lines.push('RAPORTI DITOR');
-    lines.push('Data,Trade,Fituese,Humbese,P&L,P&L %');
+    lines.push(t('RAPORTI DITOR'));
+    lines.push(t('Data,Trade,Fituese,Humbese,P&L,P&L %'));
     days_.forEach(d => lines.push(`${d.date},${d.count},${d.wins},${d.losses},${d.net.toFixed(2)},${d.pct.toFixed(2)}%`));
     lines.push('');
-    lines.push('TRADE-T E DETAJUARA');
-    lines.push('Mbyllur,Simboli,Drejtimi,Lot,Hyrje,Dalje,P&L');
+    lines.push(t('TRADE-T E DETAJUARA'));
+    lines.push(t('Mbyllur,Simboli,Drejtimi,Lot,Hyrje,Dalje,P&L'));
     shown.forEach(t => lines.push(`${t.closeTime ? new Date(t.closeTime).toLocaleString('sq-AL') : ''},${t.symbol},${t.direction},${t.volume},${t.entryPrice ?? ''},${t.exitPrice ?? ''},${t.net.toFixed(2)}`));
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -158,20 +160,20 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <FileText className="w-6 h-6 text-amber-400" />Raporte tregtimi
+            <FileText className="w-6 h-6 text-amber-400" />{t('Raporte tregtimi')}
           </h2>
-          <p className="text-gray-400 text-sm mt-1">Performanca reale e trade-ve të tua nga MT5 — fitime, humbje, raport ditor me total dhe përqindje.</p>
+          <p className="text-gray-400 text-sm mt-1">{t('Performanca reale e trade-ve të tua nga MT5 — fitime, humbje, raport ditor me total dhe përqindje.')}</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} className="p-2 text-gray-400 hover:text-white bg-gray-900 border border-gray-700 rounded-xl transition-all"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /></button>
-          <button onClick={exportCSV} disabled={shown.length === 0} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-gray-950 font-semibold px-4 py-2 rounded-xl text-sm transition-all"><Download className="w-4 h-4" />Shkarko CSV</button>
+          <button onClick={exportCSV} disabled={shown.length === 0} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-gray-950 font-semibold px-4 py-2 rounded-xl text-sm transition-all"><Download className="w-4 h-4" />{t('Shkarko CSV')}</button>
         </div>
       </div>
 
       {/* Periudha */}
       <div className="flex gap-2">
         {PERIODS.map(p => (
-          <button key={String(p.v)} onClick={() => setPeriod(p.v)} className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${period === p.v ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{p.label}</button>
+          <button key={String(p.v)} onClick={() => setPeriod(p.v)} className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${period === p.v ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{t(p.label)}</button>
         ))}
       </div>
 
@@ -180,8 +182,8 @@ export default function ReportsPage() {
       ) : notConnected ? (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
           <Wallet className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-          <p className="text-white font-medium">Lidh llogarinë MT5</p>
-          <p className="text-gray-500 text-sm mt-1">Raportet ndërtohen nga trade-t reale të MT5. Konfiguro lidhjen te "Lidhja & Konfigurimi".</p>
+          <p className="text-white font-medium">{t('Lidh llogarinë MT5')}</p>
+          <p className="text-gray-500 text-sm mt-1">{t('Raportet ndërtohen nga trade-t reale të MT5. Konfiguro lidhjen te "Lidhja & Konfigurimi".')}</p>
         </div>
       ) : error ? (
         <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
@@ -195,30 +197,30 @@ export default function ReportsPage() {
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               <Activity className="w-4 h-4 text-amber-400 mb-2" />
               <div className="text-white font-bold text-xl">{shown.length}</div>
-              <div className="text-gray-500 text-xs mt-0.5">Trade të mbyllura</div>
+              <div className="text-gray-500 text-xs mt-0.5">{t('Trade të mbyllura')}</div>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               <BarChart2 className={`w-4 h-4 mb-2 ${winRate >= 50 ? 'text-green-400' : 'text-red-400'}`} />
               <div className={`font-bold text-xl ${winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>{decided ? `${winRate}%` : '—'}</div>
-              <div className="text-gray-500 text-xs mt-0.5">Sukses ({wins}F / {losses}H)</div>
+              <div className="text-gray-500 text-xs mt-0.5">{t('Sukses ({wins}F / {losses}H)', { wins, losses })}</div>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               <Wallet className={`w-4 h-4 mb-2 ${colr(totalNet)}`} />
               <div className={`font-bold text-xl ${colr(totalNet)}`}>{fmtMoney(totalNet)}</div>
-              <div className="text-gray-500 text-xs mt-0.5">P&L neto {currency}</div>
+              <div className="text-gray-500 text-xs mt-0.5">{t('P&L neto {currency}', { currency })}</div>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               {totalPct >= 0 ? <TrendingUp className="w-4 h-4 text-green-400 mb-2" /> : <TrendingDown className="w-4 h-4 text-red-400 mb-2" />}
               <div className={`font-bold text-xl ${colr(totalPct)}`}>{fmtPct(totalPct)}</div>
-              <div className="text-gray-500 text-xs mt-0.5">P&L % e balancës</div>
+              <div className="text-gray-500 text-xs mt-0.5">{t('P&L % e balancës')}</div>
             </div>
           </div>
 
           {shown.length === 0 ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
               <FileText className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-              <p className="text-white font-medium">Asnjë trade i mbyllur {period === 'today' ? 'sot' : 'në këtë periudhë'}</p>
-              <p className="text-gray-500 text-sm mt-1">Sapo të mbyllen trade, performanca shfaqet këtu automatikisht.</p>
+              <p className="text-white font-medium">{period === 'today' ? t('Asnjë trade i mbyllur sot') : t('Asnjë trade i mbyllur në këtë periudhë')}</p>
+              <p className="text-gray-500 text-sm mt-1">{t('Sapo të mbyllen trade, performanca shfaqet këtu automatikisht.')}</p>
             </div>
           ) : (
             <>
@@ -226,16 +228,16 @@ export default function ReportsPage() {
               <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-amber-400" />
-                  <h3 className="text-white font-semibold text-sm">Raporti ditor</h3>
+                  <h3 className="text-white font-semibold text-sm">{t('Raporti ditor')}</h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-gray-500 border-b border-gray-800">
-                        <th className="text-left font-medium px-4 py-2">Data</th>
-                        <th className="text-center font-medium px-4 py-2">Trade</th>
-                        <th className="text-center font-medium px-4 py-2">F / H</th>
-                        <th className="text-right font-medium px-4 py-2">P&L {currency}</th>
+                        <th className="text-left font-medium px-4 py-2">{t('Data')}</th>
+                        <th className="text-center font-medium px-4 py-2">{t('Trade')}</th>
+                        <th className="text-center font-medium px-4 py-2">{t('F / H')}</th>
+                        <th className="text-right font-medium px-4 py-2">{t('P&L {currency}', { currency })}</th>
                         <th className="text-right font-medium px-4 py-2">P&L %</th>
                       </tr>
                     </thead>
@@ -252,7 +254,7 @@ export default function ReportsPage() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-gray-700 bg-gray-800/30 font-bold">
-                        <td className="px-4 py-2.5 text-white">TOTAL</td>
+                        <td className="px-4 py-2.5 text-white">{t('TOTAL')}</td>
                         <td className="px-4 py-2.5 text-center text-white">{shown.length}</td>
                         <td className="px-4 py-2.5 text-center"><span className="text-green-400">{wins}</span> / <span className="text-red-400">{losses}</span></td>
                         <td className={`px-4 py-2.5 text-right ${colr(totalNet)}`}>{fmtMoney(totalNet)}</td>
@@ -266,38 +268,38 @@ export default function ReportsPage() {
               {/* Trade-t e detajuara */}
               <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-                  <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />Lëvizjet e tua (trade-t)</h3>
+                  <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />{t('Lëvizjet e tua (trade-t)')}</h3>
                   {best && worst && (
-                    <span className="text-xs text-gray-500">Më i miri: <span className="text-green-400">{fmtMoney(best.net)}</span> · Më i keqi: <span className="text-red-400">{fmtMoney(worst.net)}</span></span>
+                    <span className="text-xs text-gray-500">{t('Më i miri:')} <span className="text-green-400">{fmtMoney(best.net)}</span> · {t('Më i keqi:')} <span className="text-red-400">{fmtMoney(worst.net)}</span></span>
                   )}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-gray-500 border-b border-gray-800">
-                        <th className="text-left font-medium px-4 py-2">Mbyllur</th>
-                        <th className="text-left font-medium px-4 py-2">Simboli</th>
-                        <th className="text-left font-medium px-4 py-2">Drejtimi</th>
-                        <th className="text-right font-medium px-4 py-2">Lot</th>
-                        <th className="text-right font-medium px-4 py-2">Hyrje</th>
-                        <th className="text-right font-medium px-4 py-2">Dalje</th>
-                        <th className="text-right font-medium px-4 py-2">P&L {currency}</th>
+                        <th className="text-left font-medium px-4 py-2">{t('Mbyllur')}</th>
+                        <th className="text-left font-medium px-4 py-2">{t('Simboli')}</th>
+                        <th className="text-left font-medium px-4 py-2">{t('Drejtimi')}</th>
+                        <th className="text-right font-medium px-4 py-2">{t('Lot')}</th>
+                        <th className="text-right font-medium px-4 py-2">{t('Hyrje')}</th>
+                        <th className="text-right font-medium px-4 py-2">{t('Dalje')}</th>
+                        <th className="text-right font-medium px-4 py-2">{t('P&L {currency}', { currency })}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800/60">
-                      {shown.map(t => (
-                        <tr key={t.id} className="hover:bg-gray-800/30">
-                          <td className="px-4 py-2.5 text-gray-400">{fmtDT(t.closeTime)}</td>
-                          <td className="px-4 py-2.5 text-white font-medium">{t.symbol}</td>
+                      {shown.map(tr => (
+                        <tr key={tr.id} className="hover:bg-gray-800/30">
+                          <td className="px-4 py-2.5 text-gray-400">{fmtDT(tr.closeTime)}</td>
+                          <td className="px-4 py-2.5 text-white font-medium">{tr.symbol}</td>
                           <td className="px-4 py-2.5">
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${t.direction === 'BUY' ? 'bg-green-500/20 text-green-400' : t.direction === 'SELL' ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-400'}`}>
-                              {t.direction === 'BUY' ? 'BLEJ' : t.direction === 'SELL' ? 'SHIT' : '—'}
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${tr.direction === 'BUY' ? 'bg-green-500/20 text-green-400' : tr.direction === 'SELL' ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-400'}`}>
+                              {tr.direction === 'BUY' ? t('BLEJ') : tr.direction === 'SELL' ? t('SHIT') : '—'}
                             </span>
                           </td>
-                          <td className="px-4 py-2.5 text-right text-gray-300">{t.volume || '—'}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-300">{t.entryPrice != null ? t.entryPrice.toLocaleString() : '—'}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-300">{t.exitPrice != null ? t.exitPrice.toLocaleString() : '—'}</td>
-                          <td className={`px-4 py-2.5 text-right font-bold ${colr(t.net)}`}>{fmtMoney(t.net)}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-300">{tr.volume || '—'}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-300">{tr.entryPrice != null ? tr.entryPrice.toLocaleString() : '—'}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-300">{tr.exitPrice != null ? tr.exitPrice.toLocaleString() : '—'}</td>
+                          <td className={`px-4 py-2.5 text-right font-bold ${colr(tr.net)}`}>{fmtMoney(tr.net)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -306,7 +308,7 @@ export default function ReportsPage() {
               </div>
 
               <p className="text-gray-600 text-xs text-center">
-                P&L përfshin fitimin + komisionin + swap. Përqindja llogaritet mbi balancën aktuale ({balance.toFixed(2)} {currency}). Të dhënat janë reale nga MT5.
+                {t('P&L përfshin fitimin + komisionin + swap. Përqindja llogaritet mbi balancën aktuale ({balance} {currency}). Të dhënat janë reale nga MT5.', { balance: balance.toFixed(2), currency })}
               </p>
             </>
           )}
