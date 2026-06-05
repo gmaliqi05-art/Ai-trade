@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { TrendingUp, Eye, EyeOff, Loader2, BarChart3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../i18n/i18n';
+import LanguageSwitcher from '../i18n/LanguageSwitcher';
 
 export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -11,6 +13,7 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { signIn, signUp } = useAuth();
+  const { t } = useI18n();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +23,7 @@ export default function AuthPage() {
       const { error } = await signIn(email, password);
       if (error) setError(error.message);
     } else {
-      if (!fullName.trim()) { setError('Emri i plotë është i detyrueshëm'); setLoading(false); return; }
+      if (!fullName.trim()) { setError(t('Emri i plotë është i detyrueshëm')); setLoading(false); return; }
       const { error } = await signUp(email, password, fullName);
       if (error) setError(error.message);
     }
@@ -29,6 +32,7 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 flex">
+      <div className="absolute top-4 right-4 z-20"><LanguageSwitcher /></div>
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex-col items-center justify-center p-12 relative overflow-hidden">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-20 left-10 w-64 h-64 rounded-full bg-amber-400 blur-3xl" />
@@ -41,17 +45,17 @@ export default function AuthPage() {
             </div>
             <div className="text-left">
               <h1 className="text-2xl font-bold text-white">GOLDTRADE</h1>
-              <p className="text-amber-400 text-sm font-medium tracking-widest">PLATFORMË AI</p>
+              <p className="text-amber-400 text-sm font-medium tracking-widest">{t('PLATFORMË AI')}</p>
             </div>
           </div>
-          <h2 className="text-4xl font-bold text-white mb-4 leading-tight">
-            Tregto më zgjuar me<br /><span className="text-amber-400">inteligjencën AI</span>
-          </h2>
+          <h2 className="text-4xl font-bold text-white mb-4 leading-tight"
+            dangerouslySetInnerHTML={{ __html: t('Tregto më zgjuar me<br /><span class="text-amber-400">inteligjencën AI</span>') }}
+          />
           <p className="text-gray-400 text-lg mb-10 leading-relaxed">
-            Sinjale nga motori matematik + arsyetim me inteligjencën e Robotit, çmime reale dhe auto-trade me mbrojtje rreziku — fokus 100% në Ar (XAUUSD).
+            {t('Sinjale nga motori matematik + arsyetim me inteligjencën e Robotit, çmime reale dhe auto-trade me mbrojtje rreziku — fokus 100% në Ar (XAUUSD).')}
           </p>
           <div className="grid grid-cols-3 gap-4">
-            {[{ value: 'EMA·RSI·MACD', label: 'Indikatorë realë' }, { value: 'Roboti AI', label: 'Arsyetim cilësor' }, { value: 'MetaTrader', label: 'Auto-trade (demo)' }].map((s) => (
+            {[{ value: 'EMA·RSI·MACD', label: t('Indikatorë realë') }, { value: t('Roboti AI'), label: t('Arsyetim cilësor') }, { value: 'MetaTrader', label: t('Auto-trade (demo)') }].map((s) => (
               <div key={s.label} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
                 <div className="text-lg font-bold text-amber-400">{s.value}</div>
                 <div className="text-gray-400 text-xs mt-1">{s.label}</div>
@@ -60,7 +64,7 @@ export default function AuthPage() {
           </div>
           <div className="mt-8 flex items-center gap-3 justify-center">
             <BarChart3 className="w-5 h-5 text-amber-400" />
-            <span className="text-gray-400 text-sm">Çmime reale: Crypto, Ar, Forex, Indekse</span>
+            <span className="text-gray-400 text-sm">{t('Çmime reale: Crypto, Ar, Forex, Indekse')}</span>
           </div>
         </div>
       </div>
@@ -74,16 +78,16 @@ export default function AuthPage() {
             <span className="text-white font-bold text-lg">GOLDTRADE AI</span>
           </div>
           <h2 className="text-3xl font-bold text-white mb-2">
-            {mode === 'login' ? 'Mirë se erdhe' : 'Krijo llogari'}
+            {mode === 'login' ? t('Mirë se erdhe') : t('Krijo llogari')}
           </h2>
           <p className="text-gray-400 mb-8">
-            {mode === 'login' ? 'Hyr për të hapur panelin tënd të tregtimit' : 'Nis udhëtimin tënd të tregtimit me AI'}
+            {mode === 'login' ? t('Hyr për të hapur panelin tënd të tregtimit') : t('Nis udhëtimin tënd të tregtimit me AI')}
           </p>
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">Emri i plotë</label>
-                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Emri Mbiemri"
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Emri i plotë')}</label>
+                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t('Emri Mbiemri')}
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
               </div>
             )}
@@ -93,7 +97,7 @@ export default function AuthPage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Fjalëkalimi</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Fjalëkalimi')}</label>
               <div className="relative">
                 <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors pr-12" required minLength={6} />
@@ -106,18 +110,18 @@ export default function AuthPage() {
             <button type="submit" disabled={loading}
               className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed text-gray-950 font-semibold py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 mt-2">
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === 'login' ? 'Hyr' : 'Krijo llogari'}
+              {mode === 'login' ? t('Hyr') : t('Krijo llogari')}
             </button>
           </form>
           <div className="mt-6 text-center">
-            <span className="text-gray-400 text-sm">{mode === 'login' ? "S'ke llogari? " : 'Ke tashmë llogari? '}</span>
+            <span className="text-gray-400 text-sm">{mode === 'login' ? t("S'ke llogari? ") : t('Ke tashmë llogari? ')}</span>
             <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }} className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors">
-              {mode === 'login' ? 'Krijo një' : 'Hyr'}
+              {mode === 'login' ? t('Krijo një') : t('Hyr')}
             </button>
           </div>
           {mode === 'login' && (
             <div className="mt-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-              <p className="text-xs text-gray-500 text-center mb-2">Kredenciale demo</p>
+              <p className="text-xs text-gray-500 text-center mb-2">{t('Kredenciale demo')}</p>
               <button type="button" onClick={() => { setEmail('demo@goldtrade.ai'); setPassword('demo123456'); }}
                 className="w-full text-xs text-gray-400 hover:text-amber-400 transition-colors text-center">
                 demo@goldtrade.ai / demo123456
