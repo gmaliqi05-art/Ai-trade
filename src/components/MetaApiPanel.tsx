@@ -281,7 +281,7 @@ export default function MetaApiPanel() {
 
       {/* ======= 6. MBROJTJA E FITIMIT (TRAILING SL) ======= */}
       <Section icon={TrendingUp} title={t('6. Mbrojtja e fitimit (Trailing SL)')}
-        subtitle={t('SL ndjek profitin automatik te ÇDO trade — mban një pjesë të fitimit kur çmimi ecën në favor.')}
+        subtitle={t('SL ndjek profitin automatik. Ka 2 metoda — zgjidh VETËM njërën (shih udhëzimin poshtë).')}
         right={<TogglePill on={cfg.trail_enabled} onClick={() => setAndSave('trail_enabled', !cfg.trail_enabled)} t={t} />}>
         <div className={`space-y-3 transition-opacity ${cfg.trail_enabled ? '' : 'opacity-40 pointer-events-none'}`}>
           {cfg.broker_trailing && (
@@ -305,16 +305,27 @@ export default function MetaApiPanel() {
             <NumField label={t('Fillon pas (+$ fitim)')} hint={t('Trailing-u nis vetëm pasi fitimi kalon këtë shumë ($) — që SL të mos lëvizë nga zhurma e vogël.')}
               value={cfg.trail_start_usd} step="0.1" min="0.1" onChange={v => set('trail_start_usd', v)} onBlur={save} />
           </div>
-          <p className="text-[10px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">ℹ️ Si punon:</span> roboti e kontrollon çdo minutë; sapo fitimi kalon pragun, SL zhvendoset për të mbajtur përqindjen e zgjedhur të fitimit, dhe ngjitet vetëm përpara (kurrë mbrapa). Vlen për të gjitha trade-t e hapura — manual, sinjal, swing, scalp.') }} />
+          <p className="text-[10px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">ℹ️ Metoda A — Roboti (përqindje):</span> roboti e kontrollon <span class="text-gray-300">çdo ~7 sekonda</span>; sapo fitimi kalon pragun, SL zhvendoset për të mbajtur përqindjen e zgjedhur të fitimit, dhe ngjitet vetëm përpara (kurrë mbrapa). Vlen për të gjitha trade-t — manual, sinjal, swing, scalp.') }} />
         </div>
 
         {/* Trailing në anë të MT5 (tick-by-tick) — opsional, eksperimental */}
         <div className={`flex items-center justify-between rounded-xl border p-3 mt-1 ${cfg.broker_trailing ? 'bg-amber-500/10 border-amber-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
           <div className="pr-3">
-            <span className="text-[12px] font-semibold text-white">{t('Trailing në anë të MT5 (tick-by-tick)')}</span>
-            <p className="text-[10px] text-gray-500 mt-0.5 leading-snug">{t('MetaApi e ndjek SL-në pas çdo tiku në kohë reale (më i shpejtë se roboti). Distanca = distanca fillestare e SL. ⚠️ Eksperimental — provoje në DEMO; jo çdo broker e mbështet.')}</p>
+            <span className="text-[12px] font-semibold text-white">{t('Metoda B — Trailing në anë të MT5 (tick-by-tick)')}</span>
+            <p className="text-[10px] text-gray-500 mt-0.5 leading-snug" dangerouslySetInnerHTML={{ __html: t('MetaApi e ndjek SL-në <span class="text-gray-300">pas çdo tiku</span> në kohë reale, me <span class="text-gray-300">distancë fikse</span> (= distanca fillestare e SL) — JO me përqindje. Kur AKTIV, <span class="text-amber-400">mbivendos Metodën A</span> (roboti s\'e prek SL-në). ⚠️ Eksperimental — provoje në DEMO; jo çdo broker e mbështet.') }} />
           </div>
           <TogglePill on={cfg.broker_trailing} onClick={() => setAndSave('broker_trailing', !cfg.broker_trailing)} t={t} />
+        </div>
+
+        {/* UDHËZIM: si të zgjedhësh, që të mos ketë konflikt */}
+        <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3 mt-1 space-y-1.5">
+          <div className="text-[11px] font-semibold text-blue-300">{t('📘 Cilën të zgjedhësh? (që të mos ketë konflikt)')}</div>
+          <ul className="space-y-1 text-[10px] text-gray-400 leading-snug">
+            <li dangerouslySetInnerHTML={{ __html: t('<span class="text-white font-semibold">Përdor VETËM njërën metodë.</span> Të dyja bashkë ngatërrojnë SL-në.') }} />
+            <li dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400">Metoda A (Roboti, %):</span> mban p.sh. 50% të fitimit, çdo ~7s. <span class="text-gray-300">Më e mira për shumicën</span> — e parashikueshme, ndjek fitimin sipas %. → Lëre <span class="text-white">"Trailing në anë të MT5" OFF</span>.') }} />
+            <li dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400">Metoda B (MT5, tick-by-tick):</span> ndjek me distancë fikse pas çdo tiku. Më e shpejtë, por distancë fikse (jo %). → Ndize <span class="text-white">"Trailing në anë të MT5"</span>; përqindja s\'përdoret.') }} />
+            <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">Që trailing-u të punojë, çdo trade duhet të ketë SL.</span> Të dyja metodat ngrenë SL vetëm përpara — kurrë mbrapa.') }} />
+          </ul>
         </div>
       </Section>
 
