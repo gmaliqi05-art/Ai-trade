@@ -47,6 +47,14 @@ const navSections = [
   },
 ];
 
+// Shiriti i navigimit poshtë për celular/tablet (pamje si-app). E 5-ta ("Më shumë") hap menynë e plotë.
+const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }[] = [
+  { id: 'market_prices', label: 'Tregto Live', icon: Activity },
+  { id: 'dashboard', label: 'Paneli', icon: LayoutDashboard },
+  { id: 'signals', label: 'Sinjalet', icon: Zap },
+  { id: 'reports', label: 'Raporte', icon: FileText },
+];
+
 const pageLabels: Record<ClientPage, string> = {
   dashboard: 'Paneli',
   market_prices: 'Tregto Live',
@@ -157,8 +165,11 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
         <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      <aside className={`fixed left-0 top-0 h-full w-64 bg-gray-900 border-r border-gray-800 z-50 transform transition-transform duration-300 lg:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <button onClick={() => setMobileOpen(false)} className="absolute right-3 top-3 text-gray-400 hover:text-white">
+      <aside
+        className={`fixed left-0 top-0 h-full w-64 bg-gray-900 border-r border-gray-800 z-50 transform transition-transform duration-300 lg:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        <button onClick={() => setMobileOpen(false)} className="absolute right-3 top-3 text-gray-400 hover:text-white" style={{ top: 'calc(0.75rem + env(safe-area-inset-top))' }}>
           <X className="w-5 h-5" />
         </button>
         <SidebarContent />
@@ -175,7 +186,10 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-14 bg-gray-900/50 border-b border-gray-800 flex items-center justify-between px-4 flex-shrink-0">
+        <header
+          className="bg-gray-900/50 border-b border-gray-800 flex items-center justify-between px-4 flex-shrink-0 h-14"
+          style={{ paddingTop: 'env(safe-area-inset-top)', height: 'calc(3.5rem + env(safe-area-inset-top))' }}
+        >
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileOpen(true)} className="lg:hidden text-gray-400 hover:text-white">
               <Menu className="w-5 h-5" />
@@ -199,7 +213,39 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        {/* Content — hapësirë poshtë në celular që të mos mbulohet nga shiriti i navigimit. */}
+        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">{children}</main>
+
+        {/* Shiriti i navigimit poshtë (vetëm celular/tablet) — pamje si-app. */}
+        <nav
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-gray-900/95 backdrop-blur border-t border-gray-800 flex items-stretch"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          {bottomNavItems.map(item => {
+            const Icon = item.icon;
+            const active = currentPage === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => { onNavigate(item.id); setMobileOpen(false); }}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ${active ? 'text-amber-400' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-[10px] font-medium leading-none">{t(item.label)}</span>
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 hover:text-gray-300 transition-colors relative"
+          >
+            <Menu className="w-5 h-5" />
+            <span className="text-[10px] font-medium leading-none">{t('Më shumë')}</span>
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1/2 translate-x-4 w-1.5 h-1.5 bg-amber-500 rounded-full" />
+            )}
+          </button>
+        </nav>
       </div>
     </div>
   );
