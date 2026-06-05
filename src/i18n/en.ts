@@ -657,4 +657,10 @@ export const en: Record<string, string> = {
   "Shfaq më pak": "Show less",
   "Shfaq të gjitha ({n})": "Show all ({n})",
   "Asnjë ekzekutim ende.": "No executions yet.",
+  "Hyr {dir}": "Enter {dir}",
+  "Porosi në pritje {dir} {sym} @ {price} — hyn automatik kur çmimi e arrin.": "Pending order {dir} {sym} @ {price} — enters automatically when price reaches it.",
+  "Urdhër {dir} {sym} dërguar ({mode}).": "Order {dir} {sym} sent ({mode}).",
+  "Porositë në pritje": "Pending orders",
+  "Porosia u anulua.": "Order cancelled.",
+  "Anulimi dështoi.": "Cancel failed.",
 };

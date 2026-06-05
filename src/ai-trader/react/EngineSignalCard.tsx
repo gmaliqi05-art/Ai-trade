@@ -2,7 +2,7 @@
 // afatgjatë me veprimin (BLEJ/SHIT/PRIT), besueshmërinë, planet dhe arsyet.
 
 import { useState } from 'react';
-import { Target, Shield, TrendingUp, ChevronDown, ChevronUp, Clock, Activity, Sparkles, Loader2, Layers } from 'lucide-react';
+import { Target, Shield, TrendingUp, ChevronDown, ChevronUp, Clock, Activity, Sparkles, Loader2, Layers, LogIn, CheckCircle, AlertCircle } from 'lucide-react';
 import { useI18n } from '../../i18n/i18n';
 import type { AssetAnalysis, HorizonAnalysis } from '../analyze';
 import { suggestLot } from '../core/lot';
@@ -18,9 +18,26 @@ export interface CardAiReasoning {
   provider_used?: string;
 }
 
-function HorizonBlock({ title, data, category, accountBalance }: { title: string; data: HorizonAnalysis | null; category?: string; accountBalance?: number }) {
+/** Të dhënat e dërguara kur klikohet "Hyr" mbi një horizont të sinjalit. */
+export interface EngineEnterInput {
+  symbol: string;
+  action: 'BUY' | 'SELL';
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  lot?: number;
+  horizon: 'short' | 'long';
+}
+
+function HorizonBlock({ title, data, category, accountBalance, symbol, horizon, onEnter }: {
+  title: string; data: HorizonAnalysis | null; category?: string; accountBalance?: number;
+  symbol?: string; horizon: 'short' | 'long';
+  onEnter?: (i: EngineEnterInput) => Promise<{ ok: boolean; msg: string }>;
+}) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const [enterMsg, setEnterMsg] = useState<{ ok: boolean; msg: string } | null>(null);
 
   if (!data) {
     return (
@@ -40,6 +57,22 @@ function HorizonBlock({ title, data, category, accountBalance }: { title: string
   const lot = isActionable && accountBalance
     ? suggestLot(category, accountBalance, plan.entry, plan.stopLoss)
     : null;
+
+  const doEnter = async () => {
+    if (!onEnter || !symbol || (signal.action !== 'BUY' && signal.action !== 'SELL')) return;
+    setEntering(true); setEnterMsg(null);
+    try {
+      const res = await onEnter({
+        symbol, action: signal.action, entry: plan.entry, stopLoss: plan.stopLoss,
+        takeProfit: plan.takeProfit, lot: lot?.lot, horizon,
+      });
+      setEnterMsg(res);
+    } catch (e) {
+      setEnterMsg({ ok: false, msg: (e as Error).message });
+    } finally {
+      setEntering(false);
+    }
+  };
 
   return (
     <div className="bg-gray-800/40 rounded-xl p-3 space-y-2">
@@ -79,6 +112,22 @@ function HorizonBlock({ title, data, category, accountBalance }: { title: string
         </div>
       )}
 
+      {/* Butoni HYR — ekzekuton trade-in direkt nga gjenerimi (porosi tregu ose në pritje). */}
+      {isActionable && onEnter && symbol && (
+        <>
+          <button onClick={doEnter} disabled={entering}
+            className={`w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded-lg transition-colors disabled:opacity-60 ${signal.action === 'BUY' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
+            {entering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
+            {t('Hyr {dir}', { dir: signal.action === 'BUY' ? t('BLEJ') : t('SHIT') })}
+          </button>
+          {enterMsg && (
+            <div className={`flex items-start gap-1.5 text-[11px] rounded-lg px-2 py-1.5 ${enterMsg.ok ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+              {enterMsg.ok ? <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-px" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />}<span>{enterMsg.msg}</span>
+            </div>
+          )}
+        </>
+      )}
+
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between text-gray-500 hover:text-gray-300 text-[11px] transition-colors"
@@ -108,6 +157,8 @@ interface EngineSignalCardProps {
   category?: string;
   /** Balanca e llogarisë (për sugjerimin e lotit me rrezik 1%). */
   accountBalance?: number;
+  /** Nëse jepet, shfaqet butoni "Hyr" që ekzekuton trade-in direkt. */
+  onEnter?: (i: EngineEnterInput) => Promise<{ ok: boolean; msg: string }>;
 }
 
 function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI: NonNullable<EngineSignalCardProps['askAI']> }) {
@@ -163,7 +214,7 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
   );
 }
 
-export function EngineSignalCard({ analysis, askAI, category, accountBalance }: EngineSignalCardProps) {
+export function EngineSignalCard({ analysis, askAI, category, accountBalance, onEnter }: EngineSignalCardProps) {
   const { t } = useI18n();
   const sourceBadge =
     analysis.source === 'live'
@@ -182,8 +233,8 @@ export function EngineSignalCard({ analysis, askAI, category, accountBalance }: 
         </span>
       </div>
 
-      <HorizonBlock title={t('Afatshkurtër')} data={analysis.short} category={category} accountBalance={accountBalance} />
-      <HorizonBlock title={t('Afatgjatë')} data={analysis.long} category={category} accountBalance={accountBalance} />
+      <HorizonBlock title={t('Afatshkurtër')} data={analysis.short} category={category} accountBalance={accountBalance} symbol={analysis.symbol} horizon="short" onEnter={onEnter} />
+      <HorizonBlock title={t('Afatgjatë')} data={analysis.long} category={category} accountBalance={accountBalance} symbol={analysis.symbol} horizon="long" onEnter={onEnter} />
 
       {askAI && (analysis.short || analysis.long) && <AiReasoningBlock analysis={analysis} askAI={askAI} />}
     </div>

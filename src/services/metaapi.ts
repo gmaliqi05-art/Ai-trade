@@ -100,6 +100,18 @@ export interface OpenPosition {
   swap?: number;
 }
 
+/** Porosi NË PRITJE (limit/stop) nga MT5 — pret çmimin për t'u hapur. */
+export interface PendingOrder {
+  id: string;
+  symbol: string;
+  type: string; // ORDER_TYPE_BUY_LIMIT | ORDER_TYPE_SELL_LIMIT | ORDER_TYPE_BUY_STOP | ORDER_TYPE_SELL_STOP
+  volume?: number;
+  openPrice?: number;
+  currentPrice?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+}
+
 /** Deal i mbyllur nga historiku i MT5. */
 export interface HistoryDeal {
   id: string;
@@ -134,7 +146,7 @@ export interface Mt5Candle {
 interface TradeResponse {
   success?: boolean; error?: string; message?: string; mode?: string;
   order_id?: string | null; account?: AccountInfo; positions?: OpenPosition[];
-  deals?: HistoryDeal[]; candles?: Mt5Candle[];
+  deals?: HistoryDeal[]; candles?: Mt5Candle[]; orders?: PendingOrder[];
   price?: { symbol?: string; bid?: number; ask?: number; brokerTime?: string; time?: string };
   /** True nëse u vendos porosi NË PRITJE (limit/stop) sepse çmimi s'ishte ende te hyrja. */
   pending?: boolean;
@@ -173,6 +185,16 @@ export function loadOpenPositions() {
 /** Mbyll një pozicion të hapur sipas id-së. */
 export function closePosition(positionId: string) {
   return callTrade({ action: 'CLOSE', positionId });
+}
+
+/** Lexon porositë NË PRITJE (limit/stop) nga MT5. */
+export function loadPendingOrders() {
+  return callTrade({ action: 'ORDERS' });
+}
+
+/** Anulon një porosi në pritje sipas id-së. */
+export function cancelOrder(orderId: string) {
+  return callTrade({ action: 'CANCEL_ORDER', orderId });
 }
 
 /** Lexon historikun e trade-ve të mbyllura nga MT5 (parametri days, default 7). */
