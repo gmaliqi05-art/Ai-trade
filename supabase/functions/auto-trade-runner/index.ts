@@ -306,6 +306,29 @@ async function maTrade(cfg: Cfg, body: Record<string, unknown>) {
   return { ok: resp.ok, status: resp.status, body: b };
 }
 
+// Disa brokerë (p.sh. Vantage) e quajnë arin me prapashtesë (XAUUSD+, XAUUSD., GOLD…).
+// Gjen emrin REAL te lista e brokerit (me cache) — rregullon "Unknown symbol 4301".
+const _symCache = new Map<string, string>();
+async function resolveSymbol(cfg: Cfg, requested: string): Promise<string> {
+  const key = `${cfg.account_id}:${requested.toUpperCase()}`;
+  const cached = _symCache.get(key);
+  if (cached) return cached;
+  try {
+    const list = await maGet(cfg, `/symbols`) as unknown;
+    if (Array.isArray(list) && list.length > 0) {
+      const names = list.map(String);
+      const req = requested.toUpperCase();
+      const found = names.find(s => s.toUpperCase() === req)
+        || names.find(s => s.toUpperCase().startsWith(req))
+        || (req.includes("XAU") ? (names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()))) : undefined);
+      const resolved = found || requested;
+      _symCache.set(key, resolved);
+      return resolved;
+    }
+  } catch { /* */ }
+  return requested;
+}
+
 // P&L i REALIZUAR i ditës (që nga 00:00 UTC) — shuma e fitim/humbjeve të trade-ve
 // të mbyllura sot (profit+commission+swap). Përdoret për limitin REAL të humbjes ditore.
 async function realizedToday(cfg: Cfg): Promise<number> {
@@ -550,10 +573,12 @@ Deno.serve(async (req: Request) => {
         const baseTP = Math.max(baseSL, Number(cfg.scalp_tp_usd ?? 4));
         const scalpRR = baseSL > 0 ? baseTP / baseSL : 2; // R:R i zgjedhur nga cilësimet (default 2.0)
         const maxRisk = Number(cfg.max_daily_loss) || 0;
-        for (const sym of allowed) {
+        for (const rawSym of allowed) {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
           if (maxRisk > 0 && dayPnl <= -maxRisk) break; // limit humbjeje ditore
-          if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym)) continue; // një scalp për simbol
+          // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301").
+          const sym = await resolveSymbol(cfg, rawSym);
+          if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym.toUpperCase())) continue; // një scalp për simbol
           // COOLDOWN: mos hap scalp të ri brenda 3 min nga scalp-i i fundit (shmang grumbullimin në ekstreme).
           const { data: lastSc } = await db.from("trade_executions").select("created_at")
             .eq("user_id", cfg.user_id).eq("symbol", sym).eq("status", "executed")
@@ -642,6 +667,8 @@ Deno.serve(async (req: Request) => {
 
         const action = sig.type === "buy" ? "BUY" : "SELL";
         const isBuy = action === "BUY";
+        // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301").
+        const tradeSym = await resolveSymbol(cfg, sig.symbol);
 
         // ---- ANKORIM te çmimi REAL MT5 (zgjidh bug-un PAXG→MT5) + konteksti i grafikut ----
         let entryPx: number | undefined;
@@ -653,9 +680,9 @@ Deno.serve(async (req: Request) => {
         let dataSrc = "mt5";
 
         const [m15, m1h, m4h] = await Promise.all([
-          fetchMt5Candles(cfg, sig.symbol, "15m", 300),
-          fetchMt5Candles(cfg, sig.symbol, "1h", 300),
-          fetchMt5Candles(cfg, sig.symbol, "4h", 300),
+          fetchMt5Candles(cfg, tradeSym, "15m", 300),
+          fetchMt5Candles(cfg, tradeSym, "1h", 300),
+          fetchMt5Candles(cfg, tradeSym, "4h", 300),
         ]);
 
         if (m15 && m1h && m4h && m15.length > 30 && m1h.length > 30 && m4h.length > 30) {
@@ -704,7 +731,7 @@ Deno.serve(async (req: Request) => {
 
         const log = (status: string, reason: string, orderId: string | null, rawResp: unknown) =>
           db.from("trade_executions").insert({
-            user_id: cfg.user_id, signal_id: sig.id, symbol: sig.symbol, action, volume: Math.max(volume, 0.01),
+            user_id: cfg.user_id, signal_id: sig.id, symbol: tradeSym, action, volume: Math.max(volume, 0.01),
             entry_price: entryPx ?? sig.entry_price, stop_loss: stopLoss ?? sig.stop_loss, take_profit: takeProfit ?? sig.target_price,
             mode: cfg.mode, status, reason, metaapi_order_id: orderId, raw_response: rawResp ?? null,
           });
@@ -734,7 +761,7 @@ Deno.serve(async (req: Request) => {
 
         const tradeBody: Record<string, unknown> = {
           actionType: isBuy ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL",
-          symbol: sig.symbol, volume,
+          symbol: tradeSym, volume,
         };
         if (stopLoss != null) tradeBody.stopLoss = stopLoss;
         if (takeProfit != null) tradeBody.takeProfit = takeProfit;
