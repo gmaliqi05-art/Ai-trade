@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { Target, Shield, TrendingUp, ChevronDown, ChevronUp, Clock, Activity, Sparkles, Loader2, Layers } from 'lucide-react';
+import { useI18n } from '../../i18n/i18n';
 import type { AssetAnalysis, HorizonAnalysis } from '../analyze';
 import { suggestLot } from '../core/lot';
 import { actionClasses, actionLabel, fmtPct, fmtPrice } from './format';
@@ -18,6 +19,7 @@ export interface CardAiReasoning {
 }
 
 function HorizonBlock({ title, data, category, accountBalance }: { title: string; data: HorizonAnalysis | null; category?: string; accountBalance?: number }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
 
   if (!data) {
@@ -27,7 +29,7 @@ function HorizonBlock({ title, data, category, accountBalance }: { title: string
           <span className="text-gray-400 text-xs font-medium flex items-center gap-1">
             <Clock className="w-3 h-3" />{title}
           </span>
-          <span className="text-gray-600 text-xs">s'ka mjaft të dhëna</span>
+          <span className="text-gray-600 text-xs">{t('s\'ka mjaft të dhëna')}</span>
         </div>
       </div>
     );
@@ -56,15 +58,15 @@ function HorizonBlock({ title, data, category, accountBalance }: { title: string
       {isActionable && (
         <div className="grid grid-cols-3 gap-1.5">
           <div className="bg-gray-900/60 rounded-lg p-1.5 text-center">
-            <div className="text-gray-500 text-[10px] flex items-center justify-center gap-0.5"><Target className="w-2.5 h-2.5" />Hyrje</div>
+            <div className="text-gray-500 text-[10px] flex items-center justify-center gap-0.5"><Target className="w-2.5 h-2.5" />{t('Hyrje')}</div>
             <div className="text-white text-xs font-semibold">{fmtPrice(plan.entry)}</div>
           </div>
           <div className="bg-green-500/10 rounded-lg p-1.5 text-center">
-            <div className="text-gray-500 text-[10px] flex items-center justify-center gap-0.5"><TrendingUp className="w-2.5 h-2.5" />Objektiv</div>
+            <div className="text-gray-500 text-[10px] flex items-center justify-center gap-0.5"><TrendingUp className="w-2.5 h-2.5" />{t('Objektiv')}</div>
             <div className="text-green-400 text-xs font-semibold">{fmtPrice(plan.takeProfit)}</div>
           </div>
           <div className="bg-red-500/10 rounded-lg p-1.5 text-center">
-            <div className="text-gray-500 text-[10px] flex items-center justify-center gap-0.5"><Shield className="w-2.5 h-2.5" />Stop</div>
+            <div className="text-gray-500 text-[10px] flex items-center justify-center gap-0.5"><Shield className="w-2.5 h-2.5" />{t('Stop')}</div>
             <div className="text-red-400 text-xs font-semibold">{fmtPrice(plan.stopLoss)}</div>
           </div>
         </div>
@@ -72,8 +74,8 @@ function HorizonBlock({ title, data, category, accountBalance }: { title: string
 
       {isActionable && lot && (
         <div className="flex items-center justify-between text-[11px] bg-gray-900/40 rounded-lg px-2 py-1">
-          <span className="text-gray-400 flex items-center gap-1"><Layers className="w-3 h-3 text-amber-400" />Lot i sugjeruar (rrezik 1%)</span>
-          <span className="text-white font-semibold">{lot.lot} <span className="text-gray-500">· rrezik ~${lot.moneyAtRisk.toFixed(0)}</span></span>
+          <span className="text-gray-400 flex items-center gap-1"><Layers className="w-3 h-3 text-amber-400" />{t('Lot i sugjeruar (rrezik 1%)')}</span>
+          <span className="text-white font-semibold">{lot.lot} <span className="text-gray-500">· {t('rrezik ~${money}', { money: lot.moneyAtRisk.toFixed(0) })}</span></span>
         </div>
       )}
 
@@ -81,8 +83,8 @@ function HorizonBlock({ title, data, category, accountBalance }: { title: string
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between text-gray-500 hover:text-gray-300 text-[11px] transition-colors"
       >
-        <span>{isActionable ? `R/R 1:${plan.riskReward}` : 'Asnjë pozicion (sinjal i dobët)'}</span>
-        <span className="flex items-center gap-1">Arsyet {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}</span>
+        <span>{isActionable ? `R/R 1:${plan.riskReward}` : t('Asnjë pozicion (sinjal i dobët)')}</span>
+        <span className="flex items-center gap-1">{t('Arsyet')} {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}</span>
       </button>
 
       {open && (
@@ -109,6 +111,7 @@ interface EngineSignalCardProps {
 }
 
 function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI: NonNullable<EngineSignalCardProps['askAI']> }) {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CardAiReasoning | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +122,7 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
     try {
       setResult(await askAI(analysis));
     } catch (e) {
-      setError((e as Error).message || 'Arsyetimi dështoi');
+      setError((e as Error).message || t('Arsyetimi dështoi'));
     } finally {
       setLoading(false);
     }
@@ -133,13 +136,13 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
         className="w-full flex items-center justify-center gap-2 text-xs font-medium text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl py-2 transition-colors disabled:opacity-50"
       >
         {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-        {loading ? 'Roboti po analizon…' : result ? 'Rifresko arsyetimin' : 'Kërko arsyetimin e Robotit'}
+        {loading ? t('Roboti po analizon…') : result ? t('Rifresko arsyetimin') : t('Kërko arsyetimin e Robotit')}
       </button>
 
       {error && (
         <p className="mt-2 text-[11px] text-red-400">
           {error === 'no_active_providers' || error.includes('provider')
-            ? 'Arsyetimi i robotit s\'është i disponueshëm tani. Provo më vonë.'
+            ? t('Arsyetimi i robotit s\'është i disponueshëm tani. Provo më vonë.')
             : error}
         </p>
       )}
@@ -148,9 +151,9 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
         <div className="mt-2 space-y-1.5 bg-purple-500/5 border border-purple-500/20 rounded-xl p-3">
           <div className="flex items-center justify-between">
             <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${actionClasses(result.signal.toUpperCase() === 'BUY' ? 'BUY' : result.signal.toUpperCase() === 'SELL' ? 'SELL' : 'HOLD')}`}>
-              {result.signal.toUpperCase() === 'BUY' ? 'BLEJ' : result.signal.toUpperCase() === 'SELL' ? 'SHIT' : 'PRIT'}
+              {result.signal.toUpperCase() === 'BUY' ? t('BLEJ') : result.signal.toUpperCase() === 'SELL' ? t('SHIT') : t('PRIT')}
             </span>
-            <span className="text-purple-300 text-xs font-semibold">{Math.round(result.confidence)}% Robot</span>
+            <span className="text-purple-300 text-xs font-semibold">{t('{confidence}% Robot', { confidence: Math.round(result.confidence) })}</span>
           </div>
           <p className="text-gray-300 text-[11px] leading-relaxed">{result.analysis_text}</p>
           <p className="text-gray-400 text-[11px] leading-relaxed">{result.reasoning}</p>
@@ -161,6 +164,7 @@ function AiReasoningBlock({ analysis, askAI }: { analysis: AssetAnalysis; askAI:
 }
 
 export function EngineSignalCard({ analysis, askAI, category, accountBalance }: EngineSignalCardProps) {
+  const { t } = useI18n();
   const sourceBadge =
     analysis.source === 'live'
       ? 'bg-green-500/20 text-green-400 border-green-500/30'
@@ -174,12 +178,12 @@ export function EngineSignalCard({ analysis, askAI, category, accountBalance }: 
           <span className="text-white font-bold">{analysis.symbol}</span>
         </div>
         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${sourceBadge}`}>
-          {analysis.source === 'live' ? 'LIVE' : 'VLERËSIM'}
+          {analysis.source === 'live' ? t('LIVE') : t('VLERËSIM')}
         </span>
       </div>
 
-      <HorizonBlock title="Afatshkurtër" data={analysis.short} category={category} accountBalance={accountBalance} />
-      <HorizonBlock title="Afatgjatë" data={analysis.long} category={category} accountBalance={accountBalance} />
+      <HorizonBlock title={t('Afatshkurtër')} data={analysis.short} category={category} accountBalance={accountBalance} />
+      <HorizonBlock title={t('Afatgjatë')} data={analysis.long} category={category} accountBalance={accountBalance} />
 
       {askAI && (analysis.short || analysis.long) && <AiReasoningBlock analysis={analysis} askAI={askAI} />}
     </div>

@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
+import { useI18n } from '../i18n/i18n';
 
 const TZ = 'Europe/Berlin';
 const OPEN_H = 9;
@@ -34,10 +35,11 @@ const fmtMin = (m: number) => {
 };
 
 export default function GoldSessionBadge() {
+  const { t } = useI18n();
   const [now, setNow] = useState(new Date());
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(t);
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
   }, []);
 
   const fh = frankfurtHour(now);
@@ -59,11 +61,11 @@ export default function GoldSessionBadge() {
       <Clock className={`w-4 h-4 ${active ? 'text-green-400' : 'text-gray-500'}`} />
       <div className="leading-tight">
         <div className="text-xs font-semibold text-white">
-          Sesioni i arit: <span className={active ? 'text-green-400' : 'text-gray-400'}>{active ? 'AKTIV' : 'I MBYLLUR'}</span>
+          {t('Sesioni i arit:')} <span className={active ? 'text-green-400' : 'text-gray-400'}>{active ? t('AKTIV') : t('I MBYLLUR')}</span>
         </div>
         <div className="text-[10px] text-gray-500">
-          {localOpen}–{localClose} {sameAsFrankfurt ? '(Frankfurt)' : '(koha jote)'}
-          {!active && ` · hapet ${localOpen}`}
+          {localOpen}–{localClose} {sameAsFrankfurt ? t('(Frankfurt)') : t('(koha jote)')}
+          {!active && ` · ${t('hapet {time}', { time: localOpen })}`}
         </div>
       </div>
     </div>
