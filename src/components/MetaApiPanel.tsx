@@ -284,7 +284,13 @@ export default function MetaApiPanel() {
         subtitle={t('SL ndjek profitin automatik te ÇDO trade — mban një pjesë të fitimit kur çmimi ecën në favor.')}
         right={<TogglePill on={cfg.trail_enabled} onClick={() => setAndSave('trail_enabled', !cfg.trail_enabled)} t={t} />}>
         <div className={`space-y-3 transition-opacity ${cfg.trail_enabled ? '' : 'opacity-40 pointer-events-none'}`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {cfg.broker_trailing && (
+            <div className="flex items-start gap-2 text-[11px] bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2 text-amber-300">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span dangerouslySetInnerHTML={{ __html: t('<span class="font-semibold">"Trailing në anë të MT5" është AKTIV</span> → MT5 ndjek SL-në me <span class="text-white">distancë fikse</span> (= distanca fillestare e SL), jo me përqindje. Përqindja poshtë <span class="text-white">NUK zbatohet</span> tani. Fike toggle-in e MT5 (poshtë) për të përdorur përqindjen e robotit.') }} />
+            </div>
+          )}
+          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2.5 ${cfg.broker_trailing ? 'opacity-40 pointer-events-none' : ''}`}>
             <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-2.5">
               <label className="block text-[11px] font-medium text-gray-300 mb-1">{t('% e fitimit që mban SL')}</label>
               <div className="flex gap-1.5 mb-1.5">
