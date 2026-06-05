@@ -362,6 +362,34 @@ async function grossLossToday(cfg: Cfg): Promise<number> {
   } catch { return 0; }
 }
 
+// TRAILING I SHPEJTË: ndjek SL-në te ÇDO pozicion duke mbajtur një PJESË të fitimit (trail_lock_pct),
+// pasi profiti kalon trail_start_usd. I lehtë (vetëm /positions + modifikim) — thirret disa herë/minutë
+// që SL-ja të ndjekë lëvizjen sa më shpejt që lejon sistemi.
+async function trailPositions(cfg: Cfg): Promise<number> {
+  if (cfg.trail_enabled === false) return 0;
+  let positions: Position[] = [];
+  try { positions = (await maGet(cfg, "/positions") as Position[]) ?? []; } catch { return 0; }
+  if (!Array.isArray(positions) || positions.length === 0) return 0;
+  const startUsd = Math.max(0.1, Number(cfg.trail_start_usd ?? 1));
+  const lockFrac = Math.min(0.95, Math.max(0.05, Number(cfg.trail_lock_pct ?? 50) / 100));
+  let moves = 0;
+  for (const p of positions) {
+    const isBuy = String(p.type || "").includes("BUY");
+    const entry = Number(p.openPrice), cur = Number(p.currentPrice);
+    const sl = p.stopLoss != null ? Number(p.stopLoss) : null;
+    if (!Number.isFinite(entry) || !Number.isFinite(cur) || sl == null) continue;
+    const moved = isBuy ? cur - entry : entry - cur;
+    if (moved < startUsd) continue;
+    const newSL = isBuy ? entry + moved * lockFrac : entry - moved * lockFrac;
+    const better = isBuy ? newSL > sl : newSL < sl;
+    if (better) {
+      const beSL = Math.round(newSL * 100) / 100;
+      try { await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: p.id, stopLoss: beSL, takeProfit: p.takeProfit ?? undefined }); moves++; } catch { /* */ }
+    }
+  }
+  return moves;
+}
+
 // Rezultati real i brokerit (10009 = DONE); HTTP 200 fsheh refuzimet.
 function brokerResult(body: unknown): { ok: boolean; code: number; msg: string; orderId: string | null } {
   const o = (body ?? {}) as Record<string, unknown>;
@@ -783,6 +811,18 @@ Deno.serve(async (req: Request) => {
         } catch (e) {
           await log("error", (e as Error).message, null, null);
           summary.push({ user: cfg.user_id, signal: sig.id, status: "error" });
+        }
+      }
+    }
+
+    // TRAILING I SHPEJTË: brenda kësaj minute, ndjek SL-në disa herë (~çdo 13s) që të reagojë
+    // sa më shpejt që lejon sistemi (kufiri i cron-it është 1 min). SL ndjek % e fitimit live.
+    const trailCfgs = (configs ?? []).map((r) => r as Cfg).filter((c) => c.account_id && c.token && c.trail_enabled !== false);
+    if (trailCfgs.length > 0) {
+      for (let i = 0; i < 3; i++) {
+        await new Promise((r) => setTimeout(r, 13000));
+        for (const c of trailCfgs) {
+          try { const m = await trailPositions(c); if (m > 0) summary.push({ user: c.user_id, fast_trail: m, pass: i + 1 }); } catch { /* */ }
         }
       }
     }
