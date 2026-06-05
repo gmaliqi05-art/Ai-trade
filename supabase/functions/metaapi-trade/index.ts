@@ -128,6 +128,36 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ORDERS — porositë NË PRITJE (limit/stop) që presin çmimin (ende pa u hapur si pozicion).
+    if (action === "ORDERS") {
+      try {
+        const orders = await metaApiGet(config, "/orders");
+        return json({ success: true, mode: config.mode, orders });
+      } catch (e) {
+        return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
+      }
+    }
+
+    // CANCEL_ORDER — anulo një porosi në pritje sipas id-së.
+    if (action === "CANCEL_ORDER") {
+      const orderId = body.orderId;
+      if (!orderId) return json({ error: "bad_request", message: "orderId i nevojshëm" }, 400);
+      try {
+        const resp = await fetch(`${host(config.region)}/users/current/accounts/${config.account_id}/trade`, {
+          method: "POST",
+          headers: { "auth-token": config.token, "Content-Type": "application/json" },
+          body: JSON.stringify({ actionType: "ORDER_CANCEL", orderId }),
+          signal: AbortSignal.timeout(20000),
+        });
+        const txt = await resp.text();
+        let rb: unknown = txt; try { rb = JSON.parse(txt); } catch { /* tekst */ }
+        if (!resp.ok) return json({ error: "cancel_failed", status: resp.status, details: rb }, 502);
+        return json({ success: true, result: rb });
+      } catch (e) {
+        return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
+      }
+    }
+
     // PRICE — çmimi REAL live i brokerit (bid/ask) për një simbol (përkon me app-in MT5).
     if (action === "PRICE") {
       const symbol = await resolveSymbol(config, body.symbol || "XAUUSD");

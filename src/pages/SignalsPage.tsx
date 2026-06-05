@@ -8,6 +8,8 @@ import CompletedSignals from '../components/CompletedSignals';
 import { isGoldSessionActive, goldWindowLocal } from '../lib/goldSession';
 import type { Timeframe } from '../ai-trader/market/candles';
 import { requestEngineReasoning } from '../services/aiReasoning';
+import { executeTrade } from '../services/metaapi';
+import type { EngineEnterInput } from '../ai-trader/react/EngineSignalCard';
 import { useI18n } from '../i18n/i18n';
 
 const TIMEFRAMES: { v: Timeframe; label: string }[] = [
@@ -129,6 +131,26 @@ export default function SignalsPage() {
   const accountBalance = Number((profile as { balance?: number } | null)?.balance) || 0;
   const catBySymbol = (sym: string) => assets.find(a => a.symbol === sym)?.category || assets.find(a => a.symbol === sym)?.type;
 
+  // Klik "Hyr" mbi një sinjal të motorit → ekzekuton trade-in direkt (porosi tregu ose në pritje te hyrja).
+  const handleEnter = async (i: EngineEnterInput): Promise<{ ok: boolean; msg: string }> => {
+    const r = await executeTrade({
+      action: i.action, symbol: i.symbol, volume: i.lot,
+      stopLoss: i.stopLoss, takeProfit: i.takeProfit, entryPrice: i.entry,
+    });
+    if (r.error) {
+      const map: Record<string, string> = {
+        metaapi_not_configured: t('Lidh llogarinë MT5 te Lidhja & Konfigurimi para se të tregtosh.'),
+        kill_switch: t('Kill-switch është aktiv — çaktivizoje te Lidhja & Konfigurimi.'),
+        max_open_trades: t('Arritur limiti i pozicioneve të hapura.'),
+        max_daily_loss: t('Arritur limiti i humbjes ditore.'),
+      };
+      return { ok: false, msg: map[r.error] || r.message || r.error };
+    }
+    const dir = i.action === 'BUY' ? t('BLEJ') : t('SHIT');
+    if (r.pending) return { ok: true, msg: t('Porosi në pritje {dir} {sym} @ {price} — hyn automatik kur çmimi e arrin.', { dir, sym: i.symbol, price: r.open_price ?? i.entry }) };
+    return { ok: true, msg: t('Urdhër {dir} {sym} dërguar ({mode}).', { dir, sym: i.symbol, mode: r.mode ?? '' }) };
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -221,6 +243,7 @@ export default function SignalsPage() {
                   analysis={a}
                   category={catBySymbol(a.symbol)}
                   accountBalance={accountBalance}
+                  onEnter={handleEnter}
                   askAI={(an) => requestEngineReasoning(an, { assetId: assets.find(x => x.symbol === an.symbol)?.id })}
                 />
               ))}
