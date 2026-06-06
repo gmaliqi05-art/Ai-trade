@@ -25,6 +25,8 @@ interface Cfg {
   scalp_tp_usd?: number;     // distanca e TP në çmim ($) për ar, default 4
   scalp_sl_pct?: number;     // SL i scalp-it për CRYPTO si % e çmimit, default 0.3
   scalp_tp_pct?: number;     // TP i scalp-it për CRYPTO si % e çmimit, default 0.6
+  scalp_sl_pct_oil?: number; // SL i scalp-it për NAFTË si % e çmimit, default 0.4
+  scalp_tp_pct_oil?: number; // TP i scalp-it për NAFTË si % e çmimit, default 0.8
   scalp_max_trades?: number; // pozicione scalp njëkohësisht, default 2
   scalp_small_moves?: boolean; // hyn edhe në lëvizje të vogla (kushte më të lehta); default false
   // Trailing i SL (ndjekja e fitimit) — i konfigurueshëm nga përdoruesi.
@@ -77,12 +79,26 @@ function goldSessionOpen(): boolean {
 function isCrypto(symbol: string): boolean {
   return /^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test((symbol || "").toUpperCase());
 }
+// Naftë (WTI/Brent) — tregtohet ~23h/ditë pune (jo vetëm sesioni i arit).
+function isOil(symbol: string): boolean {
+  return /^(USOIL|UKOIL|WTI|XTI|XBR|BRENT|UKO|USO|CL)/i.test((symbol || "").toUpperCase());
+}
+// EIA Weekly Petroleum Status Report: e mërkurë 10:30 ET → bllokim 10:00–11:00 ET për naftën.
+function eiaBlackout(d = new Date()): boolean {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(d);
+  if (p.find((x) => x.type === "weekday")?.value !== "Wed") return false;
+  const hh = parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24;
+  const mm = parseInt(p.find((x) => x.type === "minute")?.value || "0", 10);
+  const mins = hh * 60 + mm;
+  return mins >= 10 * 60 && mins < 11 * 60;
+}
 
 function valuePerPrice(symbol: string): number {
   const s = (symbol || "").toUpperCase();
   if (s.includes("XAU")) return 100;
   if (s.includes("XAG")) return 5000;
   if (/^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test(s)) return 1;
+  if (isOil(s)) return 1000; // naftë: kontrata standarde 1000 fuçi → $1 lëvizje = $1000/lot
   if (s.length === 6) return 100000;
   return 100;
 }
@@ -640,10 +656,15 @@ Deno.serve(async (req: Request) => {
       const allowed = new Set((cfg.auto_symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
       if (allowed.size === 0) continue;
 
-      // Jashtë sesionit të arit: lejo VETËM crypto (tregtohet 24/7); ari & instrumentet e tjera presin orarin.
+      // Jashtë sesionit të arit: lejo crypto (24/7) dhe naftë (~23h/ditë pune); ari & të tjerat presin orarin.
       if (!goldSessionOpen()) {
-        for (const s of [...allowed]) { if (!isCrypto(s)) allowed.delete(s); }
+        for (const s of [...allowed]) { if (!isCrypto(s) && !isOil(s)) allowed.delete(s); }
         if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
+      }
+      // NAFTË: bllokim rreth raportit javor EIA (e mërkurë 10:00–11:00 ET) — hiq naftën nga lista atëherë.
+      if (eiaBlackout()) {
+        for (const s of [...allowed]) { if (isOil(s)) allowed.delete(s); }
+        if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "eia_blackout" }); continue; }
       }
       // Filtri i lajmeve: pauzë rreth NFP/CPI/FOMC.
       if (newsBlock) { summary.push({ user: cfg.user_id, status: "news_blackout" }); continue; }
@@ -672,13 +693,18 @@ Deno.serve(async (req: Request) => {
           const isBuyS = sgl.action === "BUY";
           const entryPx = c1[c1.length - 1].close;
 
-          // SL/TP BAZË: ar → $ fiks nga cilësimet; CRYPTO → % e çmimit ($-i fiks është shumë i
-          // ngushtë te çmimet e larta → "Invalid stops"). Të dyja të konfigurueshme nga përdoruesi.
-          const baseSL = isCrypto(rawSym)
+          // SL/TP BAZË: ar → $ fiks; CRYPTO & NAFTË → % e çmimit ($-i fiks s'i përshtatet
+          // shkallës së çmimit → SL i gabuar). Të gjitha të konfigurueshme nga përdoruesi.
+          const cry = isCrypto(rawSym), oil = isOil(rawSym);
+          const baseSL = cry
             ? Math.max(entryPx * (Number(cfg.scalp_sl_pct ?? 0.3) / 100), 0.0001)
+            : oil
+            ? Math.max(entryPx * (Number(cfg.scalp_sl_pct_oil ?? 0.4) / 100), 0.01)
             : Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
-          const baseTP = isCrypto(rawSym)
+          const baseTP = cry
             ? Math.max(baseSL, entryPx * (Number(cfg.scalp_tp_pct ?? 0.6) / 100))
+            : oil
+            ? Math.max(baseSL, entryPx * (Number(cfg.scalp_tp_pct_oil ?? 0.8) / 100))
             : Math.max(baseSL, Number(cfg.scalp_tp_usd ?? 4));
           const scalpRR = baseSL > 0 ? baseTP / baseSL : 2; // R:R nga cilësimet
 
@@ -776,7 +802,9 @@ Deno.serve(async (req: Request) => {
         if (m15 && m1h && m4h && m15.length > 30 && m1h.length > 30 && m4h.length > 30) {
           const t15 = buildTF(m15, "15m"), t1h = buildTF(m1h, "1h"), t4h = buildTF(m4h, "4h");
           entryPx = t15.price; // çmimi më i freskët MT5
-          slDist = t1h.atr > 0 ? t1h.atr * 1.5 : entryPx * 0.015;
+          // NAFTË: SL më i gjerë (ATR×2.0) — më volatile se ari; RR 1:2 ruhet.
+          const stopMult = isOil(sig.symbol) ? 2.0 : 1.5;
+          slDist = t1h.atr > 0 ? t1h.atr * stopMult : entryPx * (isOil(sig.symbol) ? 0.02 : 0.015);
           tpDist = slDist * 2;
           stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;

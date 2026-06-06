@@ -167,6 +167,24 @@ function frankfurtHour(d = new Date()): number {
   return parseInt(s, 10) || 0;
 }
 
+// ---------- NAFTË: identifikim + blackout-i i raportit EIA ----------
+// A është simboli naftë (WTI/Brent, çfarëdo emërtimi brokeri)?
+function isOil(symbol: string): boolean {
+  return /^(USOIL|UKOIL|WTI|XTI|XBR|BRENT|UKO|USO|CL)/i.test((symbol || "").toUpperCase());
+}
+// EIA Weekly Petroleum Status Report: e mërkurë 10:30 ET → lëkundje ekstreme.
+// Bllokojmë hyrjet e reja për naftën në dritaren 10:00–11:00 ET të së mërkurës.
+// Shënim: në javët me festë të hënën, raporti shtyhet të enjten 11:00 ET (s'mbulohet automatikisht).
+function eiaBlackout(d = new Date()): boolean {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(d);
+  const wd = p.find((x) => x.type === "weekday")?.value;
+  if (wd !== "Wed") return false;
+  const hh = parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24;
+  const mm = parseInt(p.find((x) => x.type === "minute")?.value || "0", 10);
+  const mins = hh * 60 + mm;
+  return mins >= 10 * 60 && mins < 11 * 60;
+}
+
 // Analizë e një periudhe: kthen drejtimin, besueshmërinë, EMA200 dhe ADX.
 interface TFResult { action: "BUY" | "SELL" | "HOLD"; confidence: number; price: number; atr: number; ema200: number; adx: number; reasons: string[]; }
 function analyzeTF(candles: Candle[]): TFResult | null {
@@ -204,6 +222,8 @@ function analyzeTF(candles: Candle[]): TFResult | null {
 //  - Filtër force: ADX(1h) ≥ 20 (vetëm trende të forta).
 const ADX_MIN = 18;
 async function generateStrong(symbol: string, broker?: BrokerCreds): Promise<EngineResult | null> {
+  // NAFTË: bllokim rreth raportit javor EIA (e mërkurë 10:00–11:00 ET) — lëkundje fallco.
+  if (isOil(symbol) && eiaBlackout()) return null;
   const [c15, c1h, c4h, c1d] = await Promise.all([
     fetchCandles(symbol, "15m", broker), fetchCandles(symbol, "1h", broker), fetchCandles(symbol, "4h", broker), fetchCandles(symbol, "1d", broker),
   ]);
@@ -294,7 +314,10 @@ async function generateStrong(symbol: string, broker?: BrokerCreds): Promise<Eng
   const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
   const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0) + (erGood ? 0.02 : 0) + (stOk ? 0.02 : 0);
   const confidence = Math.min(1, base + d1Boost + confBonus);
-  const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
+  // NAFTË: SL më i gjerë (ATR×2.0) sepse nafta është më volatile/whipsaw se ari; RR 1:2 ruhet.
+  const oilSym = isOil(symbol);
+  const stopMult = oilSym ? 2.0 : 1.5;
+  const stopDist = s1h.atr > 0 ? s1h.atr * stopMult : price * (oilSym ? 0.02 : 0.015);
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
