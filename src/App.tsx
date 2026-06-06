@@ -20,6 +20,7 @@ import AdminSettingsPage from './admin/AdminSettingsPage';
 import AdminMetaTraderPage from './admin/AdminMetaTraderPage';
 import AdminCostPage from './admin/AdminCostPage';
 import AdminHowItWorksPage from './admin/AdminHowItWorksPage';
+import AdminProTradeLabPage from './admin/AdminProTradeLabPage';
 import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
@@ -29,12 +30,12 @@ export type ClientPage =
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_assets' | 'admin_signals'
   | 'admin_trades' | 'admin_ai' | 'admin_cost' | 'admin_broadcast' | 'admin_metatrader'
-  | 'admin_audit' | 'admin_howitworks' | 'admin_settings';
+  | 'admin_audit' | 'admin_howitworks' | 'admin_protrade_lab' | 'admin_settings';
 
 export type Page = ClientPage | AdminPage;
 
 const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'notifications', 'reports', 'settings'];
-const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_assets', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_audit', 'admin_howitworks', 'admin_settings'];
+const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_assets', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_audit', 'admin_howitworks', 'admin_protrade_lab', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
 function usePersistedPage<T extends string>(storageKey: string, valid: T[], fallback: T): [T, (p: T) => void] {
@@ -68,6 +69,7 @@ function AdminApp() {
       {currentPage === 'admin_metatrader' && <AdminMetaTraderPage />}
       {currentPage === 'admin_audit' && <AdminPageTab tab="audit" />}
       {currentPage === 'admin_howitworks' && <AdminHowItWorksPage />}
+      {currentPage === 'admin_protrade_lab' && <AdminProTradeLabPage />}
       {currentPage === 'admin_settings' && <AdminSettingsPage />}
     </AdminLayout>
   );

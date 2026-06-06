@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
-  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen
+  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -23,6 +23,7 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_assets', label: 'Aktivet & tregjet', icon: BarChart2, section: 'Menaxhimi' },
   { id: 'admin_signals', label: 'Sinjalet', icon: Zap, section: 'Menaxhimi' },
   { id: 'admin_trades', label: 'Tregtitë', icon: Activity, section: 'Menaxhimi' },
+  { id: 'admin_protrade_lab', label: 'ProTrade Lab', icon: FlaskConical, section: 'Platforma' },
   { id: 'admin_ai', label: 'AI Providers', icon: Brain, section: 'Platforma' },
   { id: 'admin_cost', label: 'Kostot & API', icon: Coins, section: 'Platforma' },
   { id: 'admin_broadcast', label: 'Broadcast', icon: Megaphone, section: 'Platforma' },
@@ -44,6 +45,7 @@ const pageLabels: Record<AdminPage, string> = {
   admin_metatrader: 'Lidhjet MetaTrader',
   admin_audit: 'Regjistri i auditit',
   admin_howitworks: 'Si funksionon sistemi',
+  admin_protrade_lab: 'ProTrade Lab — mësimi',
   admin_settings: 'Cilësimet e platformës',
 };
 
