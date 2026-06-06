@@ -28,31 +28,46 @@ export default function AdminProTradeLabPage() {
   const [advising, setAdvising] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [tokens, setTokens] = useState<string[]>([]);
+  const [lines, setLines] = useState<string[]>([]);
 
-  // "Kodet reale" për matrix-in: ndërtohen nga features e sinjaleve të fundit + statistikat.
-  const buildTokens = useCallback(async () => {
-    const base = ['EMA200', 'RSI', 'MACD', 'ADX', 'ATR', 'Supertrend', 'EfficiencyRatio', 'Bollinger', 'confluence', 'D1', 'EMA9>EMA21'];
-    const out = new Set<string>(base);
+  // "Kodet reale" për matrix-in: tokena të shkurtër (shi) + rreshta të plotë (feed):
+  // sinjale me Hyrje/SL/TP/conf, formula matematikore dhe rregulla — nga sinjalet reale.
+  const buildFeed = useCallback(async () => {
+    const tok = new Set<string>(['EMA200', 'RSI', 'MACD', 'ADX', 'ATR', 'Supertrend', 'EfficiencyRatio', 'Bollinger', 'confluence', 'D1', 'BLEJ', 'SHIT']);
+    const formulaLines = [
+      'EMA = Çmim·k + EMA₋₁·(1−k)    k = 2/(n+1)',
+      'RSI = 100 − 100/(1 + RS)    RS = avgGain / avgLoss',
+      'MACD = EMA12 − EMA26    Signal = EMA9(MACD)    Hist = MACD − Signal',
+      'ATR = max(H−L, |H−C₋₁|, |L−C₋₁|)    → volatiliteti',
+      'ADX = WilderAvg(DX)    DX = 100·|+DI − −DI| / (+DI + −DI)',
+      'SL = ATR × 1.5  (naftë ×2)    TP = SL × 2    →    R:R = 1:2',
+      'lot = rreziku / (distSL × vlerëPerÇmim)',
+      'Confluence = Σ faktorë / max    →    besueshmëria',
+      'Efficiency Ratio = |Δneto| / Σ|Δ|    Supertrend = (H+L)/2 ± ATR×3',
+      'EMA200 ↓  &  1h+4h pajtohen  &  ADX ≥ 25  →  sinjal i vlefshëm',
+    ];
+    const sigLines: string[] = [];
     try {
       const { data } = await supabase.from('signals')
-        .select('symbol, type, confidence, status, features')
-        .not('features', 'is', null).order('created_at', { ascending: false }).limit(60);
-      for (const s of (data ?? []) as { symbol: string; type: string; confidence: number; status: string; features: Record<string, unknown> }[]) {
+        .select('symbol, type, confidence, entry_price, target_price, stop_loss, status, features')
+        .not('features', 'is', null).order('created_at', { ascending: false }).limit(50);
+      for (const s of (data ?? []) as { symbol: string; type: string; confidence: number; entry_price: number | null; target_price: number | null; stop_loss: number | null; status: string; features: Record<string, unknown> }[]) {
         const f = s.features || {};
-        out.add(s.symbol); out.add(String(s.type).toUpperCase());
-        if (f.adx != null) out.add(`ADX${f.adx}`);
-        if (f.rsi != null) out.add(`RSI${f.rsi}`);
-        if (f.conf != null) out.add(`conf${f.conf}`);
-        if (f.er != null) out.add(`ER${f.er}`);
-        if (f.atr_pct != null) out.add(`ATR${f.atr_pct}%`);
-        if (f.dow) out.add(String(f.dow));
-        if (s.status) out.add(s.status);
+        const dir = s.type === 'buy' ? 'BLEJ' : 'SHIT';
+        const st = s.status === 'hit_tp' ? ' → ✓TP' : s.status === 'hit_sl' ? ' → ✗SL' : '';
+        sigLines.push(`${s.symbol} ${dir} │ Hyrje ${s.entry_price ?? '—'} │ SL ${s.stop_loss ?? '—'} │ TP ${s.target_price ?? '—'} │ conf ${s.confidence}% │ ADX ${f.adx ?? '—'} RSI ${f.rsi ?? '—'}${st}`);
+        tok.add(s.symbol);
+        if (f.adx != null) tok.add(`ADX${f.adx}`);
+        if (f.rsi != null) tok.add(`RSI${f.rsi}`);
+        if (f.conf != null) tok.add(`conf${f.conf}`);
+        if (f.er != null) tok.add(`ER${f.er}`);
       }
     } catch { /* injoro */ }
-    setTokens([...out]);
+    setTokens([...tok]);
+    setLines([...sigLines, ...formulaLines]);
   }, []);
 
-  useEffect(() => { buildTokens(); }, [buildTokens]);
+  useEffect(() => { buildFeed(); }, [buildFeed]);
 
   const load = useCallback(async (advise = false) => {
     if (advise) setAdvising(true); else setLoading(true);
@@ -100,7 +115,7 @@ export default function AdminProTradeLabPage() {
           </div>
         </div>
         <div className="h-44 sm:h-52">
-          <IntelligenceMatrix tokens={tokens} active={advising} />
+          <IntelligenceMatrix lines={lines} tokens={tokens} active={advising} />
         </div>
       </div>
 
