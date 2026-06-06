@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
-  Bell, Settings, Monitor, ChevronDown, Coins
+  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -28,6 +28,7 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_broadcast', label: 'Broadcast', icon: Megaphone, section: 'Platforma' },
   { id: 'admin_metatrader', label: 'MetaTrader', icon: Monitor, section: 'Platforma' },
   { id: 'admin_audit', label: 'Regjistri i auditit', icon: Shield, section: 'Siguria' },
+  { id: 'admin_howitworks', label: 'Si funksionon', icon: BookOpen, section: 'Siguria' },
   { id: 'admin_settings', label: 'Cilësimet', icon: Settings, section: 'Siguria' },
 ];
 
@@ -42,6 +43,7 @@ const pageLabels: Record<AdminPage, string> = {
   admin_broadcast: 'Broadcast',
   admin_metatrader: 'Lidhjet MetaTrader',
   admin_audit: 'Regjistri i auditit',
+  admin_howitworks: 'Si funksionon sistemi',
   admin_settings: 'Cilësimet e platformës',
 };
 
