@@ -32,12 +32,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-    if (data) setProfile(data as Profile);
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      if (data) setProfile(data as Profile);
+    } catch { /* injoro — mos e ndal hapjen e aplikacionit */ }
   };
 
   const refreshProfile = async () => {
@@ -45,25 +47,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; setLoading(false); } };
+    // Rrjet i shtrirë mund të bllokojë getSession(); MOS ngec kurrë te "Loading…".
+    // Pas 6s hap aplikacionin gjithsesi — onAuthStateChange e rifreskon sesionin kur vjen.
+    const timer = setTimeout(finish, 6000);
+
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) fetchProfile(session.user.id);
+      })
+      .catch(() => { /* injoro — provohet sërish nga onAuthStateChange */ })
+      .finally(finish);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      setLoading(false);
+      if (session?.user) { fetchProfile(session.user.id); }
+      else { setProfile(null); }
+      finish();
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        (async () => { await fetchProfile(session.user.id); })();
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => { clearTimeout(timer); subscription.unsubscribe(); };
   }, []);
 
   const signIn = async (email: string, password: string) => {
