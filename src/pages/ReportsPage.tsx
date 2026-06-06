@@ -23,6 +23,17 @@ const isToday = (iso?: string) => {
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
 };
 
+// Data e sotme si YYYY-MM-DD (kohë lokale) + a bie një ISO në një ditë të caktuar (lokale)?
+const todayYMD = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const isOnDay = (iso: string | undefined, ymd: string) => {
+  if (!iso) return false;
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === ymd;
+};
+
 // Grupon deal-et e MT5 në trade të mbyllura — te `services/closedTrades`.
 function dailyBreakdown(trades: ClosedTrade[], balance: number): DayRow[] {
   const byDay = new Map<string, DayRow>();
@@ -48,8 +59,11 @@ const colr = (n: number) => n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 
 export default function ReportsPage() {
   const { t } = useI18n();
   const { user } = useAuth();
-  const [period, setPeriod] = useState<number | 'today'>('today');
-  const periodLabel = period === 'today' ? t('Sot') : t('{period} ditët e fundit', { period });
+  const [period, setPeriod] = useState<number | 'today' | 'day'>('today');
+  const [customDate, setCustomDate] = useState<string>(todayYMD()); // ditë e caktuar (YYYY-MM-DD)
+  const periodLabel = period === 'today' ? t('Sot')
+    : period === 'day' ? new Date(customDate + 'T00:00:00').toLocaleDateString('sq-AL', { day: '2-digit', month: 'short', year: 'numeric' })
+    : t('{period} ditët e fundit', { period });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
@@ -60,15 +74,24 @@ export default function ReportsPage() {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null); setNotConnected(false);
-    // Sinjalet e mbyllura në periudhë (rolling 24h për 'Sot') — ngarkohen GJITHMONË, edhe pa lidhje MT5.
-    const sigSince = new Date(Date.now() - (period === 'today' ? 86400000 : (period as number) * 86400000)).toISOString();
-    supabase.from('signals')
+    // Sinjalet e mbyllura në periudhë (rolling 24h për 'Sot'; dritare ditore për 'ditë') — gjithmonë, edhe pa MT5.
+    let sigQuery = supabase.from('signals')
       .select('id, symbol, type, status, confidence, result_pct, closed_at')
-      .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', sigSince)
-      .order('closed_at', { ascending: false }).limit(100)
-      .then(({ data }) => setSigClosed((data as SigRow[]) || []));
+      .in('status', ['hit_tp', 'hit_sl', 'expired']);
+    if (period === 'day') {
+      const start = new Date(customDate + 'T00:00:00');
+      const end = new Date(start); end.setDate(end.getDate() + 1);
+      sigQuery = sigQuery.gte('closed_at', start.toISOString()).lt('closed_at', end.toISOString());
+    } else {
+      const sigSince = new Date(Date.now() - (period === 'today' ? 86400000 : (period as number) * 86400000)).toISOString();
+      sigQuery = sigQuery.gte('closed_at', sigSince);
+    }
+    sigQuery.order('closed_at', { ascending: false }).limit(100).then(({ data }) => setSigClosed((data as SigRow[]) || []));
     try {
-      const fetchDays = period === 'today' ? 2 : period; // marrë pak më shumë; filtrohet te 'sot'
+      // Sa ditë histori MT5 të marrim: për 'ditë' mjaft sa të mbulojë atë datë + buffer.
+      const fetchDays = period === 'today' ? 2
+        : period === 'day' ? Math.max(2, Math.ceil((Date.now() - new Date(customDate + 'T00:00:00').getTime()) / 86400000) + 2)
+        : period;
       const [chk, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(fetchDays)]);
       if (chk.error || hist.error) {
         if ((chk.error || hist.error) === 'metaapi_not_configured') { setNotConnected(true); setTrades([]); return; }
@@ -95,12 +118,14 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, user]);
+  }, [period, customDate, user]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Te 'Sot' shfaqen vetëm trade-t e mbyllura sot; përndryshe gjithë periudha.
-  const shown = period === 'today' ? trades.filter(t => isToday(t.closeTime)) : trades;
+  // 'Sot' → vetëm trade-t e sotme; 'ditë' → vetëm ato të datës së zgjedhur; përndryshe gjithë periudha.
+  const shown = period === 'today' ? trades.filter(t => isToday(t.closeTime))
+    : period === 'day' ? trades.filter(t => isOnDay(t.closeTime, customDate))
+    : trades;
 
   // Përmbledhja totale.
   const totalNet = shown.reduce((s, t) => s + t.net, 0);
@@ -158,7 +183,7 @@ export default function ReportsPage() {
     shown.forEach(tr => lines.push(`${tr.closeTime ? new Date(tr.closeTime).toLocaleString('sq-AL') : ''},${tr.symbol},${tr.direction},${sourceMeta[tr.source || 'mt5'].label},${tr.volume},${tr.entryPrice ?? ''},${tr.exitPrice ?? ''},${tr.net.toFixed(2)}`));
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `goldtrade_raport_${period === 'today' ? 'sot' : period + 'd'}_${Date.now()}.csv`; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `goldtrade_raport_${period === 'today' ? 'sot' : period === 'day' ? customDate : period + 'd'}_${Date.now()}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -178,10 +203,18 @@ export default function ReportsPage() {
       </div>
 
       {/* Periudha */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap items-center">
         {PERIODS.map(p => (
           <button key={String(p.v)} onClick={() => setPeriod(p.v)} className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${period === p.v ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>{t(p.label)}</button>
         ))}
+        {/* Ditë e caktuar — zgjidh një datë specifike */}
+        <label className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-all cursor-pointer ${period === 'day' ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}>
+          <Calendar className="w-4 h-4" />
+          <span className="hidden sm:inline">{t('Një ditë:')}</span>
+          <input type="date" value={customDate} max={todayYMD()}
+            onChange={e => { if (e.target.value) { setCustomDate(e.target.value); setPeriod('day'); } }}
+            className="bg-transparent text-inherit text-sm focus:outline-none [color-scheme:dark]" />
+        </label>
       </div>
 
       {/* Sinjalet e mbyllura — gjithmonë (edhe pa lidhje MT5). Këtu vjen aktiviteti i 24h që fshihet nga Sinjalet. */}

@@ -2,6 +2,7 @@
 // Përdor {param} për pjesë dinamike (përkojnë me t(key, { param })).
 // Gjenerohet/mirëmbahet me kujdes — anglishtja është gjuha default.
 export const en: Record<string, string> = {
+  "Një ditë:": "Single day:",
   "Mirë se erdhe, {name}": "Welcome, {name}",
   "● LIVE · para reale": "● LIVE · real money",
   "● DEMO": "● DEMO",
