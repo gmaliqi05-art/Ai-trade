@@ -462,10 +462,9 @@ function generateFor(symbol: string, broker?: BrokerCreds, advanced = false): Pr
   return symbol.toUpperCase() === GOLD_SYMBOL ? generateGold(symbol) : generateStrong(symbol, broker, advanced);
 }
 
-// ---------- Candles nga Binance (XAUUSD→PAXGUSDT) ----------
+// ---------- Candles nga Binance — vetëm ari (XAUUSD→PAXGUSDT) ----------
+// FOKUS: Ar + Naftë. Crypto u hoq (PAXG/ar nga Binance; nafta nga Twelve Data/MetaApi).
 const PAIRS: Record<string, string> = {
-  BTCUSD: "BTCUSDT", ETHUSD: "ETHUSDT", SOLUSD: "SOLUSDT", BNBUSD: "BNBUSDT", XRPUSD: "XRPUSDT",
-  ADAUSD: "ADAUSDT", DOGEUSD: "DOGEUSDT", AVAXUSD: "AVAXUSDT", LINKUSD: "LINKUSDT", DOTUSD: "DOTUSDT",
   XAUUSD: "PAXGUSDT",
 };
 async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCreds): Promise<Candle[] | null> {
@@ -547,9 +546,16 @@ async function fetchMetaApiCandles(b: BrokerCreds, symbol: string, tf: string): 
 
 interface CfgRow { user_id: string; auto_symbols: string; min_confidence: number; account_id: string | null; token: string | null; region: string | null; advanced_filters: boolean | null; }
 
-// FOKUS NË AR: sinjalet platform-wide janë vetëm për XAUUSD. Kripto/forex janë
-// pasive — vetëm përdoruesit që i shtojnë manualisht te auto_symbols i marrin.
-const PLATFORM_WATCHLIST = [GOLD_SYMBOL];
+// FOKUS: vetëm AR + NAFTË. Çdo simbol tjetër (crypto/forex/aksione) injorohet —
+// mbrojtje mbrapa picker-it: edhe nëse një config i vjetër ka crypto, s'gjenerohet.
+function isSupported(symbol: string): boolean {
+  const s = (symbol || "").toUpperCase();
+  return s === GOLD_SYMBOL || isOil(s);
+}
+
+// Sinjalet platform-wide (display "Sinjale AI"): ari + nafta (WTI). Nafta kërkon
+// çelësin Twelve Data; pa të kthen null pa dëm.
+const PLATFORM_WATCHLIST = [GOLD_SYMBOL, "USOIL"];
 const PLATFORM_MIN_CONF = 0.30;   // pragu i besueshmërisë (0..1)
 const PLATFORM_MAX = 3;            // maksimumi i sinjaleve platform-wide aktive njëkohësisht
 const PLATFORM_DEDUP_H = 4;        // mos krijo sinjal të ri për të njëjtin simbol brenda 4 orëve
@@ -631,6 +637,7 @@ Deno.serve(async (req: Request) => {
     const symbolUsers = new Map<string, CfgRow[]>();
     for (const c of (configs ?? []) as CfgRow[]) {
       for (const s of (c.auto_symbols || "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean)) {
+        if (!isSupported(s)) continue; // FOKUS: vetëm ar + naftë; injoro crypto/forex/aksione
         if (!symbolUsers.has(s)) symbolUsers.set(s, []);
         symbolUsers.get(s)!.push(c);
       }

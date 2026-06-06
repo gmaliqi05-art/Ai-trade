@@ -41,10 +41,9 @@ interface Asset { id: string; symbol: string; name: string; current_price: numbe
 
 // Tregjet e synuara (faza 1) → kategoritë në DB.
 type MarketKey = 'crypto' | 'commodity' | 'stock';
+// FOKUS: vetëm Ari + Naftë (mallra). Crypto/indekse u hoqën nga platforma.
 const MARKETS: { key: MarketKey; label: string }[] = [
-  { key: 'commodity', label: 'Ari / Mallra' },
-  { key: 'crypto', label: 'Crypto' },
-  { key: 'stock', label: 'Indekse / Aksione' },
+  { key: 'commodity', label: 'Ari & Naftë' },
 ];
 
 export default function SignalsPage() {
@@ -85,7 +84,7 @@ export default function SignalsPage() {
         .or(`expires_at.is.null,expires_at.gt.${now}`)
         .gte('created_at', since24)
         .order('confidence', { ascending: false }),
-      supabase.from('assets').select('id, symbol, name, current_price, category, type'),
+      supabase.from('assets').select('id, symbol, name, current_price, category, type').eq('is_active', true),
       user ? supabase.from('alerts').select('*').eq('user_id', user.id).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
       // Sinjale të përfunduara (TP/SL/skaduar) të 24h të fundit — historiku i plotë te Raportet.
       supabase.from('signals').select('id, type, symbol, entry_price, target_price, stop_loss, confidence, timeframe, analysis, status, source, created_at, outcome, result_pct, closed_at')
@@ -209,9 +208,9 @@ export default function SignalsPage() {
               {goldOnly ? (
                 <>
                   <span className="text-xs px-3 py-1.5 rounded-lg font-semibold bg-amber-500 text-gray-950">{t('🥇 Ari (XAUUSD)')}</span>
-                  <button onClick={() => { setGoldOnly(false); setMarket('crypto'); }}
+                  <button onClick={() => { setGoldOnly(false); setMarket('commodity'); }}
                     className="text-xs px-3 py-1.5 rounded-lg font-medium bg-gray-800 text-gray-400 hover:text-white transition-colors">
-                    {t('+ Shfaq tregje të tjera (manual)')}
+                    {t('+ Shfaq edhe naftën')}
                   </button>
                 </>
               ) : (

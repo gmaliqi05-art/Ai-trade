@@ -74,7 +74,7 @@ export default function AuthPage() {
           </div>
           <div className="mt-8 flex items-center gap-3 justify-center">
             <BarChart3 className="w-5 h-5 text-amber-400" />
-            <span className="text-gray-400 text-sm">{t('Çmime reale: Crypto, Ar, Forex, Indekse')}</span>
+            <span className="text-gray-400 text-sm">{t('Çmime reale: Ar & Naftë — fokus profesional')}</span>
           </div>
         </div>
       </div>
