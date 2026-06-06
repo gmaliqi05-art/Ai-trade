@@ -3,6 +3,10 @@
 // Gjenerohet/mirëmbahet me kujdes — anglishtja është gjuha default.
 export const en: Record<string, string> = {
   "Një ditë:": "Single day:",
+  "SL scalp crypto (% e çmimit)": "Scalp SL crypto (% of price)",
+  "TP scalp crypto (% e çmimit)": "Scalp TP crypto (% of price)",
+  "Për BTC/ETH/etj.: SL si PËRQINDJE e çmimit (p.sh. 0.3%). $-i fiks i mësipërm është shumë i ngushtë për crypto dhe shkakton \"Invalid stops\".": "For BTC/ETH/etc.: SL as a PERCENTAGE of price (e.g. 0.3%). The fixed $ above is too tight for crypto and causes \"Invalid stops\".",
+  "Për BTC/ETH/etj.: TP si PËRQINDJE e çmimit (p.sh. 0.6%).": "For BTC/ETH/etc.: TP as a PERCENTAGE of price (e.g. 0.6%).",
   "Hyrje e shpejtë": "Quick login",
   "Ari": "Gold",
   "Crypto (24/7)": "Crypto (24/7)",
