@@ -221,7 +221,9 @@ function analyzeTF(candles: Candle[]): TFResult | null {
 //  - Filtër trendi: çmimi mbi EMA200 për BLEJ, nën EMA200 për SHIT (në 1h).
 //  - Filtër force: ADX(1h) ≥ 20 (vetëm trende të forta).
 const ADX_MIN = 18;
-async function generateStrong(symbol: string, broker?: BrokerCreds): Promise<EngineResult | null> {
+// advanced = aplikon filtrat Tier-1 (Efficiency Ratio + Supertrend + Funding). Default false:
+// logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor + confluence).
+async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = false): Promise<EngineResult | null> {
   // NAFTË: bllokim rreth raportit javor EIA (e mërkurë 10:00–11:00 ET) — lëkundje fallco.
   if (isOil(symbol) && eiaBlackout()) return null;
   const [c15, c1h, c4h, c1d] = await Promise.all([
@@ -288,28 +290,34 @@ async function generateStrong(symbol: string, broker?: BrokerCreds): Promise<Eng
   if (rsiRoom) reasons.push(`RSI me hapësirë (${Math.round(rsi1h)})`);
   if (macdAligned) reasons.push("MACD në harmoni");
 
-  // (4) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX: a po bën çmimi progres real?
-  const er = efficiencyRatio(c1hCloses, 10);
-  if (er < 0.20) return null; // treg shumë jo-efikas (choppy) — shmang sinjale fallco
-  const erGood = er >= 0.35;
-  if (erGood) reasons.push(`Efficiency Ratio ${er.toFixed(2)} (lëvizje efikase)`);
+  // ---- FILTRAT TIER-1 (opsionalë, vetëm kur advanced=true) ----
+  // ER + Supertrend + Funding. Të fikur si default → logjika e thjeshtë e provuar.
+  let erGood = false, stOk = false;
+  if (advanced) {
+    // (4) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX: a po bën çmimi progres real?
+    const er = efficiencyRatio(c1hCloses, 10);
+    if (er < 0.20) return null; // treg shumë jo-efikas (choppy) — shmang sinjale fallco
+    erGood = er >= 0.35;
+    if (erGood) reasons.push(`Efficiency Ratio ${er.toFixed(2)} (lëvizje efikase)`);
 
-  // (5) SUPERTREND (ATR) — konfirmim i drejtimit; veto kur Supertrend është qartë kundër.
-  const stDir = supertrendDir(c1h.map((c) => c.high), c1h.map((c) => c.low), c1hCloses, 10, 3);
-  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return null;
-  const stOk = (isBuy && stDir > 0) || (!isBuy && stDir < 0);
-  if (stOk) reasons.push("Supertrend në harmoni");
+    // (5) SUPERTREND (ATR) — konfirmim i drejtimit; veto kur Supertrend është qartë kundër.
+    const stDir = supertrendDir(c1h.map((c) => c.high), c1h.map((c) => c.low), c1hCloses, 10, 3);
+    if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return null;
+    stOk = (isBuy && stDir > 0) || (!isBuy && stDir < 0);
+    if (stOk) reasons.push("Supertrend në harmoni");
 
-  // (6) FUNDING (crypto) — veto hyrjet në drejtimin e mbi-levuar (crowded → rrezik squeeze).
-  const funding = await cryptoFunding(symbol);
-  if (funding != null) {
-    if (isBuy && funding >= FUND_EXTREME) return null;   // long-et tepër crowded → shmang BLEJ
-    if (!isBuy && funding <= -FUND_EXTREME) return null;  // short-et tepër crowded → shmang SHIT
-    reasons.push(`Funding ${(funding * 100).toFixed(3)}% (jo i mbingarkuar)`);
+    // (6) FUNDING (crypto) — veto hyrjet në drejtimin e mbi-levuar (crowded → rrezik squeeze).
+    const funding = await cryptoFunding(symbol);
+    if (funding != null) {
+      if (isBuy && funding >= FUND_EXTREME) return null;   // long-et tepër crowded → shmang BLEJ
+      if (!isBuy && funding <= -FUND_EXTREME) return null;  // short-et tepër crowded → shmang SHIT
+      reasons.push(`Funding ${(funding * 100).toFixed(3)}% (jo i mbingarkuar)`);
+    }
   }
 
+  const maxConf = advanced ? 8 : 6;
   const confFactors = 2 + (adxStrong ? 1 : 0) + (d1Boost > 0 ? 1 : 0) + (rsiRoom ? 1 : 0) + (macdAligned ? 1 : 0) + (erGood ? 1 : 0) + (stOk ? 1 : 0);
-  reasons.unshift(`Confluence ${confFactors}/8 (${Math.round((confFactors / 8) * 100)}%)`);
+  reasons.unshift(`Confluence ${confFactors}/${maxConf} (${Math.round((confFactors / maxConf) * 100)}%)`);
 
   const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
   const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0) + (erGood ? 0.02 : 0) + (stOk ? 0.02 : 0);
@@ -450,8 +458,8 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
 
 // Përzgjedh gjeneratorin: ari → i dedikuar me 4 analizat; të tjerat → standard.
 // broker = kredencialet MetaApi të përdoruesit (rezervë për naftë etj. kur Twelve Data s'jep të dhëna).
-function generateFor(symbol: string, broker?: BrokerCreds): Promise<EngineResult | null> {
-  return symbol.toUpperCase() === GOLD_SYMBOL ? generateGold(symbol) : generateStrong(symbol, broker);
+function generateFor(symbol: string, broker?: BrokerCreds, advanced = false): Promise<EngineResult | null> {
+  return symbol.toUpperCase() === GOLD_SYMBOL ? generateGold(symbol) : generateStrong(symbol, broker, advanced);
 }
 
 // ---------- Candles nga Binance (XAUUSD→PAXGUSDT) ----------
@@ -537,7 +545,7 @@ async function fetchMetaApiCandles(b: BrokerCreds, symbol: string, tf: string): 
   } catch { return null; }
 }
 
-interface CfgRow { user_id: string; auto_symbols: string; min_confidence: number; account_id: string | null; token: string | null; region: string | null; }
+interface CfgRow { user_id: string; auto_symbols: string; min_confidence: number; account_id: string | null; token: string | null; region: string | null; advanced_filters: boolean | null; }
 
 // FOKUS NË AR: sinjalet platform-wide janë vetëm për XAUUSD. Kripto/forex janë
 // pasive — vetëm përdoruesit që i shtojnë manualisht te auto_symbols i marrin.
@@ -615,7 +623,7 @@ Deno.serve(async (req: Request) => {
     // 2) Sinjale per-përdorues për auto-trade.
     const { data: configs } = await db
       .from("metaapi_config")
-      .select("user_id, auto_symbols, min_confidence, account_id, token, region")
+      .select("user_id, auto_symbols, min_confidence, account_id, token, region, advanced_filters")
       .eq("auto_trade", true)
       .eq("kill_switch", false);
 
@@ -639,12 +647,22 @@ Deno.serve(async (req: Request) => {
       const broker: BrokerCreds | undefined = bu
         ? { account_id: bu.account_id!, token: bu.token!, region: bu.region || "new-york" }
         : undefined;
-      let sig: EngineResult | null;
-      try { sig = await generateFor(symbol, broker); } catch (e) { out.push({ symbol, error: (e as Error).message }); continue; }
-      if (!sig || sig.action === "HOLD") { out.push({ symbol, action: sig?.action ?? "filtruar" }); continue; }
-      const confPct = Math.round(sig.confidence * 100);
+      // Gjenero sipas modit të filtrave: variant i thjeshtë dhe/ose i avancuar, sipas nevojës
+      // së përdoruesve të këtij simboli (filtrat Tier-1 janë opt-in per-përdorues).
+      const needAdv = users.some((u) => u.advanced_filters === true);
+      const needSimple = users.some((u) => u.advanced_filters !== true);
+      let sigAdv: EngineResult | null = null, sigSimple: EngineResult | null = null;
+      try {
+        if (needSimple) sigSimple = await generateFor(symbol, broker, false);
+        if (needAdv) sigAdv = await generateFor(symbol, broker, true);
+      } catch (e) { out.push({ symbol, error: (e as Error).message }); continue; }
+      const anyActive = (sigSimple && sigSimple.action !== "HOLD") || (sigAdv && sigAdv.action !== "HOLD");
+      if (!anyActive) { out.push({ symbol, action: "filtruar" }); continue; }
 
       for (const u of users) {
+        const sig = u.advanced_filters === true ? sigAdv : sigSimple;
+        if (!sig || sig.action === "HOLD") continue;
+        const confPct = Math.round(sig.confidence * 100);
         if (confPct < (u.min_confidence ?? 70)) continue;
         // Dedup: a ka tashmë sinjal motori për këtë (user, symbol) 30 min e fundit?
         const { data: existing } = await db

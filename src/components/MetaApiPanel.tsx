@@ -298,6 +298,18 @@ export default function MetaApiPanel() {
             <p className="text-[10px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">ℹ️ Mbrojtja "qëndro në profit":</span> sapo trade-i shkon në fitim, SL ngrihet drejt hyrjes; nëse momentumi kthehet, mbyllet që të mbash fitimin. <span class="text-gray-400">SL shumë i ngushtë (p.sh. 2$) preket shpesh nga zhurma — normale për scalp.</span>') }} />
           </div>
         </div>
+
+        {/* Karta FILTRA TË AVANCUAR (Tier-1) — opt-in, default JOAKTIV */}
+        <div className={`rounded-xl border p-3.5 transition-colors ${cfg.advanced_filters ? 'bg-purple-500/10 border-purple-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-white flex items-center gap-2"><Zap className="w-4 h-4 text-purple-400" />{t('Filtra të avancuar (Tier-1)')}</span>
+            <button onClick={() => setAndSave('advanced_filters', !cfg.advanced_filters)}
+              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.advanced_filters ? 'bg-purple-500/15 text-purple-400 border-purple-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+              {cfg.advanced_filters ? t('AKTIV') : t('JOAKTIV')}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Shton filtra shtesë: <span class="text-gray-300">Efficiency Ratio + Supertrend + Funding</span>. <span class="text-gray-400">JOAKTIV (default) = logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor). E rekomanduar të lihet JOAKTIV për crypto; ndize vetëm nëse do filtra më strikt.</span>') }} />
+        </div>
       </Section>
 
       {/* ======= 6. MBROJTJA E FITIMIT (TRAILING SL) ======= */}
