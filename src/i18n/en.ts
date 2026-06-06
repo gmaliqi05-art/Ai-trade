@@ -3,6 +3,11 @@
 // Gjenerohet/mirëmbahet me kujdes — anglishtja është gjuha default.
 export const en: Record<string, string> = {
   "Një ditë:": "Single day:",
+  "Analiza AI këtë muaj": "AI analyses this month",
+  "{used} analiza · pa limit": "{used} analyses · unlimited",
+  "{used} nga {limit}": "{used} of {limit}",
+  "Limiti u arrit — përmirëso planin": "Limit reached — upgrade your plan",
+  "Ke arritur limitin e alarmeve ({limit}) për planin \"{plan}\". Përmirëso planin për më shumë.": "You've reached the alerts limit ({limit}) for the \"{plan}\" plan. Upgrade for more.",
   "Mirë se erdhe, {name}": "Welcome, {name}",
   "● LIVE · para reale": "● LIVE · real money",
   "● DEMO": "● DEMO",

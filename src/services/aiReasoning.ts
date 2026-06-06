@@ -85,5 +85,7 @@ export async function requestEngineReasoning(
   if (!data?.success || !data?.analysis) {
     throw new AiReasoningError(data?.error ?? 'unknown', data?.message ?? 'Përgjigje e pavlefshme nga ai-analyze');
   }
+  // Rifresko matësin e përdorimit (një analizë AI u shpenzua).
+  try { window.dispatchEvent(new Event('usage-updated')); } catch { /* injoro */ }
   return data.analysis as AiReasoning;
 }

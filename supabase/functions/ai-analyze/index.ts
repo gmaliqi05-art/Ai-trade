@@ -378,6 +378,26 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // —— Limiti i planit: numri i analizave AI në muaj (Free/Standard/Premium) ——
+    // -1 = pa limit. Numërohen rreshtat e ai_usage_log të këtij muaji për përdoruesin.
+    try {
+      const { data: prof } = await db.from("profiles").select("subscription_tier").eq("id", user.id).maybeSingle();
+      const tier = (prof?.subscription_tier as string) || "free";
+      const { data: plan } = await db.from("subscription_plans").select("max_analyses_per_month").eq("slug", tier).maybeSingle();
+      const limit = Number(plan?.max_analyses_per_month ?? -1);
+      if (limit >= 0) {
+        const ms = new Date(); ms.setUTCDate(1); ms.setUTCHours(0, 0, 0, 0);
+        const { count } = await db.from("ai_usage_log").select("id", { count: "exact", head: true })
+          .eq("user_id", user.id).gte("created_at", ms.toISOString());
+        if ((count ?? 0) >= limit) {
+          return new Response(JSON.stringify({
+            error: "quota_exceeded",
+            message: `Ke arritur limitin mujor të analizave AI (${limit}) për planin "${tier}". Përmirëso planin për më shumë.`,
+          }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+    } catch (_e) { /* nëse tabela s'ekziston ende (para publikimit), mos blloko */ }
+
     const body = await req.json();
     const { symbol, asset_id, timeframe, preferred_provider, engine } = body;
 

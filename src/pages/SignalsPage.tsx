@@ -8,6 +8,7 @@ import CompletedSignals from '../components/CompletedSignals';
 import { isGoldSessionActive, goldWindowLocal } from '../lib/goldSession';
 import type { Timeframe } from '../ai-trader/market/candles';
 import { requestEngineReasoning } from '../services/aiReasoning';
+import { getMyUsage } from '../services/usage';
 import { executeTrade, loadMetaApiConfig, DEFAULT_CONFIG, type MetaApiConfig } from '../services/metaapi';
 import type { MarketAnalysisOptions } from '../ai-trader/react/useMarketAnalysis';
 import type { EngineEnterInput } from '../ai-trader/react/EngineSignalCard';
@@ -100,6 +101,13 @@ export default function SignalsPage() {
   const createAlert = async () => {
     if (!user || !form.asset_id || !form.target_price) return;
     setSaving(true); setMsg('');
+    // Limiti i alarmeve sipas planit (Free/Standard/Premium). -1 = pa limit.
+    const usage = await getMyUsage();
+    if (usage && usage.alerts_limit >= 0 && usage.alerts_used >= usage.alerts_limit) {
+      setMsg(t('Ke arritur limitin e alarmeve ({limit}) për planin "{plan}". Përmirëso planin për më shumë.', { limit: usage.alerts_limit, plan: usage.plan }));
+      setSaving(false);
+      return;
+    }
     const targetVal = parseFloat(form.target_price);
     const asset = assets.find(a => a.id === form.asset_id);
     const { error } = await supabase.from('alerts').insert({ user_id: user.id, asset_id: form.asset_id, symbol: asset?.symbol || '', type: form.condition, condition: form.condition, target_value: targetVal, target_price: targetVal, is_active: true, triggered_at: null });
