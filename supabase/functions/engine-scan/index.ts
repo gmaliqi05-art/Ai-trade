@@ -154,7 +154,14 @@ const FUND_EXTREME = 0.0005; // 0.05% / 8h → tregu i mbi-levuar (crowded) në 
 
 // ---------- Motori (port nga signal-engine.ts + trade-plan.ts, profil 'short') ----------
 interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; }
-interface EngineResult { action: "BUY" | "SELL" | "HOLD"; confidence: number; entry: number; stopLoss: number; takeProfit: number; reasons: string[]; }
+interface EngineResult { action: "BUY" | "SELL" | "HOLD"; confidence: number; entry: number; stopLoss: number; takeProfit: number; reasons: string[]; features?: Record<string, unknown>; }
+
+// FAZA 2: ora+dita në ET (kontekst për "pikat kyçe" — kur fiton/humb sipas kohës).
+function etContext(d = new Date()): { hour: number; dow: string } {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", hour12: false }).formatToParts(d);
+  return { hour: parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24, dow: p.find((x) => x.type === "weekday")?.value || "" };
+}
+const r2 = (n: number, d = 2) => (Number.isFinite(n) ? Math.round(n * 10 ** d) / 10 ** d : null);
 
 const GOLD_SYMBOL = "XAUUSD";
 
@@ -341,11 +348,23 @@ async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = f
   const oilSym = isOil(symbol);
   const stopMult = oilSym ? 2.0 : 1.5;
   const stopDist = s1h.atr > 0 ? s1h.atr * stopMult : price * (oilSym ? 0.02 : 0.015);
+  // FAZA 2: "pikat kyçe" — snapshot i kushteve në momentin e gjenerimit (për të mësuar nga rezultatet).
+  const et = etContext();
+  const features = {
+    symbol, dir, conf: Math.round(confidence * 100), tf: "1h", gen: "strong", advanced,
+    adx: r2(s1h.adx, 1), atr_pct: r2((s1h.atr / price) * 100, 3),
+    rsi: r2(rsi1h, 1), macd_hist: r2(macdH, 5),
+    ema200_dist_pct: r2(((price - s1h.ema200) / s1h.ema200) * 100, 3),
+    er: r2(efficiencyRatio(c1hCloses, 10), 3),
+    adx_strong: adxStrong, rsi_room: rsiRoom, macd_aligned: macdAligned,
+    d1_aligned: d1Boost > 0, confluence: confFactors, conf_max: maxConf,
+    et_hour: et.hour, dow: et.dow, oil: oilSym, ts: Date.now(),
+  };
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
     takeProfit: Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
-    reasons,
+    reasons, features,
   };
 }
 
@@ -466,11 +485,23 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
   const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0) + (erGood ? 0.02 : 0) + (stOk ? 0.02 : 0);
   const confidence = Math.min(1, base + d1Boost + (overlap ? 0.05 : 0) + confBonus);
   const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
+  // FAZA 2: "pikat kyçe" për arin — përfshijnë sesionin (overlap London+NY).
+  const et = etContext();
+  const features = {
+    symbol, dir, conf: Math.round(confidence * 100), tf: "1h", gen: "gold", advanced: false,
+    adx: r2(s1h.adx, 1), atr_pct: r2((s1h.atr / price) * 100, 3),
+    rsi: r2(rsi1h, 1), macd_hist: r2(macdH, 5),
+    ema200_dist_pct: r2(((price - s1h.ema200) / s1h.ema200) * 100, 3),
+    er: r2(er, 3),
+    adx_strong: adxStrong, rsi_room: rsiRoom, macd_aligned: macdAligned,
+    d1_aligned: d1Boost > 0, overlap, fh, confluence: confFactors, conf_max: 9,
+    et_hour: et.hour, dow: et.dow, oil: false, ts: Date.now(),
+  };
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
     takeProfit: Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
-    reasons,
+    reasons, features,
   };
 }
 
@@ -644,7 +675,7 @@ async function platformPass(
       entry_price: sig.entry, target_price: sig.takeProfit, stop_loss: sig.stopLoss,
       confidence: Math.round(sig.confidence * 100), timeframe: "1h",
       analysis: `Motori AI: ${sig.reasons.slice(0, 8).join("; ")}`,
-      source: "engine", status: "active",
+      source: "engine", status: "active", features: sig.features ?? null,
       expires_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
     });
     created++;
@@ -722,7 +753,7 @@ Deno.serve(async (req: Request) => {
           entry_price: sig.entry, target_price: sig.takeProfit, stop_loss: sig.stopLoss,
           confidence: confPct, timeframe: "1h",
           analysis: `Motori: ${sig.reasons.slice(0, 8).join("; ")}`,
-          source: "engine", status: "active",
+          source: "engine", status: "active", features: sig.features ?? null,
           expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
         });
         out.push({ symbol, user: u.user_id, action: sig.action, confidence: confPct, created: true });
