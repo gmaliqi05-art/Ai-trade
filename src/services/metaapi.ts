@@ -35,6 +35,10 @@ export interface MetaApiConfig {
   scalp_sl_usd: number;
   /** Distanca e TP-së për scalp, në çmim (sa $ lëviz ari). Default 4$. */
   scalp_tp_usd: number;
+  /** SL i scalp-it për CRYPTO si % e çmimit (BTC/ETH s'punojnë me $ fiks). Default 0.3%. */
+  scalp_sl_pct: number;
+  /** TP i scalp-it për CRYPTO si % e çmimit. Default 0.6%. */
+  scalp_tp_pct: number;
   /** Sa pozicione scalp njëkohësisht maksimumi. Default 2. */
   scalp_max_trades: number;
   /** Scalp hyn edhe në lëvizje të vogla (kushte më të lehta, më shumë trade). Default OFF. */
@@ -57,7 +61,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   lot_conf_t1: 70, lot_conf_t2: 80, lot_conf_t3: 90,
   risk_per_trade_pct: 1,
   strategy_swing: true, strategy_scalp: false,
-  scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_max_trades: 2, scalp_small_moves: false,
+  scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_sl_pct: 0.3, scalp_tp_pct: 0.6, scalp_max_trades: 2, scalp_small_moves: false,
   trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1, broker_trailing: false,
 };
 
@@ -93,6 +97,8 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     strategy_scalp: !!data.strategy_scalp,
     scalp_sl_usd: Number(data.scalp_sl_usd ?? 2),
     scalp_tp_usd: Number(data.scalp_tp_usd ?? 4),
+    scalp_sl_pct: Number(data.scalp_sl_pct ?? 0.3),
+    scalp_tp_pct: Number(data.scalp_tp_pct ?? 0.6),
     scalp_max_trades: Number(data.scalp_max_trades ?? 2),
     scalp_small_moves: !!data.scalp_small_moves,
     trail_enabled: data.trail_enabled ?? true,

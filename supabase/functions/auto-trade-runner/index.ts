@@ -21,8 +21,10 @@ interface Cfg {
   // Dy strategjitë: afat-gjatë (swing, sinjale 15m/1h/4h) dhe afat-shkurt (scalp, momentum 1m/5m).
   strategy_swing?: boolean;  // default true
   strategy_scalp?: boolean;  // default false
-  scalp_sl_usd?: number;     // distanca e SL në çmim ($), default 2
-  scalp_tp_usd?: number;     // distanca e TP në çmim ($), default 4
+  scalp_sl_usd?: number;     // distanca e SL në çmim ($) për ar, default 2
+  scalp_tp_usd?: number;     // distanca e TP në çmim ($) për ar, default 4
+  scalp_sl_pct?: number;     // SL i scalp-it për CRYPTO si % e çmimit, default 0.3
+  scalp_tp_pct?: number;     // TP i scalp-it për CRYPTO si % e çmimit, default 0.6
   scalp_max_trades?: number; // pozicione scalp njëkohësisht, default 2
   scalp_small_moves?: boolean; // hyn edhe në lëvizje të vogla (kushte më të lehta); default false
   // Trailing i SL (ndjekja e fitimit) — i konfigurueshëm nga përdoruesi.
@@ -649,9 +651,6 @@ Deno.serve(async (req: Request) => {
       // ============ HYRJET SCALP (afat-shkurt: momentum 1m/5m, SL/TP të ngushtë) ============
       if (scalpOn) {
         const scalpMax = Math.max(1, Number(cfg.scalp_max_trades ?? 2));
-        const baseSL = Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
-        const baseTP = Math.max(baseSL, Number(cfg.scalp_tp_usd ?? 4));
-        const scalpRR = baseSL > 0 ? baseTP / baseSL : 2; // R:R i zgjedhur nga cilësimet (default 2.0)
         const maxRisk = Number(cfg.max_daily_loss) || 0;
         for (const rawSym of allowed) {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
@@ -670,17 +669,26 @@ Deno.serve(async (req: Request) => {
           const sgl = scalpSignal(c1, c5, cfg.scalp_small_moves === true);
           if (!sgl) continue;
 
-          // SL/TP SIPAS ATR(5m): stop-i jashtë zhurmës momentale — më i gjerë kur tregu lëviz
-          // shpejt, më i ngushtë kur është i qetë. R:R ruhet; kapet në [0.7×, 2×] të bazës.
+          const isBuyS = sgl.action === "BUY";
+          const entryPx = c1[c1.length - 1].close;
+
+          // SL/TP BAZË: ar → $ fiks nga cilësimet; CRYPTO → % e çmimit ($-i fiks është shumë i
+          // ngushtë te çmimet e larta → "Invalid stops"). Të dyja të konfigurueshme nga përdoruesi.
+          const baseSL = isCrypto(rawSym)
+            ? Math.max(entryPx * (Number(cfg.scalp_sl_pct ?? 0.3) / 100), 0.0001)
+            : Math.max(0.3, Number(cfg.scalp_sl_usd ?? 2));
+          const baseTP = isCrypto(rawSym)
+            ? Math.max(baseSL, entryPx * (Number(cfg.scalp_tp_pct ?? 0.6) / 100))
+            : Math.max(baseSL, Number(cfg.scalp_tp_usd ?? 4));
+          const scalpRR = baseSL > 0 ? baseTP / baseSL : 2; // R:R nga cilësimet
+
+          // SL/TP sipas ATR(5m): jashtë zhurmës momentale; R:R ruhet; kapet në [0.7×, 2×] të bazës.
           const a5 = atr(c5.map((c) => c.high), c5.map((c) => c.low), c5.map((c) => c.close), 14);
           const atr5v = a5[a5.length - 1];
           let slUsd = baseSL;
-          if (Number.isFinite(atr5v) && atr5v > 0) slUsd = Math.min(Math.max(atr5v, Math.max(0.3, 0.7 * baseSL)), 2 * baseSL);
+          if (Number.isFinite(atr5v) && atr5v > 0) slUsd = Math.min(Math.max(atr5v, 0.7 * baseSL), 2 * baseSL);
           slUsd = Math.round(slUsd * 100) / 100;
           const tpUsd = Math.round(slUsd * scalpRR * 100) / 100;
-
-          const isBuyS = sgl.action === "BUY";
-          const entryPx = c1[c1.length - 1].close;
           const stopLoss = Math.round((isBuyS ? entryPx - slUsd : entryPx + slUsd) * 100) / 100;
           const takeProfit = Math.round((isBuyS ? entryPx + tpUsd : entryPx - tpUsd) * 100) / 100;
 

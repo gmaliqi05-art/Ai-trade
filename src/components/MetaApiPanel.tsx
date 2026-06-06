@@ -289,6 +289,10 @@ export default function MetaApiPanel() {
               <NumField label={t('TP scalp ($ lëvizje)')} hint={t('Merr fitimin kur ari shkon kaq $ në favor (p.sh. 4).')} value={cfg.scalp_tp_usd} step="0.1" min="0.3" onChange={v => set('scalp_tp_usd', v)} onBlur={save} />
               <NumField label={t('Scalp maks. njëkohësisht')} hint={t('Sa pozicione scalp lejohen në të njëjtën kohë.')} value={cfg.scalp_max_trades} step="1" min="1" onChange={v => set('scalp_max_trades', v)} onBlur={save} />
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <NumField label={t('SL scalp crypto (% e çmimit)')} hint={t('Për BTC/ETH/etj.: SL si PËRQINDJE e çmimit (p.sh. 0.3%). $-i fiks i mësipërm është shumë i ngushtë për crypto dhe shkakton "Invalid stops".')} value={cfg.scalp_sl_pct} step="0.05" min="0.05" onChange={v => set('scalp_sl_pct', v)} onBlur={save} />
+              <NumField label={t('TP scalp crypto (% e çmimit)')} hint={t('Për BTC/ETH/etj.: TP si PËRQINDJE e çmimit (p.sh. 0.6%).')} value={cfg.scalp_tp_pct} step="0.05" min="0.05" onChange={v => set('scalp_tp_pct', v)} onBlur={save} />
+            </div>
             <p className="text-[10px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">ℹ️ Mbrojtja "qëndro në profit":</span> sapo trade-i shkon në fitim, SL ngrihet drejt hyrjes; nëse momentumi kthehet, mbyllet që të mbash fitimin. <span class="text-gray-400">SL shumë i ngushtë (p.sh. 2$) preket shpesh nga zhurma — normale për scalp.</span>') }} />
           </div>
         </div>
