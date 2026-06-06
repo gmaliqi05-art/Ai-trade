@@ -478,12 +478,12 @@ function TogglePill({ on, onClick, t }: { on: boolean; onClick: () => void; t: (
   );
 }
 
-// Simbolet që mbështet platforma, të grupuara. Ari (XAUUSD) është default i palëvizshëm.
+// VETËM simbolet që motori i analizon vërtet me të dhëna reale (qirinj live) → auto-trade funksional.
+// Ari (XAUUSD, përmes PAXG) + crypto-t kryesore (Binance). Forex/indekse/aksione s'kanë burim
+// të dhënash në motor, prandaj nuk shfaqen (do të prodhonin "heshtje", jo auto-trade).
 const SYMBOL_GROUPS: { cat: string; syms: [string, string][] }[] = [
-  { cat: 'Ari & Mallra', syms: [['XAUUSD', 'Ari'], ['XAGUSD', 'Argjend']] },
-  { cat: 'Forex', syms: [['EURUSD', 'Euro'], ['GBPUSD', 'Sterlina'], ['USDJPY', 'Jeni']] },
-  { cat: 'Crypto', syms: [['BTCUSD', 'Bitcoin'], ['ETHUSD', 'Ethereum'], ['SOLUSD', 'Solana'], ['BNBUSD', 'BNB'], ['XRPUSD', 'XRP']] },
-  { cat: 'Indekse & Aksione', syms: [['US30', 'Dow 30'], ['NAS100', 'Nasdaq 100'], ['SPX500', 'S&P 500'], ['GER40', 'DAX 40'], ['AAPL', 'Apple'], ['MSFT', 'Microsoft'], ['TSLA', 'Tesla']] },
+  { cat: 'Ari', syms: [['XAUUSD', 'Ari']] },
+  { cat: 'Crypto (24/7)', syms: [['BTCUSD', 'Bitcoin'], ['ETHUSD', 'Ethereum'], ['SOLUSD', 'Solana'], ['BNBUSD', 'BNB'], ['XRPUSD', 'XRP']] },
 ];
 const DEFAULT_SYMBOL = 'XAUUSD';
 

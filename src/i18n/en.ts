@@ -3,6 +3,8 @@
 // Gjenerohet/mirëmbahet me kujdes — anglishtja është gjuha default.
 export const en: Record<string, string> = {
   "Një ditë:": "Single day:",
+  "Ari": "Gold",
+  "Crypto (24/7)": "Crypto (24/7)",
   "Analiza AI këtë muaj": "AI analyses this month",
   "{used} analiza · pa limit": "{used} analyses · unlimited",
   "{used} nga {limit}": "{used} of {limit}",

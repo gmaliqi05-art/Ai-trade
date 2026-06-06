@@ -159,8 +159,8 @@ function analyzeTF(candles: Candle[]): TFResult | null {
 //  - Filtër force: ADX(1h) ≥ 20 (vetëm trende të forta).
 const ADX_MIN = 18;
 async function generateStrong(symbol: string): Promise<EngineResult | null> {
-  const [c15, c1h, c4h] = await Promise.all([
-    fetchCandles(symbol, "15m"), fetchCandles(symbol, "1h"), fetchCandles(symbol, "4h"),
+  const [c15, c1h, c4h, c1d] = await Promise.all([
+    fetchCandles(symbol, "15m"), fetchCandles(symbol, "1h"), fetchCandles(symbol, "4h"), fetchCandles(symbol, "1d"),
   ]);
   if (!c15 || !c1h || !c4h) return null;
   const s15 = analyzeTF(c15), s1h = analyzeTF(c1h), s4h = analyzeTF(c4h);
@@ -168,29 +168,72 @@ async function generateStrong(symbol: string): Promise<EngineResult | null> {
 
   const dir = s1h.action;
   if (dir === "HOLD") return null;
-  // 1) Trendi afat-gjatë: 1h + 4h duhet të pajtohen (4h = busull). 15m s'është kusht
-  //    i fortë (është periudhë afat-shkurt që shpesh kundërshton trendin); hyn vetëm te besueshmëria.
   if (s4h.action !== dir) return null;
-  // 2) Filtër trendi EMA200 (1h).
   const price = s1h.price;
-  if (dir === "BUY" && !(price > s1h.ema200)) return null;
-  if (dir === "SELL" && !(price < s1h.ema200)) return null;
-  // 3) Filtër force ADX (1h).
+  const isBuy = dir === "BUY";
+  if (isBuy && !(price > s1h.ema200)) return null;
+  if (!isBuy && !(price < s1h.ema200)) return null;
   if (s1h.adx < ADX_MIN) return null;
 
-  const confidence = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
+  const reasons: string[] = [
+    `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
+    `Trendi: çmimi ${isBuy ? "mbi" : "nën"} EMA200`,
+    `ADX ${s1h.adx.toFixed(0)} (trend i fortë)`,
+  ];
+
+  // (1) VOLATILITETI — ATR(1h) vs mesatarja e vet: shmang tregun e ngrirë dhe spike-t ekstreme.
+  {
+    const highs = c1h.map((c) => c.high), lows = c1h.map((c) => c.low), closes = c1h.map((c) => c.close);
+    const atrArr = atr(highs, lows, closes, 14).filter(Number.isFinite) as number[];
+    if (atrArr.length >= 20) {
+      const atrNow = atrArr[atrArr.length - 1];
+      const recent = atrArr.slice(-50);
+      const atrAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+      if (atrAvg > 0) {
+        const ratio = atrNow / atrAvg;
+        if (ratio < 0.5) return null;  // treg i ngrirë
+        if (ratio > 3.5) return null;  // spike ekstrem (lajme)
+        reasons.push(`Volatilitet normal (ATR ${((atrNow / price) * 100).toFixed(2)}%)`);
+      }
+    }
+  }
+
+  // (2) TRENDI DITOR (D1) — busulla makro: çmimi vs EMA50 ditore. Refuzon hyrjet kundër trendit ditor.
+  let d1Boost = 0;
+  if (c1d && c1d.length >= 60) {
+    const dc = c1d.map((c) => c.close);
+    const e50d = ema(dc, 50)[dc.length - 1];
+    if (Number.isFinite(e50d)) {
+      const d1Up = price > e50d;
+      if (isBuy && !d1Up) return null;
+      if (!isBuy && d1Up) return null;
+      d1Boost = 0.05;
+      reasons.push(`Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})`);
+    }
+  }
+
+  // (3) CONFLUENCE — faktorë të pavarur mbështetës (ADX≥25, RSI me hapësirë, MACD në harmoni).
+  const c1hCloses = c1h.map((c) => c.close);
+  const rsi1h = rsi(c1hCloses, 14)[c1hCloses.length - 1];
+  const macdH = macd(c1hCloses).histogram[c1hCloses.length - 1];
+  const adxStrong = s1h.adx >= 25;
+  const rsiRoom = Number.isFinite(rsi1h) && (isBuy ? rsi1h < 68 : rsi1h > 32);
+  const macdAligned = Number.isFinite(macdH) && (isBuy ? macdH > 0 : macdH < 0);
+  if (adxStrong) reasons.push("ADX i fortë (≥25)");
+  if (rsiRoom) reasons.push(`RSI me hapësirë (${Math.round(rsi1h)})`);
+  if (macdAligned) reasons.push("MACD në harmoni");
+  const confFactors = 2 + (adxStrong ? 1 : 0) + (d1Boost > 0 ? 1 : 0) + (rsiRoom ? 1 : 0) + (macdAligned ? 1 : 0);
+  reasons.unshift(`Confluence ${confFactors}/6 (${Math.round((confFactors / 6) * 100)}%)`);
+
+  const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
+  const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0);
+  const confidence = Math.min(1, base + d1Boost + confBonus);
   const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
-  const isBuy = dir === "BUY";
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
     takeProfit: Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
-    reasons: [
-      `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
-      `Trendi: çmimi ${isBuy ? "mbi" : "nën"} EMA200`,
-      `ADX ${s1h.adx.toFixed(0)} (trend i fortë)`,
-      ...s1h.reasons.slice(0, 2),
-    ],
+    reasons,
   };
 }
 
