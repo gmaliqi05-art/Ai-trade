@@ -140,38 +140,10 @@ async function fetchMetalPrices(): Promise<PriceUpdate[]> {
   return results;
 }
 
-// NAFTË (USOIL = WTI, UKOIL = Brent): Twelve Data quote. Çelësi merret nga env
-// TWELVEDATA_API_KEY ose (rezervë) nga tabela e sigurt app_config.
-// Best-effort: nëse s'ka çelës ose dështon, çmimi mbetet te vlera e fundit.
-async function fetchOilPrices(key: string): Promise<PriceUpdate[]> {
-  if (!key) return [];
-  const MAP: { td: string; symbol: string }[] = [
-    { td: "WTI/USD", symbol: "USOIL" },
-    { td: "BRENT/USD", symbol: "UKOIL" },
-  ];
-  const results: PriceUpdate[] = [];
-  for (const { td, symbol } of MAP) {
-    try {
-      const resp = await fetch(
-        `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(td)}&apikey=${key}`,
-        { signal: AbortSignal.timeout(8000) }
-      );
-      if (!resp.ok) continue;
-      const d = await resp.json() as { close?: string; change?: string; percent_change?: string };
-      const price = parseFloat(d.close ?? "");
-      if (!isFinite(price) || price <= 0) continue;
-      results.push({
-        symbol,
-        price: parseFloat(price.toFixed(2)),
-        change24h: parseFloat(d.change ?? "0") || 0,
-        changePct: parseFloat(d.percent_change ?? "0") || 0,
-      });
-    } catch (e) {
-      console.error(`Twelve Data (${symbol}) error:`, e);
-    }
-  }
-  return results;
-}
+// NAFTË (USOIL/UKOIL): NUK merret nga Twelve Data — plani falas s'e mbulon naftën
+// (WTI = vetëm plan me pagesë; BRENT = simbol i pavlefshëm). Burimi i naftës është
+// MetaApi (brokeri i përdoruesit), që përdoret nga motori (engine-scan) për sinjale.
+// Çmimi i naftës te lista shfaqet nga MT5 live kur llogaria është e lidhur.
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -183,23 +155,13 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Çelësi Twelve Data: env (i preferuar) ose rezervë nga app_config (service_role).
-    let tdKey = Deno.env.get("TWELVEDATA_API_KEY") || "";
-    if (!tdKey) {
-      try {
-        const { data } = await supabase.from("app_config").select("value").eq("key", "twelvedata_api_key").maybeSingle();
-        tdKey = (data?.value as string) || "";
-      } catch { /* injoro */ }
-    }
-
-    const [forexPrices, cryptoPrices, metalPrices, oilPrices] = await Promise.all([
+    const [forexPrices, cryptoPrices, metalPrices] = await Promise.all([
       fetchForexPrices(),
       fetchCryptoPrices(),
       fetchMetalPrices(),
-      fetchOilPrices(tdKey),
     ]);
 
-    const allUpdates = [...forexPrices, ...cryptoPrices, ...metalPrices, ...oilPrices];
+    const allUpdates = [...forexPrices, ...cryptoPrices, ...metalPrices];
     const updated: string[] = [];
     const errors: string[] = [];
 

@@ -481,11 +481,14 @@ async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCred
       }));
     } catch { return null; }
   }
-  // Simbolet jo-Binance (p.sh. naftë USOIL): Twelve Data (primar) → MetaApi i brokerit (rezervë).
-  const td = await fetchTwelveData(symbol, interval);
-  if (td) return td;
-  if (broker) return fetchMetaApiCandles(broker, symbol, interval);
-  return null;
+  // Simbolet jo-Binance (naftë USOIL/UKOIL): MetaApi i brokerit (PRIMAR — zgjedhja e
+  // përdoruesit; plani falas i Twelve Data s'e mbulon naftën). Twelve Data mbetet vetëm
+  // rezervë opsionale nëse dikush ka plan me pagesë (env/app_config).
+  if (broker) {
+    const m = await fetchMetaApiCandles(broker, symbol, interval);
+    if (m) return m;
+  }
+  return await fetchTwelveData(symbol, interval);
 }
 
 // ---------- NAFTË (Oil) & simbole jo-Binance: Twelve Data primar + MetaApi rezervë ----------
@@ -567,9 +570,9 @@ function isSupported(symbol: string): boolean {
   return s === GOLD_SYMBOL || isOil(s);
 }
 
-// Sinjalet platform-wide (display "Sinjale AI"): ari + nafta (WTI). Nafta kërkon
-// çelësin Twelve Data; pa të kthen null pa dëm.
-const PLATFORM_WATCHLIST = [GOLD_SYMBOL, "USOIL"];
+// Sinjalet platform-wide (display "Sinjale AI"): vetëm ari. Nafta s'ka burim pa broker
+// (platform pass s'ka kredenciale), prandaj sinjalet e naftës janë vetëm per-përdorues (MetaApi).
+const PLATFORM_WATCHLIST = [GOLD_SYMBOL];
 const PLATFORM_MIN_CONF = 0.30;   // pragu i besueshmërisë (0..1)
 const PLATFORM_MAX = 3;            // maksimumi i sinjaleve platform-wide aktive njëkohësisht
 const PLATFORM_DEDUP_H = 4;        // mos krijo sinjal të ri për të njëjtin simbol brenda 4 orëve
