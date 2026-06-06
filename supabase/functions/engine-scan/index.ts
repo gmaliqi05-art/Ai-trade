@@ -107,6 +107,51 @@ function adx(highs: number[], lows: number[], closes: number[], period = 14): nu
   return out;
 }
 
+// ---------- TIER-1 (kërkim): Efficiency Ratio, Supertrend, Funding (crypto) ----------
+// Efficiency Ratio (Kaufman): lëvizja neto / shuma e lëvizjeve absolute. 1=trend i pastër, 0=zhurmë.
+function efficiencyRatio(closes: number[], n = 10): number {
+  const L = closes.length - 1;
+  if (L < n) return 0;
+  const net = Math.abs(closes[L] - closes[L - n]);
+  let vol = 0;
+  for (let i = L - n + 1; i <= L; i++) vol += Math.abs(closes[i] - closes[i - 1]);
+  return vol > 0 ? net / vol : 0;
+}
+// Supertrend (ATR): kthen drejtimin aktual (1=lart/up, -1=poshtë/down, 0=panjohur).
+function supertrendDir(highs: number[], lows: number[], closes: number[], period = 10, mult = 3): number {
+  const n = closes.length;
+  const a = atr(highs, lows, closes, period);
+  const fU = new Array(n).fill(NaN), fL = new Array(n).fill(NaN), st = new Array(n).fill(NaN);
+  let started = false;
+  for (let i = 0; i < n; i++) {
+    if (!Number.isFinite(a[i])) continue;
+    const hl2 = (highs[i] + lows[i]) / 2;
+    const bu = hl2 + mult * a[i], bl = hl2 - mult * a[i];
+    if (!started) { fU[i] = bu; fL[i] = bl; st[i] = bu; started = true; continue; }
+    fU[i] = (bu < fU[i - 1] || closes[i - 1] > fU[i - 1]) ? bu : fU[i - 1];
+    fL[i] = (bl > fL[i - 1] || closes[i - 1] < fL[i - 1]) ? bl : fL[i - 1];
+    st[i] = st[i - 1] === fU[i - 1]
+      ? (closes[i] > fU[i] ? fL[i] : fU[i])
+      : (closes[i] < fL[i] ? fU[i] : fL[i]);
+  }
+  let li = n - 1; while (li > 0 && !Number.isFinite(st[li])) li--;
+  if (!Number.isFinite(st[li])) return 0;
+  return closes[li] >= st[li] ? 1 : -1;
+}
+// Funding rate i futures-it (Binance) për crypto — sinjal i pavarur i mbingarkesës (crowding).
+async function cryptoFunding(spotSymbol: string): Promise<number | null> {
+  const pair = PAIRS[spotSymbol.toUpperCase()];
+  if (!pair || pair === "PAXGUSDT") return null; // ari (PAXG) s'ka futures
+  try {
+    const resp = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${pair}`, { signal: AbortSignal.timeout(6000) });
+    if (!resp.ok) return null;
+    const d = await resp.json() as { lastFundingRate?: string };
+    const f = Number(d.lastFundingRate);
+    return Number.isFinite(f) ? f : null;
+  } catch { return null; }
+}
+const FUND_EXTREME = 0.0005; // 0.05% / 8h → tregu i mbi-levuar (crowded) në atë drejtim
+
 // ---------- Motori (port nga signal-engine.ts + trade-plan.ts, profil 'short') ----------
 interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; }
 interface EngineResult { action: "BUY" | "SELL" | "HOLD"; confidence: number; entry: number; stopLoss: number; takeProfit: number; reasons: string[]; }
@@ -222,11 +267,32 @@ async function generateStrong(symbol: string): Promise<EngineResult | null> {
   if (adxStrong) reasons.push("ADX i fortë (≥25)");
   if (rsiRoom) reasons.push(`RSI me hapësirë (${Math.round(rsi1h)})`);
   if (macdAligned) reasons.push("MACD në harmoni");
-  const confFactors = 2 + (adxStrong ? 1 : 0) + (d1Boost > 0 ? 1 : 0) + (rsiRoom ? 1 : 0) + (macdAligned ? 1 : 0);
-  reasons.unshift(`Confluence ${confFactors}/6 (${Math.round((confFactors / 6) * 100)}%)`);
+
+  // (4) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX: a po bën çmimi progres real?
+  const er = efficiencyRatio(c1hCloses, 10);
+  if (er < 0.20) return null; // treg shumë jo-efikas (choppy) — shmang sinjale fallco
+  const erGood = er >= 0.35;
+  if (erGood) reasons.push(`Efficiency Ratio ${er.toFixed(2)} (lëvizje efikase)`);
+
+  // (5) SUPERTREND (ATR) — konfirmim i drejtimit; veto kur Supertrend është qartë kundër.
+  const stDir = supertrendDir(c1h.map((c) => c.high), c1h.map((c) => c.low), c1hCloses, 10, 3);
+  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return null;
+  const stOk = (isBuy && stDir > 0) || (!isBuy && stDir < 0);
+  if (stOk) reasons.push("Supertrend në harmoni");
+
+  // (6) FUNDING (crypto) — veto hyrjet në drejtimin e mbi-levuar (crowded → rrezik squeeze).
+  const funding = await cryptoFunding(symbol);
+  if (funding != null) {
+    if (isBuy && funding >= FUND_EXTREME) return null;   // long-et tepër crowded → shmang BLEJ
+    if (!isBuy && funding <= -FUND_EXTREME) return null;  // short-et tepër crowded → shmang SHIT
+    reasons.push(`Funding ${(funding * 100).toFixed(3)}% (jo i mbingarkuar)`);
+  }
+
+  const confFactors = 2 + (adxStrong ? 1 : 0) + (d1Boost > 0 ? 1 : 0) + (rsiRoom ? 1 : 0) + (macdAligned ? 1 : 0) + (erGood ? 1 : 0) + (stOk ? 1 : 0);
+  reasons.unshift(`Confluence ${confFactors}/8 (${Math.round((confFactors / 8) * 100)}%)`);
 
   const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
-  const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0);
+  const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0) + (erGood ? 0.02 : 0) + (stOk ? 0.02 : 0);
   const confidence = Math.min(1, base + d1Boost + confBonus);
   const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
   return {
@@ -329,13 +395,26 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
   if (adxStrong) reasons.push("ADX i fortë (≥25)");
   if (rsiRoom) reasons.push(`RSI me hapësirë (${Math.round(rsi1h)})`);
   if (macdAligned) reasons.push("MACD në harmoni");
-  // 2 faktorë bazë (Multi-TF, EMA200) + 5 opsionalë (ADX≥25, sesion-overlap, D1, RSI, MACD).
-  const confFactors = 2 + (adxStrong ? 1 : 0) + (overlap ? 1 : 0) + (d1Boost > 0 ? 1 : 0) + (rsiRoom ? 1 : 0) + (macdAligned ? 1 : 0);
-  reasons.unshift(`Confluence ${confFactors}/7 (${Math.round((confFactors / 7) * 100)}%)`);
+
+  // (6) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX.
+  const er = efficiencyRatio(c1hCloses, 10);
+  if (er < 0.20) return null; // treg shumë jo-efikas (choppy)
+  const erGood = er >= 0.35;
+  if (erGood) reasons.push(`Efficiency Ratio ${er.toFixed(2)} (lëvizje efikase)`);
+
+  // (7) SUPERTREND (ATR) — konfirmim drejtimi; veto kur është qartë kundër.
+  const stDir = supertrendDir(c1h.map((c) => c.high), c1h.map((c) => c.low), c1hCloses, 10, 3);
+  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return null;
+  const stOk = (isBuy && stDir > 0) || (!isBuy && stDir < 0);
+  if (stOk) reasons.push("Supertrend në harmoni");
+
+  // 2 bazë (Multi-TF, EMA200) + 7 opsionalë (ADX, overlap, D1, RSI, MACD, ER, Supertrend).
+  const confFactors = 2 + (adxStrong ? 1 : 0) + (overlap ? 1 : 0) + (d1Boost > 0 ? 1 : 0) + (rsiRoom ? 1 : 0) + (macdAligned ? 1 : 0) + (erGood ? 1 : 0) + (stOk ? 1 : 0);
+  reasons.unshift(`Confluence ${confFactors}/9 (${Math.round((confFactors / 9) * 100)}%)`);
 
   // Besueshmëria me boost-et e harmonisë + confluence (bonusi s'e ul kurrë bazën → s'pakëson sinjalet).
   const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
-  const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0);
+  const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0) + (erGood ? 0.02 : 0) + (stOk ? 0.02 : 0);
   const confidence = Math.min(1, base + d1Boost + (overlap ? 0.05 : 0) + confBonus);
   const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
   return {
