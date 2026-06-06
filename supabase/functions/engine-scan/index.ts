@@ -185,6 +185,19 @@ function eiaBlackout(d = new Date()): boolean {
   return mins >= 10 * 60 && mins < 11 * 60;
 }
 
+// A është tregu i mallrave (ar/naftë) HAPUR tani? Ndjek orarin forex/metals/energy:
+// hapet të dielën 17:00 ET, mbyllet të premten 17:00 ET (mbyllur gjithë fundjavën).
+// KRITIKE: pa këtë, motori do gjeneronte sinjale edhe kur s'mund të tregtohet → besueshmëri e dëmtuar.
+function commodityMarketOpen(d = new Date()): boolean {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", hour12: false }).formatToParts(d);
+  const wd = p.find((x) => x.type === "weekday")?.value;
+  const h = parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24;
+  if (wd === "Sat") return false;            // e shtunë — mbyllur
+  if (wd === "Sun" && h < 17) return false;  // e diel para 17:00 ET — mbyllur
+  if (wd === "Fri" && h >= 17) return false; // e premte pas 17:00 ET — mbyllur
+  return true;
+}
+
 // Analizë e një periudhe: kthen drejtimin, besueshmërinë, EMA200 dhe ADX.
 interface TFResult { action: "BUY" | "SELL" | "HOLD"; confidence: number; price: number; atr: number; ema200: number; adx: number; reasons: string[]; }
 function analyzeTF(candles: Candle[]): TFResult | null {
@@ -224,6 +237,8 @@ const ADX_MIN = 18;
 // advanced = aplikon filtrat Tier-1 (Efficiency Ratio + Supertrend + Funding). Default false:
 // logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor + confluence).
 async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = false): Promise<EngineResult | null> {
+  // NAFTË: mos gjenero sinjale kur tregu është i MBYLLUR (fundjavë) — s'tregtohet dot, dëmton besueshmërinë.
+  if (isOil(symbol) && !commodityMarketOpen()) return null;
   // NAFTË: bllokim rreth raportit javor EIA (e mërkurë 10:00–11:00 ET) — lëkundje fallco.
   if (isOil(symbol) && eiaBlackout()) return null;
   const [c15, c1h, c4h, c1d] = await Promise.all([
@@ -340,6 +355,9 @@ async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = f
 //   psikologjike. Çdo filtër mund ta refuzojë sinjalin; harmonia i jep "boost".
 // ============================================================================
 async function generateGold(symbol: string): Promise<EngineResult | null> {
+  // ARI: mos gjenero sinjale kur tregu i arit është i MBYLLUR (fundjavë) — s'tregtohet dot.
+  // (PAXG/Binance jep qirinj 24/7, por XAUUSD te brokeri mbyllet fundjavën.)
+  if (!commodityMarketOpen()) return null;
   const [c15, c1h, c4h, c1d] = await Promise.all([
     fetchCandles(symbol, "15m"), fetchCandles(symbol, "1h"),
     fetchCandles(symbol, "4h"), fetchCandles(symbol, "1d"),
