@@ -64,6 +64,15 @@ async function resolveSymbol(cfg: MetaApiConfig, requested: string): Promise<str
       const goldish = names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()));
       if (goldish) return goldish;
     }
+    // NAFTË: familja e simbolit te brokeri (USOIL↔XTIUSD/WTI/CL; UKOIL↔XBRUSD/BRENT).
+    // E njëjta logjikë si te engine-scan + auto-trade-runner → tregtimi manual gjen të njëjtin simbol.
+    if (/^(USOIL|UKOIL|WTI|XTI|XBR|BRENT|UKO|USO|CL)/i.test(req)) {
+      const fam = /^(UKOIL|XBR|BRENT|UKO)/i.test(req)
+        ? /^(UKOIL|XBRUSD|XBR|BRENT|UKO)/i
+        : /^(USOIL|XTIUSD|XTI|WTI|CL|USO)/i;
+      const oilish = names.find(s => fam.test(s));
+      if (oilish) return oilish;
+    }
     return requested;
   } catch { return requested; }
 }
