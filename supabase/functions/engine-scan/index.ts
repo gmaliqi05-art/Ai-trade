@@ -486,8 +486,11 @@ async function resolveBrokerSymbol(b: BrokerCreds, requested: string): Promise<s
     if (resp.ok) {
       const list = (await resp.json()) as string[];
       const req = requested.toUpperCase();
+      // Brent vs WTI: zgjedh familjen e duhur kur s'ka përputhje të saktë.
+      const isBrent = /^(UKOIL|XBR|BRENT)/i.test(req);
+      const fam = isBrent ? /^(UKOIL|XBRUSD|XBR|BRENT|UKO)/i : /^(USOIL|XTIUSD|XTI|WTI|CL|USO)/i;
       const found = list.find((s) => s.toUpperCase() === req)
-        || list.find((s) => /^(USOIL|XTIUSD|WTI|CL|OIL)/i.test(s))
+        || list.find((s) => fam.test(s))
         || requested;
       _oilSym.set(k, found); return found;
     }

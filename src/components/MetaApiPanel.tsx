@@ -488,7 +488,7 @@ function TogglePill({ on, onClick, t }: { on: boolean; onClick: () => void; t: (
 // Forex/indekse/aksione s'kanë burim të dhënash në motor, prandaj nuk shfaqen.
 const SYMBOL_GROUPS: { cat: string; syms: [string, string][] }[] = [
   { cat: 'Ari', syms: [['XAUUSD', 'Ari']] },
-  { cat: 'Naftë', syms: [['USOIL', 'Naftë (WTI)']] },
+  { cat: 'Naftë', syms: [['USOIL', 'Naftë (WTI)'], ['UKOIL', 'Naftë (Brent)']] },
   { cat: 'Crypto (24/7)', syms: [['BTCUSD', 'Bitcoin'], ['ETHUSD', 'Ethereum'], ['SOLUSD', 'Solana'], ['BNBUSD', 'BNB'], ['XRPUSD', 'XRP']] },
 ];
 const DEFAULT_SYMBOL = 'XAUUSD';
