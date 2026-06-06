@@ -280,6 +280,19 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setTradeMsg(null);
   };
 
+  // Dorëzim nga ProTrade Intelligence: aplikon sinjalin e zgjedhur kur hapet faqja (mbush tabelën si ari).
+  useEffect(() => {
+    let raw: string | null = null;
+    try { raw = localStorage.getItem('protrade_apply_signal'); } catch { return; }
+    if (!raw) return;
+    try { localStorage.removeItem('protrade_apply_signal'); } catch { /* injoro */ }
+    try {
+      const s = JSON.parse(raw) as Signal;
+      if (s && s.symbol) applySignal(s);
+    } catch { /* injoro */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Ndërrim manual i simbolit (nga butonat) → pastron SL/TP e sinjalit të aplikuar.
   const pickSymbol = (sym: string) => {
     setSelected(sym);

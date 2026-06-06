@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload
+  Zap, Monitor, FileText, Activity, Upload, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -29,6 +29,7 @@ const navSections = [
   {
     label: 'Analiza AI',
     items: [
+      { id: 'protrade' as ClientPage, label: 'ProTrade Intelligence', icon: Sparkles },
       { id: 'signals' as ClientPage, label: 'Sinjalet', icon: Zap },
       { id: 'chart_analysis' as ClientPage, label: 'Analizë grafiku', icon: Upload },
     ],
@@ -62,6 +63,7 @@ const pageLabels: Record<ClientPage, string> = {
   market_prices: 'Tregto Live',
   chart_analysis: 'Analizë grafiku',
   signals: 'Sinjalet',
+  protrade: 'ProTrade Intelligence',
   metatrader: 'Lidhja & Konfigurimi',
   notifications: 'Njoftimet',
   reports: 'Raporte',

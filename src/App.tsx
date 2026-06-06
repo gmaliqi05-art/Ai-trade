@@ -13,6 +13,7 @@ import MetaTraderPage from './pages/MetaTraderPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
+import ProTradePage from './pages/ProTradePage';
 
 import AdminOverviewPage from './admin/AdminOverviewPage';
 import AdminSettingsPage from './admin/AdminSettingsPage';
@@ -23,7 +24,7 @@ import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
   | 'dashboard' | 'market_prices' | 'chart_analysis'
-  | 'signals' | 'metatrader' | 'notifications' | 'reports' | 'settings';
+  | 'signals' | 'protrade' | 'metatrader' | 'notifications' | 'reports' | 'settings';
 
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_assets' | 'admin_signals'
@@ -32,7 +33,7 @@ export type AdminPage =
 
 export type Page = ClientPage | AdminPage;
 
-const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'chart_analysis', 'signals', 'metatrader', 'notifications', 'reports', 'settings'];
+const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'notifications', 'reports', 'settings'];
 const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_assets', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_audit', 'admin_howitworks', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
@@ -85,6 +86,7 @@ function ClientApp() {
       {currentPage === 'market_prices' && <MarketTerminalPage onNavigate={setCurrentPage} />}
       {currentPage === 'chart_analysis' && <ChartAnalysisPage />}
       {currentPage === 'signals' && <SignalsPage />}
+      {currentPage === 'protrade' && <ProTradePage onNavigate={setCurrentPage} />}
       {currentPage === 'metatrader' && <MetaTraderPage />}
       {currentPage === 'notifications' && <NotificationsPage />}
       {currentPage === 'reports' && <ReportsPage />}
