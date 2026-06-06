@@ -21,7 +21,7 @@ export const en: Record<string, string> = {
   "Ari & Naftë": "Gold & Oil",
   "+ Shfaq edhe naftën": "+ Show oil too",
   "Filtra të avancuar (Tier-1)": "Advanced filters (Tier-1)",
-  "Shton filtra shtesë: <span class=\"text-gray-300\">Efficiency Ratio + Supertrend + Funding</span>. <span class=\"text-gray-400\">JOAKTIV (default) = logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor). E rekomanduar të lihet JOAKTIV për crypto; ndize vetëm nëse do filtra më strikt.</span>": "Adds extra filters: <span class=\"text-gray-300\">Efficiency Ratio + Supertrend + Funding</span>. <span class=\"text-gray-400\">OFF (default) = simple proven logic (Multi-TF + EMA200 + ADX + volatility + daily trend). Recommended OFF; enable only if you want stricter filters.</span>",
+  "Shton filtra shtesë: <span class=\"text-gray-300\">Efficiency Ratio + Supertrend</span>. <span class=\"text-gray-400\">JOAKTIV (default) = logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor). Për Ar & Naftë rekomandohet JOAKTIV; ndize vetëm nëse do filtra më strikt.</span>": "Adds extra filters: <span class=\"text-gray-300\">Efficiency Ratio + Supertrend</span>. <span class=\"text-gray-400\">OFF (default) = simple proven logic (Multi-TF + EMA200 + ADX + volatility + daily trend). For Gold & Oil, OFF is recommended; enable only if you want stricter filters.</span>",
   "SL scalp naftë (% e çmimit)": "Scalp SL oil (% of price)",
   "TP scalp naftë (% e çmimit)": "Scalp TP oil (% of price)",
   "Për USOIL/UKOIL: SL si PËRQINDJE e çmimit (p.sh. 0.4%). Nafta është më volatile se ari, prandaj përdor % e jo $ fiks.": "For USOIL/UKOIL: SL as a PERCENTAGE of price (e.g. 0.4%). Oil is more volatile than gold, so use % instead of fixed $.",

@@ -306,7 +306,7 @@ export default function MetaApiPanel() {
               {cfg.advanced_filters ? t('AKTIV') : t('JOAKTIV')}
             </button>
           </div>
-          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Shton filtra shtesë: <span class="text-gray-300">Efficiency Ratio + Supertrend + Funding</span>. <span class="text-gray-400">JOAKTIV (default) = logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor). E rekomanduar të lihet JOAKTIV për crypto; ndize vetëm nëse do filtra më strikt.</span>') }} />
+          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Shton filtra shtesë: <span class="text-gray-300">Efficiency Ratio + Supertrend</span>. <span class="text-gray-400">JOAKTIV (default) = logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor). Për Ar & Naftë rekomandohet JOAKTIV; ndize vetëm nëse do filtra më strikt.</span>') }} />
         </div>
       </Section>
 
