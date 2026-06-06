@@ -73,6 +73,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
     if (ar?.data) setAssets([...(ar.data as Asset[])].sort((a, b) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2) - (b.symbol === 'XAUUSD' ? 0 : b.category === 'commodity' ? 1 : 2)));
     if (sr?.data) setSignals(sr.data as Signal[]);
     if (pr?.data) setAIProviderActive((pr.data as unknown[]).length > 0);
+    // Dështim kalimtar i ngarkimit → ruaj gjendjen e fundit (mos pulso te "i palidhur").
+    if ((mac as { error?: unknown })?.error) { setLastUpdated(new Date()); setLoading(false); return; }
     const cfg = (mac?.data as MetaApiCfg) ?? null;
     setMetaApi(cfg);
     setAutoTradesToday(ter?.count ?? 0);

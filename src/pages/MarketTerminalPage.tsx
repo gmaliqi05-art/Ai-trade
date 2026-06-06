@@ -117,7 +117,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Lexon gjendjen reale të MT5: llogaria + historiku.
   const fetchMeta = useCallback(async () => {
     if (!user) return;
-    const cfg = await loadMetaApiConfig(user.id);
+    let cfg;
+    // Dështim kalimtar i ngarkimit (rrjet) → ruaj gjendjen e fundit, mos pulso te "i palidhur".
+    try { cfg = await loadMetaApiConfig(user.id); } catch { return; }
     const configured = !!(cfg.account_id && cfg.token);
     setMetaConfigured(configured);
     setMtMode(cfg.mode);
