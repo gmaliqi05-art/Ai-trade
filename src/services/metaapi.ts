@@ -55,6 +55,9 @@ export interface MetaApiConfig {
   trail_start_usd: number;
   /** Trailing në anë të MT5/MetaApi (tick-by-tick, server-side). Default OFF. */
   broker_trailing: boolean;
+  /** Filtrat e avancuar (Tier-1: Efficiency Ratio + Supertrend + Funding). Default OFF =
+   *  logjika e thjeshtë e provuar. ON = shton filtrat Tier-1 për simbolet e tua. */
+  advanced_filters: boolean;
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
@@ -67,6 +70,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   strategy_swing: true, strategy_scalp: false,
   scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_sl_pct: 0.3, scalp_tp_pct: 0.6, scalp_sl_pct_oil: 0.4, scalp_tp_pct_oil: 0.8, scalp_max_trades: 2, scalp_small_moves: false,
   trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1, broker_trailing: false,
+  advanced_filters: false,
 };
 
 export interface TradeExecution {
@@ -111,6 +115,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     trail_lock_pct: Number(data.trail_lock_pct ?? 50),
     trail_start_usd: Number(data.trail_start_usd ?? 1),
     broker_trailing: !!data.broker_trailing,
+    advanced_filters: !!data.advanced_filters,
     };
   }
   throw new Error(lastErr?.message || 'metaapi_config_load_failed');
