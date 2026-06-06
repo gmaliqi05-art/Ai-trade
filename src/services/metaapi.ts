@@ -66,11 +66,15 @@ export interface TradeExecution {
   mode: string; status: string; reason: string | null; created_at: string;
 }
 
-/** Lexon konfigurimin e MetaApi për përdoruesin aktual (ose default nëse s'ka). */
+/** Lexon konfigurimin e MetaApi. Riprovon te gabimet kalimtare (rrjet) dhe i NGRE ato —
+ *  që thirrësi ta dallojë "dështim ngarkimi" nga "pa konfigurim" dhe të mos pulsojë te "i palidhur". */
 export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> {
-  const { data } = await supabase.from('metaapi_config').select('*').eq('user_id', userId).maybeSingle();
-  if (!data) return { ...DEFAULT_CONFIG };
-  return {
+  let lastErr: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data, error } = await supabase.from('metaapi_config').select('*').eq('user_id', userId).maybeSingle();
+    if (error) { lastErr = error; if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1))); continue; }
+    if (!data) return { ...DEFAULT_CONFIG };
+    return {
     account_id: data.account_id ?? '', token: data.token ?? '', region: data.region ?? 'new-york',
     mode: (data.mode as 'demo' | 'live') ?? 'demo', auto_trade: !!data.auto_trade,
     default_lot: Number(data.default_lot ?? 0.01), max_lot: Number(data.max_lot ?? 0.1),
@@ -95,7 +99,9 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     trail_lock_pct: Number(data.trail_lock_pct ?? 50),
     trail_start_usd: Number(data.trail_start_usd ?? 1),
     broker_trailing: !!data.broker_trailing,
-  };
+    };
+  }
+  throw new Error(lastErr?.message || 'metaapi_config_load_failed');
 }
 
 /** Ruan (upsert) konfigurimin e MetaApi. */

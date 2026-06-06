@@ -29,8 +29,9 @@ export default function MetaApiPanel() {
 
   const refresh = useCallback(async () => {
     if (!user) return;
-    const c = await loadMetaApiConfig(user.id);
-    setCfg(c); setLoading(false);
+    try { const c = await loadMetaApiConfig(user.id); setCfg(c); }
+    catch { /* dështim kalimtar → ruaj gjendjen ekzistuese */ }
+    finally { setLoading(false); }
   }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);

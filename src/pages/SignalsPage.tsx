@@ -71,7 +71,7 @@ export default function SignalsPage() {
 
   // Cilësimet e MetaApi (SL/TP të scalp-it, rreziku %) — për të ndërtuar planet e sinjaleve sipas tyre.
   const [cfg, setCfg] = useState<MetaApiConfig>(DEFAULT_CONFIG);
-  useEffect(() => { if (user) loadMetaApiConfig(user.id).then(setCfg); }, [user]);
+  useEffect(() => { if (user) loadMetaApiConfig(user.id).then(setCfg).catch(() => { /* ruaj DEFAULT */ }); }, [user]);
 
   useEffect(() => { fetchData(); }, [user]);
 
