@@ -35,16 +35,16 @@ export default function AdminProTradeLabPage() {
   const buildFeed = useCallback(async () => {
     const tok = new Set<string>(['EMA200', 'RSI', 'MACD', 'ADX', 'ATR', 'Supertrend', 'EfficiencyRatio', 'Bollinger', 'confluence', 'D1', 'BLEJ', 'SHIT']);
     const formulaLines = [
-      'EMA = Çmim·k + EMA₋₁·(1−k)    k = 2/(n+1)',
+      'EMA = Price·k + EMA₋₁·(1−k)    k = 2/(n+1)',
       'RSI = 100 − 100/(1 + RS)    RS = avgGain / avgLoss',
       'MACD = EMA12 − EMA26    Signal = EMA9(MACD)    Hist = MACD − Signal',
-      'ATR = max(H−L, |H−C₋₁|, |L−C₋₁|)    → volatiliteti',
+      'ATR = max(H−L, |H−C₋₁|, |L−C₋₁|)    → volatility',
       'ADX = WilderAvg(DX)    DX = 100·|+DI − −DI| / (+DI + −DI)',
-      'SL = ATR × 1.5  (naftë ×2)    TP = SL × 2    →    R:R = 1:2',
-      'lot = rreziku / (distSL × vlerëPerÇmim)',
-      'Confluence = Σ faktorë / max    →    besueshmëria',
-      'Efficiency Ratio = |Δneto| / Σ|Δ|    Supertrend = (H+L)/2 ± ATR×3',
-      'EMA200 ↓  &  1h+4h pajtohen  &  ADX ≥ 25  →  sinjal i vlefshëm',
+      'SL = ATR × 1.5  (oil ×2)    TP = SL × 2    →    R:R = 1:2',
+      'lot = risk / (slDist × valuePerPrice)',
+      'Confluence = Σ factors / max    →    confidence',
+      'Efficiency Ratio = |Δnet| / Σ|Δ|    Supertrend = (H+L)/2 ± ATR×3',
+      'EMA200 ↓  &  1h+4h agree  &  ADX ≥ 25  →  valid signal',
     ];
     const sigLines: string[] = [];
     try {
@@ -53,9 +53,9 @@ export default function AdminProTradeLabPage() {
         .not('features', 'is', null).order('created_at', { ascending: false }).limit(50);
       for (const s of (data ?? []) as { symbol: string; type: string; confidence: number; entry_price: number | null; target_price: number | null; stop_loss: number | null; status: string; features: Record<string, unknown> }[]) {
         const f = s.features || {};
-        const dir = s.type === 'buy' ? 'BLEJ' : 'SHIT';
+        const dir = s.type === 'buy' ? 'BUY' : 'SELL';
         const st = s.status === 'hit_tp' ? ' → ✓TP' : s.status === 'hit_sl' ? ' → ✗SL' : '';
-        sigLines.push(`${s.symbol} ${dir} │ Hyrje ${s.entry_price ?? '—'} │ SL ${s.stop_loss ?? '—'} │ TP ${s.target_price ?? '—'} │ conf ${s.confidence}% │ ADX ${f.adx ?? '—'} RSI ${f.rsi ?? '—'}${st}`);
+        sigLines.push(`${s.symbol} ${dir} │ Entry ${s.entry_price ?? '—'} │ SL ${s.stop_loss ?? '—'} │ TP ${s.target_price ?? '—'} │ conf ${s.confidence}% │ ADX ${f.adx ?? '—'} RSI ${f.rsi ?? '—'}${st}`);
         tok.add(s.symbol);
         if (f.adx != null) tok.add(`ADX${f.adx}`);
         if (f.rsi != null) tok.add(`RSI${f.rsi}`);
@@ -107,11 +107,11 @@ export default function AdminProTradeLabPage() {
       <div className="rounded-2xl border border-green-500/20 bg-[#02060a] overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 border-b border-green-500/15">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-green-400">
-            <Bot className="w-3.5 h-3.5" /> Inteligjenca live
+            <Bot className="w-3.5 h-3.5" /> Live Intelligence
           </div>
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className={`w-1.5 h-1.5 rounded-full ${advising ? 'bg-amber-400 animate-pulse' : 'bg-green-400'}`} />
-            <span className={advising ? 'text-amber-400' : 'text-green-500'}>{advising ? 'DUKE ANALIZUAR' : 'AKTIV'}</span>
+            <span className={advising ? 'text-amber-400' : 'text-green-500'}>{advising ? 'ANALYZING' : 'ACTIVE'}</span>
           </div>
         </div>
         <div className="h-44 sm:h-52">
