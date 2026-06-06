@@ -348,9 +348,16 @@ async function resolveSymbol(cfg: Cfg, requested: string): Promise<string> {
     if (Array.isArray(list) && list.length > 0) {
       const names = list.map(String);
       const req = requested.toUpperCase();
+      // NAFTË: familja e simbolit te brokeri (USOIL↔XTIUSD/WTI/CL; UKOIL↔XBRUSD/BRENT).
+      // E njëjta logjikë si te engine-scan, që sinjali dhe ekzekutimi të gjejnë të NJËJTIN simbol.
+      const oilReq = /^(USOIL|UKOIL|WTI|XTI|XBR|BRENT|UKO|USO|CL)/i.test(req);
+      const oilFam = /^(UKOIL|XBR|BRENT|UKO)/i.test(req)
+        ? /^(UKOIL|XBRUSD|XBR|BRENT|UKO)/i
+        : /^(USOIL|XTIUSD|XTI|WTI|CL|USO)/i;
       const found = names.find(s => s.toUpperCase() === req)
         || names.find(s => s.toUpperCase().startsWith(req))
-        || (req.includes("XAU") ? (names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()))) : undefined);
+        || (req.includes("XAU") ? (names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()))) : undefined)
+        || (oilReq ? names.find(s => oilFam.test(s)) : undefined);
       const resolved = found || requested;
       _symCache.set(key, resolved);
       return resolved;
