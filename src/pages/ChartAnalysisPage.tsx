@@ -7,6 +7,7 @@ import { EngineSignalCard } from '../ai-trader/react/EngineSignalCard';
 import { requestEngineReasoning } from '../services/aiReasoning';
 import type { Timeframe } from '../ai-trader/market/candles';
 import TradingViewChart from '../components/TradingViewChart';
+import UsageMeter from '../components/UsageMeter';
 import { isGoldSessionActive, goldWindowLocal } from '../lib/goldSession';
 import { useI18n } from '../i18n/i18n';
 
@@ -79,6 +80,8 @@ export default function ChartAnalysisPage() {
           {t('Roboti gjeneron analizë automatikisht nga të dhënat live të tregut — indikatorë realë teknikë, pa nevojë për foto.')}
         </p>
       </div>
+
+      <UsageMeter />
 
       <div className="grid lg:grid-cols-5 gap-6">
         <div className="lg:col-span-2 space-y-4">
