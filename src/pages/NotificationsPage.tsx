@@ -3,7 +3,7 @@ import { Bell, Check, CheckCheck, Zap, Brain, AlertCircle, Crown, Megaphone, Ref
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
-import { getReadBroadcasts, markBroadcastRead, notifyNotificationsChanged } from '../lib/broadcastReads';
+import { loadReadBroadcasts, markBroadcastRead, notifyNotificationsChanged } from '../lib/broadcastReads';
 
 interface Notification {
   id: string;
@@ -47,8 +47,8 @@ export default function NotificationsPage() {
       .order('created_at', { ascending: false })
       .limit(50);
     if (data) {
-      // Zbato gjendjen lokale "lexuar" për njoftimet broadcast (RLS s'lejon update nga përdoruesi).
-      const readSet = getReadBroadcasts(user.id);
+      // Zbato gjendjen "lexuar" për broadcast-et (server-side + cache lokal; RLS s'lejon update të is_read).
+      const readSet = await loadReadBroadcasts(user.id);
       setNotifications((data as Notification[]).map(n => (n.is_broadcast && readSet.has(n.id) ? { ...n, is_read: true } : n)));
     }
     setLoading(false);
@@ -59,7 +59,7 @@ export default function NotificationsPage() {
 
   const markRead = async (id: string) => {
     const n = notifications.find(x => x.id === id);
-    if (user && n?.is_broadcast) markBroadcastRead(user.id, id);   // broadcast → lokal
+    if (user && n?.is_broadcast) await markBroadcastRead(user.id, id);   // broadcast → server + cache
     else await supabase.from('notifications').update({ is_read: true }).eq('id', id); // i yti → DB
     setNotifications(p => p.map(x => x.id === id ? { ...x, is_read: true } : x));
     notifyNotificationsChanged();
@@ -68,7 +68,7 @@ export default function NotificationsPage() {
   const markAllRead = async () => {
     if (!user) return;
     const bcIds = notifications.filter(n => n.is_broadcast && !n.is_read).map(n => n.id);
-    if (bcIds.length) markBroadcastRead(user.id, ...bcIds);
+    if (bcIds.length) await markBroadcastRead(user.id, ...bcIds);
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false);
     setNotifications(p => p.map(n => ({ ...n, is_read: true })));
     notifyNotificationsChanged();

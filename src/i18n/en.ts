@@ -2,6 +2,7 @@
 // Përdor {param} për pjesë dinamike (përkojnë me t(key, { param })).
 // Gjenerohet/mirëmbahet me kujdes — anglishtja është gjuha default.
 export const en: Record<string, string> = {
+  "Krijuar nga": "Created by",
   "Çmime reale: Ar & Naftë — fokus profesional": "Real prices: Gold & Oil — professional focus",
   "Ari & Naftë": "Gold & Oil",
   "+ Shfaq edhe naftën": "+ Show oil too",

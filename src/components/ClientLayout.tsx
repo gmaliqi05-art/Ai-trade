@@ -9,7 +9,8 @@ import { supabase } from '../lib/supabase';
 import { ClientPage } from '../App';
 import { useI18n } from '../i18n/i18n';
 import LanguageSwitcher from '../i18n/LanguageSwitcher';
-import { getReadBroadcasts } from '../lib/broadcastReads';
+import { loadReadBroadcasts } from '../lib/broadcastReads';
+import AppFooter from './AppFooter';
 
 interface ClientLayoutProps {
   currentPage: ClientPage;
@@ -81,8 +82,8 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
       .select('id, is_broadcast')
       .or(`user_id.eq.${user.id},is_broadcast.eq.true`)
       .eq('is_read', false);
-    // Përjashto broadcast-et që përdoruesi i ka lexuar lokalisht (RLS s'lejon update të tyre).
-    const readSet = getReadBroadcasts(user.id);
+    // Përjashto broadcast-et që përdoruesi i ka lexuar (server-side + cache lokal).
+    const readSet = await loadReadBroadcasts(user.id);
     const rows = (data as { id: string; is_broadcast: boolean }[] | null) || [];
     setUnreadCount(rows.filter(r => !(r.is_broadcast && readSet.has(r.id))).length);
   }, [user]);
@@ -225,7 +226,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
         </header>
 
         {/* Content — hapësirë poshtë në celular që të mos mbulohet nga shiriti i navigimit. */}
-        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">{children}</main>
+        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">{children}<AppFooter /></main>
 
         {/* Shiriti i navigimit poshtë (vetëm celular/tablet) — pamje si-app. */}
         <nav
