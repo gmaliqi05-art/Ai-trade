@@ -1,8 +1,9 @@
 // Super Admin → "ProTrade Lab": Faza 3 (analiza e pikave kyçe → win-rate sipas kushteve)
 // + Faza 4 (Claude analizon statistikat dhe sugjeron rregullime). Vetëm super-admin.
 import { useEffect, useState, useCallback } from 'react';
-import { FlaskConical, Brain, RefreshCw, Loader2, TrendingUp, AlertTriangle, Lightbulb, Database } from 'lucide-react';
+import { FlaskConical, Brain, RefreshCw, Loader2, TrendingUp, AlertTriangle, Lightbulb, Database, Bot } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import IntelligenceMatrix from './IntelligenceMatrix';
 
 interface Bkt { label: string; n: number; win: number; rate: number; avgR: number }
 interface Group { group: string; rows: Bkt[] }
@@ -26,6 +27,32 @@ export default function AdminProTradeLabPage() {
   const [loading, setLoading] = useState(true);
   const [advising, setAdvising] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [tokens, setTokens] = useState<string[]>([]);
+
+  // "Kodet reale" për matrix-in: ndërtohen nga features e sinjaleve të fundit + statistikat.
+  const buildTokens = useCallback(async () => {
+    const base = ['EMA200', 'RSI', 'MACD', 'ADX', 'ATR', 'Supertrend', 'EfficiencyRatio', 'Bollinger', 'confluence', 'D1', 'EMA9>EMA21'];
+    const out = new Set<string>(base);
+    try {
+      const { data } = await supabase.from('signals')
+        .select('symbol, type, confidence, status, features')
+        .not('features', 'is', null).order('created_at', { ascending: false }).limit(60);
+      for (const s of (data ?? []) as { symbol: string; type: string; confidence: number; status: string; features: Record<string, unknown> }[]) {
+        const f = s.features || {};
+        out.add(s.symbol); out.add(String(s.type).toUpperCase());
+        if (f.adx != null) out.add(`ADX${f.adx}`);
+        if (f.rsi != null) out.add(`RSI${f.rsi}`);
+        if (f.conf != null) out.add(`conf${f.conf}`);
+        if (f.er != null) out.add(`ER${f.er}`);
+        if (f.atr_pct != null) out.add(`ATR${f.atr_pct}%`);
+        if (f.dow) out.add(String(f.dow));
+        if (s.status) out.add(s.status);
+      }
+    } catch { /* injoro */ }
+    setTokens([...out]);
+  }, []);
+
+  useEffect(() => { buildTokens(); }, [buildTokens]);
 
   const load = useCallback(async (advise = false) => {
     if (advise) setAdvising(true); else setLoading(true);
@@ -59,6 +86,22 @@ export default function AdminProTradeLabPage() {
         <button onClick={() => load(false)} disabled={loading} className="p-2 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white disabled:opacity-60">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         </button>
+      </div>
+
+      {/* Inteligjenca live — "matrix" me kodet reale + robot që endet gjatë analizës */}
+      <div className="rounded-2xl border border-green-500/20 bg-[#02060a] overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-green-500/15">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-green-400">
+            <Bot className="w-3.5 h-3.5" /> Inteligjenca live
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className={`w-1.5 h-1.5 rounded-full ${advising ? 'bg-amber-400 animate-pulse' : 'bg-green-400'}`} />
+            <span className={advising ? 'text-amber-400' : 'text-green-500'}>{advising ? 'DUKE ANALIZUAR' : 'AKTIV'}</span>
+          </div>
+        </div>
+        <div className="h-44 sm:h-52">
+          <IntelligenceMatrix tokens={tokens} active={advising} />
+        </div>
       </div>
 
       {err && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-3 py-2">{err}</div>}
