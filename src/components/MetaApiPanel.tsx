@@ -484,10 +484,11 @@ function TogglePill({ on, onClick, t }: { on: boolean; onClick: () => void; t: (
 }
 
 // VETËM simbolet që motori i analizon vërtet me të dhëna reale (qirinj live) → auto-trade funksional.
-// Ari (XAUUSD, përmes PAXG) + crypto-t kryesore (Binance). Forex/indekse/aksione s'kanë burim
-// të dhënash në motor, prandaj nuk shfaqen (do të prodhonin "heshtje", jo auto-trade).
+// Ari (XAUUSD, përmes PAXG) + crypto-t kryesore (Binance) + naftë (USOIL, Twelve Data + MetaApi).
+// Forex/indekse/aksione s'kanë burim të dhënash në motor, prandaj nuk shfaqen.
 const SYMBOL_GROUPS: { cat: string; syms: [string, string][] }[] = [
   { cat: 'Ari', syms: [['XAUUSD', 'Ari']] },
+  { cat: 'Naftë', syms: [['USOIL', 'Naftë (WTI)']] },
   { cat: 'Crypto (24/7)', syms: [['BTCUSD', 'Bitcoin'], ['ETHUSD', 'Ethereum'], ['SOLUSD', 'Solana'], ['BNBUSD', 'BNB'], ['XRPUSD', 'XRP']] },
 ];
 const DEFAULT_SYMBOL = 'XAUUSD';

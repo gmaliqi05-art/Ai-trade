@@ -203,9 +203,9 @@ function analyzeTF(candles: Candle[]): TFResult | null {
 //  - Filtër trendi: çmimi mbi EMA200 për BLEJ, nën EMA200 për SHIT (në 1h).
 //  - Filtër force: ADX(1h) ≥ 20 (vetëm trende të forta).
 const ADX_MIN = 18;
-async function generateStrong(symbol: string): Promise<EngineResult | null> {
+async function generateStrong(symbol: string, broker?: BrokerCreds): Promise<EngineResult | null> {
   const [c15, c1h, c4h, c1d] = await Promise.all([
-    fetchCandles(symbol, "15m"), fetchCandles(symbol, "1h"), fetchCandles(symbol, "4h"), fetchCandles(symbol, "1d"),
+    fetchCandles(symbol, "15m", broker), fetchCandles(symbol, "1h", broker), fetchCandles(symbol, "4h", broker), fetchCandles(symbol, "1d", broker),
   ]);
   if (!c15 || !c1h || !c4h) return null;
   const s15 = analyzeTF(c15), s1h = analyzeTF(c1h), s4h = analyzeTF(c4h);
@@ -426,8 +426,9 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
 }
 
 // Përzgjedh gjeneratorin: ari → i dedikuar me 4 analizat; të tjerat → standard.
-function generateFor(symbol: string): Promise<EngineResult | null> {
-  return symbol.toUpperCase() === GOLD_SYMBOL ? generateGold(symbol) : generateStrong(symbol);
+// broker = kredencialet MetaApi të përdoruesit (rezervë për naftë etj. kur Twelve Data s'jep të dhëna).
+function generateFor(symbol: string, broker?: BrokerCreds): Promise<EngineResult | null> {
+  return symbol.toUpperCase() === GOLD_SYMBOL ? generateGold(symbol) : generateStrong(symbol, broker);
 }
 
 // ---------- Candles nga Binance (XAUUSD→PAXGUSDT) ----------
@@ -436,20 +437,81 @@ const PAIRS: Record<string, string> = {
   ADAUSD: "ADAUSDT", DOGEUSD: "DOGEUSDT", AVAXUSD: "AVAXUSDT", LINKUSD: "LINKUSDT", DOTUSD: "DOTUSDT",
   XAUUSD: "PAXGUSDT",
 };
-async function fetchCandles(symbol: string, interval = "1h"): Promise<Candle[] | null> {
+async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCreds): Promise<Candle[] | null> {
   const pair = PAIRS[symbol.toUpperCase()];
-  if (!pair) return null; // simbol pa burim real (p.sh. indeks/aksion) — anashkalohet
-  const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=300`;
-  const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  if (!resp.ok) throw new Error(`Binance ${resp.status}`);
-  const raw = (await resp.json()) as unknown[][];
-  return raw.map((k) => ({
-    time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string),
-    low: +(k[3] as string), close: +(k[4] as string), volume: +(k[5] as string),
-  }));
+  if (pair) {
+    try {
+      const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=300`;
+      const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!resp.ok) return null;
+      const raw = (await resp.json()) as unknown[][];
+      return raw.map((k) => ({
+        time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string),
+        low: +(k[3] as string), close: +(k[4] as string), volume: +(k[5] as string),
+      }));
+    } catch { return null; }
+  }
+  // Simbolet jo-Binance (p.sh. naftë USOIL): Twelve Data (primar) → MetaApi i brokerit (rezervë).
+  const td = await fetchTwelveData(symbol, interval);
+  if (td) return td;
+  if (broker) return fetchMetaApiCandles(broker, symbol, interval);
+  return null;
 }
 
-interface CfgRow { user_id: string; auto_symbols: string; min_confidence: number; }
+// ---------- NAFTË (Oil) & simbole jo-Binance: Twelve Data primar + MetaApi rezervë ----------
+interface BrokerCreds { account_id: string; token: string; region: string; }
+const TD_SYMBOLS: Record<string, string> = { USOIL: "WTI/USD", WTIUSD: "WTI/USD", XTIUSD: "WTI/USD", UKOIL: "BRENT/USD", XBRUSD: "BRENT/USD" };
+const TD_INTERVAL: Record<string, string> = { "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1day" };
+async function fetchTwelveData(symbol: string, interval: string): Promise<Candle[] | null> {
+  const key = Deno.env.get("TWELVEDATA_API_KEY");
+  const td = TD_SYMBOLS[symbol.toUpperCase()]; const iv = TD_INTERVAL[interval];
+  if (!key || !td || !iv) return null;
+  try {
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(td)}&interval=${iv}&outputsize=300&order=ASC&apikey=${key}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(9000) });
+    if (!resp.ok) return null;
+    const d = await resp.json() as { values?: Array<Record<string, string>> };
+    if (!d.values || !Array.isArray(d.values) || d.values.length === 0) return null;
+    return d.values.map((v) => ({
+      time: new Date((v.datetime || "").replace(" ", "T") + "Z").getTime(),
+      open: +v.open, high: +v.high, low: +v.low, close: +v.close, volume: +(v.volume ?? "0"),
+    }));
+  } catch { return null; }
+}
+const _oilSym = new Map<string, string>();
+async function resolveBrokerSymbol(b: BrokerCreds, requested: string): Promise<string> {
+  const k = `${b.account_id}:${requested.toUpperCase()}`; const c = _oilSym.get(k); if (c) return c;
+  try {
+    const resp = await fetch(`https://mt-client-api-v1.${(b.region || "new-york").trim()}.agiliumtrade.ai/users/current/accounts/${b.account_id}/symbols`, { headers: { "auth-token": b.token }, signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const list = (await resp.json()) as string[];
+      const req = requested.toUpperCase();
+      const found = list.find((s) => s.toUpperCase() === req)
+        || list.find((s) => /^(USOIL|XTIUSD|WTI|CL|OIL)/i.test(s))
+        || requested;
+      _oilSym.set(k, found); return found;
+    }
+  } catch { /* injoro */ }
+  return requested;
+}
+async function fetchMetaApiCandles(b: BrokerCreds, symbol: string, tf: string): Promise<Candle[] | null> {
+  if (!b.account_id || !b.token) return null;
+  try {
+    const sym = await resolveBrokerSymbol(b, symbol);
+    const url = `https://mt-market-data-client-api-v1.${(b.region || "new-york").trim()}.agiliumtrade.ai/users/current/accounts/${b.account_id}/historical-market-data/symbols/${encodeURIComponent(sym)}/timeframes/${tf}/candles?limit=300`;
+    const resp = await fetch(url, { headers: { "auth-token": b.token }, signal: AbortSignal.timeout(12000) });
+    if (!resp.ok) return null;
+    const arr = await resp.json();
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    return arr.map((k: Record<string, unknown>) => ({
+      time: new Date((k.time ?? k.brokerTime) as string).getTime(),
+      open: +(k.open as number), high: +(k.high as number), low: +(k.low as number),
+      close: +(k.close as number), volume: +((k.tickVolume ?? 0) as number),
+    }));
+  } catch { return null; }
+}
+
+interface CfgRow { user_id: string; auto_symbols: string; min_confidence: number; account_id: string | null; token: string | null; region: string | null; }
 
 // FOKUS NË AR: sinjalet platform-wide janë vetëm për XAUUSD. Kripto/forex janë
 // pasive — vetëm përdoruesit që i shtojnë manualisht te auto_symbols i marrin.
@@ -527,7 +589,7 @@ Deno.serve(async (req: Request) => {
     // 2) Sinjale per-përdorues për auto-trade.
     const { data: configs } = await db
       .from("metaapi_config")
-      .select("user_id, auto_symbols, min_confidence")
+      .select("user_id, auto_symbols, min_confidence, account_id, token, region")
       .eq("auto_trade", true)
       .eq("kill_switch", false);
 
@@ -545,8 +607,14 @@ Deno.serve(async (req: Request) => {
     for (const [symbol, users] of symbolUsers) {
       // Gjenerues i PËRFORCUAR: multi-timeframe + EMA200 + ADX. Kthen sinjal vetëm
       // kur 15m/1h/4h pajtohen, çmimi në drejtim të trendit (EMA200) dhe ADX≥20.
+      // Rezervë MetaApi për simbole jo-Binance (naftë etj.): merr kredencialet e
+      // një përdoruesi që ka llogari të lidhur (të dhënat e qirinjve ndahen për simbolin).
+      const bu = users.find((u) => u.account_id && u.token);
+      const broker: BrokerCreds | undefined = bu
+        ? { account_id: bu.account_id!, token: bu.token!, region: bu.region || "new-york" }
+        : undefined;
       let sig: EngineResult | null;
-      try { sig = await generateFor(symbol); } catch (e) { out.push({ symbol, error: (e as Error).message }); continue; }
+      try { sig = await generateFor(symbol, broker); } catch (e) { out.push({ symbol, error: (e as Error).message }); continue; }
       if (!sig || sig.action === "HOLD") { out.push({ symbol, action: sig?.action ?? "filtruar" }); continue; }
       const confPct = Math.round(sig.confidence * 100);
 
