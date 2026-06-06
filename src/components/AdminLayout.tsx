@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { AdminPage } from '../App';
 import { useI18n } from '../i18n/i18n';
 import LanguageSwitcher from '../i18n/LanguageSwitcher';
+import AppFooter from './AppFooter';
 
 interface AdminLayoutProps {
   currentPage: AdminPage;
@@ -209,6 +210,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
 
         <main className="flex-1 overflow-y-auto bg-[#0a0a0f]">
           {children}
+          <AppFooter />
         </main>
       </div>
     </div>

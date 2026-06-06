@@ -3,6 +3,7 @@ import { TrendingUp, Eye, EyeOff, Loader2, BarChart3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import LanguageSwitcher from '../i18n/LanguageSwitcher';
+import AppFooter from '../components/AppFooter';
 
 export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -41,7 +42,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex">
+    <div className="min-h-screen bg-gray-950 flex relative">
       <div className="absolute top-4 right-4 z-20"><LanguageSwitcher /></div>
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex-col items-center justify-center p-12 relative overflow-hidden">
         <div className="absolute inset-0 opacity-5">
@@ -140,6 +141,7 @@ export default function AuthPage() {
           )}
         </div>
       </div>
+      <div className="absolute bottom-1 left-0 right-0"><AppFooter /></div>
     </div>
   );
 }
