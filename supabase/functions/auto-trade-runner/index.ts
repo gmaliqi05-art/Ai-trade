@@ -71,6 +71,10 @@ function goldSessionOpen(): boolean {
   const h = frankfurtHour();
   return h >= 9 && h < 23;
 }
+// Crypto tregtohet 24/7 → s'i nënshtrohet sesionit të arit.
+function isCrypto(symbol: string): boolean {
+  return /^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test((symbol || "").toUpperCase());
+}
 
 function valuePerPrice(symbol: string): number {
   const s = (symbol || "").toUpperCase();
@@ -634,8 +638,11 @@ Deno.serve(async (req: Request) => {
       const allowed = new Set((cfg.auto_symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
       if (allowed.size === 0) continue;
 
-      // Jashtë sesionit të arit s'hapim trade të reja (menaxhimi u bë më sipër).
-      if (!goldSessionOpen()) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
+      // Jashtë sesionit të arit: lejo VETËM crypto (tregtohet 24/7); ari & instrumentet e tjera presin orarin.
+      if (!goldSessionOpen()) {
+        for (const s of [...allowed]) { if (!isCrypto(s)) allowed.delete(s); }
+        if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
+      }
       // Filtri i lajmeve: pauzë rreth NFP/CPI/FOMC.
       if (newsBlock) { summary.push({ user: cfg.user_id, status: "news_blackout" }); continue; }
 
