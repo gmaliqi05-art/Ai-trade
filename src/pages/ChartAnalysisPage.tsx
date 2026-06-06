@@ -48,6 +48,7 @@ export default function ChartAnalysisPage() {
     const { data } = await supabase
       .from('assets')
       .select('id, symbol, name, current_price, category, type')
+      .eq('is_active', true)
       .order('symbol');
     if (data) {
       setAssets(data as Asset[]);

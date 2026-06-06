@@ -102,7 +102,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const now = new Date().toISOString();
     const since24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString(); // sinjalet > 24h fshihen
     const [ar, sr, dr] = await Promise.all([
-      supabase.from('assets').select('id, symbol, name, category, current_price').gt('current_price', 0),
+      supabase.from('assets').select('id, symbol, name, category, current_price').eq('is_active', true).gt('current_price', 0),
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, timeframe, analysis')
         .eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${now}`).gte('created_at', since24).order('confidence', { ascending: false }).limit(8),
       // Sinjalet e PËRFUNDUARA (TP/SL/skaduar) të 24h të fundit — historiku i plotë te Raportet.

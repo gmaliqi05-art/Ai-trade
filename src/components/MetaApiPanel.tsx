@@ -290,8 +290,6 @@ export default function MetaApiPanel() {
               <NumField label={t('Scalp maks. njëkohësisht')} hint={t('Sa pozicione scalp lejohen në të njëjtën kohë.')} value={cfg.scalp_max_trades} step="1" min="1" onChange={v => set('scalp_max_trades', v)} onBlur={save} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <NumField label={t('SL scalp crypto (% e çmimit)')} hint={t('Për BTC/ETH/etj.: SL si PËRQINDJE e çmimit (p.sh. 0.3%). $-i fiks i mësipërm është shumë i ngushtë për crypto dhe shkakton "Invalid stops".')} value={cfg.scalp_sl_pct} step="0.05" min="0.05" onChange={v => set('scalp_sl_pct', v)} onBlur={save} />
-              <NumField label={t('TP scalp crypto (% e çmimit)')} hint={t('Për BTC/ETH/etj.: TP si PËRQINDJE e çmimit (p.sh. 0.6%).')} value={cfg.scalp_tp_pct} step="0.05" min="0.05" onChange={v => set('scalp_tp_pct', v)} onBlur={save} />
               <NumField label={t('SL scalp naftë (% e çmimit)')} hint={t('Për USOIL/UKOIL: SL si PËRQINDJE e çmimit (p.sh. 0.4%). Nafta është më volatile se ari, prandaj përdor % e jo $ fiks.')} value={cfg.scalp_sl_pct_oil} step="0.05" min="0.05" onChange={v => set('scalp_sl_pct_oil', v)} onBlur={save} />
               <NumField label={t('TP scalp naftë (% e çmimit)')} hint={t('Për USOIL/UKOIL: TP si PËRQINDJE e çmimit (p.sh. 0.8%).')} value={cfg.scalp_tp_pct_oil} step="0.05" min="0.05" onChange={v => set('scalp_tp_pct_oil', v)} onBlur={save} />
             </div>
@@ -497,13 +495,11 @@ function TogglePill({ on, onClick, t }: { on: boolean; onClick: () => void; t: (
   );
 }
 
-// VETËM simbolet që motori i analizon vërtet me të dhëna reale (qirinj live) → auto-trade funksional.
-// Ari (XAUUSD, përmes PAXG) + crypto-t kryesore (Binance) + naftë (USOIL, Twelve Data + MetaApi).
-// Forex/indekse/aksione s'kanë burim të dhënash në motor, prandaj nuk shfaqen.
+// FOKUS: vetëm Ari + Naftë (mall i lidhur, shtytës të njëjtë USD). Crypto u hoq qëllimisht
+// që roboti + AI të jenë më të fokusuar dhe profesionalë te këto dy aktive.
 const SYMBOL_GROUPS: { cat: string; syms: [string, string][] }[] = [
   { cat: 'Ari', syms: [['XAUUSD', 'Ari']] },
   { cat: 'Naftë', syms: [['USOIL', 'Naftë (WTI)'], ['UKOIL', 'Naftë (Brent)']] },
-  { cat: 'Crypto (24/7)', syms: [['BTCUSD', 'Bitcoin'], ['ETHUSD', 'Ethereum'], ['SOLUSD', 'Solana'], ['BNBUSD', 'BNB'], ['XRPUSD', 'XRP']] },
 ];
 const DEFAULT_SYMBOL = 'XAUUSD';
 
