@@ -140,30 +140,37 @@ async function fetchMetalPrices(): Promise<PriceUpdate[]> {
   return results;
 }
 
-// NAFTË (USOIL = WTI): Twelve Data quote (kërkon TWELVEDATA_API_KEY). Best-effort:
-// nëse s'ka çelës ose dështon, çmimi mbetet te vlera e fundit.
+// NAFTË (USOIL = WTI, UKOIL = Brent): Twelve Data quote (kërkon TWELVEDATA_API_KEY).
+// Best-effort: nëse s'ka çelës ose dështon, çmimi mbetet te vlera e fundit.
 async function fetchOilPrices(): Promise<PriceUpdate[]> {
   const key = Deno.env.get("TWELVEDATA_API_KEY");
   if (!key) return [];
-  try {
-    const resp = await fetch(
-      `https://api.twelvedata.com/quote?symbol=WTI/USD&apikey=${key}`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (!resp.ok) return [];
-    const d = await resp.json() as { close?: string; change?: string; percent_change?: string };
-    const price = parseFloat(d.close ?? "");
-    if (!isFinite(price) || price <= 0) return [];
-    return [{
-      symbol: "USOIL",
-      price: parseFloat(price.toFixed(2)),
-      change24h: parseFloat(d.change ?? "0") || 0,
-      changePct: parseFloat(d.percent_change ?? "0") || 0,
-    }];
-  } catch (e) {
-    console.error("Twelve Data (oil) error:", e);
-    return [];
+  const MAP: { td: string; symbol: string }[] = [
+    { td: "WTI/USD", symbol: "USOIL" },
+    { td: "BRENT/USD", symbol: "UKOIL" },
+  ];
+  const results: PriceUpdate[] = [];
+  for (const { td, symbol } of MAP) {
+    try {
+      const resp = await fetch(
+        `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(td)}&apikey=${key}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (!resp.ok) continue;
+      const d = await resp.json() as { close?: string; change?: string; percent_change?: string };
+      const price = parseFloat(d.close ?? "");
+      if (!isFinite(price) || price <= 0) continue;
+      results.push({
+        symbol,
+        price: parseFloat(price.toFixed(2)),
+        change24h: parseFloat(d.change ?? "0") || 0,
+        changePct: parseFloat(d.percent_change ?? "0") || 0,
+      });
+    } catch (e) {
+      console.error(`Twelve Data (${symbol}) error:`, e);
+    }
   }
+  return results;
 }
 
 Deno.serve(async (req: Request) => {
