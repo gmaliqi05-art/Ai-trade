@@ -492,8 +492,22 @@ async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCred
 interface BrokerCreds { account_id: string; token: string; region: string; }
 const TD_SYMBOLS: Record<string, string> = { USOIL: "WTI/USD", WTIUSD: "WTI/USD", XTIUSD: "WTI/USD", UKOIL: "BRENT/USD", XBRUSD: "BRENT/USD" };
 const TD_INTERVAL: Record<string, string> = { "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1day" };
+// Çelësi Twelve Data: env (i preferuar) ose rezervë nga tabela e sigurt app_config.
+// Cache në nivel instance (një lexim DB për cold-start).
+let _tdKey: string | null | undefined;
+async function twelveDataKey(): Promise<string | null> {
+  if (_tdKey !== undefined) return _tdKey;
+  const env = Deno.env.get("TWELVEDATA_API_KEY");
+  if (env) return (_tdKey = env);
+  try {
+    const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data } = await db.from("app_config").select("value").eq("key", "twelvedata_api_key").maybeSingle();
+    _tdKey = (data?.value as string) || null;
+  } catch { _tdKey = null; }
+  return _tdKey;
+}
 async function fetchTwelveData(symbol: string, interval: string): Promise<Candle[] | null> {
-  const key = Deno.env.get("TWELVEDATA_API_KEY");
+  const key = await twelveDataKey();
   const td = TD_SYMBOLS[symbol.toUpperCase()]; const iv = TD_INTERVAL[interval];
   if (!key || !td || !iv) return null;
   try {

@@ -140,10 +140,10 @@ async function fetchMetalPrices(): Promise<PriceUpdate[]> {
   return results;
 }
 
-// NAFTË (USOIL = WTI, UKOIL = Brent): Twelve Data quote (kërkon TWELVEDATA_API_KEY).
+// NAFTË (USOIL = WTI, UKOIL = Brent): Twelve Data quote. Çelësi merret nga env
+// TWELVEDATA_API_KEY ose (rezervë) nga tabela e sigurt app_config.
 // Best-effort: nëse s'ka çelës ose dështon, çmimi mbetet te vlera e fundit.
-async function fetchOilPrices(): Promise<PriceUpdate[]> {
-  const key = Deno.env.get("TWELVEDATA_API_KEY");
+async function fetchOilPrices(key: string): Promise<PriceUpdate[]> {
   if (!key) return [];
   const MAP: { td: string; symbol: string }[] = [
     { td: "WTI/USD", symbol: "USOIL" },
@@ -183,11 +183,20 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Çelësi Twelve Data: env (i preferuar) ose rezervë nga app_config (service_role).
+    let tdKey = Deno.env.get("TWELVEDATA_API_KEY") || "";
+    if (!tdKey) {
+      try {
+        const { data } = await supabase.from("app_config").select("value").eq("key", "twelvedata_api_key").maybeSingle();
+        tdKey = (data?.value as string) || "";
+      } catch { /* injoro */ }
+    }
+
     const [forexPrices, cryptoPrices, metalPrices, oilPrices] = await Promise.all([
       fetchForexPrices(),
       fetchCryptoPrices(),
       fetchMetalPrices(),
-      fetchOilPrices(),
+      fetchOilPrices(tdKey),
     ]);
 
     const allUpdates = [...forexPrices, ...cryptoPrices, ...metalPrices, ...oilPrices];
