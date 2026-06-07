@@ -281,6 +281,23 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     setSaving(false);
   };
 
+  // Fshin përdoruesin TËRËSISHT (edhe nga auth/databaza) → emaili lirohet për regjistrim të ri.
+  const deleteUser = async (u: UserRow) => {
+    const name = u.full_name || u.username || u.email || u.id;
+    if (!window.confirm(t("Të fshihet PËRGJITHMONË '{name}' (edhe nga databaza dhe auth)? Emaili lirohet për regjistrim të ri. Ky veprim S'kthehet mbrapsht.", { name }))) return;
+    setSaving(true);
+    const { data, error } = await supabase.functions.invoke('admin-delete-user', { body: { user_id: u.id } });
+    const errMsg = error?.message || (data as { error?: string } | null)?.error;
+    if (errMsg) {
+      flash('error', t('Fshirja dështoi: {msg}', { msg: errMsg }));
+    } else {
+      await logAction('DELETE_USER', 'auth.users', u.id, { full_name: u.full_name });
+      await fetchUsers();
+      flash('success', t("Përdoruesi '{name}' u fshi plotësisht.", { name }));
+    }
+    setSaving(false);
+  };
+
   const createSignal = async () => {
     setSaving(true);
     const payload = {
@@ -471,13 +488,20 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                           <td className="px-4 py-3 text-center">
                             {u.is_admin ? <Shield className="w-4 h-4 text-amber-400 mx-auto" /> : <span className="text-gray-600 text-xs">—</span>}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <button onClick={() => {
-                              setEditingUser(editingUser === u.id ? null : u.id);
-                              setEditUserForm({ is_admin: u.is_admin });
-                            }} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all">
-                              {editingUser === u.id ? <ChevronUp className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
-                            </button>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={() => {
+                                setEditingUser(editingUser === u.id ? null : u.id);
+                                setEditUserForm({ is_admin: u.is_admin });
+                              }} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all" title={t('Ndrysho lejet')}>
+                                {editingUser === u.id ? <ChevronUp className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                              </button>
+                              <button onClick={() => deleteUser(u)} disabled={saving || u.id === user?.id}
+                                title={u.id === user?.id ? t('Nuk mund të fshish veten') : t('Fshi përdoruesin plotësisht')}
+                                className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {editingUser === u.id && (
