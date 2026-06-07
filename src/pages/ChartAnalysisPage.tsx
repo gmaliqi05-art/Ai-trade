@@ -33,7 +33,7 @@ const LIVE_TIMEFRAMES: { v: Timeframe; label: string }[] = [
 
 export default function ChartAnalysisPage() {
   const { t } = useI18n();
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selectedAsset, setSelectedAsset] = useState('');
   const [liveTimeframe, setLiveTimeframe] = useState<Timeframe>('1h');

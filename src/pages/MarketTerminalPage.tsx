@@ -240,7 +240,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   // Përkthen një pjesë të analizës së motorit (vocabular i njohur) — përndryshe e kthen si është.
   const translateReason = (raw: string): string => {
-    let s = raw.trim().replace(/^Motori( AI)?:\s*/i, '');
+    const s = raw.trim().replace(/^Motori( AI)?:\s*/i, '');
     let m: RegExpMatchArray | null;
     if ((m = s.match(/^Confluence (\d+)\/(\d+) \((\d+)%\)/))) return t('Konfluencë {a}/{b} ({p}%)', { a: m[1], b: m[2], p: m[3] });
     if ((m = s.match(/^Multi-TF: 1h\+4h pajtohen \((BLEJ|SHIT)\)/))) return t('Multi-TF: 1h+4h pajtohen ({dir})', { dir: m[1] === 'BLEJ' ? t('BLEJ') : t('SHIT') });
