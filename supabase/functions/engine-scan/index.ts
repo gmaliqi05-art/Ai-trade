@@ -167,11 +167,21 @@ const GOLD_SYMBOL = "XAUUSD";
 
 // Ora e Frankfurt-it (Europe/Berlin), 0–23, me korrigjim automatik të orës
 // verore/dimërore (DST) nga Intl. Sesioni i arit ankorohet te tregu evropian.
-const GOLD_OPEN_H = 9;   // 09:00 Frankfurt — afër hapjes së Londrës
-const GOLD_CLOSE_H = 23; // 23:00 Frankfurt — afër mbylljes së New York-ut
 function frankfurtHour(d = new Date()): number {
   const s = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hourCycle: "h23" }).format(d);
   return parseInt(s, 10) || 0;
+}
+
+// A është tregu i hapur (FX/metale/naftë)? Mbyllur gjatë fundjavës:
+// E premte pas 21:00 UTC → E diel 22:00 UTC (rihapja e Sidneit). Pa këtë, motori
+// gjeneronte sinjale edhe të shtunën/të dielën kur tregu është i mbyllur.
+function isMarketOpen(d = new Date()): boolean {
+  const day = d.getUTCDay();              // 0 = E diel … 6 = E shtunë
+  const h = d.getUTCHours();
+  if (day === 6) return false;            // E shtunë: mbyllur
+  if (day === 0 && h < 22) return false;  // E diel para 22:00 UTC: mbyllur
+  if (day === 5 && h >= 21) return false; // E premte pas 21:00 UTC: mbyllur
+  return true;
 }
 
 // ---------- NAFTË: identifikim + blackout-i i raportit EIA ----------
@@ -401,12 +411,12 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
     `ADX ${s1h.adx.toFixed(0)} (trend i fortë)`,
   ];
 
-  // (1) SESIONET — tregto vetëm gjatë sesionit evropian/amerikan, i ankoruar te
-  //     Frankfurt (09:00–23:00, DST automatik). Shmang sesionin e qetë aziatik.
+  // (1) SESIONET — roboti është aktiv sa është i hapur tregu (porta e tregut në hyrje e
+  //     bllokon fundjavën). PA orë fikse: lejohet gjithë seanca kur tregu është i hapur.
+  //     Filtri i volatilitetit më poshtë shmang vetë periudhat e ngrira (p.sh. seancë e qetë).
   const fh = frankfurtHour();
-  if (!(fh >= GOLD_OPEN_H && fh < GOLD_CLOSE_H)) return null;
   const overlap = fh >= 14 && fh < 18; // mbivendosja London+NY (Frankfurt) = lëvizja më e fortë
-  reasons.push(overlap ? "Sesioni London+NY (likuiditet maksimal)" : "Sesion aktiv (Frankfurt/Europë)");
+  reasons.push(overlap ? "Sesioni London+NY (likuiditet maksimal)" : "Sesion aktiv");
 
   // (2) VOLATILITETI — ATR(1h) i krahasuar me mesataren e vet. Shmang tregun e
   //     ngrirë (range pa drejtim) dhe spike-t e papritura nga lajmet.
@@ -694,6 +704,14 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch { /* fail-safe: mos e blloko motorin */ }
+
+  // Porta e fundjavës — mos gjenero sinjale kur tregu është i mbyllur (fundjavë).
+  if (!isMarketOpen()) {
+    return new Response(JSON.stringify({ skipped: "market_closed", generated: 0 }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const out: Array<Record<string, unknown>> = [];
 
   try {

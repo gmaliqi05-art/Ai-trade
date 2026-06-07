@@ -29,6 +29,17 @@ function host(region: string): string {
   return `https://mt-client-api-v1.${r}.agiliumtrade.ai`;
 }
 
+// A është tregu i hapur (FX/metale/naftë)? Mbyllur gjatë fundjavës (E premte 21:00 UTC → E diel 22:00 UTC).
+// Kur mbyllur, porositë me çmim hyrjeje vendosen si PENDING (limit/stop), jo si porosi tregu (që dështon).
+function isMarketOpen(d = new Date()): boolean {
+  const day = d.getUTCDay();              // 0 = E diel … 6 = E shtunë
+  const h = d.getUTCHours();
+  if (day === 6) return false;
+  if (day === 0 && h < 22) return false;
+  if (day === 5 && h >= 21) return false;
+  return true;
+}
+
 function marketDataHost(region: string): string {
   const r = (region || "new-york").trim();
   return `https://mt-market-data-client-api-v1.${r}.agiliumtrade.ai`;
@@ -347,21 +358,39 @@ Deno.serve(async (req: Request) => {
     let openPrice: number | undefined;
     let pending = false;
     if (entryPrice != null) {
+      let ref: number | undefined;
+      let spread = 0;
       try {
         const pr = await metaApiGet(config, `/symbols/${encodeURIComponent(symbol)}/current-price`) as { ask?: number; bid?: number };
         const ask = Number(pr?.ask), bid = Number(pr?.bid);
-        const ref = action === "BUY" ? (Number.isFinite(ask) ? ask : bid) : (Number.isFinite(bid) ? bid : ask);
-        const spread = (Number.isFinite(ask) && Number.isFinite(bid)) ? Math.abs(ask - bid) : 0;
-        if (Number.isFinite(ref) && ref > 0) {
-          const tol = Math.max(spread * 1.5, ref * 0.0002); // ~afër çmimit → trajtoje si treg
-          if (Math.abs(entryPrice - ref) > tol) {
-            pending = true;
-            openPrice = Math.round(entryPrice * 100) / 100;
-            if (action === "BUY") actionType = entryPrice < ref ? "ORDER_TYPE_BUY_LIMIT" : "ORDER_TYPE_BUY_STOP";
-            else actionType = entryPrice > ref ? "ORDER_TYPE_SELL_LIMIT" : "ORDER_TYPE_SELL_STOP";
-          }
+        ref = action === "BUY" ? (Number.isFinite(ask) ? ask : bid) : (Number.isFinite(bid) ? bid : ask);
+        spread = (Number.isFinite(ask) && Number.isFinite(bid)) ? Math.abs(ask - bid) : 0;
+      } catch { /* treg i mbyllur ose s'merret çmimi live */ }
+      // Nëse s'u mor çmimi live (zakonisht treg i mbyllur), provo çmimin e fundit nga DB (assets).
+      if (!(Number.isFinite(ref) && (ref as number) > 0)) {
+        try {
+          const { data: a } = await db.from("assets").select("current_price").eq("symbol", body.symbol || symbol).maybeSingle();
+          const p = Number((a as { current_price?: number } | null)?.current_price);
+          if (Number.isFinite(p) && p > 0) ref = p;
+        } catch { /* pa referencë */ }
+      }
+      const marketClosed = !isMarketOpen();
+      if (Number.isFinite(ref) && (ref as number) > 0) {
+        const r = ref as number;
+        const tol = Math.max(spread * 1.5, r * 0.0002); // ~afër çmimit → trajtoje si treg
+        // Pending nëse çmimi është larg hyrjes OSE tregu mbyllur (që të mos dështojë si porosi tregu).
+        if (Math.abs(entryPrice - r) > tol || marketClosed) {
+          pending = true;
+          openPrice = Math.round(entryPrice * 100) / 100;
+          if (action === "BUY") actionType = entryPrice < r ? "ORDER_TYPE_BUY_LIMIT" : "ORDER_TYPE_BUY_STOP";
+          else actionType = entryPrice > r ? "ORDER_TYPE_SELL_LIMIT" : "ORDER_TYPE_SELL_STOP";
         }
-      } catch { /* nëse s'merret çmimi live, biem te porosia e tregut */ }
+      } else if (marketClosed) {
+        // S'ka asnjë referencë çmimi dhe tregu i mbyllur → porosi LIMIT te hyrja (default i sigurt).
+        pending = true;
+        openPrice = Math.round(entryPrice * 100) / 100;
+        actionType = action === "BUY" ? "ORDER_TYPE_BUY_LIMIT" : "ORDER_TYPE_SELL_LIMIT";
+      }
     }
 
     const tradeBody: Record<string, unknown> = { actionType, symbol, volume };
