@@ -75,6 +75,17 @@ function goldSessionOpen(): boolean {
   const h = frankfurtHour();
   return h >= 9 && h < 23;
 }
+// A është tregu i hapur (FX/metale/naftë)? Mbyllur gjatë fundjavës:
+// E premte pas 21:00 UTC → E diel 22:00 UTC. Pa këtë, roboti provonte të tregtonte
+// edhe të shtunën/të dielën kur tregu është i mbyllur.
+function isMarketOpen(d = new Date()): boolean {
+  const day = d.getUTCDay();              // 0 = E diel … 6 = E shtunë
+  const h = d.getUTCHours();
+  if (day === 6) return false;            // E shtunë: mbyllur
+  if (day === 0 && h < 22) return false;  // E diel para 22:00 UTC: mbyllur
+  if (day === 5 && h >= 21) return false; // E premte pas 21:00 UTC: mbyllur
+  return true;
+}
 // Crypto tregtohet 24/7 → s'i nënshtrohet sesionit të arit.
 function isCrypto(symbol: string): boolean {
   return /^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test((symbol || "").toUpperCase());
@@ -546,6 +557,14 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch { /* fail-safe: mos e blloko robotin */ }
+
+  // Porta e fundjavës — mos tregto kur tregu është i mbyllur (fundjavë).
+  if (!isMarketOpen()) {
+    return new Response(JSON.stringify({ skipped: "market_closed" }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const summary: Array<Record<string, unknown>> = [];
   const sinceIso = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 

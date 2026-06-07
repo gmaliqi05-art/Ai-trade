@@ -174,6 +174,18 @@ function frankfurtHour(d = new Date()): number {
   return parseInt(s, 10) || 0;
 }
 
+// A është tregu i hapur (FX/metale/naftë)? Mbyllur gjatë fundjavës:
+// E premte pas 21:00 UTC → E diel 22:00 UTC (rihapja e Sidneit). Pa këtë, motori
+// gjeneronte sinjale edhe të shtunën/të dielën kur tregu është i mbyllur.
+function isMarketOpen(d = new Date()): boolean {
+  const day = d.getUTCDay();              // 0 = E diel … 6 = E shtunë
+  const h = d.getUTCHours();
+  if (day === 6) return false;            // E shtunë: mbyllur
+  if (day === 0 && h < 22) return false;  // E diel para 22:00 UTC: mbyllur
+  if (day === 5 && h >= 21) return false; // E premte pas 21:00 UTC: mbyllur
+  return true;
+}
+
 // ---------- NAFTË: identifikim + blackout-i i raportit EIA ----------
 // A është simboli naftë (WTI/Brent, çfarëdo emërtimi brokeri)?
 function isOil(symbol: string): boolean {
@@ -694,6 +706,14 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch { /* fail-safe: mos e blloko motorin */ }
+
+  // Porta e fundjavës — mos gjenero sinjale kur tregu është i mbyllur (fundjavë).
+  if (!isMarketOpen()) {
+    return new Response(JSON.stringify({ skipped: "market_closed", generated: 0 }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const out: Array<Record<string, unknown>> = [];
 
   try {
