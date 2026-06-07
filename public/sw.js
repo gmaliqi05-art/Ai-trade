@@ -1,7 +1,10 @@
-// Service worker minimal për PWA (instalueshmëri + offline-fallback i lehtë).
-// Strategjia: network-first për navigimet (që përdoruesi të marrë gjithmonë versionin e fundit),
-// me fallback te app-shell-i kur s'ka rrjet. Asetet statike: cache-first.
-const CACHE = 'ai-trade-v1';
+// Service worker minimal për PWA. Strategji DEPLOY-SAFE:
+// - network-first për gjithçka same-origin (navigime + asete) → përdoruesi merr GJITHMONË
+//   versionin e fundit pas çdo publish; cache-i është vetëm fallback offline.
+// - thirrjet API (Supabase/MetaApi, cross-origin) nuk preken kurrë.
+// Versioni i cache-it ndryshohet me çdo ndryshim → 'activate' pastron cache-in e vjetër,
+// që të mos ngecë kurrë me kod të vjetër (shkak i logout/NOT CONNECTED/ngrirje pas publish).
+const CACHE = 'ai-trade-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -15,33 +18,25 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Lejo aplikacionin të aplikojë menjëherë një SW të ri (përditësim pa ngecje).
+self.addEventListener('message', (e) => { if (e.data === 'SKIP_WAITING') self.skipWaiting(); });
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // Mos ndërhy te thirrjet API (Supabase, MetaApi) — gjithmonë rrjet.
+  // Mos ndërhy te thirrjet API (Supabase, MetaApi) — gjithmonë rrjet direkt.
   if (url.origin !== self.location.origin) return;
 
-  // Navigime (HTML) → network-first me fallback offline te app-shell.
-  if (req.mode === 'navigate') {
-    e.respondWith(
-      fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put('/index.html', copy));
-        return res;
-      }).catch(() => caches.match('/index.html'))
-    );
-    return;
-  }
-
-  // Asete statike → cache-first.
+  // NETWORK-FIRST për gjithçka same-origin: merr nga rrjeti (gjithmonë i fundit),
+  // ruaj kopje në cache, dhe bie te cache-i VETËM kur s'ka rrjet (offline).
   e.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-      if (res.ok && res.type === 'basic') {
+    fetch(req).then((res) => {
+      if (res && res.ok && res.type === 'basic') {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));
       }
       return res;
-    }).catch(() => cached))
+    }).catch(() => caches.match(req).then((cached) => cached || caches.match('/index.html')))
   );
 });
