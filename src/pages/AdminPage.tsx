@@ -647,10 +647,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">{t('Kategoria')}</label>
                   <select value={newAsset.category} onChange={e => setNewAsset(a => ({ ...a, category: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500">
-                    <option value="commodity">{t('Mallra / Ar')}</option>
-                    <option value="forex">Forex</option>
-                    <option value="crypto">Crypto</option>
-                    <option value="stock">{t('Indekse / Aksione')}</option>
+                    <option value="commodity">{t('Mallra (Ar & Naftë)')}</option>
                   </select>
                 </div>
               </div>
