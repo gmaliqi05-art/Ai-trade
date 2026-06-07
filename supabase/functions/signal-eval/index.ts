@@ -42,6 +42,14 @@ interface SigRow {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  // Portë sigurie për cron (vetëm akses — S'PREK logjikën e vlerësimit). Fail-safe: lejo nëse s'ka sekret/gabim.
+  try {
+    const { data: _cs } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
+    const _secret = (_cs as { value?: string } | null)?.value;
+    if (_secret && req.headers.get("x-cron-secret") !== _secret) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+  } catch { /* fail-safe */ }
   const out: Array<Record<string, unknown>> = [];
 
   try {
