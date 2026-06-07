@@ -154,6 +154,14 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Portë sigurie për cron (vetëm akses). Fail-safe: lejo nëse s'ka sekret/gabim.
+    try {
+      const { data: _cs } = await supabase.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
+      const _secret = (_cs as { value?: string } | null)?.value;
+      if (_secret && req.headers.get("x-cron-secret") !== _secret) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    } catch { /* fail-safe */ }
 
     const [forexPrices, cryptoPrices, metalPrices] = await Promise.all([
       fetchForexPrices(),
