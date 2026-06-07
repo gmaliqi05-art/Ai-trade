@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Users, Activity, DollarSign, Zap, TrendingUp, Crown,
+  Users, Activity, Zap, TrendingUp,
   ArrowUpRight, ArrowDownRight, RefreshCw,
   BarChart2, Shield, Brain, Cloud, Megaphone
 } from 'lucide-react';
@@ -40,12 +40,10 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const fmt = (n: number) => Number(n || 0).toLocaleString('en-US');
-  const fmtK = (n: number) => `$${((n || 0) / 1000).toFixed(1)}K`;
   const fmtUsd = (n: number) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: (n || 0) < 1 ? 4 : 2, maximumFractionDigits: 4 })}`;
 
   const statCards = [
-    { label: t('Përdorues gjithsej'), value: fmt(stats.totalUsers), sub: t('{pro} me pagesë · {free} falas', { pro: stats.proUsers, free: stats.freeUsers }), icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-    { label: t('Balanca totale'), value: fmtK(stats.totalBalance), sub: t('Fondet e përdoruesve'), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+    { label: t('Përdorues gjithsej'), value: fmt(stats.totalUsers), sub: t('të regjistruar'), icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
     { label: t('Ekzekutime (MT5)'), value: fmt(stats.executions), sub: t('{n} sot', { n: stats.executionsToday }), icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
     { label: t('Sinjale aktive'), value: fmt(stats.activeSignals), sub: t('{n} aktive të listuara', { n: stats.totalAssets }), icon: Zap, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
     { label: t('Auto-Trade aktiv'), value: fmt(stats.autoTradeUsers), sub: t('Përdorues me MetaApi'), icon: Cloud, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
@@ -54,15 +52,13 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
   ];
 
   const quickLinks: { label: string; icon: React.ElementType; desc: string; page: AdminPage; color: string; bg: string; border: string }[] = [
-    { label: t('Menaxho përdoruesit'), icon: Users, desc: t('Balanca, plane & leje'), page: 'admin_users', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-    { label: t('Aktivet & tregjet'), icon: BarChart2, desc: t('Çmime, instrumente'), page: 'admin_assets', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+    { label: t('Menaxho përdoruesit'), icon: Users, desc: t('Lejet & roli admin'), page: 'admin_users', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+    { label: t('Aktivet & tregjet'), icon: BarChart2, desc: t('Çmime (vetëm pamje)'), page: 'admin_assets', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
     { label: t('Sinjalet'), icon: Zap, desc: t('Krijo/menaxho sinjale'), page: 'admin_signals', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
     { label: 'AI Providers', icon: Brain, desc: t('Çelësa API & prompt'), page: 'admin_ai', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
     { label: 'Broadcast', icon: Megaphone, desc: t('Mesazh për të gjithë'), page: 'admin_broadcast', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
     { label: 'Audit Log', icon: Shield, desc: t('Veprimet e adminit'), page: 'admin_audit', color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-700' },
   ];
-
-  const paidPct = stats.totalUsers > 0 ? Math.round((stats.proUsers / stats.totalUsers) * 100) : 0;
 
   return (
     <div className="p-5 space-y-6 max-w-7xl mx-auto">
@@ -97,7 +93,7 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Tregtitë e fundit */}
-        <div className="lg:col-span-3 bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+        <div className="lg:col-span-5 bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />{t('Tregtitë e fundit')}</h3>
             <span className="text-gray-500 text-xs">{t('8 të fundit')}</span>
@@ -127,33 +123,6 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
                 </div>
               ))
             )}
-          </div>
-        </div>
-
-        {/* Shpërndarja e përdoruesve (reale) */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2"><Crown className="w-4 h-4 text-amber-400" />{t('Përdoruesit sipas planit')}</h3>
-            <div className="space-y-2.5">
-              {[
-                { label: t('Falas'), count: stats.freeUsers, color: 'bg-gray-500', textColor: 'text-gray-400' },
-                { label: t('Me pagesë (Pro/Premium)'), count: stats.proUsers, color: 'bg-amber-500', textColor: 'text-amber-400' },
-              ].map(tier => {
-                const pct = stats.totalUsers > 0 ? (tier.count / stats.totalUsers) * 100 : 0;
-                return (
-                  <div key={tier.label}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={`text-xs font-medium ${tier.textColor}`}>{tier.label}</span>
-                      <span className="text-gray-500 text-xs">{tier.count}</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                      <div className={`h-full ${tier.color} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-3 pt-3 border-t border-gray-800 text-xs text-gray-500">{t('Konvertim me pagesë:')} <span className="text-amber-400 font-semibold">{paidPct}%</span></div>
           </div>
         </div>
       </div>
