@@ -65,16 +65,6 @@ function marketDataHost(region: string) {
   return `https://mt-market-data-client-api-v1.${(region || "new-york").trim()}.agiliumtrade.ai`;
 }
 
-// Sesioni i arit i ankoruar te Frankfurt (Europe/Berlin) 09:00–23:00, DST automatik.
-// Jashtë sesionit s'hapim trade TË REJA (trailing/break-even vazhdon 24/7).
-function frankfurtHour(d = new Date()): number {
-  const s = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hourCycle: "h23" }).format(d);
-  return parseInt(s, 10) || 0;
-}
-function goldSessionOpen(): boolean {
-  const h = frankfurtHour();
-  return h >= 9 && h < 23;
-}
 // A është tregu i hapur (FX/metale/naftë)? Mbyllur gjatë fundjavës:
 // E premte pas 21:00 UTC → E diel 22:00 UTC. Pa këtë, roboti provonte të tregtonte
 // edhe të shtunën/të dielën kur tregu është i mbyllur.
@@ -690,11 +680,9 @@ Deno.serve(async (req: Request) => {
       const allowed = new Set((cfg.auto_symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
       if (allowed.size === 0) continue;
 
-      // Jashtë sesionit të arit: lejo crypto (24/7) dhe naftë (~23h/ditë pune); ari & të tjerat presin orarin.
-      if (!goldSessionOpen()) {
-        for (const s of [...allowed]) { if (!isCrypto(s) && !isOil(s)) allowed.delete(s); }
-        if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
-      }
+      // Roboti tregton sa është i hapur tregu (porta e tregut në hyrje e bllokon fundjavën).
+      // PA orë fikse për arin — lejohet gjithë seanca e hapur; roboti vepron vetëm kur ka
+      // sinjal të vlefshëm (motori s'gjeneron në treg të ngrirë).
       // NAFTË: bllokim rreth raportit javor EIA (e mërkurë 10:00–11:00 ET) — hiq naftën nga lista atëherë.
       if (eiaBlackout()) {
         for (const s of [...allowed]) { if (isOil(s)) allowed.delete(s); }
