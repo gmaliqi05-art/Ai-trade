@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Shield, Users, TrendingUp, Zap, BarChart2, Search, Edit2, Check, X,
   Trash2, Plus, RefreshCw, ChevronUp, Activity, DollarSign,
-  AlertTriangle, Crown, Loader2, Eye, EyeOff, Brain, Megaphone, Monitor, Key, TestTube, ExternalLink
+  AlertTriangle, Crown, Loader2, Eye, EyeOff, Brain, Megaphone, Key, TestTube
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -66,14 +66,6 @@ interface TradeRow {
   created_at: string;
 }
 
-// Planet reale të abonimit (subscription_plans) — për përzgjedhësin e planit te përdoruesit.
-interface PlanRow { slug: string; name: string; price_monthly: number; }
-const FALLBACK_PLANS: PlanRow[] = [
-  { slug: 'free', name: 'Free', price_monthly: 0 },
-  { slug: 'standard', name: 'Standard', price_monthly: 29 },
-  { slug: 'premium', name: 'Premium', price_monthly: 79 },
-];
-
 interface AuditRow {
   id: string;
   action: string;
@@ -115,7 +107,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [trades, setTrades] = useState<TradeRow[]>([]);
-  const [plans, setPlans] = useState<PlanRow[]>([]);
   const [aiProviders, setAIProviders] = useState<AIProviderRow[]>([]);
   const [auditLog, setAuditLog] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -131,16 +122,10 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
 
   const [editingUser, setEditingUser] = useState<string | null>(null);
-  const [editUserForm, setEditUserForm] = useState<{ balance: string; subscription_tier: string; is_admin: boolean }>({ balance: '', subscription_tier: 'free', is_admin: false });
-
-  const [editingAsset, setEditingAsset] = useState<string | null>(null);
-  const [editAssetForm, setEditAssetForm] = useState<Partial<AssetRow>>({});
+  const [editUserForm, setEditUserForm] = useState<{ is_admin: boolean }>({ is_admin: false });
 
   const [showNewSignal, setShowNewSignal] = useState(false);
   const [newSignal, setNewSignal] = useState({ asset_id: '', signal_type: 'buy', strength: 'medium', entry_price: '', target_price: '', stop_loss: '', confidence: '75', timeframe: '1D', description: '', expires_at: '' });
-
-  const [showNewAsset, setShowNewAsset] = useState(false);
-  const [newAsset, setNewAsset] = useState({ symbol: '', name: '', category: 'commodity', current_price: '', price_change_pct: '0', volume_24h: '0', high_24h: '0', low_24h: '0' });
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -151,18 +136,17 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   }, [user]);
 
   const fetchOverview = useCallback(async () => {
-    const [statsRes, tr, sr, ar] = await Promise.all([
+    // Tregtitë reale vijnë nga trade_executions (MT5). Tabela e vjetër 'trades' (broker i brendshëm) u hoq.
+    const [statsRes, sr, ar] = await Promise.all([
       supabase.rpc('get_admin_stats'),
-      supabase.from('trades').select('total, type', { count: 'exact' }),
       supabase.from('signals').select('id', { count: 'exact' }).eq('status', 'active'),
       supabase.from('assets').select('id', { count: 'exact' }),
     ]);
-    const vol = (tr.data || []).reduce((s: number, t: { total: number; type: string }) => s + (t.type === 'buy' ? t.total : 0), 0);
     const s = statsRes.data || {};
     setStats({
       totalUsers: s.totalUsers || 0,
-      totalTrades: tr.count || 0,
-      totalVolume: vol,
+      totalTrades: s.totalTrades || 0,
+      totalVolume: 0,
       activeSignals: sr.count || 0,
       totalAssets: ar.count || 0,
       proUsers: s.proUsers || 0,
@@ -196,11 +180,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     if (data) setAuditLog(data as AuditRow[]);
   }, []);
 
-  const fetchPlans = useCallback(async () => {
-    const { data } = await supabase.from('subscription_plans').select('slug, name, price_monthly').eq('is_active', true).order('price_monthly');
-    if (data && data.length) setPlans(data as PlanRow[]);
-  }, []);
-
   const fetchAIProviders = useCallback(async () => {
     const { data } = await supabase.from('ai_providers').select('*').order('priority');
     if (data) setAIProviders(data as AIProviderRow[]);
@@ -210,7 +189,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     setLoading(true);
     const load = async () => {
       await fetchOverview();
-      if (tab === 'users') { await fetchUsers(); await fetchPlans(); }
+      if (tab === 'users') { await fetchUsers(); }
       else if (tab === 'assets') await fetchAssets();
       else if (tab === 'signals') { await fetchSignals(); await fetchAssets(); }
       else if (tab === 'trades') await fetchTrades();
@@ -219,7 +198,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       setLoading(false);
     };
     load();
-  }, [tab, fetchOverview, fetchUsers, fetchAssets, fetchSignals, fetchTrades, fetchAudit, fetchAIProviders, fetchPlans]);
+  }, [tab, fetchOverview, fetchUsers, fetchAssets, fetchSignals, fetchTrades, fetchAudit, fetchAIProviders]);
 
   const saveProvider = async (p: AIProviderRow) => {
     setSaving(true);
@@ -289,12 +268,10 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   const saveUser = async (u: UserRow) => {
     setSaving(true);
     const { error } = await supabase.from('profiles').update({
-      balance: parseFloat(editUserForm.balance),
-      subscription_tier: editUserForm.subscription_tier,
       is_admin: editUserForm.is_admin,
     }).eq('id', u.id);
     if (!error) {
-      await logAction('UPDATE_USER', 'profiles', u.id, { subscription_tier: editUserForm.subscription_tier, balance: editUserForm.balance });
+      await logAction('UPDATE_USER', 'profiles', u.id, { is_admin: editUserForm.is_admin });
       await fetchUsers();
       setEditingUser(null);
       flash('success', t('Përdoruesi {name} u përditësua.', { name: u.full_name }));
@@ -302,58 +279,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       flash('error', t('Përditësimi dështoi: {msg}', { msg: error.message }));
     }
     setSaving(false);
-  };
-
-  const saveAsset = async (a: AssetRow) => {
-    setSaving(true);
-    const { error } = await supabase.from('assets').update(editAssetForm).eq('id', a.id);
-    if (!error) {
-      await logAction('UPDATE_ASSET', 'assets', a.id, { symbol: a.symbol });
-      await fetchAssets();
-      setEditingAsset(null);
-      flash('success', t('Aktivi {symbol} u përditësua.', { symbol: a.symbol }));
-    } else {
-      flash('error', t('Përditësimi dështoi: {msg}', { msg: error.message }));
-    }
-    setSaving(false);
-  };
-
-  const createAsset = async () => {
-    setSaving(true);
-    const payload = {
-      symbol: newAsset.symbol.toUpperCase(),
-      name: newAsset.name,
-      type: newAsset.category,
-      current_price: parseFloat(newAsset.current_price),
-      price_change_pct_24h: parseFloat(newAsset.price_change_pct),
-      volume_24h: parseFloat(newAsset.volume_24h),
-      high_24h: parseFloat(newAsset.high_24h),
-      low_24h: parseFloat(newAsset.low_24h),
-      price_change_24h: 0,
-    };
-    const { error } = await supabase.from('assets').insert(payload);
-    if (!error) {
-      await logAction('CREATE_ASSET', 'assets', undefined, { symbol: payload.symbol });
-      await fetchAssets();
-      setShowNewAsset(false);
-      setNewAsset({ symbol: '', name: '', category: 'commodity', current_price: '', price_change_pct: '0', volume_24h: '0', high_24h: '0', low_24h: '0' });
-      flash('success', t('Aktivi {symbol} u krijua.', { symbol: payload.symbol }));
-    } else {
-      flash('error', t('Krijimi dështoi: {msg}', { msg: error.message }));
-    }
-    setSaving(false);
-  };
-
-  const deleteAsset = async (a: AssetRow) => {
-    if (!window.confirm(t("Ta fshij {symbol}? Ky veprim s'kthehet mbrapsht.", { symbol: a.symbol }))) return;
-    const { error } = await supabase.from('assets').delete().eq('id', a.id);
-    if (!error) {
-      await logAction('DELETE_ASSET', 'assets', a.id, { symbol: a.symbol });
-      await fetchAssets();
-      flash('success', t('Aktivi {symbol} u fshi.', { symbol: a.symbol }));
-    } else {
-      flash('error', t('Fshirja dështoi: {msg}', { msg: error.message }));
-    }
   };
 
   const createSignal = async () => {
@@ -412,12 +337,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     a.symbol.toLowerCase().includes(search.toLowerCase()) ||
     a.name.toLowerCase().includes(search.toLowerCase())
   );
-
-  const tierColor = (t: string) => ({
-    free: 'text-gray-400 bg-gray-700/50',
-    pro: 'text-amber-400 bg-amber-500/10',
-    elite: 'text-blue-400 bg-blue-500/10',
-  }[t] || 'text-gray-400 bg-gray-700/50');
 
   const tabs: { id: AdminTab; label: string; icon: React.ElementType }[] = [
     { id: 'overview', label: t('Përmbledhje'), icon: BarChart2 },
@@ -530,8 +449,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   <thead>
                     <tr className="border-b border-gray-800">
                       <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Përdoruesi')}</th>
-                      <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Plani')}</th>
-                      <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Balanca')}</th>
                       <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Admin')}</th>
                       <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Veprime')}</th>
                     </tr>
@@ -551,19 +468,13 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
-                            <span className={`text-xs font-semibold px-2 py-1 rounded-lg capitalize ${tierColor(u.subscription_tier)}`}>{u.subscription_tier}</span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-white font-medium">
-                            ${u.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </td>
                           <td className="px-4 py-3 text-center">
                             {u.is_admin ? <Shield className="w-4 h-4 text-amber-400 mx-auto" /> : <span className="text-gray-600 text-xs">—</span>}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <button onClick={() => {
                               setEditingUser(editingUser === u.id ? null : u.id);
-                              setEditUserForm({ balance: u.balance.toString(), subscription_tier: u.subscription_tier, is_admin: u.is_admin });
+                              setEditUserForm({ is_admin: u.is_admin });
                             }} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all">
                               {editingUser === u.id ? <ChevronUp className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                             </button>
@@ -571,20 +482,8 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                         </tr>
                         {editingUser === u.id && (
                           <tr key={u.id + '-edit'} className="bg-gray-800/40">
-                            <td colSpan={5} className="px-4 py-4">
+                            <td colSpan={3} className="px-4 py-4">
                               <div className="flex flex-wrap gap-3 items-end">
-                                <div>
-                                  <label className="text-xs text-gray-400 block mb-1">{t('Balanca ($)')}</label>
-                                  <input type="number" value={editUserForm.balance} onChange={e => setEditUserForm(f => ({ ...f, balance: e.target.value }))} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm w-36 focus:outline-none focus:border-amber-500" />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-400 block mb-1">{t('Abonimi')}</label>
-                                  <select value={editUserForm.subscription_tier} onChange={e => setEditUserForm(f => ({ ...f, subscription_tier: e.target.value }))} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500">
-                                    {(plans.length ? plans : FALLBACK_PLANS).map(p => (
-                                      <option key={p.slug} value={p.slug}>{p.name} {p.price_monthly > 0 ? `($${p.price_monthly}/${t('muaj')})` : `(${t('falas')})`}</option>
-                                    ))}
-                                  </select>
-                                </div>
                                 <div className="flex items-center gap-2">
                                   <label className="text-xs text-gray-400">{t('Admin')}</label>
                                   <button onClick={() => setEditUserForm(f => ({ ...f, is_admin: !f.is_admin }))} className={`w-10 h-5 rounded-full transition-all relative ${editUserForm.is_admin ? 'bg-amber-500' : 'bg-gray-600'}`}>
@@ -621,44 +520,8 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Kërko aktive...')} className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
             </div>
-            <button onClick={() => { setShowNewAsset(!showNewAsset); setSearch(''); }} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold px-4 py-2.5 rounded-xl text-sm transition-all">
-              <Plus className="w-4 h-4" />{t('Shto aktiv')}
-            </button>
+            <span className="text-[11px] text-gray-500">{t('Vetëm pamje — çmimet vijnë automatik nga sistemi.')}</span>
           </div>
-
-          {showNewAsset && (
-            <div className="bg-gray-900 border border-amber-500/30 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2"><Plus className="w-4 h-4 text-amber-400" />{t('Aktiv i ri')}</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {[
-                  { key: 'symbol', label: t('Simboli'), placeholder: 'XAUUSD' },
-                  { key: 'name', label: t('Emri'), placeholder: 'Ari / USD' },
-                  { key: 'current_price', label: t('Çmimi'), placeholder: '2340.00' },
-                  { key: 'high_24h', label: t('Maks 24h'), placeholder: '2360.00' },
-                  { key: 'low_24h', label: t('Min 24h'), placeholder: '2310.00' },
-                  { key: 'price_change_pct', label: t('Ndryshim %'), placeholder: '1.25' },
-                  { key: 'volume_24h', label: t('Vëllimi 24h'), placeholder: '100000' },
-                ].map(f => (
-                  <div key={f.key}>
-                    <label className="text-xs text-gray-400 block mb-1">{f.label}</label>
-                    <input placeholder={f.placeholder} value={(newAsset as Record<string, string>)[f.key] || ''} onChange={e => setNewAsset(a => ({ ...a, [f.key]: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500" />
-                  </div>
-                ))}
-                <div>
-                  <label className="text-xs text-gray-400 block mb-1">{t('Kategoria')}</label>
-                  <select value={newAsset.category} onChange={e => setNewAsset(a => ({ ...a, category: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500">
-                    <option value="commodity">{t('Mallra (Ar & Naftë)')}</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-3 mt-4">
-                <button onClick={createAsset} disabled={saving || !newAsset.symbol || !newAsset.current_price} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2 rounded-xl text-sm transition-all">
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{t('Krijo aktiv')}
-                </button>
-                <button onClick={() => setShowNewAsset(false)} className="px-5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm transition-all">{t('Anulo')}</button>
-              </div>
-            </div>
-          )}
 
           {loading ? (
             <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-14 bg-gray-900 rounded-xl animate-pulse" />)}</div>
@@ -673,12 +536,10 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                       <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Çmimi')}</th>
                       <th className="text-right text-gray-500 font-medium px-4 py-3">24h %</th>
                       <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Vëllimi')}</th>
-                      <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Veprime')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {filteredAssets.map(a => (
-                      <>
                         <tr key={a.id} className="hover:bg-gray-800/30 transition-colors">
                           <td className="px-4 py-3">
                             <div className="font-semibold text-white">{a.symbol}</div>
@@ -696,45 +557,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                           <td className="px-4 py-3 text-right text-gray-400">
                             {a.volume_24h.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-center gap-1">
-                              <button onClick={() => {
-                                setEditingAsset(editingAsset === a.id ? null : a.id);
-                                setEditAssetForm({ current_price: a.current_price, price_change_pct_24h: a.price_change_pct_24h ?? a.price_change_pct, high_24h: a.high_24h, low_24h: a.low_24h, volume_24h: a.volume_24h });
-                              }} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all">
-                                {editingAsset === a.id ? <ChevronUp className="w-3 h-3" /> : <Edit2 className="w-3 h-3" />}
-                              </button>
-                              <button onClick={() => deleteAsset(a)} className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all">
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </td>
                         </tr>
-                        {editingAsset === a.id && (
-                          <tr key={a.id + '-edit'} className="bg-gray-800/40">
-                            <td colSpan={6} className="px-4 py-4">
-                              <div className="flex flex-wrap gap-3 items-end">
-                                {[
-                                  { key: 'current_price', label: t('Çmimi') },
-                                  { key: 'price_change_pct_24h', label: t('Ndryshim %') },
-                                  { key: 'high_24h', label: t('Maks 24h') },
-                                  { key: 'low_24h', label: t('Min 24h') },
-                                  { key: 'volume_24h', label: t('Vëllimi') },
-                                ].map(f => (
-                                  <div key={f.key}>
-                                    <label className="text-xs text-gray-400 block mb-1">{f.label}</label>
-                                    <input type="number" value={(editAssetForm as Record<string, number>)[f.key] || ''} onChange={e => setEditAssetForm(prev => ({ ...prev, [f.key]: parseFloat(e.target.value) }))} className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm w-28 focus:outline-none focus:border-amber-500" />
-                                  </div>
-                                ))}
-                                <button onClick={() => saveAsset(a)} disabled={saving} className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-4 py-1.5 rounded-lg text-sm transition-all">
-                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}{t('Ruaj')}
-                                </button>
-                                <button onClick={() => setEditingAsset(null)} className="px-4 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm transition-all">{t('Anulo')}</button>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </>
                     ))}
                   </tbody>
                 </table>
@@ -1096,52 +919,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                 {sendingBroadcast ? t('Po dërgohet...') : t('Dërgo te të gjithë')}
               </button>
             </div>
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Monitor className="w-4 h-4 text-amber-400" />{t('Integrimi MetaTrader / Auto-Trade')}</h3>
-
-            {/* Si funksionon — arkitektura */}
-            <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-4 mb-4">
-              <p className="text-xs font-semibold text-white mb-2">{t('Si funksionon lidhja (arkitektura)')}</p>
-              <div className="flex items-center gap-2 text-[11px] text-gray-300 flex-wrap mb-2">
-                <span className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1">{t('Roboti AI (sinjale)')}</span>
-                <span className="text-amber-400">→</span>
-                <span className="bg-gray-900 border border-amber-500/30 rounded-lg px-2 py-1 text-amber-400">{t('MetaApi.cloud (urë)')}</span>
-                <span className="text-amber-400">→</span>
-                <span className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1">{t('MT5 / Vantage (ekzekutim)')}</span>
-              </div>
-              <p className="text-[11px] text-gray-400 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Klienti nuk lidh drejtpërdrejt MT5 me aplikacionin. Ai regjistron llogarinë e tij MT5 (Vantage) te <strong class="text-white">MetaApi.cloud</strong>, merr një <strong class="text-white">Account ID + Token</strong>, dhe i fut te paneli i tij (Tregtimi → MetaTrader). Roboti dërgon urdhrat përmes MetaApi-t. <strong class="text-white"> TradingView</strong> përdoret vetëm për grafikët (pamje), jo për tregtim.') }} />
-            </div>
-
-            {/* Lidhjet korrekte për konfigurim */}
-            <p className="text-xs font-semibold text-white mb-2">{t("Lidhjet zyrtare (kliko për t'u lidhur)")}</p>
-            <div className="grid sm:grid-cols-2 gap-2 mb-4">
-              {[
-                { name: t('MetaApi — Llogaritë (Add account)'), url: 'https://app.metaapi.cloud/accounts', desc: t('Regjistro MT5-në e Vantage → merr Account ID') },
-                { name: t('MetaApi — Token'), url: 'https://app.metaapi.cloud/token', desc: t('Krijo API Token për lidhjen') },
-                { name: t('MetaApi — Dokumentacioni'), url: 'https://metaapi.cloud/docs/client/', desc: t('Udhëzues teknik i plotë') },
-                { name: 'Vantage Markets', url: 'https://www.vantagemarkets.com/', desc: t('Broker-i — krijo/menaxho llogarinë MT5') },
-                { name: t('MetaTrader 5 — Shkarko'), url: 'https://www.metatrader5.com/en/download', desc: t('Platforma MT5 për desktop/mobile') },
-                { name: 'TradingView', url: 'https://www.tradingview.com/', desc: t('Grafikët (vetëm pamje në dashboard)') },
-              ].map(l => (
-                <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-start gap-2 bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 hover:border-amber-500/40 rounded-xl px-3 py-2.5 transition-all">
-                  <ExternalLink className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <span>
-                    <span className="block text-xs text-white font-medium">{l.name}</span>
-                    <span className="block text-[10px] text-gray-500">{l.desc}</span>
-                  </span>
-                </a>
-              ))}
-            </div>
-
-            <p className="text-gray-400 text-xs mb-2">{t('Monitoro lidhjet aktive MT4/MT5 të të gjithë përdoruesve.')}</p>
-            <button onClick={async () => {
-              const { data } = await supabase.from('metatrader_connections').select('*, profiles(full_name)').order('created_at', { ascending: false });
-              if (data) flash('success', t('U gjetën {n} lidhje MT te të gjithë përdoruesit.', { n: data.length }));
-            }} className="flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl transition-all">
-              <RefreshCw className="w-4 h-4" />{t('Kontrollo të gjitha lidhjet')}
-            </button>
           </div>
         </div>
       )}
