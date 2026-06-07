@@ -60,7 +60,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
     const queries: PromiseLike<unknown>[] = [
       supabase.from('assets').select('id, symbol, name, category, current_price, price_change_24h, price_change_pct').eq('symbol', 'XAUUSD'),
       supabase.from('signals').select('id, type, symbol, confidence, timeframe, analysis, entry_price, target_price, stop_loss, source, created_at').eq('status', 'active').gte('created_at', new Date(Date.now() - 24 * 3600 * 1000).toISOString()).order('created_at', { ascending: false }).limit(6),
-      supabase.from('ai_providers').select('id').eq('is_active', true).limit(1),
+      supabase.from('ai_providers_public').select('id').eq('is_active', true).limit(1),
     ];
     if (user) {
       queries.push(
