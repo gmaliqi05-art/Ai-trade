@@ -124,6 +124,10 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editUserForm, setEditUserForm] = useState<{ is_admin: boolean }>({ is_admin: false });
 
+  const [changingPasswordUser, setChangingPasswordUser] = useState<string | null>(null);
+  const [passwordForm, setPasswordForm] = useState({ password: '', confirm: '' });
+  const [showNewPwd, setShowNewPwd] = useState(false);
+
   const [showNewSignal, setShowNewSignal] = useState(false);
   const [newSignal, setNewSignal] = useState({ asset_id: '', signal_type: 'buy', strength: 'medium', entry_price: '', target_price: '', stop_loss: '', confidence: '75', timeframe: '1D', description: '', expires_at: '' });
 
@@ -281,6 +285,26 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     setSaving(false);
   };
 
+  const changePassword = async (u: UserRow) => {
+    if (passwordForm.password !== passwordForm.confirm) { flash('error', t('Fjalëkalimet nuk përputhen.')); return; }
+    if (passwordForm.password.length < 6) { flash('error', t('Fjalëkalimi duhet të ketë të paktën 6 karaktere.')); return; }
+    setSaving(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('admin-change-password', {
+      body: { user_id: u.id, new_password: passwordForm.password },
+      headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+    });
+    if (error || (data as { error?: string } | null)?.error) {
+      flash('error', t('Ndërrimi dështoi: {msg}', { msg: error?.message || (data as { error?: string } | null)?.error }));
+    } else {
+      await logAction('CHANGE_PASSWORD', 'auth.users', u.id, { email: u.email });
+      setChangingPasswordUser(null);
+      setPasswordForm({ password: '', confirm: '' });
+      flash('success', t('Fjalëkalimi i {name} u ndryshua.', { name: u.email || u.full_name }));
+    }
+    setSaving(false);
+  };
+
   // Fshin përdoruesin TËRËSISHT (edhe nga auth/databaza) → emaili lirohet për regjistrim të ri.
   const deleteUser = async (u: UserRow) => {
     const name = u.full_name || u.username || u.email || u.id;
@@ -347,7 +371,8 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
 
   const filteredUsers = users.filter(u =>
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    u.username?.toLowerCase().includes(search.toLowerCase())
+    u.username?.toLowerCase().includes(search.toLowerCase()) ||
+    u.email?.toLowerCase().includes(search.toLowerCase())
   );
 
   const filteredAssets = assets.filter(a =>
@@ -466,6 +491,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   <thead>
                     <tr className="border-b border-gray-800">
                       <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Përdoruesi')}</th>
+                      <th className="text-left text-gray-500 font-medium px-4 py-3">Email</th>
                       <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Admin')}</th>
                       <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Veprime')}</th>
                     </tr>
@@ -485,6 +511,9 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                               </div>
                             </div>
                           </td>
+                          <td className="px-4 py-3">
+                            <span className="text-gray-300 text-xs font-mono">{u.email || <span className="text-gray-600">—</span>}</span>
+                          </td>
                           <td className="px-4 py-3 text-center">
                             {u.is_admin ? <Shield className="w-4 h-4 text-amber-400 mx-auto" /> : <span className="text-gray-600 text-xs">—</span>}
                           </td>
@@ -492,9 +521,18 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                             <div className="flex items-center justify-center gap-1">
                               <button onClick={() => {
                                 setEditingUser(editingUser === u.id ? null : u.id);
+                                setChangingPasswordUser(null);
                                 setEditUserForm({ is_admin: u.is_admin });
                               }} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all" title={t('Ndrysho lejet')}>
                                 {editingUser === u.id ? <ChevronUp className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                              </button>
+                              <button onClick={() => {
+                                setChangingPasswordUser(changingPasswordUser === u.id ? null : u.id);
+                                setEditingUser(null);
+                                setPasswordForm({ password: '', confirm: '' });
+                                setShowNewPwd(false);
+                              }} className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-all" title={t('Ndrysho fjalëkalimin')}>
+                                <Key className="w-4 h-4" />
                               </button>
                               <button onClick={() => deleteUser(u)} disabled={saving || u.id === user?.id}
                                 title={u.id === user?.id ? t('Nuk mund të fshish veten') : t('Fshi përdoruesin plotësisht')}
@@ -506,7 +544,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                         </tr>
                         {editingUser === u.id && (
                           <tr key={u.id + '-edit'} className="bg-gray-800/40">
-                            <td colSpan={3} className="px-4 py-4">
+                            <td colSpan={4} className="px-4 py-4">
                               <div className="flex flex-wrap gap-3 items-end">
                                 <div className="flex items-center gap-2">
                                   <label className="text-xs text-gray-400">{t('Admin')}</label>
@@ -521,6 +559,52 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                                   <X className="w-3 h-3" />{t('Anulo')}
                                 </button>
                               </div>
+                            </td>
+                          </tr>
+                        )}
+                        {changingPasswordUser === u.id && (
+                          <tr key={u.id + '-pwd'} className="bg-blue-500/5">
+                            <td colSpan={4} className="px-4 py-4">
+                              <div className="flex flex-wrap gap-3 items-end">
+                                <div>
+                                  <label className="text-xs text-gray-400 flex items-center gap-1 mb-1"><Key className="w-3 h-3" />{t('Fjalëkalimi i ri')}</label>
+                                  <div className="relative">
+                                    <input
+                                      type={showNewPwd ? 'text' : 'password'}
+                                      value={passwordForm.password}
+                                      onChange={e => setPasswordForm(f => ({ ...f, password: e.target.value }))}
+                                      placeholder={t('Min. 6 karaktere')}
+                                      className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm w-48 focus:outline-none focus:border-blue-500 pr-8"
+                                    />
+                                    <button type="button" onClick={() => setShowNewPwd(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
+                                      {showNewPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-xs text-gray-400 block mb-1">{t('Konfirmo fjalëkalimin')}</label>
+                                  <input
+                                    type={showNewPwd ? 'text' : 'password'}
+                                    value={passwordForm.confirm}
+                                    onChange={e => setPasswordForm(f => ({ ...f, confirm: e.target.value }))}
+                                    placeholder={t('Përsërit fjalëkalimin')}
+                                    className={`bg-gray-900 border rounded-lg px-3 py-1.5 text-white text-sm w-48 focus:outline-none ${passwordForm.confirm && passwordForm.confirm !== passwordForm.password ? 'border-red-500 focus:border-red-400' : 'border-gray-700 focus:border-blue-500'}`}
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => changePassword(u)}
+                                  disabled={saving || !passwordForm.password || passwordForm.password !== passwordForm.confirm}
+                                  className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white font-semibold px-4 py-1.5 rounded-lg text-sm transition-all"
+                                >
+                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />}{t('Ndrysho')}
+                                </button>
+                                <button onClick={() => setChangingPasswordUser(null)} className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white px-4 py-1.5 rounded-lg text-sm transition-all">
+                                  <X className="w-3 h-3" />{t('Anulo')}
+                                </button>
+                              </div>
+                              {passwordForm.confirm && passwordForm.confirm !== passwordForm.password && (
+                                <p className="text-red-400 text-xs mt-2">{t('Fjalëkalimet nuk përputhen.')}</p>
+                              )}
                             </td>
                           </tr>
                         )}
