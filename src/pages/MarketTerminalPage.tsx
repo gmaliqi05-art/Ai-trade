@@ -30,6 +30,21 @@ interface Signal {
 const fmtTime = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
+// Përputhja e simbolit të platformës (p.sh. UKOIL) me simbolin REAL të brokerit te pozicioni
+// (p.sh. UKOUSD/XBRUSD/BRENT për Brent, XTIUSD/WTI/CL për WTI). Pa këtë, linjat e pozicionit
+// (Hyrje/SL/TP) s'shfaqeshin për naftën sepse emrat ndryshojnë (ari përputhej saktë).
+function symMatch(sel: string, posSym: string): boolean {
+  const A = (sel || '').toUpperCase(), B = (posSym || '').toUpperCase();
+  if (!A || !B) return false;
+  if (A === B || A.startsWith(B) || B.startsWith(A)) return true;
+  if (/XAU|GOLD/.test(A) && /XAU|GOLD/.test(B)) return true;          // ari
+  const brent = (s: string) => /^(UKOIL|XBR|BRENT|UKO)/.test(s);     // Brent
+  const wti = (s: string) => /^(USOIL|XTI|WTI|CL|USO)/.test(s);       // WTI
+  if (brent(A) && brent(B)) return true;
+  if (wti(A) && wti(B)) return true;
+  return false;
+}
+
 // Freskia e sinjalit: pas 30 min çmimi ka lëvizur dhe hyrje/SL/TP janë të vjetra —
 // mos tregto mbi to (rezultate jo të mira). Roboti auto përdor 15 min.
 const SIGNAL_FRESH_MIN = 30;
@@ -301,7 +316,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   };
 
   // Pozicioni i hapur për simbolin e zgjedhur → linjat Hyrje/SL/TP + modifikim.
-  const posForSymbol = positions.find(p => p.symbol === selected) || null;
+  const posForSymbol = positions.find(p => symMatch(selected, p.symbol)) || null;
   const chartLines: PriceLineDef[] = posForSymbol ? [
     ...(posForSymbol.openPrice ? [{ price: posForSymbol.openPrice, color: '#3b82f6', title: 'Hyrje' }] : []),
     ...(posForSymbol.stopLoss ? [{ price: posForSymbol.stopLoss, color: '#ef4444', title: 'SL' }] : []),
