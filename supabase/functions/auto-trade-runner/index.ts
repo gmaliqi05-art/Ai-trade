@@ -65,16 +65,15 @@ function marketDataHost(region: string) {
   return `https://mt-market-data-client-api-v1.${(region || "new-york").trim()}.agiliumtrade.ai`;
 }
 
-// A është tregu i hapur (FX/metale/naftë)? Mbyllur gjatë fundjavës:
-// E premte pas 21:00 UTC → E diel 22:00 UTC. Pa këtë, roboti provonte të tregtonte
-// edhe të shtunën/të dielën kur tregu është i mbyllur.
-function isMarketOpen(d = new Date()): boolean {
-  const day = d.getUTCDay();              // 0 = E diel … 6 = E shtunë
-  const h = d.getUTCHours();
-  if (day === 6) return false;            // E shtunë: mbyllur
-  if (day === 0 && h < 22) return false;  // E diel para 22:00 UTC: mbyllur
-  if (day === 5 && h >= 21) return false; // E premte pas 21:00 UTC: mbyllur
-  return true;
+// Sesioni i arit i ankoruar te Frankfurt (Europe/Berlin) 09:00–23:00, DST automatik.
+// Jashtë sesionit s'hapim trade TË REJA (trailing/break-even vazhdon 24/7).
+function frankfurtHour(d = new Date()): number {
+  const s = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hourCycle: "h23" }).format(d);
+  return parseInt(s, 10) || 0;
+}
+function goldSessionOpen(): boolean {
+  const h = frankfurtHour();
+  return h >= 9 && h < 23;
 }
 // Crypto tregtohet 24/7 → s'i nënshtrohet sesionit të arit.
 function isCrypto(symbol: string): boolean {
@@ -539,22 +538,6 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  // Portë sigurie për cron (vetëm akses — S'PREK logjikën e tregtimit). Fail-safe: lejo nëse s'ka sekret/gabim.
-  try {
-    const { data: _cs } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
-    const _secret = (_cs as { value?: string } | null)?.value;
-    if (_secret && req.headers.get("x-cron-secret") !== _secret) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-  } catch { /* fail-safe: mos e blloko robotin */ }
-
-  // Porta e fundjavës — mos tregto kur tregu është i mbyllur (fundjavë).
-  if (!isMarketOpen()) {
-    return new Response(JSON.stringify({ skipped: "market_closed" }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
   const summary: Array<Record<string, unknown>> = [];
   const sinceIso = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
@@ -579,6 +562,9 @@ Deno.serve(async (req: Request) => {
         const info = await maGet(cfg, "/account-information") as { balance?: number; equity?: number };
         const bal = Number(info?.balance), eq = Number(info?.equity);
         equity = Number.isFinite(eq) ? eq : (Number.isFinite(bal) ? bal : 0);
+        // SAFE-MODE për kapital të vogël (< €50): detyro vetëm lot-in MINIMAL (0.01), pavarësisht
+        // cilësimeve manuale → roboti vazhdon të tregtojë, por me rrezik minimal për trade.
+        if (equity > 0 && equity < 50) { cfg.max_lot = 0.01; cfg.default_lot = 0.01; }
         // LIMITI DITOR I HUMBJES — i bazuar te EKUITETI (i besueshëm; s'dështon në heshtje si
         // thirrja history-deals). Ruajmë ekuitetin në fillim të ditës UTC; humbja = equity − fillimi.
         if (equity > 0) {
@@ -680,9 +666,11 @@ Deno.serve(async (req: Request) => {
       const allowed = new Set((cfg.auto_symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
       if (allowed.size === 0) continue;
 
-      // Roboti tregton sa është i hapur tregu (porta e tregut në hyrje e bllokon fundjavën).
-      // PA orë fikse për arin — lejohet gjithë seanca e hapur; roboti vepron vetëm kur ka
-      // sinjal të vlefshëm (motori s'gjeneron në treg të ngrirë).
+      // Jashtë sesionit të arit: lejo crypto (24/7) dhe naftë (~23h/ditë pune); ari & të tjerat presin orarin.
+      if (!goldSessionOpen()) {
+        for (const s of [...allowed]) { if (!isCrypto(s) && !isOil(s)) allowed.delete(s); }
+        if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
+      }
       // NAFTË: bllokim rreth raportit javor EIA (e mërkurë 10:00–11:00 ET) — hiq naftën nga lista atëherë.
       if (eiaBlackout()) {
         for (const s of [...allowed]) { if (isOil(s)) allowed.delete(s); }
