@@ -1,6 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// admin-change-password — ndryshon fjalëkalimin e një përdoruesi. Vetëm super-admin.
+// Ndjek të njëjtin model sigurie si admin-delete-user (userClient me anon + Authorization).
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -9,57 +12,31 @@ const corsHeaders = {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
-  if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+  const json = (o: unknown, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const adminClient = createClient(supabaseUrl, serviceKey);
+    const url = Deno.env.get("SUPABASE_URL")!;
+    const svc = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
+    // SIGURIA: vetëm super-admin. Identifiko thirrësin nga JWT-ja.
+    const auth = req.headers.get("Authorization") || "";
+    const userClient = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+    const { data: u } = await userClient.auth.getUser();
+    if (!u?.user) return json({ error: "unauthorized" }, 401);
+    const { data: prof } = await svc.from("profiles").select("is_admin").eq("id", u.user.id).maybeSingle();
+    if (!(prof as { is_admin?: boolean } | null)?.is_admin) return json({ error: "forbidden" }, 403);
 
-    const jwt = authHeader.replace("Bearer ", "");
-    const { data: { user: caller }, error: jwtErr } = await adminClient.auth.getUser(jwt);
-    if (jwtErr || !caller) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: corsHeaders });
-    }
+    const body = await req.json().catch(() => ({}));
+    const targetId = (body as { user_id?: string }).user_id;
+    const newPassword = (body as { new_password?: string }).new_password;
+    if (!targetId || !newPassword) return json({ error: "user_id dhe new_password janë të detyrueshëm" }, 400);
+    if (newPassword.length < 6) return json({ error: "Fjalëkalimi duhet të ketë të paktën 6 karaktere" }, 400);
 
-    const { data: callerProfile } = await adminClient
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", caller.id)
-      .single();
+    const { error: updErr } = await svc.auth.admin.updateUserById(targetId, { password: newPassword });
+    if (updErr) return json({ error: updErr.message }, 500);
 
-    if (!callerProfile?.is_admin) {
-      return new Response(JSON.stringify({ error: "Forbidden: admin only" }), { status: 403, headers: corsHeaders });
-    }
-
-    const body = await req.json();
-    const { user_id, new_password } = body as { user_id?: string; new_password?: string };
-
-    if (!user_id || !new_password) {
-      return new Response(JSON.stringify({ error: "user_id and new_password are required" }), { status: 400, headers: corsHeaders });
-    }
-    if (new_password.length < 6) {
-      return new Response(JSON.stringify({ error: "Password must be at least 6 characters" }), { status: 400, headers: corsHeaders });
-    }
-
-    const { error } = await adminClient.auth.admin.updateUserById(user_id, { password: new_password });
-    if (error) {
-      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
-    }
-
-    return new Response(
-      JSON.stringify({ success: true }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ ok: true });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: (err as Error).message }),
-      { status: 500, headers: corsHeaders }
-    );
+    return json({ error: (err as Error).message }, 500);
   }
 });

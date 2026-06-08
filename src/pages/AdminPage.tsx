@@ -289,13 +289,17 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     if (passwordForm.password !== passwordForm.confirm) { flash('error', t('Fjalëkalimet nuk përputhen.')); return; }
     if (passwordForm.password.length < 6) { flash('error', t('Fjalëkalimi duhet të ketë të paktën 6 karaktere.')); return; }
     setSaving(true);
-    const { data: { session } } = await supabase.auth.getSession();
     const { data, error } = await supabase.functions.invoke('admin-change-password', {
       body: { user_id: u.id, new_password: passwordForm.password },
-      headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
     });
+    // Kur funksioni kthen non-2xx, supabase-js e fsheh arsyen te error.context — e nxjerrim.
+    let realMsg = (data as { error?: string } | null)?.error || error?.message;
+    const ctx = (error as { context?: Response } | null)?.context;
+    if (ctx && typeof ctx.json === 'function') {
+      try { const b = await ctx.json(); if (b?.error) realMsg = b.error; } catch { /* injoro */ }
+    }
     if (error || (data as { error?: string } | null)?.error) {
-      flash('error', t('Ndërrimi dështoi: {msg}', { msg: error?.message || (data as { error?: string } | null)?.error }));
+      flash('error', t('Ndërrimi dështoi: {msg}', { msg: realMsg }));
     } else {
       await logAction('CHANGE_PASSWORD', 'auth.users', u.id, { email: u.email });
       setChangingPasswordUser(null);
