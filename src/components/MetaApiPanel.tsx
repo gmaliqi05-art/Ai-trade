@@ -26,6 +26,7 @@ export default function MetaApiPanel() {
   const [showToken, setShowToken] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [conn, setConn] = useState<{ s: 'unknown' | 'checking' | 'ok' | 'syncing' | 'down'; detail?: string }>({ s: 'unknown' });
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -74,13 +75,26 @@ export default function MetaApiPanel() {
     setSaving(false);
   };
 
-  const testConnection = async () => {
-    setBusy('check'); setMsg(null);
+  const testConnection = async (silent = false) => {
+    setBusy('check'); if (!silent) setMsg(null);
+    setConn(c => ({ ...c, s: 'checking' }));
     const r = await checkMetaApiConnection();
-    if (r.error) setMsg({ type: 'error', text: errText(t, r.error, r.message) });
-    else setMsg({ type: 'success', text: t('Lidhja OK ({mode}). Llogaria u arrit.', { mode: r.mode }) });
+    if (r.error) {
+      const detail = errText(t, r.error, r.message);
+      setConn({ s: r.error === 'metaapi_syncing' ? 'syncing' : 'down', detail });
+      if (!silent) setMsg({ type: 'error', text: detail });
+    } else {
+      setConn({ s: 'ok' });
+      if (!silent) setMsg({ type: 'success', text: t('Lidhja OK ({mode}). Llogaria u arrit.', { mode: r.mode }) });
+    }
     setBusy(null);
   };
+
+  useEffect(() => {
+    if (loading || conn.s !== 'unknown' || !cfg.account_id || !cfg.token) return;
+    testConnection(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   if (loading) return <div className="h-40 bg-gray-800 rounded-2xl animate-pulse" />;
 
@@ -92,9 +106,16 @@ export default function MetaApiPanel() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-white font-semibold flex items-center gap-2"><Cloud className="w-5 h-5 text-amber-400" />{t('Lidhja & Konfigurimi (MetaApi)')}</h3>
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-2.5 py-1 rounded-full border ${configured ? 'bg-green-500/15 text-green-400 border-green-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
-            {configured ? t('I lidhur') : t('Pa lidhur')}
-          </span>
+          {(() => {
+            const stMap = {
+              unknown:  configured ? { c: 'bg-gray-700/50 text-gray-300 border-gray-600', txt: t('I konfiguruar') } : { c: 'bg-gray-700/50 text-gray-400 border-gray-600', txt: t('Pa lidhur') },
+              checking: { c: 'bg-amber-500/15 text-amber-400 border-amber-500/30', txt: t('Po kontrollohet…') },
+              ok:       { c: 'bg-green-500/15 text-green-400 border-green-500/30', txt: t('I lidhur') },
+              syncing:  { c: 'bg-amber-500/15 text-amber-400 border-amber-500/30', txt: t('Po sinkronizohet') },
+              down:     { c: 'bg-red-500/15 text-red-400 border-red-500/30', txt: t('Shkëputur') },
+            }[conn.s];
+            return <span title={conn.detail} className={`text-xs px-2.5 py-1 rounded-full border ${stMap.c}`}>{stMap.txt}</span>;
+          })()}
           <span className={`text-xs px-2.5 py-1 rounded-full border ${cfg.mode === 'demo' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'bg-red-500/15 text-red-400 border-red-500/30'}`}>
             {cfg.mode === 'demo' ? t('DEMO') : t('LIVE — para reale')}
           </span>
@@ -146,7 +167,7 @@ export default function MetaApiPanel() {
           <button onClick={save} disabled={saving} className="btn-amber">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{t('Ruaj cilësimet')}
           </button>
-          <button onClick={testConnection} disabled={!configured || !!busy} className="btn-ghost">
+          <button onClick={() => testConnection()} disabled={!configured || !!busy} className="btn-ghost">
             {busy === 'check' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}{t('Testo lidhjen')}
           </button>
         </div>
@@ -592,6 +613,9 @@ function errText(t: (key: string, params?: Record<string, string | number>) => s
   const map: Record<string, string> = {
     metaapi_not_configured: t('Plotëso Account ID dhe Token, pastaj ruaj.'),
     metaapi_unreachable: t('S\'u arrit MetaApi — kontrollo token-in, account-id dhe rajonin.'),
+    metaapi_syncing: t('Llogaria po lidhet/sinkronizohet — prit 1–2 min dhe provo prapë. Te MetaApi duhet të jetë Deployed + Connected (jeshile).'),
   };
-  return map[code] || message || code;
+  if (map[code]) return map[code];
+  if (message && /503|non-2xx|Temporarily Unavailable|Service Unavailable/i.test(message)) return map.metaapi_syncing;
+  return message || code;
 }

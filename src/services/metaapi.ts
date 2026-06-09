@@ -202,14 +202,22 @@ async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> 
   if (error) {
     let detail = error.message;
     let code = 'invoke_error';
+    let httpStatus = 0;
     try {
       const ctx = (error as { context?: Response }).context;
-      if (ctx && typeof ctx.json === 'function') {
-        const b = await ctx.json();
-        if (b?.error) code = b.error;
-        if (b?.message) detail = b.message;
+      if (ctx) {
+        httpStatus = ctx.status || 0;
+        if (typeof ctx.json === 'function') {
+          const b = await ctx.json();
+          if (b?.error) code = b.error;
+          if (b?.message) detail = b.message;
+        }
       }
     } catch { /* injoro */ }
+    if (code === 'invoke_error') {
+      if (httpStatus === 503) code = 'metaapi_syncing';
+      else if (httpStatus === 502 || httpStatus === 504) code = 'metaapi_unreachable';
+    }
     return { error: code, message: detail };
   }
   return data as TradeResponse;
