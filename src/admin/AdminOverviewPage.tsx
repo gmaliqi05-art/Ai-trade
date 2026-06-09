@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AdminPage } from '../App';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface RecentTrade {
   id: string; type: string; volume: number; status: string; executed_at: string;
@@ -118,7 +118,7 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
                   </div>
                   <div className="text-right flex-shrink-0">
                     <div className="text-white text-sm font-semibold">{Number(trade.volume || 0)} {t('lot')}</div>
-                    <div className="text-gray-600 text-[10px]">{trade.executed_at ? new Date(trade.executed_at).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                    <div className="text-gray-600 text-[10px]">{trade.executed_at ? new Date(trade.executed_at).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</div>
                   </div>
                 </div>
               ))

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Bell, Check, CheckCheck, Zap, Brain, AlertCircle, Crown, Megaphone, RefreshCw, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 import { loadReadBroadcasts, markBroadcastRead, notifyNotificationsChanged } from '../lib/broadcastReads';
 
 interface Notification {
@@ -152,7 +152,7 @@ export default function NotificationsPage() {
                     </div>
                   </div>
                   <p className="text-gray-400 text-xs mt-0.5 leading-relaxed">{n.body}</p>
-                  <p className="text-gray-600 text-xs mt-1.5">{new Date(n.created_at).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-gray-600 text-xs mt-1.5">{new Date(n.created_at).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
             );

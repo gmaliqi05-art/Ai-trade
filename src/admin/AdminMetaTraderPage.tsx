@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Monitor, RefreshCw, Wifi, WifiOff, User, Clock, Activity, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface MTConnection {
   id: string;
@@ -157,7 +157,7 @@ export default function AdminMetaTraderPage() {
                         {conn.last_ping_at ? (
                           <div className="flex items-center justify-end gap-1.5 text-gray-500 text-xs">
                             <Clock className="w-3 h-3" />
-                            {new Date(conn.last_ping_at).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            {new Date(conn.last_ping_at).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </div>
                         ) : (
                           <span className="text-gray-600 text-xs">{t('Asnjëherë')}</span>

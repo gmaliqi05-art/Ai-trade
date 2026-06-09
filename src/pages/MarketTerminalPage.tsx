@@ -16,7 +16,7 @@ import {
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { groupDeals, attachSource, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
 interface Signal {
@@ -28,7 +28,7 @@ interface Signal {
 
 // Orë e saktë e sinjalit (dt + orë:min).
 const fmtTime = (iso?: string | null) =>
-  iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  iso ? new Date(iso).toLocaleString(dtLocale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 // Përputhja e simbolit të platformës (p.sh. UKOIL) me simbolin REAL të brokerit te pozicioni
 // (p.sh. UKOUSD/XBRUSD/BRENT për Brent, XTIUSD/WTI/CL për WTI). Pa këtë, linjat e pozicionit
@@ -618,7 +618,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                           <td className="py-2 text-right text-gray-300">{d.volume || '—'}</td>
                           <td className="py-2 text-right text-gray-300">{d.entryPrice != null ? d.entryPrice : '—'}</td>
                           <td className={`py-2 text-right font-semibold ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
-                          <td className="py-2 text-right text-gray-500">{d.closeTime ? new Date(d.closeTime).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                          <td className="py-2 text-right text-gray-500">{d.closeTime ? new Date(d.closeTime).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                         </tr>
                       );
                     })}

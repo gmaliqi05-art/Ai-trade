@@ -6,6 +6,13 @@ import { en } from './en';
 
 export type Lang = 'en' | 'sq';
 
+// Gjuha aktive në nivel moduli — që formatuesit jashtë komponentëve (data/ora) ta dinë gjuhën.
+let _activeLang: Lang = (() => {
+  try { return localStorage.getItem('lang') === 'sq' ? 'sq' : 'en'; } catch { return 'en'; }
+})();
+// Locale për data/ora sipas gjuhës aktive: en-US (default) ose sq-AL.
+export function dtLocale(): string { return _activeLang === 'sq' ? 'sq-AL' : 'en-US'; }
+
 interface I18nCtx {
   lang: Lang;
   setLang: (l: Lang) => void;
@@ -29,6 +36,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   });
 
   const setLang = useCallback((l: Lang) => {
+    _activeLang = l;
     try { localStorage.setItem('lang', l); } catch { /* injoro */ }
     setLangState(l);
   }, []);

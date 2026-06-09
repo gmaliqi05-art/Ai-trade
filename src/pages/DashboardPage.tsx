@@ -11,7 +11,7 @@ import TradingViewChart from '../components/TradingViewChart';
 import GoldSessionBadge from '../components/GoldSessionBadge';
 import OpenPositionsPanel from '../components/OpenPositionsPanel';
 import { loadOpenPositions, loadSymbolPrice, type OpenPosition } from '../services/metaapi';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset {
   id: string; symbol: string; name: string; category: string;
@@ -320,7 +320,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (p: Page) =>
                       </div>
                     )}
                     <p className="text-gray-500 text-xs line-clamp-1">{s.analysis}</p>
-                    <div className="text-[10px] text-gray-600 mt-1">🕒 {t('Gjeneruar: {time}', { time: new Date(s.created_at).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) })}</div>
+                    <div className="text-[10px] text-gray-600 mt-1">🕒 {t('Gjeneruar: {time}', { time: new Date(s.created_at).toLocaleString(dtLocale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) })}</div>
                   </button>
                 ))}
               </div>

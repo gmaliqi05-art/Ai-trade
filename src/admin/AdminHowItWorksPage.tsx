@@ -6,7 +6,7 @@ import {
   BookOpen, Database, Sigma, Zap, ShieldCheck, Crosshair, Clock, Droplet, RefreshCw, Loader2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 
 function Section({ icon: Icon, title, subtitle, children }: { icon: React.ElementType; title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -70,8 +70,8 @@ export default function AdminHowItWorksPage() {
         supabase.from('trade_executions').select('id', { count: 'exact', head: true }).eq('status', 'rejected').gte('created_at', since),
       ]);
       setLive({
-        lastSignal: sig?.[0] ? `${sig[0].symbol} · ${new Date(sig[0].created_at).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '—',
-        lastTrade: exe?.[0] ? `${exe[0].symbol} · ${new Date(exe[0].created_at).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '—',
+        lastSignal: sig?.[0] ? `${sig[0].symbol} · ${new Date(sig[0].created_at).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '—',
+        lastTrade: exe?.[0] ? `${exe[0].symbol} · ${new Date(exe[0].created_at).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '—',
         exec48: execN ?? 0, rej48: rejN ?? 0,
       });
     } catch { /* injoro */ }

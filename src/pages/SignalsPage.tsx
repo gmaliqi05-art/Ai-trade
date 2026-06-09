@@ -12,7 +12,7 @@ import { getMyUsage } from '../services/usage';
 import { executeTrade, loadMetaApiConfig, DEFAULT_CONFIG, type MetaApiConfig } from '../services/metaapi';
 import type { MarketAnalysisOptions } from '../ai-trader/react/useMarketAnalysis';
 import type { EngineEnterInput } from '../ai-trader/react/EngineSignalCard';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 
 const TIMEFRAMES: { v: Timeframe; label: string }[] = [
   { v: '1m', label: '1 min' }, { v: '5m', label: '5 min' }, { v: '15m', label: '15 min' },
@@ -29,7 +29,7 @@ interface Signal {
 
 // Datë + orë e saktë.
 const fmtDT = (iso?: string | null) =>
-  iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  iso ? new Date(iso).toLocaleString(dtLocale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 interface Alert {
   id: string; asset_id: string; symbol: string; condition: string; type: string;
@@ -229,7 +229,7 @@ export default function SignalsPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              {engineUpdatedAt && <span className="text-[10px] text-gray-500">{t('🕒 Llogaritur: {time}', { time: engineUpdatedAt.toLocaleTimeString('sq-AL', { hour: '2-digit', minute: '2-digit' }) })}</span>}
+              {engineUpdatedAt && <span className="text-[10px] text-gray-500">{t('🕒 Llogaritur: {time}', { time: engineUpdatedAt.toLocaleTimeString(dtLocale(), { hour: '2-digit', minute: '2-digit' }) })}</span>}
               <button onClick={refreshEngine} disabled={engineLoading}
                 className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
                 <RefreshCw className={`w-3.5 h-3.5 ${engineLoading ? 'animate-spin' : ''}`} />{t('Gjenero / Rifresko')}
@@ -373,7 +373,7 @@ export default function SignalsPage() {
                       <span className="text-white font-semibold text-sm">{a.symbol || assets.find(x => x.id === a.asset_id)?.symbol}</span>
                       <span className="text-gray-400 text-xs">{(a.condition || a.type) === 'above' ? t('↑ ngrihet mbi') : t('↓ bie nën')} ${(a.target_price || a.target_value || 0).toLocaleString()}</span>
                     </div>
-                    <div className="text-gray-600 text-xs mt-0.5">{a.triggered_at ? t('Aktivizuar: {date}', { date: new Date(a.triggered_at).toLocaleDateString('sq-AL') }) : t('Krijuar: {date}', { date: new Date(a.created_at).toLocaleDateString('sq-AL') })}</div>
+                    <div className="text-gray-600 text-xs mt-0.5">{a.triggered_at ? t('Aktivizuar: {date}', { date: new Date(a.triggered_at).toLocaleDateString(dtLocale()) }) : t('Krijuar: {date}', { date: new Date(a.created_at).toLocaleDateString(dtLocale()) })}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
