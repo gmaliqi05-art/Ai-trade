@@ -31,16 +31,6 @@ export default function AuthPage() {
     setLoading(false);
   };
 
-  // Hyrje e shpejtë me llogarinë e gatshme (një klik = mbush + logohu).
-  const quickLogin = async () => {
-    const demoEmail = 'g.maliqi05@gmail.com', demoPass = 'demo123456';
-    setEmail(demoEmail); setPassword(demoPass);
-    setError(''); setLoading(true);
-    const { error } = await signIn(demoEmail, demoPass);
-    if (error) setError(error.message);
-    setLoading(false);
-  };
-
   return (
     <div className="min-h-screen bg-gray-950 flex relative">
       <div className="absolute top-4 right-4 z-20"><LanguageSwitcher /></div>
@@ -130,15 +120,6 @@ export default function AuthPage() {
               {mode === 'login' ? t('Krijo një') : t('Hyr')}
             </button>
           </div>
-          {mode === 'login' && (
-            <div className="mt-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-              <p className="text-xs text-gray-500 text-center mb-2">{t('Hyrje e shpejtë')}</p>
-              <button type="button" onClick={quickLogin} disabled={loading}
-                className="w-full text-xs text-gray-400 hover:text-amber-400 transition-colors text-center disabled:opacity-50">
-                g.maliqi05@gmail.com / demo123456
-              </button>
-            </div>
-          )}
         </div>
       </div>
       <div className="absolute bottom-1 left-0 right-0"><AppFooter /></div>
