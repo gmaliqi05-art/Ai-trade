@@ -962,4 +962,10 @@ export const en: Record<string, string> = {
   "Lot-i del nga rreziku REAL — jo numër fiks.": "The lot comes from REAL risk — not a fixed number.",
   "vleraPerÇmim: ar=100, naftë=1000 (1000 fuçi/lot), forex=100000.": "valuePerPrice: gold=100, oil=1000 (1000 barrels/lot), forex=100000.",
   "SL/TP rillogariten nga qirinjtë e freskët MT5 para hapjes (jo nga PAXG) — që nivelet të jenë saktësisht ato të brokerit.": "SL/TP are recomputed from fresh MT5 candles before opening (not from PAXG) — so the levels are exactly the broker's.",
+  "I konfiguruar": "Configured",
+  "Po kontrollohet…": "Checking…",
+  "Po sinkronizohet": "Synchronizing",
+  "Shkëputur": "Disconnected",
+  "Llogaria po lidhet/sinkronizohet — prit 1–2 min dhe provo prapë. Te MetaApi duhet të jetë Deployed + Connected (jeshile).": "The account is connecting/synchronizing — wait 1–2 min and try again. On MetaApi it must be Deployed + Connected (green).",
+  "Llogaria po lidhet/sinkronizohet — prit 1–2 min dhe provo prapë.": "The account is connecting/synchronizing — wait 1–2 min and try again.",
 };

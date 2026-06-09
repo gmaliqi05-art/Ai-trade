@@ -55,6 +55,7 @@ function errText(t: (k: string) => string, code: string, message?: string): stri
   const map: Record<string, string> = {
     metaapi_not_configured: t('Lidh llogarinë MT5 te Lidhja & Konfigurimi para se të tregtosh.'),
     metaapi_unreachable: t("S'u arrit MetaApi — kontrollo lidhjen."),
+    metaapi_syncing: t('Llogaria po lidhet/sinkronizohet — prit 1–2 min dhe provo prapë.'),
     kill_switch: t('Kill-switch është aktiv — çaktivizoje te Lidhja & Konfigurimi.'),
     max_open_trades: t('Arritur limiti i pozicioneve të hapura.'),
     max_daily_loss: t('Arritur limiti i humbjes ditore.'),
