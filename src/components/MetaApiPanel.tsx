@@ -16,6 +16,18 @@ import {
 
 const REGIONS = ['new-york', 'london', 'singapore'];
 
+// Rekomandime sipas kapitalit — vendosin cilesimet (rrezik/lot/SL-TP/limite) te shkallezuara
+// nga sjellja aktuale fituese e robotit. Vetem pikenisje; perdoruesi i ndryshon vete me pas.
+// NUK prek logjiken e robotit (auto-trade-runner) apo te sinjaleve (engine-scan).
+const CAPITAL_PRESETS: { label: string; cfg: Partial<MetaApiConfig> }[] = [
+  { label: '€100',    cfg: { risk_per_trade_pct: 1, dynamic_lot: true, max_daily_loss: 5,    max_lot: 0.01, default_lot: 0.01, scalp_sl_usd: 2,   scalp_tp_usd: 4,    scalp_max_trades: 1, max_open_trades: 1, trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 0.5 } },
+  { label: '€500',    cfg: { risk_per_trade_pct: 1, dynamic_lot: true, max_daily_loss: 25,   max_lot: 0.02, default_lot: 0.01, scalp_sl_usd: 3,   scalp_tp_usd: 6,    scalp_max_trades: 2, max_open_trades: 2, trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1 } },
+  { label: '€1,000',  cfg: { risk_per_trade_pct: 1, dynamic_lot: true, max_daily_loss: 50,   max_lot: 0.05, default_lot: 0.02, scalp_sl_usd: 4,   scalp_tp_usd: 8,    scalp_max_trades: 2, max_open_trades: 2, trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1 } },
+  { label: '€5,000',  cfg: { risk_per_trade_pct: 1, dynamic_lot: true, max_daily_loss: 250,  max_lot: 0.2,  default_lot: 0.05, scalp_sl_usd: 6,   scalp_tp_usd: 12,   scalp_max_trades: 3, max_open_trades: 3, trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1.5 } },
+  { label: '€50,000', cfg: { risk_per_trade_pct: 1, dynamic_lot: true, max_daily_loss: 1500, max_lot: 1,    default_lot: 0.5,  scalp_sl_usd: 20,  scalp_tp_usd: 40,   scalp_max_trades: 3, max_open_trades: 3, trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 2 } },
+  { label: '€100k',   cfg: { risk_per_trade_pct: 1, dynamic_lot: true, max_daily_loss: 3000, max_lot: 2,    default_lot: 0.5,  scalp_sl_usd: 100, scalp_tp_usd: 1000, scalp_max_trades: 3, max_open_trades: 3, trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 2 } },
+];
+
 export default function MetaApiPanel() {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -74,6 +86,9 @@ export default function MetaApiPanel() {
     catch (e) { setMsg({ type: 'error', text: (e as Error).message }); }
     setSaving(false);
   };
+
+  // Apliko nje preset kapitali (shkruan ne te njejtat fusha si manualisht; pa prekur robotin).
+  const applyPreset = (p: typeof CAPITAL_PRESETS[number]) => setManyAndSave(p.cfg);
 
   const testConnection = async (silent = false) => {
     setBusy('check'); if (!silent) setMsg(null);
@@ -184,6 +199,22 @@ export default function MetaApiPanel() {
             <li className="flex gap-2"><span className="text-amber-400 font-bold">4.</span><span dangerouslySetInnerHTML={{ __html: t('Ngjit <strong class="text-white">Account ID</strong> + <strong class="text-white">Token</strong> poshtë, zgjidh rajonin, kliko <strong class="text-white">Ruaj</strong> → <strong class="text-white">Testo lidhjen</strong>.') }} /></li>
           </ol>
         )}
+      </Section>
+
+      {/* ======= REKOMANDIME SIPAS KAPITALIT ======= */}
+      <Section icon={Gauge} title={t('Rekomandime sipas kapitalit')} subtitle={t('Kliko sa kapital ke → cilesimet vendosen automatik (rrezik, lot, SL/TP, humbja ditore), te shkallezuara nga sjellja aktuale e robotit.')}>
+        <div className="flex flex-wrap gap-2">
+          {CAPITAL_PRESETS.map(p => (
+            <button key={p.label} type="button" onClick={() => applyPreset(p)}
+              className="px-3.5 py-2 rounded-xl text-sm font-bold bg-gray-800 border border-gray-700 text-gray-200 hover:border-amber-500/60 hover:text-amber-400 transition-all">
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-amber-300/90 mt-2.5 flex items-start gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          {t('Keto jane vetem REKOMANDIME — nuk prekin logjiken e robotit/sinjaleve. Pas aplikimit, cdo fushe mbetet plotesisht e ndryshueshme nga ti sipas deshires.')}
+        </p>
       </Section>
 
       {/* ======= 2. MBROJTJA E RREZIKUT (globale) ======= */}

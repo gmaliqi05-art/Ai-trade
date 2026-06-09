@@ -968,4 +968,7 @@ export const en: Record<string, string> = {
   "Shkëputur": "Disconnected",
   "Llogaria po lidhet/sinkronizohet — prit 1–2 min dhe provo prapë. Te MetaApi duhet të jetë Deployed + Connected (jeshile).": "The account is connecting/synchronizing — wait 1–2 min and try again. On MetaApi it must be Deployed + Connected (green).",
   "Llogaria po lidhet/sinkronizohet — prit 1–2 min dhe provo prapë.": "The account is connecting/synchronizing — wait 1–2 min and try again.",
+  "Rekomandime sipas kapitalit": "Recommendations by capital",
+  "Kliko sa kapital ke → cilesimet vendosen automatik (rrezik, lot, SL/TP, humbja ditore), te shkallezuara nga sjellja aktuale e robotit.": "Click your capital → settings are applied automatically (risk, lot, SL/TP, daily loss), scaled from the robot’s current behavior.",
+  "Keto jane vetem REKOMANDIME — nuk prekin logjiken e robotit/sinjaleve. Pas aplikimit, cdo fushe mbetet plotesisht e ndryshueshme nga ti sipas deshires.": "These are only RECOMMENDATIONS — they do not touch the robot/signal logic. After applying, every field stays fully editable by you as you wish.",
 };
