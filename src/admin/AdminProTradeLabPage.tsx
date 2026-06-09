@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { FlaskConical, Brain, RefreshCw, Loader2, TrendingUp, AlertTriangle, Lightbulb, Database, Bot } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import IntelligenceMatrix from './IntelligenceMatrix';
+import { useI18n } from '../i18n/i18n';
 
 interface Bkt { label: string; n: number; win: number; rate: number; avgR: number }
 interface Group { group: string; rows: Bkt[] }
@@ -22,6 +23,7 @@ function barColor(rate: number) {
 }
 
 export default function AdminProTradeLabPage() {
+  const { t } = useI18n();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [advice, setAdvice] = useState<Advice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,7 +78,7 @@ export default function AdminProTradeLabPage() {
     if (error) setErr(error.message);
     else {
       if (data?.analytics) setAnalytics(data.analytics as Analytics);
-      if (advise) setAdvice((data?.advice as Advice) ?? { error: 'Pa përgjigje' });
+      if (advise) setAdvice((data?.advice as Advice) ?? { error: t('Pa përgjigje') });
     }
     if (advise) setAdvising(false); else setLoading(false);
   }, []);
@@ -95,7 +97,7 @@ export default function AdminProTradeLabPage() {
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white">ProTrade Lab</h2>
-            <p className="text-gray-400 text-sm">Mësimi nga rezultatet — win-rate sipas kushteve + sugjerime nga Claude.</p>
+            <p className="text-gray-400 text-sm">{t('Mësimi nga rezultatet — win-rate sipas kushteve + sugjerime nga Claude.')}</p>
           </div>
         </div>
         <button onClick={() => load(false)} disabled={loading} className="p-2 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white disabled:opacity-60">
@@ -126,10 +128,9 @@ export default function AdminProTradeLabPage() {
       ) : !analytics || analytics.total === 0 ? (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center">
           <Database className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-          <p className="text-white font-medium">Po mblidhen të dhëna…</p>
+          <p className="text-white font-medium">{t('Po mblidhen të dhëna…')}</p>
           <p className="text-gray-500 text-sm mt-1 max-w-md mx-auto">
-            "Pikat kyçe" ruhen për çdo sinjal të ri (Faza 2). Analiza bëhet e besueshme pas ~100 sinjalesh të mbyllura.
-            Kthehu pas disa ditësh tregtimi.
+            {t('"Pikat kyçe" ruhen për çdo sinjal të ri (Faza 2). Analiza bëhet e besueshme pas ~100 sinjalesh të mbyllura. Kthehu pas disa ditësh tregtimi.')}
           </p>
         </div>
       ) : (
@@ -137,10 +138,10 @@ export default function AdminProTradeLabPage() {
           {/* Përmbledhja */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
-              { k: 'Sinjale të mbyllura', v: String(analytics.total) },
-              { k: 'Win-rate', v: `${analytics.winRate}%`, c: rateColor(analytics.winRate) },
-              { k: 'Fitime / Humbje', v: `${analytics.wins} / ${analytics.losses}` },
-              { k: 'Mesatare rezultati', v: `${analytics.avgR > 0 ? '+' : ''}${analytics.avgR}%`, c: analytics.avgR >= 0 ? 'text-green-400' : 'text-red-400' },
+              { k: t('Sinjale të mbyllura'), v: String(analytics.total) },
+              { k: t('Win-rate'), v: `${analytics.winRate}%`, c: rateColor(analytics.winRate) },
+              { k: t('Fitime / Humbje'), v: `${analytics.wins} / ${analytics.losses}` },
+              { k: t('Mesatare rezultati'), v: `${analytics.avgR > 0 ? '+' : ''}${analytics.avgR}%`, c: analytics.avgR >= 0 ? 'text-green-400' : 'text-red-400' },
             ].map((c) => (
               <div key={c.k} className="bg-gray-900 border border-gray-800 rounded-xl p-3">
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">{c.k}</div>
@@ -151,7 +152,7 @@ export default function AdminProTradeLabPage() {
 
           {!enough && (
             <div className="flex items-center gap-2 text-xs bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl px-3 py-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" /> Mostër e vogël ({analytics.total}). Përfundimet bëhen të besueshme pas ~100 sinjalesh — mos ndrysho strategjinë ende.
+              <AlertTriangle className="w-4 h-4 shrink-0" /> {t('Mostër e vogël ({n}). Përfundimet bëhen të besueshme pas ~100 sinjalesh — mos ndrysho strategjinë ende.', { n: analytics.total })}
             </div>
           )}
 
@@ -179,27 +180,27 @@ export default function AdminProTradeLabPage() {
           {/* Claude strategjist */}
           <div className="bg-gradient-to-br from-purple-500/10 to-gray-900 border border-purple-500/20 rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Brain className="w-4 h-4 text-purple-400" />Claude Strategjist (Faza 4)</h3>
+              <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Brain className="w-4 h-4 text-purple-400" />{t('Claude Strategjist (Faza 4)')}</h3>
               <button onClick={() => load(true)} disabled={advising || !enough}
                 className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500 text-white hover:bg-purple-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 {advising ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lightbulb className="w-4 h-4" />}
-                {advising ? 'Duke analizuar…' : 'Analizo me Claude'}
+                {advising ? t('Duke analizuar…') : t('Analizo me Claude')}
               </button>
             </div>
-            {!enough && <p className="text-gray-500 text-xs">Aktivizohet pas ≥20 sinjalesh të mbyllura.</p>}
+            {!enough && <p className="text-gray-500 text-xs">{t('Aktivizohet pas ≥20 sinjalesh të mbyllura.')}</p>}
 
             {advice && advice.error && <p className="text-red-400 text-xs">{advice.error}</p>}
             {advice && !advice.error && (
               <div className="space-y-3">
                 {advice.insights && advice.insights.length > 0 && (
                   <div>
-                    <div className="text-[11px] uppercase tracking-wide text-purple-300 mb-1">Vëzhgime</div>
+                    <div className="text-[11px] uppercase tracking-wide text-purple-300 mb-1">{t('Vëzhgime')}</div>
                     <ul className="space-y-1">{advice.insights.map((x, i) => <li key={i} className="text-gray-300 text-[13px] flex gap-2"><span className="text-purple-400">•</span>{x}</li>)}</ul>
                   </div>
                 )}
                 {advice.suggestions && advice.suggestions.length > 0 && (
                   <div>
-                    <div className="text-[11px] uppercase tracking-wide text-purple-300 mb-1">Sugjerime</div>
+                    <div className="text-[11px] uppercase tracking-wide text-purple-300 mb-1">{t('Sugjerime')}</div>
                     <div className="space-y-2">{advice.suggestions.map((s, i) => (
                       <div key={i} className="bg-gray-950/50 border border-gray-800 rounded-lg p-2.5">
                         <div className="text-white text-[13px] font-medium">{s.title}</div>
@@ -213,7 +214,7 @@ export default function AdminProTradeLabPage() {
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> {advice.caution}
                   </div>
                 )}
-                <p className="text-gray-600 text-[11px]">⚠️ Sugjerimet janë këshilla — testoji në DEMO para se t'i aplikosh te paratë reale.</p>
+                <p className="text-gray-600 text-[11px]">{t('⚠️ Sugjerimet janë këshilla — testoji në DEMO para se t\'i aplikosh te paratë reale.')}</p>
               </div>
             )}
           </div>
