@@ -124,17 +124,17 @@ export default function AdminHowItWorksPage() {
       {/* 2. Indikatorët */}
       <Section icon={Sigma} title={t("2. Indikatorët matematikorë (formula standarde)")} subtitle={t("Të gjithë janë formula klasike, të verifikuara me teste njësi.")}>
         <div className="space-y-2.5">
-          <div><span className="text-white font-medium">EMA (Exponential Moving Average):</span> mesatare që i jep peshë më të madhe çmimeve të fundit.
+          <div><span className="text-white font-medium">EMA (Exponential Moving Average):</span> {t('mesatare që i jep peshë më të madhe çmimeve të fundit.')}
             <Formula>k = 2/(periudha+1) · EMA_sot = Çmim·k + EMA_dje·(1−k)</Formula></div>
-          <div><span className="text-white font-medium">RSI (Wilder, 14):</span> momentum 0–100; &gt;70 mbiblerë, &lt;30 mbishitur.
+          <div><span className="text-white font-medium">RSI (Wilder, 14):</span> {t('momentum 0–100; >70 mbiblerë, <30 mbishitur.')}
             <Formula>RS = mesatareFitime/mesatareHumbje · RSI = 100 − 100/(1+RS)</Formula></div>
-          <div><span className="text-white font-medium">MACD (12,26,9):</span> ndryshimi i dy EMA-ve + linja sinjal.
+          <div><span className="text-white font-medium">MACD (12,26,9):</span> {t('ndryshimi i dy EMA-ve + linja sinjal.')}
             <Formula>MACD = EMA12 − EMA26 · Sinjal = EMA9(MACD) · Hist = MACD − Sinjal</Formula></div>
-          <div><span className="text-white font-medium">Bollinger (20, 2σ):</span> mesatare ± 2 devijime standarde (zona e çmimit).</div>
-          <div><span className="text-white font-medium">ATR (Wilder, 14):</span> diapazoni mesatar real — mat volatilitetin (përdoret për SL/TP).
+          <div><span className="text-white font-medium">Bollinger (20, 2σ):</span> {t('mesatare ± 2 devijime standarde (zona e çmimit).')}</div>
+          <div><span className="text-white font-medium">ATR (Wilder, 14):</span> {t('diapazoni mesatar real — mat volatilitetin (përdoret për SL/TP).')}
             <Formula>TR = max(H−L, |H−Cdje|, |L−Cdje|) · ATR = mesatare Wilder e TR</Formula></div>
-          <div><span className="text-white font-medium">ADX (Wilder, 14):</span> forca e trendit 0–100; &gt;25 = trend i fortë, &lt;20 = treg pa drejtim.</div>
-          <div className="text-gray-500 text-xs pt-1">Opsionale (Tier-1, default JOAKTIV): Efficiency Ratio (Kaufman), Supertrend (ATR), Funding rate — filtra shtesë që super-admin/përdoruesi mund t'i ndezë.</div>
+          <div><span className="text-white font-medium">ADX (Wilder, 14):</span> {t('forca e trendit 0–100; >25 = trend i fortë, <20 = treg pa drejtim.')}</div>
+          <div className="text-gray-500 text-xs pt-1">{t('Opsionale (Tier-1, default JOAKTIV): Efficiency Ratio (Kaufman), Supertrend (ATR), Funding rate — filtra shtesë që super-admin/përdoruesi mund t\'i ndezë.')}</div>
         </div>
       </Section>
 
@@ -157,15 +157,15 @@ export default function AdminHowItWorksPage() {
       {/* 4. SL/TP + madhësia */}
       <Section icon={Crosshair} title={t("4. SL / TP & madhësia e pozicionit (matematika e rrezikut)")} subtitle={t("Çdo trade ka rrezik të llogaritur saktë para hapjes.")}>
         <div className="space-y-2.5">
-          <div><span className="text-white font-medium">Stop-Loss & Take-Profit (nga ATR):</span>
+          <div><span className="text-white font-medium">{t('Stop-Loss & Take-Profit (nga ATR):')}</span>
             <Formula>distSL = ATR(1h) × 1.5  (naftë: × 2.0, më volatile)
 TP = distSL × 2   →   Risk:Reward = 1:2</Formula>
-            Pra rrezikon 1 për të fituar 2. SL mbron, TP merr fitimin.</div>
-          <div><span className="text-white font-medium">Madhësia e lotit (fixed-fractional):</span>
+            {t('Pra rrezikon 1 për të fituar 2. SL mbron, TP merr fitimin.')}</div>
+          <div><span className="text-white font-medium">{t('Madhësia e lotit (fixed-fractional):')}</span>
             <Formula>rrezikuPerTrade = min(kapital × rrezik%, kufiriDitor)
 lot = rrezikuPerTrade / (distSL × vleraPerÇmim)</Formula>
-            Lot-i del nga rreziku REAL — jo numër fiks. <span className="text-gray-500">vleraPerÇmim: ar=100, naftë=1000 (1000 fuçi/lot), forex=100000.</span></div>
-          <div><span className="text-white font-medium">Ankorim te çmimi REAL i MT5:</span> SL/TP rillogariten nga qirinjtë e freskët MT5 para hapjes (jo nga PAXG) — që nivelet të jenë saktësisht ato të brokerit.</div>
+            {t('Lot-i del nga rreziku REAL — jo numër fiks.')} <span className="text-gray-500">{t('vleraPerÇmim: ar=100, naftë=1000 (1000 fuçi/lot), forex=100000.')}</span></div>
+          <div><span className="text-white font-medium">{t('Ankorim te çmimi REAL i MT5:')}</span> {t('SL/TP rillogariten nga qirinjtë e freskët MT5 para hapjes (jo nga PAXG) — që nivelet të jenë saktësisht ato të brokerit.')}</div>
         </div>
       </Section>
 
