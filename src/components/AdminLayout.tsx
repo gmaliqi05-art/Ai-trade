@@ -28,7 +28,6 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_cost', label: 'Kostot & API', icon: Coins, section: 'Platforma' },
   { id: 'admin_broadcast', label: 'Broadcast', icon: Megaphone, section: 'Platforma' },
   { id: 'admin_metatrader', label: 'MetaTrader', icon: Monitor, section: 'Platforma' },
-  { id: 'admin_audit', label: 'Regjistri i auditit', icon: Shield, section: 'Siguria' },
   { id: 'admin_howitworks', label: 'Si funksionon', icon: BookOpen, section: 'Siguria' },
   { id: 'admin_settings', label: 'Cilësimet', icon: Settings, section: 'Siguria' },
 ];
@@ -43,7 +42,6 @@ const pageLabels: Record<AdminPage, string> = {
   admin_cost: 'Kostot & përdorimi (API)',
   admin_broadcast: 'Broadcast',
   admin_metatrader: 'Lidhjet MetaTrader',
-  admin_audit: 'Regjistri i auditit',
   admin_howitworks: 'Si funksionon sistemi',
   admin_protrade_lab: 'ProTrade Lab — mësimi',
   admin_settings: 'Cilësimet e platformës',
