@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 import type { ClientPage } from '../App';
 
 interface Signal {
@@ -71,7 +71,7 @@ export default function ProTradePage({ onNavigate }: { onNavigate: (p: ClientPag
   };
 
   const isFresh = (iso: string) => (Date.now() - new Date(iso).getTime()) < FRESH_MIN * 60 * 1000;
-  const fmtTime = (iso: string) => new Date(iso).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const fmtTime = (iso: string) => new Date(iso).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5">

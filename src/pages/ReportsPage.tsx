@@ -4,7 +4,7 @@ import { loadTradeHistory, checkMetaApiConnection, type HistoryDeal, type Accoun
 import { groupDeals, attachSource, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface DayRow { date: string; count: number; wins: number; losses: number; net: number; pct: number; }
 interface SigRow { id: string; symbol: string; type: string; status: string; confidence: number | null; result_pct: number | null; closed_at: string | null; }
@@ -52,8 +52,8 @@ function dailyBreakdown(trades: ClosedTrade[], balance: number): DayRow[] {
 
 const fmtMoney = (n: number, cur = '') => `${n >= 0 ? '+' : ''}${n.toFixed(2)}${cur ? ' ' + cur : ''}`;
 const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
-const fmtDT = (iso?: string) => iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
-const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('sq-AL', { weekday: 'short', day: '2-digit', month: 'short' });
+const fmtDT = (iso?: string) => iso ? new Date(iso).toLocaleString(dtLocale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(dtLocale(), { weekday: 'short', day: '2-digit', month: 'short' });
 const colr = (n: number) => n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 'text-gray-400';
 
 export default function ReportsPage() {
@@ -62,7 +62,7 @@ export default function ReportsPage() {
   const [period, setPeriod] = useState<number | 'today' | 'day'>('today');
   const [customDate, setCustomDate] = useState<string>(todayYMD()); // ditë e caktuar (YYYY-MM-DD)
   const periodLabel = period === 'today' ? t('Sot')
-    : period === 'day' ? new Date(customDate + 'T00:00:00').toLocaleDateString('sq-AL', { day: '2-digit', month: 'short', year: 'numeric' })
+    : period === 'day' ? new Date(customDate + 'T00:00:00').toLocaleDateString(dtLocale(), { day: '2-digit', month: 'short', year: 'numeric' })
     : t('{period} ditët e fundit', { period });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -163,7 +163,7 @@ export default function ReportsPage() {
   const exportCSV = () => {
     const lines: string[] = [];
     lines.push(t('GOLDTRADE — Raport tregtimi ({periodLabel})', { periodLabel }));
-    lines.push(t('Gjeneruar: {date}', { date: new Date().toLocaleString('sq-AL') }));
+    lines.push(t('Gjeneruar: {date}', { date: new Date().toLocaleString(dtLocale()) }));
     lines.push(t('Balanca: {balance} {currency}', { balance: balance.toFixed(2), currency }));
     lines.push('');
     lines.push(t('PERMBLEDHJE'));
@@ -180,7 +180,7 @@ export default function ReportsPage() {
     lines.push('');
     lines.push(t('TRADE-T E DETAJUARA'));
     lines.push(t('Mbyllur,Simboli,Drejtimi,Burimi,Lot,Hyrje,Dalje,P&L'));
-    shown.forEach(tr => lines.push(`${tr.closeTime ? new Date(tr.closeTime).toLocaleString('sq-AL') : ''},${tr.symbol},${tr.direction},${sourceMeta[tr.source || 'mt5'].label},${tr.volume},${tr.entryPrice ?? ''},${tr.exitPrice ?? ''},${tr.net.toFixed(2)}`));
+    shown.forEach(tr => lines.push(`${tr.closeTime ? new Date(tr.closeTime).toLocaleString(dtLocale()) : ''},${tr.symbol},${tr.direction},${sourceMeta[tr.source || 'mt5'].label},${tr.volume},${tr.entryPrice ?? ''},${tr.exitPrice ?? ''},${tr.net.toFixed(2)}`));
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `goldtrade_raport_${period === 'today' ? 'sot' : period === 'day' ? customDate : period + 'd'}_${Date.now()}.csv`; a.click();

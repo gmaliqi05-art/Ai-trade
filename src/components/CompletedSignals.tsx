@@ -2,7 +2,7 @@
 // variant 'compact' → Terminal MT5; variant 'full' → faqja Sinjale (tab "Të përfunduara").
 
 import { History, Clock } from 'lucide-react';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 
 type TFunction = (key: string, params?: Record<string, string | number>) => string;
 
@@ -13,7 +13,7 @@ export interface DoneSignal {
 }
 
 const fmt = (iso?: string | null) =>
-  iso ? new Date(iso).toLocaleString('sq-AL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  iso ? new Date(iso).toLocaleString(dtLocale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 // Statistikat e suksesit nga sinjalet e vendosura (TP ose SL).
 export function signalWinStats(done: DoneSignal[]) {
