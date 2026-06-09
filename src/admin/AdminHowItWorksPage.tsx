@@ -114,9 +114,9 @@ export default function AdminHowItWorksPage() {
       {/* 1. Burimet e të dhënave */}
       <Section icon={Database} title={t("1. Burimet e të dhënave (nga ku merren çmimet)")} subtitle={t("Çdo kalkulim bazohet në qirinj REALË — asgjë nuk shpiket.")}>
         <ul className="space-y-2">
-          <li>🥇 <span className="text-white font-medium">Ari (XAUUSD):</span> qirinj realë nga <span className="text-amber-300">Binance — PAXGUSDT</span> (PAX Gold, token i mbështetur fizikisht me ar që ndjek spot-in). Intervale: 15m / 1h / 4h / 1d, deri në 300 qirinj.</li>
-          <li>🛢️ <span className="text-white font-medium">Nafta (USOIL/UKOIL):</span> qirinj realë nga <span className="text-amber-300">MetaApi — llogaria jote MT5</span> (të njëjtat çmime që do tregtosh). Emri i simbolit zgjidhet automatik (USOIL↔XTIUSD/WTI/CL).</li>
-          <li>💵 <span className="text-white font-medium">Dollari (DXY proxy):</span> <span className="text-amber-300">EURUSD</span> nga MT5 — për konfirmim ar↔dollar (korrelacion negativ).</li>
+          <li dangerouslySetInnerHTML={{ __html: t('🥇 <span className="text-white font-medium">Ari (XAUUSD):</span> qirinj realë nga <span className="text-amber-300">Binance — PAXGUSDT</span> (PAX Gold, token i mbështetur fizikisht me ar që ndjek spot-in). Intervale: 15m / 1h / 4h / 1d, deri në 300 qirinj.') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('🛢️ <span className="text-white font-medium">Nafta (USOIL/UKOIL):</span> qirinj realë nga <span className="text-amber-300">MetaApi — llogaria jote MT5</span> (të njëjtat çmime që do tregtosh). Emri i simbolit zgjidhet automatik (USOIL↔XTIUSD/WTI/CL).') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('💵 <span className="text-white font-medium">Dollari (DXY proxy):</span> <span className="text-amber-300">EURUSD</span> nga MT5 — për konfirmim ar↔dollar (korrelacion negativ).') }} />
         </ul>
         <p className="text-gray-500 text-xs">{t('Të gjitha kërkesat kanë timeout (8–12s). Nëse një burim s\'përgjigjet, sinjali nuk gjenerohet (jo të dhëna të rreme).')}</p>
       </Section>
@@ -189,21 +189,21 @@ lot = rrezikuPerTrade / (distSL × vleraPerÇmim)</Formula>
       {/* 6. Menaxhimi pas hapjes */}
       <Section icon={Clock} title={t("6. Pas hapjes — trailing & mbrojtja e fitimit")} subtitle={t("Roboti menaxhon pozicionin 24/7 derisa mbyllet.")}>
         <ul className="space-y-1.5 list-disc list-inside text-gray-300">
-          <li><span className="text-white">Trailing SL:</span> sapo trade-i shkon në fitim, SL ngrihet drejt hyrjes (mban % të fitimit, default 50%).</li>
-          <li><span className="text-white">Break-even:</span> kur profiti kalon një prag, SL kalon te hyrja (rrezik zero).</li>
-          <li><span className="text-white">Dalje scalp:</span> nëse momentumi kthehet kundër pozicionit scalp, mbyllet që të mbahet fitimi.</li>
-          <li><span className="text-white">Vlerësim TP/SL:</span> një cron i veçantë (signal-eval, çdo 2 min) shënon sinjalet hit_TP / hit_SL / skaduar.</li>
+          <li dangerouslySetInnerHTML={{ __html: t('<span className="text-white">Trailing SL:</span> sapo trade-i shkon në fitim, SL ngrihet drejt hyrjes (mban % të fitimit, default 50%).') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span className="text-white">Break-even:</span> kur profiti kalon një prag, SL kalon te hyrja (rrezik zero).') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span className="text-white">Dalje scalp:</span> nëse momentumi kthehet kundër pozicionit scalp, mbyllet që të mbahet fitimi.') }} />
+          <li dangerouslySetInnerHTML={{ __html: t('<span className="text-white">Vlerësim TP/SL:</span> një cron i veçantë (signal-eval, çdo 2 min) shënon sinjalet hit_TP / hit_SL / skaduar.') }} />
         </ul>
       </Section>
 
       {/* 7. Nafta dhe ari */}
       <Section icon={Droplet} title={t("7. A ndikon nafta te tregu i arit?")} subtitle={t("Pyetje e rëndësishme — përgjigjja e shkurtër: jo si input direkt.")}>
-        <p>Nafta dhe ari janë <span className="text-white">të dyja mall të çmuara në USD</span>, prandaj ndajnë një shtytës të përbashkët: <span className="text-amber-300">dollarin (DXY)</span>. Kur dollari dobësohet, që të dyja priren të ngrihen — por kjo vjen nga <span className="text-white">dollari</span>, jo nga nafta vetë.</p>
-        <p>Korrelacioni <span className="text-white">direkt naftë↔ar është i dobët dhe i paqëndrueshëm</span>. Nafta ndikon te inflacioni, që mund të prekë arin si mbrojtje ndaj inflacionit — por është lidhje indirekte dhe me shumë zhurmë.</p>
+        <p dangerouslySetInnerHTML={{ __html: t('Nafta dhe ari janë <span className="text-white">të dyja mall të çmuara në USD</span>, prandaj ndajnë një shtytës të përbashkët: <span className="text-amber-300">dollarin (DXY)</span>. Kur dollari dobësohet, që të dyja priren të ngrihen — por kjo vjen nga <span className="text-white">dollari</span>, jo nga nafta vetë.') }} />
+        <p dangerouslySetInnerHTML={{ __html: t('Korrelacioni <span className="text-white">direkt naftë↔ar është i dobët dhe i paqëndrueshëm</span>. Nafta ndikon te inflacioni, që mund të prekë arin si mbrojtje ndaj inflacionit — por është lidhje indirekte dhe me shumë zhurmë.') }} />
         <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-          <p className="text-amber-200 text-[13px]"><span className="font-semibold">Vendimi i sistemit:</span> nafta NUK përdoret si input për sinjalet e arit. Përdorim <span className="font-semibold">DXY (EURUSD)</span> si konfirmim për arin — sepse dollari është shkaku i vërtetë i përbashkët, jo nafta. Ta shtonim naftën si input do shtonte më shumë zhurmë sesa sinjal.</p>
+          <p className="text-amber-200 text-[13px]" dangerouslySetInnerHTML={{ __html: t('<span className="font-semibold">Vendimi i sistemit:</span> nafta NUK përdoret si input për sinjalet e arit. Përdorim <span className="font-semibold">DXY (EURUSD)</span> si konfirmim për arin — sepse dollari është shkaku i vërtetë i përbashkët, jo nafta. Ta shtonim naftën si input do shtonte më shumë zhurmë sesa sinjal.') }} />
         </div>
-        <p className="text-gray-500 text-xs">Ari dhe nafta tregtohen secili mbi teknikën e vet (qirinjtë + indikatorët e vet). Çmimi i naftës ndiqet vetëm për të tregtuar NAFTËN, jo për të ndikuar te ari.</p>
+        <p className="text-gray-500 text-xs">{t('Ari dhe nafta tregtohen secili mbi teknikën e vet (qirinjtë + indikatorët e vet). Çmimi i naftës ndiqet vetëm për të tregtuar NAFTËN, jo për të ndikuar te ari.')}</p>
       </Section>
 
       <p className="text-center text-gray-600 text-xs pt-2">{t('Ky dokument pasqyron logjikën reale të kodit live (engine-scan, auto-trade-runner, signal-eval). Përditësohet me ndryshimet e sistemit.')}</p>
