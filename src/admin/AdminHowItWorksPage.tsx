@@ -118,7 +118,7 @@ export default function AdminHowItWorksPage() {
           <li>🛢️ <span className="text-white font-medium">Nafta (USOIL/UKOIL):</span> qirinj realë nga <span className="text-amber-300">MetaApi — llogaria jote MT5</span> (të njëjtat çmime që do tregtosh). Emri i simbolit zgjidhet automatik (USOIL↔XTIUSD/WTI/CL).</li>
           <li>💵 <span className="text-white font-medium">Dollari (DXY proxy):</span> <span className="text-amber-300">EURUSD</span> nga MT5 — për konfirmim ar↔dollar (korrelacion negativ).</li>
         </ul>
-        <p className="text-gray-500 text-xs">Të gjitha kërkesat kanë timeout (8–12s). Nëse një burim s'përgjigjet, sinjali nuk gjenerohet (jo të dhëna të rreme).</p>
+        <p className="text-gray-500 text-xs">{t('Të gjitha kërkesat kanë timeout (8–12s). Nëse një burim s\'përgjigjet, sinjali nuk gjenerohet (jo të dhëna të rreme).')}</p>
       </Section>
 
       {/* 2. Indikatorët */}
@@ -141,17 +141,17 @@ export default function AdminHowItWorksPage() {
       {/* 3. Gjenerimi i sinjalit */}
       <Section icon={Zap} title={t("3. Si gjenerohet një sinjal (hap pas hapi)")} subtitle={t("Motori refuzon shumicën e situatave — sinjal vetëm kur TË GJITHA kushtet kryesore plotësohen.")}>
         <div className="space-y-3">
-          <Step n={1} title={t("Merr qirinjtë në 4 periudha")}>15m, 1h, 4h, 1d (paralelisht). Nëse mungojnë, ndalon.</Step>
-          <Step n={2} title={t("Analizon çdo periudhë")}>Llogarit EMA9/21/200, RSI, MACD, Bollinger, ATR, ADX → drejtim (BLEJ/SHIT/PRIT) + besueshmëri për secilën.</Step>
-          <Step n={3} title={t("Konfirmim shumë-periudhash")}>1h DHE 4h duhet të japin TË NJËJTIN drejtim. Përndryshe → asnjë sinjal.</Step>
-          <Step n={4} title={t("Filtri i trendit (EMA200)")}>Për BLEJ: çmimi mbi EMA200. Për SHIT: çmimi nën EMA200. Tregto ME trendin.</Step>
-          <Step n={5} title={t("Filtri i forcës (ADX ≥ 18)")}>Vetëm trende të forta; treg i çrregullt → refuzohet.</Step>
-          <Step n={6} title={t("Filtri i volatilitetit (ATR)")}>Refuzon tregun e ngrirë (ATR&lt;0.5× mesatares) dhe spike-t ekstreme (&gt;3.5×).</Step>
-          <Step n={7} title={t("Trendi ditor (D1, EMA50)")}>Sinjali duhet në harmoni me trendin ditor; kundër tij → refuzohet.</Step>
-          <Step n={8} title={t("Confluence + besueshmëri")}>Numëron faktorët mbështetës (ADX≥25, RSI me hapësirë, MACD në harmoni, sesion, nivele). Sa më shumë → aq më e lartë besueshmëria.</Step>
-          <Step n={9} title={t("Llogarit Entry / SL / TP")}>Çmimi aktual = Entry; SL/TP nga ATR (shih më poshtë). Ruan sinjalin me arsyetimin e plotë.</Step>
+          <Step n={1} title={t("Merr qirinjtë në 4 periudha")}>{t('15m, 1h, 4h, 1d (paralelisht). Nëse mungojnë, ndalon.')}</Step>
+          <Step n={2} title={t("Analizon çdo periudhë")}>{t('Llogarit EMA9/21/200, RSI, MACD, Bollinger, ATR, ADX → drejtim (BLEJ/SHIT/PRIT) + besueshmëri për secilën.')}</Step>
+          <Step n={3} title={t("Konfirmim shumë-periudhash")}>{t('1h DHE 4h duhet të japin TË NJËJTIN drejtim. Përndryshe → asnjë sinjal.')}</Step>
+          <Step n={4} title={t("Filtri i trendit (EMA200)")}>{t('Për BLEJ: çmimi mbi EMA200. Për SHIT: çmimi nën EMA200. Tregto ME trendin.')}</Step>
+          <Step n={5} title={t("Filtri i forcës (ADX ≥ 18)")}>{t('Vetëm trende të forta; treg i çrregullt → refuzohet.')}</Step>
+          <Step n={6} title={t("Filtri i volatilitetit (ATR)")}>{t('Refuzon tregun e ngrirë (ATR<0.5× mesatares) dhe spike-t ekstreme (>3.5×).')}</Step>
+          <Step n={7} title={t("Trendi ditor (D1, EMA50)")}>{t('Sinjali duhet në harmoni me trendin ditor; kundër tij → refuzohet.')}</Step>
+          <Step n={8} title={t("Confluence + besueshmëri")}>{t('Numëron faktorët mbështetës (ADX≥25, RSI me hapësirë, MACD në harmoni, sesion, nivele). Sa më shumë → aq më e lartë besueshmëria.')}</Step>
+          <Step n={9} title={t("Llogarit Entry / SL / TP")}>{t('Çmimi aktual = Entry; SL/TP nga ATR (shih më poshtë). Ruan sinjalin me arsyetimin e plotë.')}</Step>
         </div>
-        <p className="text-gray-500 text-xs">Ari ka 4 analiza shtesë specifike: sesionet (London/NY), nivelet psikologjike ($10/$50/$100), volatiliteti dhe trendi ditor.</p>
+        <p className="text-gray-500 text-xs">{t('Ari ka 4 analiza shtesë specifike: sesionet (London/NY), nivelet psikologjike ($10/$50/$100), volatiliteti dhe trendi ditor.')}</p>
       </Section>
 
       {/* 4. SL/TP + madhësia */}
@@ -183,7 +183,7 @@ lot = rrezikuPerTrade / (distSL × vleraPerÇmim)</Formula>
           <Gate name={t("8 · Limit humbjeje ditore")} rule="humbja sot < max_daily_loss" why={t("Ndalon tregtimin kur arrihet kufiri ditor (mbrojtje).")} />
           <Gate name={t("9 · Claude (porta AI)")} rule="Claude pajtohet = po" why={t("Claude analizon kontekstin e grafikut MT5 dhe konfirmon/refuzon. Fail-open: nëse s'përgjigjet, lejon (që mos bllokojë).")} />
         </div>
-        <p className="text-gray-500 text-xs">Pas kalimit të të gjitha portave → urdhri dërgohet te MetaApi (MARKET nëse çmimi te hyrja; PENDING nëse jo, hyn automatik kur arrihet).</p>
+        <p className="text-gray-500 text-xs">{t('Pas kalimit të të gjitha portave → urdhri dërgohet te MetaApi (MARKET nëse çmimi te hyrja; PENDING nëse jo, hyn automatik kur arrihet).')}</p>
       </Section>
 
       {/* 6. Menaxhimi pas hapjes */}
