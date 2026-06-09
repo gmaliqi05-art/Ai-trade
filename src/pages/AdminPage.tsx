@@ -651,7 +651,13 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {filteredAssets.map(a => (
+                    {filteredAssets.map(a => {
+                      // Supabase i kthen kolonat `numeric` si STRING (ose null) — konverto në numër
+                      // para se të thërrasësh .toFixed()/.toLocaleString(), përndryshe faqja del e bardhë (crash).
+                      const price = Number(a.current_price) || 0;
+                      const pct = Number(a.price_change_pct) || 0;
+                      const vol = Number(a.volume_24h) || 0;
+                      return (
                         <tr key={a.id} className="hover:bg-gray-800/30 transition-colors">
                           <td className="px-4 py-3">
                             <div className="font-semibold text-white">{a.symbol}</div>
@@ -661,16 +667,17 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                             <span className="text-xs capitalize text-gray-400">{a.category}</span>
                           </td>
                           <td className="px-4 py-3 text-right text-white font-medium">
-                            {a.category === 'forex' ? a.current_price.toFixed(4) : a.current_price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            {a.category === 'forex' ? price.toFixed(4) : price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </td>
-                          <td className={`px-4 py-3 text-right font-medium ${a.price_change_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {a.price_change_pct >= 0 ? '+' : ''}{a.price_change_pct.toFixed(2)}%
+                          <td className={`px-4 py-3 text-right font-medium ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
                           </td>
                           <td className="px-4 py-3 text-right text-gray-400">
-                            {a.volume_24h.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                            {vol.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                           </td>
                         </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {filteredAssets.length === 0 && (
