@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { FlaskConical, Brain, RefreshCw, Loader2, TrendingUp, AlertTriangle, Lightbulb, Database, Bot } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import IntelligenceMatrix from './IntelligenceMatrix';
+import MmtiRobot from './MmtiRobot';
 import { useI18n } from '../i18n/i18n';
 
 interface Bkt { label: string; n: number; win: number; rate: number; avgR: number }
@@ -37,6 +38,7 @@ export default function AdminProTradeLabPage() {
   const [lines, setLines] = useState<string[]>([]);
   const [tradeIntel, setTradeIntel] = useState<TradeIntel | null>(null);
   const [tiLoading, setTiLoading] = useState(true);
+  const [mmtiActive, setMmtiActive] = useState(false);
 
   // "Kodet reale" për matrix-in: tokena të shkurtër (shi) + rreshta të plotë (feed):
   // sinjale me Hyrje/SL/TP/conf, formula matematikore dhe rregulla — nga sinjalet reale.
@@ -100,6 +102,16 @@ export default function AdminProTradeLabPage() {
   }, []);
   useEffect(() => { loadTradeIntel(); }, [loadTradeIntel]);
 
+  // MMTI — gjendja e super-robotit të ri (i ndarë). Vetëm lexim/ndez-fik; s'prek robotin aktual.
+  useEffect(() => {
+    supabase.from('mmti_state').select('active').eq('id', 1).maybeSingle()
+      .then(({ data }) => { if (data) setMmtiActive(!!(data as { active?: boolean }).active); });
+  }, []);
+  const toggleMmti = useCallback(async () => {
+    const next = !mmtiActive; setMmtiActive(next);
+    try { await supabase.from('mmti_state').update({ active: next, trades_learned: tradeIntel?.total ?? 0, updated_at: new Date().toISOString() }).eq('id', 1); } catch { /* injoro */ }
+  }, [mmtiActive, tradeIntel]);
+
   const enough = (analytics?.total ?? 0) >= 20;
 
   return (
@@ -118,6 +130,43 @@ export default function AdminProTradeLabPage() {
         <button onClick={() => load(false)} disabled={loading} className="p-2 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white disabled:opacity-60">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         </button>
+      </div>
+
+      {/* ====== MMTI — super-roboti i ri (i NDARË; vetëm mëson nga aktuali) ====== */}
+      <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-gray-900 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-amber-500/15 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center font-black text-gray-950 text-[11px]">MMTI</div>
+            <div>
+              <div className="text-white font-bold text-sm flex items-center gap-2">MMTI
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">{mmtiActive ? t('Po mëson') : t('Në gjumë')}</span>
+              </div>
+              <div className="text-gray-500 text-[11px]">{t('Super-roboti i ri — mëson nga roboti aktual, i ndarë plotësisht.')}</div>
+            </div>
+          </div>
+          <button onClick={toggleMmti} aria-label="MMTI" className={`relative w-14 h-7 rounded-full transition-colors shrink-0 ${mmtiActive ? 'bg-amber-500' : 'bg-gray-700'}`}>
+            <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${mmtiActive ? 'translate-x-7' : ''}`} />
+          </button>
+        </div>
+
+        <MmtiRobot active={mmtiActive} />
+
+        <div className="p-4 space-y-2.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-gray-400">{t('Po mëson nga trade-t reale')}</span>
+            <span className="text-amber-400 font-semibold">{Math.min(100, tradeIntel?.total ?? 0)}/100</span>
+          </div>
+          <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-amber-400 to-orange-500" style={{ width: `${Math.min(100, tradeIntel?.total ?? 0)}%` }} />
+          </div>
+          {tradeIntel && tradeIntel.bySession.length > 0 && (
+            <p className="text-gray-400 text-[12px]">{t('Çfarë ka mësuar deri tani:')} <span className="text-gray-200">{t('Sesioni më i mirë')}: <b className="text-amber-300">{tradeIntel.bySession[0].label}</b> · {t('Strategjia')}: <b className="text-amber-300">{tradeIntel.byStrategy[0]?.label}</b> · expectancy <b className="text-green-400">+${tradeIntel.overall.expectancy}</b></span></p>
+          )}
+          <div className="flex items-start gap-2 text-[11px] bg-gray-950/50 border border-gray-800 rounded-lg p-2.5 text-gray-400">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            {t('MMTI ende NUK tregton — vetëm mëson. Tregtimi aktivizohet pas ~100 trade + miratimit tënd, si robot krejt i ndarë që s\'prek aktualin.')}
+          </div>
+        </div>
       </div>
 
       {/* Inteligjenca live — "matrix" me kodet reale + robot që endet gjatë analizës */}

@@ -980,4 +980,12 @@ export const en: Record<string, string> = {
   "Sipas sesionit": "By session",
   "Sipas strategjisë": "By strategy",
   "Të dhëna reale nga MT5 (P&L i mbyllur). Bëhet i besueshëm pas ~100 trade-sh.": "Real data from MT5 (closed P&L). Becomes reliable after ~100 trades.",
+  "Po mëson": "Learning",
+  "Në gjumë": "Asleep",
+  "Super-roboti i ri — mëson nga roboti aktual, i ndarë plotësisht.": "The new super-robot — it learns from the current robot, fully separate.",
+  "Po mëson nga trade-t reale": "Learning from real trades",
+  "Çfarë ka mësuar deri tani:": "What it has learned so far:",
+  "Sesioni më i mirë": "Best session",
+  "Strategjia": "Strategy",
+  "MMTI ende NUK tregton — vetëm mëson. Tregtimi aktivizohet pas ~100 trade + miratimit tënd, si robot krejt i ndarë që s'prek aktualin.": "MMTI does NOT trade yet — it only learns. Trading activates after ~100 trades + your approval, as a fully separate robot that does not touch the current one.",
 };
