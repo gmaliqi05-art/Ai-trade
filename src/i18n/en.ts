@@ -988,4 +988,13 @@ export const en: Record<string, string> = {
   "Sesioni më i mirë": "Best session",
   "Strategjia": "Strategy",
   "MMTI ende NUK tregton — vetëm mëson. Tregtimi aktivizohet pas ~100 trade + miratimit tënd, si robot krejt i ndarë që s'prek aktualin.": "MMTI does NOT trade yet — it only learns. Trading activates after ~100 trades + your approval, as a fully separate robot that does not touch the current one.",
+  "MMTI — Super Robot": "MMTI — Super Robot",
+  "Po mëson · Shadow": "Learning · Shadow",
+  "Robot i ri që mëson nga tregtimet — synon fitime më të mëdha.": "A new robot that learns from your trades — aiming for bigger profits.",
+  "Po mëson nga tregtimet e tua": "Learning from your trades",
+  "Kapitali yt — rekomandime": "Your capital — recommendations",
+  "Profili MMTI (fitim më i madh)": "MMTI profile (bigger profit)",
+  "Humbja ditore": "Daily loss",
+  "TP më i gjerë se roboti normal (1:3 vs 1:2) → fito më shumë te kushtet fituese.": "Wider TP than the normal robot (1:3 vs 1:2) → win more in favorable conditions.",
+  "MMTI ende NUK tregton — mëson në hije. Do aktivizohet në një llogari të NDARË (s'prek robotin aktual) pas validimit + miratimit tënd.": "MMTI does NOT trade yet — it learns in shadow mode. It will activate on a SEPARATE account (not touching the current robot) after validation + your approval.",
 };
