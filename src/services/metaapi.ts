@@ -47,6 +47,8 @@ export interface MetaApiConfig {
   scalp_max_trades: number;
   /** Scalp hyn edhe në lëvizje të vogla (kushte më të lehta, më shumë trade). Default OFF. */
   scalp_small_moves: boolean;
+  /** SL/TP automatik nga analiza e tregut (ATR + balanca) — fushat manuale fiken. Default OFF. */
+  auto_sltp: boolean;
   /** Trailing i SL (ndjekja e fitimit) — ndez/fik. Default ON. */
   trail_enabled: boolean;
   /** % e fitimit që mbahet nga SL (50 = gjysma, 33 = një e treta, 25 = një e katërta). Default 50. */
@@ -68,7 +70,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   lot_conf_t1: 70, lot_conf_t2: 80, lot_conf_t3: 90,
   risk_per_trade_pct: 1,
   strategy_swing: true, strategy_scalp: false,
-  scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_sl_pct: 0.3, scalp_tp_pct: 0.6, scalp_sl_pct_oil: 0.4, scalp_tp_pct_oil: 0.8, scalp_max_trades: 2, scalp_small_moves: false,
+  scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_sl_pct: 0.3, scalp_tp_pct: 0.6, scalp_sl_pct_oil: 0.4, scalp_tp_pct_oil: 0.8, scalp_max_trades: 2, scalp_small_moves: false, auto_sltp: false,
   trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1, broker_trailing: false,
   advanced_filters: false,
 };
@@ -111,6 +113,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     scalp_tp_pct_oil: Number(data.scalp_tp_pct_oil ?? 0.8),
     scalp_max_trades: Number(data.scalp_max_trades ?? 2),
     scalp_small_moves: !!data.scalp_small_moves,
+    auto_sltp: !!data.auto_sltp,
     trail_enabled: data.trail_enabled ?? true,
     trail_lock_pct: Number(data.trail_lock_pct ?? 50),
     trail_start_usd: Number(data.trail_start_usd ?? 1),
@@ -202,22 +205,14 @@ async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> 
   if (error) {
     let detail = error.message;
     let code = 'invoke_error';
-    let httpStatus = 0;
     try {
       const ctx = (error as { context?: Response }).context;
-      if (ctx) {
-        httpStatus = ctx.status || 0;
-        if (typeof ctx.json === 'function') {
-          const b = await ctx.json();
-          if (b?.error) code = b.error;
-          if (b?.message) detail = b.message;
-        }
+      if (ctx && typeof ctx.json === 'function') {
+        const b = await ctx.json();
+        if (b?.error) code = b.error;
+        if (b?.message) detail = b.message;
       }
     } catch { /* injoro */ }
-    if (code === 'invoke_error') {
-      if (httpStatus === 503) code = 'metaapi_syncing';
-      else if (httpStatus === 502 || httpStatus === 504) code = 'metaapi_unreachable';
-    }
     return { error: code, message: detail };
   }
   return data as TradeResponse;

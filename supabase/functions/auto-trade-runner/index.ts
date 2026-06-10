@@ -29,6 +29,7 @@ interface Cfg {
   scalp_tp_pct_oil?: number; // TP i scalp-it për NAFTË si % e çmimit, default 0.8
   scalp_max_trades?: number; // pozicione scalp njëkohësisht, default 2
   scalp_small_moves?: boolean; // hyn edhe në lëvizje të vogla (kushte më të lehta); default false
+  auto_sltp?: boolean;       // OPT-IN: SL/TP llogariten krejt nga analiza (ATR + balanca); default false = sjellja ekzistuese
   // Trailing i SL (ndjekja e fitimit) — i konfigurueshëm nga përdoruesi.
   trail_enabled?: boolean;   // ndez/fik trailing-un; default true
   trail_lock_pct?: number;   // % e fitimit që mbahet (SL ndjek këtë fraksion); default 50
@@ -722,9 +723,23 @@ Deno.serve(async (req: Request) => {
           const a5 = atr(c5.map((c) => c.high), c5.map((c) => c.low), c5.map((c) => c.close), 14);
           const atr5v = a5[a5.length - 1];
           let slUsd = baseSL;
-          if (Number.isFinite(atr5v) && atr5v > 0) slUsd = Math.min(Math.max(atr5v, 0.7 * baseSL), 2 * baseSL);
+          let rrUsed = scalpRR;
+          if (cfg.auto_sltp === true) {
+            // AUTO SL/TP (opt-in): SL/TP dalin KREJT nga analiza e tregut — ATR(5m) × 1.2 jashtë
+            // zhurmës — me dysheme/tavan nga çmimi dhe nga BALANCA (rreziku i lotit minimal 0.01
+            // kapet te ~2.5% e ekuitetit). Vlerat manuale injorohen; R:R fiks 1:2 (standardi i
+            // provuar i swing-ut). OFF (default) → dega tjetër = sjellja ekzistuese e pandryshuar.
+            const floorSL = Math.max(entryPx * 0.0004, 1);
+            const balCap = equity > 0 ? Math.max(entryPx * 0.0005, equity * 0.025) : entryPx * 0.006;
+            const capSL = Math.max(floorSL, Math.min(entryPx * 0.008, balCap));
+            const atrSL = Number.isFinite(atr5v) && atr5v > 0 ? atr5v * 1.2 : baseSL;
+            slUsd = Math.min(Math.max(atrSL, floorSL), capSL);
+            rrUsed = 2;
+          } else if (Number.isFinite(atr5v) && atr5v > 0) {
+            slUsd = Math.min(Math.max(atr5v, 0.7 * baseSL), 2 * baseSL);
+          }
           slUsd = Math.round(slUsd * 100) / 100;
-          const tpUsd = Math.round(slUsd * scalpRR * 100) / 100;
+          const tpUsd = Math.round(slUsd * rrUsed * 100) / 100;
           const stopLoss = Math.round((isBuyS ? entryPx - slUsd : entryPx + slUsd) * 100) / 100;
           const takeProfit = Math.round((isBuyS ? entryPx + tpUsd : entryPx - tpUsd) * 100) / 100;
 
@@ -759,7 +774,7 @@ Deno.serve(async (req: Request) => {
             if (!r.ok) { await slog("error", `Scalp trade ${r.status}`, null, r.body); summary.push({ user: cfg.user_id, scalp: sym, status: "error" }); continue; }
             const br = brokerResult(r.body);
             if (!br.ok) { await slog("rejected", `Scalp brokeri: ${br.msg || "refuzuar"} (${br.code})`, null, r.body); summary.push({ user: cfg.user_id, scalp: sym, status: "broker_rejected", code: br.code }); continue; }
-            await slog("executed", `Scalp auto (${cfg.mode}): ${sgl.reason}`, br.orderId, r.body);
+            await slog("executed", `Scalp auto (${cfg.mode}${cfg.auto_sltp === true ? ", SL/TP auto" : ""}): ${sgl.reason}`, br.orderId, r.body);
             openTrades += 1; scalpOpen += 1; openHeat += thisRisk;
             summary.push({ user: cfg.user_id, scalp: sym, status: "executed", order: br.orderId });
           } catch (e) { await slog("error", `Scalp: ${(e as Error).message}`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "error" }); }
