@@ -1,10 +1,11 @@
 // Super Admin → "ProTrade Lab": Faza 3 (analiza e pikave kyçe → win-rate sipas kushteve)
 // + Faza 4 (Claude analizon statistikat dhe sugjeron rregullime). Vetëm super-admin.
 import { useEffect, useState, useCallback } from 'react';
-import { FlaskConical, Brain, RefreshCw, Loader2, TrendingUp, AlertTriangle, Lightbulb, Database, Bot } from 'lucide-react';
+import { FlaskConical, Brain, RefreshCw, Loader2, TrendingUp, AlertTriangle, Lightbulb, Database, Bot, Cpu, Target, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import IntelligenceMatrix from './IntelligenceMatrix';
 import MmtiRobot from './MmtiRobot';
+import { optimizeFromIntel, type OptimizedPlan } from './mmtiOptimize';
 import { useI18n } from '../i18n/i18n';
 
 interface Bkt { label: string; n: number; win: number; rate: number; avgR: number }
@@ -39,6 +40,8 @@ export default function AdminProTradeLabPage() {
   const [tradeIntel, setTradeIntel] = useState<TradeIntel | null>(null);
   const [tiLoading, setTiLoading] = useState(true);
   const [mmtiActive, setMmtiActive] = useState(false);
+  const [plan, setPlan] = useState<OptimizedPlan | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
 
   // "Kodet reale" për matrix-in: tokena të shkurtër (shi) + rreshta të plotë (feed):
   // sinjale me Hyrje/SL/TP/conf, formula matematikore dhe rregulla — nga sinjalet reale.
@@ -112,13 +115,35 @@ export default function AdminProTradeLabPage() {
 
   // MMTI — gjendja e super-robotit të ri (i ndarë). Vetëm lexim/ndez-fik; s'prek robotin aktual.
   useEffect(() => {
-    supabase.from('mmti_state').select('active').eq('id', 1).maybeSingle()
-      .then(({ data }) => { if (data) setMmtiActive(!!(data as { active?: boolean }).active); });
+    supabase.from('mmti_state').select('active, optimized_params').eq('id', 1).maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        setMmtiActive(!!(data as { active?: boolean }).active);
+        const op = (data as { optimized_params?: OptimizedPlan | null }).optimized_params;
+        if (op) setPlan(op);
+      });
   }, []);
   const toggleMmti = useCallback(async () => {
     const next = !mmtiActive; setMmtiActive(next);
     try { await supabase.from('mmti_state').update({ active: next, trades_learned: tradeIntel?.total ?? 0, updated_at: new Date().toISOString() }).eq('id', 1); } catch { /* injoro */ }
   }, [mmtiActive, tradeIntel]);
+
+  // Faza B — Motori i Optimizimit: nxjerr formulën nga trade-t reale dhe e ruan te mmti_state.
+  // Vetëm llogarit & rekomandon (deterministik); NUK tregton dhe NUK prek robotin aktual.
+  const computeOptimization = useCallback(async () => {
+    if (!tradeIntel) return;
+    setOptimizing(true);
+    try {
+      const p = optimizeFromIntel(tradeIntel);
+      setPlan(p);
+      await supabase.from('mmti_state').update({
+        optimized_params: p, optimized_at: new Date().toISOString(),
+        phase: p.mature ? 'ready' : 'learning', trades_learned: tradeIntel.total,
+        updated_at: new Date().toISOString(),
+      }).eq('id', 1);
+    } catch { /* injoro */ }
+    setOptimizing(false);
+  }, [tradeIntel]);
 
   const enough = (analytics?.total ?? 0) >= 20;
 
@@ -175,6 +200,88 @@ export default function AdminProTradeLabPage() {
             {t('MMTI ende NUK tregton — vetëm mëson. Tregtimi aktivizohet pas ~100 trade + miratimit tënd, si robot krejt i ndarë që s\'prek aktualin.')}
           </div>
         </div>
+      </div>
+
+      {/* ====== FAZA B — Motori i Optimizimit (nxjerr formulën nga trade-t reale) ====== */}
+      <div className="rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-cyan-500/5 to-gray-900 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+              <Cpu className="w-5 h-5 text-gray-950" />
+            </div>
+            <div>
+              <div className="text-white font-bold text-sm">{t('Faza B — Motori i Optimizimit')}</div>
+              <div className="text-gray-500 text-[11px]">{t('Nxjerr formulën e MMTI nga trade-t reale: sesioni, strategjia, R:R i synuar.')}</div>
+            </div>
+          </div>
+          <button onClick={computeOptimization} disabled={optimizing || !tradeIntel || (tradeIntel.total ?? 0) < 20}
+            className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg bg-cyan-500 text-gray-950 hover:bg-cyan-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            {optimizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Target className="w-4 h-4" />}
+            {optimizing ? t('Duke llogaritur…') : t('Llogarit formulën')}
+          </button>
+        </div>
+
+        {(!tradeIntel || (tradeIntel.total ?? 0) < 20) && (
+          <p className="text-gray-500 text-xs">{t('Aktivizohet pas ≥20 trade-sh reale. E besueshme plotësisht në 100.')}</p>
+        )}
+
+        {plan && (
+          <div className="space-y-3">
+            {/* Maturiteti */}
+            <div className={`flex items-center gap-2 text-[11px] rounded-xl px-3 py-2 border ${
+              plan.reliability === 'high' ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                : plan.reliability === 'medium' ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                : 'bg-gray-700/40 border-gray-600 text-gray-400'}`}>
+              {plan.reliability === 'high' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+              <span>{t('Besueshmëria')}: <b>{plan.reliability === 'high' ? t('e lartë') : plan.reliability === 'medium' ? t('e mesme') : t('e ulët')}</b> · {plan.sample}/100 {t('trade')}</span>
+            </div>
+
+            {/* Pikat kyçe të nxjerra */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { k: t('Sesioni më i mirë'), v: plan.bestSession?.label ?? '—', s: plan.bestSession ? `${plan.bestSession.winRate}% · n=${plan.bestSession.n}` : '' },
+                { k: t('Strategjia'), v: plan.bestStrategy?.label ?? '—', s: plan.bestStrategy ? `+$${plan.bestStrategy.expectancy}/trade` : '' },
+                { k: t('Simboli'), v: plan.bestSymbol?.label ?? '—', s: plan.bestSymbol ? `${plan.bestSymbol.winRate}%` : '' },
+                { k: t('R:R i synuar'), v: `1:${plan.recommendedR}`, s: `SL $${plan.slUsd} · TP $${plan.tpUsd}` },
+              ].map((c) => (
+                <div key={c.k} className="bg-gray-950 border border-gray-800 rounded-xl p-2.5">
+                  <div className="text-[9px] text-gray-500 uppercase tracking-wide">{c.k}</div>
+                  <div className="text-sm font-bold mt-0.5 text-cyan-300 truncate">{c.v}</div>
+                  {c.s && <div className="text-[10px] text-gray-500 mt-0.5">{c.s}</div>}
+                </div>
+              ))}
+            </div>
+
+            {/* Projeksioni i fitimit */}
+            <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-[12px] text-gray-300">
+                {t('Fitim/trade i projektuar (lot bazë)')}:
+                <span className="text-gray-500 line-through mx-1.5">+${plan.projOldPerTrade}</span>
+                <span className="text-green-400 font-bold">+${plan.projNewPerTrade}</span>
+              </div>
+              {plan.improvementPct > 0 && (
+                <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/30">
+                  +{plan.improvementPct}% {t('vs roboti normal')}
+                </span>
+              )}
+            </div>
+
+            {/* Algoritmi i nxjerrë */}
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-cyan-300/80 mb-1.5">{t('Algoritmi i nxjerrë')}</div>
+              <ul className="space-y-1">
+                {plan.rules.map((r, i) => (
+                  <li key={i} className="text-gray-300 text-[12px] flex gap-2"><span className="text-cyan-400">→</span>{r}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex items-start gap-2 text-[11px] bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-lg p-2.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {plan.caution}
+            </div>
+            <p className="text-gray-600 text-[11px]">{t('MMTI ende NUK tregton (kjo është Faza C). Ky plan ruhet si rekomandim; aplikohet vetëm me miratimin tënd dhe në llogari të ndarë.')}</p>
+          </div>
+        )}
       </div>
 
       {/* Inteligjenca live — "matrix" me kodet reale + robot që endet gjatë analizës */}
