@@ -971,4 +971,13 @@ export const en: Record<string, string> = {
   "Rekomandime sipas kapitalit": "Recommendations by capital",
   "Kliko sa kapital ke → cilesimet vendosen automatik (rrezik, lot, SL/TP, humbja ditore), te shkallezuara nga sjellja aktuale e robotit.": "Click your capital → settings are applied automatically (risk, lot, SL/TP, daily loss), scaled from the robot’s current behavior.",
   "Keto jane vetem REKOMANDIME — nuk prekin logjiken e robotit/sinjaleve. Pas aplikimit, cdo fushe mbetet plotesisht e ndryshueshme nga ti sipas deshires.": "These are only RECOMMENDATIONS — they do not touch the robot/signal logic. After applying, every field stays fully editable by you as you wish.",
+  "Mësimi nga trade-t REALE": "Learning from REAL trades",
+  "llogaria aktive": "active account",
+  "d": "d",
+  "Neto": "Net",
+  "Expectancy/trade": "Expectancy/trade",
+  "Profit factor": "Profit factor",
+  "Sipas sesionit": "By session",
+  "Sipas strategjisë": "By strategy",
+  "Të dhëna reale nga MT5 (P&L i mbyllur). Bëhet i besueshëm pas ~100 trade-sh.": "Real data from MT5 (closed P&L). Becomes reliable after ~100 trades.",
 };
