@@ -367,11 +367,25 @@ async function resolveSymbol(cfg: Cfg, requested: string): Promise<string> {
   return requested;
 }
 
-// P&L i REALIZUAR i ditës (që nga 00:00 UTC) — shuma e fitim/humbjeve të trade-ve
+// Fillimi i ditës sipas Frankfurt (Europe/Berlin) si instant UTC — që "dita" e humbjes
+// të përkojë me sesionin/ditën lokale (jo me 00:00 UTC). DST-i trajtohet automatik.
+function frankfurtDayStart(now = new Date()): Date {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(now);
+  const g = (t: string) => Number(p.find((x) => x.type === t)?.value || "0");
+  const y = g("year"), mo = g("month"), d = g("day"), h = g("hour"), mi = g("minute"), se = g("second");
+  const offset = Date.UTC(y, mo - 1, d, h, mi, se) - now.getTime();
+  return new Date(Date.UTC(y, mo - 1, d, 0, 0, 0) - offset);
+}
+// Data e ditës sipas Frankfurt (YYYY-MM-DD) — për day_start_date.
+function frankfurtDateStr(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+// P&L i REALIZUAR i ditës (që nga mesnata e Frankfurtit) — shuma e fitim/humbjeve të trade-ve
 // të mbyllura sot (profit+commission+swap). Përdoret për limitin REAL të humbjes ditore.
 async function realizedToday(cfg: Cfg): Promise<number> {
   try {
-    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    const start = frankfurtDayStart();
     const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
     const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
     if (!Array.isArray(deals)) return 0;
@@ -383,7 +397,7 @@ async function realizedToday(cfg: Cfg): Promise<number> {
 // Përdoret për ndalues më të rreptë: "kur humbjet kalojnë X, ndalo" (pavarësisht fitimeve).
 async function grossLossToday(cfg: Cfg): Promise<number> {
   try {
-    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    const start = frankfurtDayStart();
     const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
     const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
     if (!Array.isArray(deals)) return 0;
@@ -569,7 +583,7 @@ Deno.serve(async (req: Request) => {
         // LIMITI DITOR I HUMBJES — i bazuar te EKUITETI (i besueshëm; s'dështon në heshtje si
         // thirrja history-deals). Ruajmë ekuitetin në fillim të ditës UTC; humbja = equity − fillimi.
         if (equity > 0) {
-          const todayUtc = new Date().toISOString().slice(0, 10);
+          const todayUtc = frankfurtDateStr();
           let dayStartEq = Number((cfg as { day_start_equity?: number }).day_start_equity);
           const dsd = (cfg as { day_start_date?: string }).day_start_date
             ? String((cfg as { day_start_date?: string }).day_start_date).slice(0, 10) : "";
