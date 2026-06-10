@@ -94,7 +94,7 @@ async function claudeAdvise(db: ReturnType<typeof createClient>, analytics: unkn
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: 2500, system: sys, messages: [{ role: "user", content: JSON.stringify(analytics) }] }),
+      body: JSON.stringify({ model, max_tokens: 1100, system: sys, messages: [{ role: "user", content: JSON.stringify(analytics) }] }),
       signal: AbortSignal.timeout(30000),
     });
     if (!resp.ok) return { error: `Claude error ${resp.status}` };
@@ -102,7 +102,7 @@ async function claudeAdvise(db: ReturnType<typeof createClient>, analytics: unkn
     const text = data?.content?.[0]?.text || "";
     const m = text.match(/\{[\s\S]*\}/);
     if (!m) return { error: "Claude nuk ktheu JSON." };
-    try { return JSON.parse(m[0]); } catch { return { error: "Claude ktheu nje pergjigje te paplote — kliko perseri." }; }
+    return JSON.parse(m[0]);
   } catch (e) {
     return { error: `Claude exception: ${(e as Error).message}` };
   }

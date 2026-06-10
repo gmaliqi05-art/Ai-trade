@@ -106,7 +106,7 @@ export default function ReportsPage() {
         const sinceMs = (period === 'today' ? Date.now() - 2 * 86400000 : Date.now() - (fetchDays as number) * 86400000) - 6 * 3600 * 1000;
         const { data: execs } = await supabase
           .from('trade_executions')
-          .select('action, symbol, signal_id, reason, created_at, stop_loss, take_profit')
+          .select('action, symbol, signal_id, reason, created_at')
           .eq('user_id', user.id).eq('status', 'executed')
           .gte('created_at', new Date(sinceMs).toISOString())
           .order('created_at', { ascending: false }).limit(500);
