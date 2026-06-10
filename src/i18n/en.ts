@@ -1018,4 +1018,8 @@ export const en: Record<string, string> = {
   "Afati": "Term",
   "Gjatë": "Long",
   "Shkurt": "Short",
+  "Link rikonfigurimi (opsional)": "Reconfiguration link (optional)",
+  "ngjit linkun nga MetaApi (configure-trading-account-credentials/...)": "paste the link from MetaApi (configure-trading-account-credentials/...)",
+  "Hap faqen e rikonfigurimit te MetaApi": "Open the MetaApi reconfiguration page",
+  "Shkurtore për ta rregulluar lidhjen kur bie: hap faqen e MetaApi për të rifutur kredencialet. NUK është mënyrë lidhjeje — roboti lidhet me Account ID + Token.": "Shortcut to fix the connection when it drops: opens the MetaApi page to re-enter credentials. NOT a connection method — the robot connects with Account ID + Token.",
 };

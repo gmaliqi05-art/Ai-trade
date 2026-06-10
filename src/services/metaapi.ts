@@ -6,6 +6,8 @@ export interface MetaApiConfig {
   account_id: string;
   token: string;
   region: string;
+  /** Link i rikonfigurimit nga MetaApi (configure-trading-account-credentials) — shkurtore për të rregulluar lidhjen. */
+  config_link: string;
   mode: 'demo' | 'live';
   auto_trade: boolean;
   default_lot: number;
@@ -63,7 +65,7 @@ export interface MetaApiConfig {
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
-  account_id: '', token: '', region: 'new-york', mode: 'demo', auto_trade: false,
+  account_id: '', token: '', region: 'new-york', config_link: '', mode: 'demo', auto_trade: false,
   default_lot: 0.01, max_lot: 0.1, max_daily_loss: 100, max_open_trades: 3, kill_switch: false,
   min_confidence: 70, auto_symbols: 'XAUUSD',
   dynamic_lot: true, lot_conf_70: 0.01, lot_conf_80: 0.02, lot_conf_90: 0.05,
@@ -90,6 +92,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     if (!data) return { ...DEFAULT_CONFIG };
     return {
     account_id: data.account_id ?? '', token: data.token ?? '', region: data.region ?? 'new-york',
+    config_link: data.config_link ?? '',
     mode: (data.mode as 'demo' | 'live') ?? 'demo', auto_trade: !!data.auto_trade,
     default_lot: Number(data.default_lot ?? 0.01), max_lot: Number(data.max_lot ?? 0.1),
     max_daily_loss: Number(data.max_daily_loss ?? 100), max_open_trades: Number(data.max_open_trades ?? 3),
