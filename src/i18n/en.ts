@@ -1015,4 +1015,7 @@ export const en: Record<string, string> = {
   "SL/TP automatik nga analiza": "Automatic SL/TP from analysis",
   "ON = roboti i llogarit SL/TP plotësisht vetë, me të njëjtën analizë si hyrja (volatiliteti ATR) + balancën tënde — fushat manuale poshtë fiken. OFF = vlerat e tua; nëse i vendos në zonë të zhurmshme, roboti i balancon automatikisht.": "ON = the robot computes SL/TP fully on its own, using the same analysis as the entry (ATR volatility) + your balance — the manual fields below are disabled. OFF = your values; if you set them inside a noisy zone, the robot balances them automatically.",
   "Dalja": "Exit",
+  "Afati": "Term",
+  "Gjatë": "Long",
+  "Shkurt": "Short",
 };
