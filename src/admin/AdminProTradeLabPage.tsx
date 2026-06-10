@@ -11,6 +11,10 @@ interface Group { group: string; rows: Bkt[] }
 interface Analytics { total: number; wins: number; losses: number; winRate: number; avgR: number; groups: Group[] }
 interface Advice { insights?: string[]; suggestions?: { title: string; detail: string }[]; caution?: string; error?: string }
 
+interface TIStat { n: number; wins: number; losses: number; winRate: number; net: number; avgWin: number; avgLoss: number; expectancy: number; profitFactor: number }
+interface TIGroup extends TIStat { label: string }
+interface TradeIntel { account: string; days: number; total: number; overall: TIStat; bySession: TIGroup[]; byStrategy: TIGroup[]; bySymbol: TIGroup[]; error?: string }
+
 function rateColor(rate: number) {
   if (rate >= 60) return 'text-green-400';
   if (rate >= 45) return 'text-amber-400';
@@ -31,6 +35,8 @@ export default function AdminProTradeLabPage() {
   const [err, setErr] = useState<string | null>(null);
   const [tokens, setTokens] = useState<string[]>([]);
   const [lines, setLines] = useState<string[]>([]);
+  const [tradeIntel, setTradeIntel] = useState<TradeIntel | null>(null);
+  const [tiLoading, setTiLoading] = useState(true);
 
   // "Kodet reale" për matrix-in: tokena të shkurtër (shi) + rreshta të plotë (feed):
   // sinjale me Hyrje/SL/TP/conf, formula matematikore dhe rregulla — nga sinjalet reale.
@@ -85,6 +91,15 @@ export default function AdminProTradeLabPage() {
 
   useEffect(() => { load(false); }, [load]);
 
+  // Mësimi nga trade-t REALE të llogarisë aktive (lab-trades) — vetëm lexim, s'prek robotin.
+  const loadTradeIntel = useCallback(async () => {
+    setTiLoading(true);
+    const { data, error } = await supabase.functions.invoke('lab-trades', { body: {} });
+    if (!error && data && !(data as { error?: string }).error) setTradeIntel(data as TradeIntel);
+    setTiLoading(false);
+  }, []);
+  useEffect(() => { loadTradeIntel(); }, [loadTradeIntel]);
+
   const enough = (analytics?.total ?? 0) >= 20;
 
   return (
@@ -120,6 +135,48 @@ export default function AdminProTradeLabPage() {
           <IntelligenceMatrix lines={lines} tokens={tokens} active={advising} />
         </div>
       </div>
+
+      {/* MËSIMI NGA TRADE-T REALE (llogaria aktive) — vetëm lexim */}
+      {!tiLoading && tradeIntel && tradeIntel.total > 0 && (
+        <div className="bg-gray-900 border border-amber-500/20 rounded-2xl p-4 space-y-3">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-amber-400" />{t('Mësimi nga trade-t REALE')}
+            <span className="text-[11px] text-gray-500 font-normal">· {t('llogaria aktive')} · {tradeIntel.days}{t('d')}</span>
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {[
+              { k: t('Trade'), v: String(tradeIntel.overall.n) },
+              { k: t('Win-rate'), v: `${tradeIntel.overall.winRate}%`, c: rateColor(tradeIntel.overall.winRate) },
+              { k: t('Neto'), v: `${tradeIntel.overall.net >= 0 ? '+' : ''}${tradeIntel.overall.net}`, c: tradeIntel.overall.net >= 0 ? 'text-green-400' : 'text-red-400' },
+              { k: t('Expectancy/trade'), v: `${tradeIntel.overall.expectancy >= 0 ? '+' : ''}${tradeIntel.overall.expectancy}`, c: tradeIntel.overall.expectancy >= 0 ? 'text-green-400' : 'text-red-400' },
+              { k: t('Profit factor'), v: String(tradeIntel.overall.profitFactor) },
+            ].map((c) => (
+              <div key={c.k} className="bg-gray-950 border border-gray-800 rounded-xl p-2.5">
+                <div className="text-[9px] text-gray-500 uppercase tracking-wide">{c.k}</div>
+                <div className={`text-base font-bold mt-0.5 ${c.c ?? 'text-white'}`}>{c.v}</div>
+              </div>
+            ))}
+          </div>
+          {[{ title: t('Sipas sesionit'), rows: tradeIntel.bySession }, { title: t('Sipas strategjisë'), rows: tradeIntel.byStrategy }].map((blk) => (
+            <div key={blk.title}>
+              <div className="text-[11px] uppercase tracking-wide text-amber-300/80 mb-1.5">{blk.title}</div>
+              <div className="space-y-1.5">
+                {blk.rows.map((r) => (
+                  <div key={r.label} className="flex items-center gap-3">
+                    <div className="w-40 text-xs text-gray-300 truncate">{r.label}</div>
+                    <div className="flex-1 h-5 bg-gray-950 rounded-md overflow-hidden relative">
+                      <div className={`h-full ${barColor(r.winRate)} opacity-80`} style={{ width: `${r.winRate}%` }} />
+                      <span className="absolute inset-0 flex items-center px-2 text-[11px] font-semibold text-white/90">{r.winRate}% · {r.n} trade</span>
+                    </div>
+                    <div className={`w-20 text-right text-[11px] ${r.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{r.net >= 0 ? '+' : ''}${r.net}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p className="text-gray-600 text-[11px]">{t('Të dhëna reale nga MT5 (P&L i mbyllur). Bëhet i besueshëm pas ~100 trade-sh.')}</p>
+        </div>
+      )}
 
       {err && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-3 py-2">{err}</div>}
 
