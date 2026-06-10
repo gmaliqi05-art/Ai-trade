@@ -88,10 +88,20 @@ async function resolveSymbol(cfg: MetaApiConfig, requested: string): Promise<str
   } catch { return requested; }
 }
 
-// P&L i REALIZUAR i ditës (që nga 00:00 UTC) — trade-t e mbyllura sot.
+// Fillimi i ditës sipas Frankfurt (Europe/Berlin) si instant UTC — që "dita" e humbjes
+// të përkojë me sesionin/ditën lokale (jo me 00:00 UTC). DST-i trajtohet automatik.
+function frankfurtDayStart(now = new Date()): Date {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(now);
+  const g = (t: string) => Number(p.find((x) => x.type === t)?.value || "0");
+  const y = g("year"), mo = g("month"), d = g("day"), h = g("hour"), mi = g("minute"), se = g("second");
+  const offset = Date.UTC(y, mo - 1, d, h, mi, se) - now.getTime();
+  return new Date(Date.UTC(y, mo - 1, d, 0, 0, 0) - offset);
+}
+
+// P&L i REALIZUAR i ditës (që nga mesnata e Frankfurtit) — trade-t e mbyllura sot.
 async function realizedToday(cfg: MetaApiConfig): Promise<number> {
   try {
-    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    const start = frankfurtDayStart();
     const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
     const deals = await metaApiGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
     if (!Array.isArray(deals)) return 0;
@@ -102,7 +112,7 @@ async function realizedToday(cfg: MetaApiConfig): Promise<number> {
 // Humbja BRUTO e ditës — shuma e trade-ve HUMBËSE sot (pa i kompensuar me fitimet).
 async function grossLossToday(cfg: MetaApiConfig): Promise<number> {
   try {
-    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    const start = frankfurtDayStart();
     const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
     const deals = await metaApiGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
     if (!Array.isArray(deals)) return 0;
