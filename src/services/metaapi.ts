@@ -144,6 +144,9 @@ export interface OpenPosition {
   takeProfit?: number;
   profit?: number;
   swap?: number;
+  /** Komenti/clientId — mban shenjën "SCALP" për trade-t afat-shkurta të robotit. */
+  comment?: string;
+  clientId?: string;
 }
 
 /** Porosi NË PRITJE (limit/stop) nga MT5 — pret çmimin për t'u hapur. */

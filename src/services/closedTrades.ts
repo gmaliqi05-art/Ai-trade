@@ -14,11 +14,23 @@ export interface ClosedTrade {
   volume: number;
   entryPrice?: number;
   exitPrice?: number;
+  /** SL/TP të planifikuara kur hyri trade-i (nga trade_executions) — për raportim profesional. */
+  plannedSL?: number;
+  plannedTP?: number;
   net: number; // profit + commission + swap
   source?: TradeSource;
 }
 
-export interface ExecRow { action: string; symbol: string; signal_id: string | null; reason: string | null; created_at: string; }
+export interface ExecRow { action: string; symbol: string; signal_id: string | null; reason: string | null; created_at: string; stop_loss?: number | null; take_profit?: number | null; }
+
+// Si u mbyll trade-i: prek TP-në e planifikuar, SL-në, apo doli ndryshe (manual/trailing)?
+export function exitKind(t: ClosedTrade): 'tp' | 'sl' | 'other' {
+  if (t.exitPrice == null) return 'other';
+  const near = (b?: number) => b != null && Math.abs(t.exitPrice! - b) <= Math.max(0.5, Math.abs(b) * 0.0003);
+  if (near(t.plannedTP)) return 'tp';
+  if (near(t.plannedSL)) return 'sl';
+  return 'other';
+}
 
 // Klasifikon burimin nga arsyeja + signal_id e regjistruar te trade_executions.
 export function classifySource(reason: string | null, signalId: string | null): TradeSource {
@@ -70,7 +82,11 @@ export function attachSource(trades: ClosedTrade[], execs: ExecRow[]): void {
       const diff = Math.abs(new Date(e.created_at).getTime() - openMs);
       if (diff < bestDiff) { bestDiff = diff; best = e; }
     }
-    if (best && bestDiff < 10 * 60 * 1000) { used.add(best); tr.source = classifySource(best.reason, best.signal_id); }
+    if (best && bestDiff < 10 * 60 * 1000) {
+      used.add(best); tr.source = classifySource(best.reason, best.signal_id);
+      if (best.stop_loss != null) tr.plannedSL = Number(best.stop_loss);
+      if (best.take_profit != null) tr.plannedTP = Number(best.take_profit);
+    }
     else tr.source = 'mt5';
   }
 }
