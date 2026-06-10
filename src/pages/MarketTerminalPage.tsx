@@ -15,7 +15,7 @@ import {
   type AccountInfo, type HistoryDeal, type OpenPosition,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
-import { groupDeals, attachSource, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
+import { groupDeals, attachSource, exitKind, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -150,7 +150,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         const sinceIso = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
         const { data: execs } = await supabase
           .from('trade_executions')
-          .select('action, symbol, signal_id, reason, created_at')
+          .select('action, symbol, signal_id, reason, created_at, stop_loss, take_profit')
           .eq('user_id', user.id).eq('status', 'executed')
           .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(500);
         attachSource(grouped, (execs as ExecRow[]) || []);
@@ -318,10 +318,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   // Pozicioni i hapur për simbolin e zgjedhur → linjat Hyrje/SL/TP + modifikim.
   const posForSymbol = positions.find(p => symMatch(selected, p.symbol)) || null;
+  // Afat-shkurt (scalp) vs afat-gjatë (swing): nga shenja "SCALP" te comment/clientId i pozicionit.
+  const posIsScalp = posForSymbol ? /SCALP/i.test(String(posForSymbol.comment ?? '') + String(posForSymbol.clientId ?? '')) : false;
   const chartLines: PriceLineDef[] = posForSymbol ? [
-    ...(posForSymbol.openPrice ? [{ price: posForSymbol.openPrice, color: '#3b82f6', title: 'Hyrje' }] : []),
-    ...(posForSymbol.stopLoss ? [{ price: posForSymbol.stopLoss, color: '#ef4444', title: 'SL' }] : []),
-    ...(posForSymbol.takeProfit ? [{ price: posForSymbol.takeProfit, color: '#22c55e', title: 'TP' }] : []),
+    ...(posForSymbol.openPrice ? [{ price: posForSymbol.openPrice, color: '#3b82f6', title: `${t('Hyrje')} · ${posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}` }] : []),
+    ...(posForSymbol.stopLoss ? [{ price: posForSymbol.stopLoss, color: '#ef4444', title: `SL ${posForSymbol.stopLoss}` }] : []),
+    ...(posForSymbol.takeProfit ? [{ price: posForSymbol.takeProfit, color: '#22c55e', title: `TP ${posForSymbol.takeProfit}` }] : []),
   ] : [];
 
   // Parambush SL/TP kur ndryshon pozicioni.
@@ -429,12 +431,16 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             </div>
             {posForSymbol && (
               <div className="flex items-center gap-3 px-4 py-1.5 border-t border-gray-800 text-[11px] flex-wrap">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${posIsScalp ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-500" />{t('Hyrje')} {posForSymbol.openPrice}</span>
                 {posForSymbol.stopLoss ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500" />SL {posForSymbol.stopLoss}</span> : <span className="text-gray-600">{t('SL pa vendosur')}</span>}
                 {posForSymbol.takeProfit ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500" />TP {posForSymbol.takeProfit}</span> : <span className="text-gray-600">{t('TP pa vendosur')}</span>}
               </div>
             )}
       </div>
+
+      {/* Pozicionet e hapura (live) — VENDOSUR menjëherë nën grafikun e MetaTrader, që të shihen bashkë */}
+      <OpenPositionsPanel configured={metaConfigured} section="positions" />
 
       {/* Porosi e re (nën grafik) */}
       <div className="lg:max-w-md">
@@ -583,10 +589,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       </div>
 
-      {/* 1) Pozicionet e hapura (live) — menjëherë nën sinjalet */}
-      <OpenPositionsPanel configured={metaConfigured} section="positions" />
-
-      {/* 2) Trade-t e mbyllura (historiku real nga MT5) — 10 të parat, me buton për të zgjeruar */}
+      {/* Trade-t e mbyllura (historiku real nga MT5) — 10 të parat, me buton për të zgjeruar */}
       {metaConfigured && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
           <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><History className="w-4 h-4 text-amber-400" />{t('Trade-t e mbyllura (7 ditët e fundit)')}</h3>
@@ -603,6 +606,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                       <th className="text-left font-medium py-2">{t('Burimi')}</th>
                       <th className="text-right font-medium py-2">{t('Lot')}</th>
                       <th className="text-right font-medium py-2">{t('Hyrje')}</th>
+                      <th className="text-right font-medium py-2">SL</th>
+                      <th className="text-right font-medium py-2">TP</th>
+                      <th className="text-right font-medium py-2">{t('Dalja')}</th>
                       <th className="text-right font-medium py-2">{t('Fitim/Humbje')}</th>
                       <th className="text-right font-medium py-2">{t('Koha')}</th>
                     </tr>
@@ -611,6 +617,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                     {(showAllHistory ? history : history.slice(0, 10)).map(d => {
                       const isBuy = d.direction === 'BUY';
                       const src = srcMeta[d.source || 'mt5'];
+                      const ek = exitKind(d);
                       return (
                         <tr key={d.id} className="hover:bg-gray-800/30">
                           <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
@@ -618,6 +625,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                           <td className="py-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${src.cls}`}>{src.label}</span></td>
                           <td className="py-2 text-right text-gray-300">{d.volume || '—'}</td>
                           <td className="py-2 text-right text-gray-300">{d.entryPrice != null ? d.entryPrice : '—'}</td>
+                          <td className="py-2 text-right text-red-400/70">{d.plannedSL != null ? d.plannedSL : '—'}</td>
+                          <td className="py-2 text-right text-green-400/70">{d.plannedTP != null ? d.plannedTP : '—'}</td>
+                          <td className="py-2 text-right whitespace-nowrap">
+                            <span className="text-gray-300">{d.exitPrice != null ? d.exitPrice : '—'}</span>
+                            {ek === 'tp' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-green-500/20 text-green-400">TP</span>}
+                            {ek === 'sl' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-400">SL</span>}
+                            {ek === 'other' && d.exitPrice != null && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/40 text-gray-400">{t('Manual')}</span>}
+                          </td>
                           <td className={`py-2 text-right font-semibold ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
                           <td className="py-2 text-right text-gray-500">{d.closeTime ? new Date(d.closeTime).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                         </tr>
