@@ -156,6 +156,17 @@ export default function MetaApiPanel() {
               </button>
             </div>
           </Field>
+          <Field label={t('Link rikonfigurimi (opsional)')} full>
+            <input value={cfg.config_link} onChange={e => set('config_link', e.target.value)} onBlur={save}
+              placeholder={t('ngjit linkun nga MetaApi (configure-trading-account-credentials/...)')} className="inp" />
+            {cfg.config_link && (
+              <a href={cfg.config_link} target="_blank" rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-blue-500/15 text-blue-300 border border-blue-500/30 hover:bg-blue-500/25 transition-colors">
+                <Cloud className="w-3.5 h-3.5" />{t('Hap faqen e rikonfigurimit te MetaApi')}
+              </a>
+            )}
+            <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{t('Shkurtore për ta rregulluar lidhjen kur bie: hap faqen e MetaApi për të rifutur kredencialet. NUK është mënyrë lidhjeje — roboti lidhet me Account ID + Token.')}</p>
+          </Field>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={save} disabled={saving} className="btn-amber">
