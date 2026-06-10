@@ -448,8 +448,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* Pozicionet e hapura (live) — VENDOSUR menjëherë nën grafikun e MetaTrader, që të shihen bashkë */}
       <OpenPositionsPanel configured={metaConfigured} section="positions" />
 
-      {/* Porosi e re (nën grafik) */}
-      <div className="lg:max-w-md">
+      {/* Porosi e re (majtas) + Trade-t e mbyllura (djathtas) — dy kolona në ekran të madh, stack në mobil */}
+      <div className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-5 lg:items-start">
+      <div>
         {/* Porosia BLEJ/SHIT — kompakte */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 space-y-2 h-fit">
           <h3 className="text-white font-semibold text-sm">{t('Porosi e re — {sym}', { sym: selected })}</h3>
@@ -659,8 +660,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           )}
         </div>
       )}
+      </div>
 
-      {/* 3) Sinjalet aktive (lista e plotë) — nën Trade-t e mbyllura (sinjale të vjetra, klik për të mbushur formën) */}
+      {/* 3) Sinjalet aktive (lista e plotë) — sinjale të vjetra, klik për të mbushur formën */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet')}</h3>
