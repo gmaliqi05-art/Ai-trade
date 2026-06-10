@@ -233,7 +233,7 @@ export default function AdminProTradeLabPage() {
                 : plan.reliability === 'medium' ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
                 : 'bg-gray-700/40 border-gray-600 text-gray-400'}`}>
               {plan.reliability === 'high' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
-              <span>{t('Besueshmëria')}: <b>{plan.reliability === 'high' ? t('e lartë') : plan.reliability === 'medium' ? t('e mesme') : t('e ulët')}</b> · {plan.sample}/100 {t('trade')}</span>
+              <span>{t('Besueshmëria e planit')}: <b>{plan.reliability === 'high' ? t('e lartë') : plan.reliability === 'medium' ? t('e mesme') : t('e ulët')}</b> · {plan.sample}/100 {t('trade')}</span>
             </div>
 
             {/* Pikat kyçe të nxjerra */}
