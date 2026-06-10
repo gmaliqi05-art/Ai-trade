@@ -58,10 +58,18 @@ export default function AdminProTradeLabPage() {
     ];
     const sigLines: string[] = [];
     try {
-      const { data } = await supabase.from('signals')
-        .select('symbol, type, confidence, entry_price, target_price, stop_loss, status, features')
-        .not('features', 'is', null).order('created_at', { ascending: false }).limit(50);
-      for (const s of (data ?? []) as { symbol: string; type: string; confidence: number; entry_price: number | null; target_price: number | null; stop_loss: number | null; status: string; features: Record<string, unknown> }[]) {
+      const cols = 'symbol, type, confidence, entry_price, target_price, stop_loss, status, features';
+      type SigRow = { symbol: string; type: string; confidence: number; entry_price: number | null; target_price: number | null; stop_loss: number | null; status: string; features: Record<string, unknown> };
+      // Merr BUY dhe SELL veçmas e i ndërthur — që matrix-i të tregojë TË DY drejtimet (jo vetëm atë mbizotërues).
+      const [buyR, sellR] = await Promise.all([
+        supabase.from('signals').select(cols).eq('type', 'buy').not('features', 'is', null).order('created_at', { ascending: false }).limit(25),
+        supabase.from('signals').select(cols).eq('type', 'sell').not('features', 'is', null).order('created_at', { ascending: false }).limit(25),
+      ]);
+      const buy = (buyR.data ?? []) as SigRow[];
+      const sell = (sellR.data ?? []) as SigRow[];
+      const data: SigRow[] = [];
+      for (let i = 0; i < Math.max(buy.length, sell.length); i++) { if (sell[i]) data.push(sell[i]); if (buy[i]) data.push(buy[i]); }
+      for (const s of data) {
         const f = s.features || {};
         const dir = s.type === 'buy' ? 'BUY' : 'SELL';
         const st = s.status === 'hit_tp' ? ' → ✓TP' : s.status === 'hit_sl' ? ' → ✗SL' : '';
