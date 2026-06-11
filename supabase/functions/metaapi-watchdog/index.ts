@@ -14,7 +14,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-cron-secret",
 };
 
-const ACTIVE_WINDOW_MS = 60 * 60 * 1000; // u konsiderua "aktive" nëse u lidh brenda 60 min
 const FAIL_CONFIRM = 2;                  // dështime radhazi para se të nisë ora e shkëputjes
 const ALERT_AFTER_MS = 10 * 60 * 1000;   // njofto pas 10 min shkëputje
 
@@ -84,12 +83,12 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      // S'lidhet: a ishte AKTIVE së fundi? (përndryshe = e fikur me qëllim/inaktive → mos alarmo)
+      // S'lidhet. Nëse llogaria S'ËSHTË lidhur KURRË (lastConn==0) → ndoshta e keqkonfiguruar → mos alarmo.
+      // Por nëse është lidhur ndonjëherë, VAZHDO monitorimin sado gjatë të zgjasë ndërprerja — që ta
+      // kapim rikthimin dhe të njoftojmë. (auto_trade=true → përdoruesi e DO të lidhur; s'duhet të heshtim.)
       const lastConn = cfg.last_connected_at ? new Date(cfg.last_connected_at).getTime() : 0;
-      const active = lastConn > 0 && (now - lastConn) < ACTIVE_WINDOW_MS;
-      if (!active) {
-        if ((cfg.conn_fail_count ?? 0) !== 0 || cfg.disconnect_since) await upd(cfg.user_id, { conn_fail_count: 0, disconnect_since: null });
-        out.push({ user: cfg.user_id, action: "inactive(skip)" });
+      if (lastConn === 0) {
+        out.push({ user: cfg.user_id, action: "never_connected(skip)" });
         continue;
       }
 
