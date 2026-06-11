@@ -1148,4 +1148,6 @@ export const en: Record<string, string> = {
   "Respekton kufijtë: humbja ditore, max trade hapur, dhe portat e sigurisë (Claude për swing).": "It respects the limits: daily loss, max open trades, and the safety gates (Claude for swing).",
   "Trade-t e hapura mbrohen nga SL/TP te broker-i edhe nëse lidhja API shkëputet përkohësisht — pozicioni nuk mbyllet, thjesht s'po e sheh.": "Open trades are protected by SL/TP at the broker even if the API connection drops temporarily — the position isn't closed, you just can't see it.",
   "Përmbledhje: 1) Vantage MT5 → 2) MetaApi (Account ID + Token) → 3) Platforma (Account ID + Token + Rajoni) → 4) Preset + Auto-trade ON.": "Summary: 1) Vantage MT5 → 2) MetaApi (Account ID + Token) → 3) Platform (Account ID + Token + Region) → 4) Preset + Auto-trade ON.",
+  "po rifreskohet…": "refreshing…",
+  "Lidhje e ngadaltë — vlerat e fundit të njohura": "Slow connection — last known values",
 };
