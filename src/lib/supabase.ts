@@ -14,4 +14,14 @@ if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KE
   console.warn('[supabase] VITE_SUPABASE_* mungojnë — po përdoret fallback-u publik i projektit.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Ruajtja e sesionit (që refresh/pull-to-refresh të MOS të nxjerrë jashtë): persiston te
+// localStorage, rifreskon token-in vetë në sfond, dhe trajton callback-un e auth-it. Mban çelësin
+// default të Supabase — s'i nxjerr përdoruesit që janë tashmë të kyçur.
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+});

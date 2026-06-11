@@ -1028,4 +1028,10 @@ export const en: Record<string, string> = {
   "Drejt aktivizimit (shadow → live)": "Toward activation (shadow → live)",
   "Mostra shadow u plotësua. MMTI mund të aktivizohet si robot i NDARË (llogari veçmas) vetëm me miratimin tënd — roboti aktual mbetet i paprekur.": "Shadow sample complete. MMTI can be activated as a SEPARATE robot (its own account) only with your approval — the current robot stays untouched.",
   "Motori shadow mat performancën në heshtje (çdo 5 min). Tregtimi real aktivizohet vetëm pas ~100 trade shadow + miratimit tënd, në llogari krejt të ndarë.": "The shadow engine measures performance silently (every 5 min). Real trading activates only after ~100 shadow trades + your approval, on a fully separate account.",
+  "Link rikonfigurimi (opsional)": "Reconfiguration link (optional)",
+  "ngjit linkun nga MetaApi (configure-trading-account-credentials/...)": "paste the link from MetaApi (configure-trading-account-credentials/...)",
+  "Hap faqen e rikonfigurimit te MetaApi": "Open the MetaApi reconfiguration page",
+  "Shkurtore për ta rregulluar lidhjen kur bie: hap faqen e MetaApi për të rifutur kredencialet. NUK është mënyrë lidhjeje — roboti lidhet me Account ID + Token.": "Shortcut to fix the connection when it drops: opens the MetaApi page to re-enter credentials. NOT a connection method — the robot connects with Account ID + Token.",
+  "Tani": "Now",
+  "pozicione hapur": "open positions",
 };

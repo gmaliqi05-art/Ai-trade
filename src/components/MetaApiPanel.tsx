@@ -28,6 +28,14 @@ const CAPITAL_PRESETS: { label: string; cfg: Partial<MetaApiConfig> }[] = [
   { label: '€100k',   cfg: { risk_per_trade_pct: 1, dynamic_lot: true, max_daily_loss: 3000, max_lot: 2,    default_lot: 0.5,  scalp_sl_usd: 100, scalp_tp_usd: 1000, scalp_max_trades: 3, max_open_trades: 3, trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 2 } },
 ];
 
+// A përputhet plotësisht konfigurimi aktual me një preset kapitali? (për ta theksuar atë aktiv).
+function presetActive(p: typeof CAPITAL_PRESETS[number], cfg: MetaApiConfig): boolean {
+  return Object.entries(p.cfg).every(([k, v]) => {
+    const cur = cfg[k as keyof MetaApiConfig];
+    return typeof v === 'number' ? Number(cur) === v : cur === v;
+  });
+}
+
 export default function MetaApiPanel() {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -37,6 +45,7 @@ export default function MetaApiPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [connOpen, setConnOpen] = useState(false); // kredencialet — të palosura/mbyllura si default (mos i prek aksidentalisht)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
@@ -137,7 +146,7 @@ export default function MetaApiPanel() {
       </Section>
 
       {/* ======= 1. LIDHJA ME MT5 ======= */}
-      <Section icon={Cloud} title={t('1. Lidhja me MT5')} subtitle={t('Lidh llogarinë tënde MT5 (Vantage) përmes MetaApi.cloud.')}>
+      <Section icon={Cloud} title={t('1. Lidhja me MT5')} subtitle={t('Kredencialet — kliko për të hapur. Mbyllur që të mos preksh aksidentalisht.')} collapsible open={connOpen} onToggle={() => setConnOpen(o => !o)}>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('MetaApi Account ID')}>
             <input value={cfg.account_id} onChange={e => set('account_id', e.target.value)} placeholder={t('p.sh. 0a1b2c3d-...')} className="inp" />
@@ -155,6 +164,17 @@ export default function MetaApiPanel() {
                 {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </Field>
+          <Field label={t('Link rikonfigurimi (opsional)')} full>
+            <input value={cfg.config_link} onChange={e => set('config_link', e.target.value)} onBlur={save}
+              placeholder={t('ngjit linkun nga MetaApi (configure-trading-account-credentials/...)')} className="inp" />
+            {cfg.config_link && (
+              <a href={cfg.config_link} target="_blank" rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-blue-500/15 text-blue-300 border border-blue-500/30 hover:bg-blue-500/25 transition-colors">
+                <Cloud className="w-3.5 h-3.5" />{t('Hap faqen e rikonfigurimit te MetaApi')}
+              </a>
+            )}
+            <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{t('Shkurtore për ta rregulluar lidhjen kur bie: hap faqen e MetaApi për të rifutur kredencialet. NUK është mënyrë lidhjeje — roboti lidhet me Account ID + Token.')}</p>
           </Field>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -183,12 +203,15 @@ export default function MetaApiPanel() {
       {/* ======= REKOMANDIME SIPAS KAPITALIT ======= */}
       <Section icon={Gauge} title={t('Rekomandime sipas kapitalit')} subtitle={t('Kliko sa kapital ke → cilesimet vendosen automatik (rrezik, lot, SL/TP, humbja ditore), te shkallezuara nga sjellja aktuale e robotit.')}>
         <div className="flex flex-wrap gap-2">
-          {CAPITAL_PRESETS.map(p => (
+          {CAPITAL_PRESETS.map(p => {
+            const active = presetActive(p, cfg);
+            return (
             <button key={p.label} type="button" onClick={() => applyPreset(p)}
-              className="px-3.5 py-2 rounded-xl text-sm font-bold bg-gray-800 border border-gray-700 text-gray-200 hover:border-amber-500/60 hover:text-amber-400 transition-all">
+              className={`px-3.5 py-2 rounded-xl text-sm font-bold border transition-all ${active ? 'bg-amber-500 text-gray-950 border-amber-300 ring-2 ring-amber-400/40 shadow-lg shadow-amber-500/20' : 'bg-gray-800 border-gray-700 text-gray-200 hover:border-amber-500/60 hover:text-amber-400'}`}>
               {p.label}
             </button>
-          ))}
+            );
+          })}
         </div>
         <p className="text-[11px] text-amber-300/90 mt-2.5 flex items-start gap-1.5">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -451,23 +474,25 @@ export default function MetaApiPanel() {
 
 // —— Komponente ndihmëse ——
 
-function Section({ icon: Icon, title, subtitle, right, children }: {
+function Section({ icon: Icon, title, subtitle, right, children, collapsible, open = true, onToggle }: {
   icon: React.ComponentType<{ className?: string }>; title: string; subtitle?: string;
   right?: React.ReactNode; children: React.ReactNode;
+  collapsible?: boolean; open?: boolean; onToggle?: () => void;
 }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5">
+        <div onClick={collapsible ? onToggle : undefined}
+          className={`flex items-start gap-2.5 ${collapsible ? 'cursor-pointer select-none flex-1' : ''}`}>
           <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0"><Icon className="w-4 h-4 text-amber-400" /></div>
           <div>
-            <h4 className="text-sm font-semibold text-white leading-tight">{title}</h4>
+            <h4 className="text-sm font-semibold text-white leading-tight flex items-center gap-1.5">{title}{collapsible && <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />}</h4>
             {subtitle && <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{subtitle}</p>}
           </div>
         </div>
         {right}
       </div>
-      {children}
+      {(!collapsible || open) && children}
     </div>
   );
 }

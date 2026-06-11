@@ -316,21 +316,41 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setNewEntry(''); setNewSl(''); setNewTp('');
   };
 
-  // Pozicioni i hapur për simbolin e zgjedhur → linjat Hyrje/SL/TP + modifikim.
-  const posForSymbol = positions.find(p => symMatch(selected, p.symbol)) || null;
-  // Afat-shkurt (scalp) vs afat-gjatë (swing): nga shenja "SCALP" te comment/clientId i pozicionit.
+  // Të GJITHA pozicionet e hapura për simbolin e zgjedhur (mund të jenë disa njëkohësisht).
+  const posnsForSymbol = positions.filter(p => symMatch(selected, p.symbol));
+  const posForSymbol = posnsForSymbol[0] || null; // i pari — për panelin "Ndrysho SL/TP" + prefill
   const posIsScalp = posForSymbol ? /SCALP/i.test(String(posForSymbol.comment ?? '') + String(posForSymbol.clientId ?? '')) : false;
-  // Vlera monetare e SL/TP: sa rrezikon (SL) dhe sa pret të fitosh (TP) në monedhën e llogarisë.
   const fcur = account?.currency || '$';
   const posVpp = /XAU/i.test(selected) ? 100 : /(USOIL|UKOIL|WTI|BRENT)/i.test(selected) ? 1000 : 100;
   const r2 = (n: number) => n.toFixed(2);
-  const posRisk = (posForSymbol?.openPrice && posForSymbol?.stopLoss) ? Math.abs(posForSymbol.openPrice - posForSymbol.stopLoss) * posVpp * (posForSymbol.volume || 0) : null;
-  const posReward = (posForSymbol?.openPrice && posForSymbol?.takeProfit) ? Math.abs(posForSymbol.takeProfit - posForSymbol.openPrice) * posVpp * (posForSymbol.volume || 0) : null;
-  const chartLines: PriceLineDef[] = posForSymbol ? [
-    ...(posForSymbol.openPrice ? [{ price: posForSymbol.openPrice, color: '#3b82f6', title: `${t('Hyrje')} · ${posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}` }] : []),
-    ...(posForSymbol.stopLoss ? [{ price: posForSymbol.stopLoss, color: '#ef4444', title: `SL ${r2(posForSymbol.stopLoss)}${posRisk != null ? ` · -${r2(posRisk)} ${fcur}` : ''}` }] : []),
-    ...(posForSymbol.takeProfit ? [{ price: posForSymbol.takeProfit, color: '#22c55e', title: `TP ${r2(posForSymbol.takeProfit)}${posReward != null ? ` · +${r2(posReward)} ${fcur}` : ''}` }] : []),
-  ] : [];
+  // P&L LIVE i një pozicioni — llogaritur nga çmimi AKTUAL i grafikut (më i freskët se profit-i i fetch-uar).
+  const lastClose = candles.length ? candles[candles.length - 1].close : null;
+  const livePnlOf = (p: OpenPosition): number | null => {
+    if (p.openPrice != null && lastClose != null) {
+      const isBuy = (p.type || '').includes('BUY');
+      return (lastClose - p.openPrice) * (isBuy ? 1 : -1) * posVpp * (p.volume || 0);
+    }
+    return p.profit != null ? Number(p.profit) : null;
+  };
+  const riskOf = (p: OpenPosition) => (p.openPrice && p.stopLoss) ? Math.abs(p.openPrice - p.stopLoss) * posVpp * (p.volume || 0) : null;
+  const rewardOf = (p: OpenPosition) => (p.openPrice && p.takeProfit) ? Math.abs(p.takeProfit - p.openPrice) * posVpp * (p.volume || 0) : null;
+  // P&L-ja totale live (shuma e të gjitha pozicioneve të hapura për këtë simbol).
+  const totalLivePnl = posnsForSymbol.length ? posnsForSymbol.reduce((s, p) => s + (livePnlOf(p) ?? 0), 0) : null;
+  const multiPos = posnsForSymbol.length > 1;
+  // Linjat: Hyrje/SL/TP për ÇDO pozicion të hapur (jo vetëm i pari) + linja "Tani" te çmimi aktual me P&L live.
+  const chartLines: PriceLineDef[] = [
+    ...posnsForSymbol.flatMap((p, i): PriceLineDef[] => {
+      const isScalp = /SCALP/i.test(String(p.comment ?? '') + String(p.clientId ?? ''));
+      const pnl = livePnlOf(p), risk = riskOf(p), reward = rewardOf(p);
+      const tag = multiPos ? ` #${i + 1}` : '';
+      return [
+        ...(p.openPrice ? [{ price: p.openPrice, color: '#3b82f6', title: `${t('Hyrje')}${tag} · ${isScalp ? t('Afatshkurtër') : t('Afatgjatë')}${pnl != null ? ` · ${pnl >= 0 ? '+' : ''}${r2(pnl)} ${fcur}` : ''}` }] : []),
+        ...(p.stopLoss ? [{ price: p.stopLoss, color: '#ef4444', title: `SL${tag}${risk != null ? ` · -${r2(risk)} ${fcur}` : ''}` }] : []),
+        ...(p.takeProfit ? [{ price: p.takeProfit, color: '#22c55e', title: `TP${tag}${reward != null ? ` · +${r2(reward)} ${fcur}` : ''}` }] : []),
+      ];
+    }),
+    ...((lastClose != null && totalLivePnl != null && posnsForSymbol.length) ? [{ price: lastClose, color: '#fbbf24', title: `${t('Tani')} · ${totalLivePnl >= 0 ? '+' : ''}${r2(totalLivePnl)} ${fcur}` }] : []),
+  ];
 
   // Parambush SL/TP kur ndryshon pozicioni.
   useEffect(() => {
@@ -438,9 +458,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             {posForSymbol && (
               <div className="flex items-center gap-3 px-4 py-1.5 border-t border-gray-800 text-[11px] flex-wrap">
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${posIsScalp ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-500" />{t('Hyrje')} {posForSymbol.openPrice}</span>
-                {posForSymbol.stopLoss ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500" />SL {posForSymbol.stopLoss}{posRisk != null && <span className="text-red-400 ml-1">(-{r2(posRisk)} {fcur})</span>}</span> : <span className="text-gray-600">{t('SL pa vendosur')}</span>}
-                {posForSymbol.takeProfit ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500" />TP {posForSymbol.takeProfit}{posReward != null && <span className="text-green-400 ml-1">(+{r2(posReward)} {fcur})</span>}</span> : <span className="text-gray-600">{t('TP pa vendosur')}</span>}
+                {totalLivePnl != null && (
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-amber-400" />{t('Tani')}: <span className={`font-bold ${totalLivePnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{totalLivePnl >= 0 ? '+' : ''}{r2(totalLivePnl)} {fcur}</span></span>
+                )}
+                {multiPos && <span className="text-gray-400">· {posnsForSymbol.length} {t('pozicione hapur')}</span>}
               </div>
             )}
       </div>
@@ -448,8 +469,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* Pozicionet e hapura (live) — VENDOSUR menjëherë nën grafikun e MetaTrader, që të shihen bashkë */}
       <OpenPositionsPanel configured={metaConfigured} section="positions" />
 
-      {/* Porosi e re (nën grafik) */}
-      <div className="lg:max-w-md">
+      {/* Porosi e re (majtas) + Trade-t e mbyllura (djathtas) — dy kolona në ekran të madh, stack në mobil */}
+      <div className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-5 lg:items-start">
+      <div>
         {/* Porosia BLEJ/SHIT — kompakte */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 space-y-2 h-fit">
           <h3 className="text-white font-semibold text-sm">{t('Porosi e re — {sym}', { sym: selected })}</h3>
@@ -659,8 +681,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           )}
         </div>
       )}
+      </div>
 
-      {/* 3) Sinjalet aktive (lista e plotë) — nën Trade-t e mbyllura (sinjale të vjetra, klik për të mbushur formën) */}
+      {/* 3) Sinjalet aktive (lista e plotë) — sinjale të vjetra, klik për të mbushur formën */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet')}</h3>
