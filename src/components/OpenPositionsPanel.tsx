@@ -13,6 +13,8 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const { t } = useI18n();
   const { user } = useAuth();
   const [positions, setPositions] = useState<OpenPosition[]>([]);
+  const [posStale, setPosStale] = useState(false);
+  const [posLoaded, setPosLoaded] = useState(false);
   const [orders, setOrders] = useState<PendingOrder[]>([]);
   const [executions, setExecutions] = useState<TradeExecution[]>([]);
   const [posLoading, setPosLoading] = useState(false);
@@ -26,8 +28,12 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     if (!configured) return;
     setPosLoading(true);
     const [pr, or] = await Promise.all([loadOpenPositions(), loadPendingOrders()]);
-    setPositions(!pr.error && Array.isArray(pr.positions) ? pr.positions : []);
-    setOrders(!or.error && Array.isArray(or.orders) ? or.orders : []);
+    // Përditëso VETËM kur leximi është i suksesshëm. Në gabim/timeout KALIMTAR të MetaApi
+    // (p.sh. 502), RUAJ pozicionet e fundit — mos i fshi, që të mos pulsojnë/zhduken nga ekrani.
+    // Lista zbrazet vetëm kur MetaApi kthen me sukses 0 pozicione (d.m.th. u mbyllën vërtet).
+    if (!pr.error && Array.isArray(pr.positions)) { setPositions(pr.positions); setPosStale(false); setPosLoaded(true); }
+    else setPosStale(true);
+    if (!or.error && Array.isArray(or.orders)) setOrders(or.orders);
     setPosLoading(false);
   }, [configured]);
 
@@ -42,7 +48,7 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     const id = setInterval(() => {
       if (showPositions) refreshPositions();
       if (showExecutions) refreshExecutions();
-    }, 20000);
+    }, 8000);
     return () => clearInterval(id);
   }, [configured, showPositions, showExecutions, refreshPositions, refreshExecutions]);
 
@@ -85,6 +91,11 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
         <h3 className="text-white font-semibold text-sm flex items-center gap-2">
           {t('Pozicionet e hapura (live nga MT5)')}
           <span className="bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-md text-xs font-semibold">{positions.length}</span>
+          {posStale && (
+            <span className="flex items-center gap-1 text-[10px] text-amber-400" title={t('Lidhje e ngadaltë — vlerat e fundit të njohura')}>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />{t('po rifreskohet…')}
+            </span>
+          )}
         </h3>
         <button onClick={refreshPositions} disabled={posLoading}
           className="p-1.5 text-gray-500 hover:text-white bg-gray-800 rounded-lg transition-all disabled:opacity-50" title={t('Rifresko')}>
@@ -100,7 +111,7 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
 
       {positions.length === 0 ? (
         <div className="text-[11px] text-gray-600 bg-gray-800/30 rounded-lg px-3 py-3 text-center">
-          {posLoading ? t('Po lexohen pozicionet…') : t('Asnjë pozicion i hapur tani.')}
+          {(!posLoaded || posStale) ? t('Po lexohen pozicionet…') : t('Asnjë pozicion i hapur tani.')}
         </div>
       ) : (
         <div className="space-y-1.5">

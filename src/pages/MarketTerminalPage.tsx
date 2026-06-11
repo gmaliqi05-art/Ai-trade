@@ -161,6 +161,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setLastUpdated(new Date());
   }, [user]);
 
+  // Poll i shpejtë VETËM i pozicioneve (P&L live + numri i tyre) — më i shpeshtë se fetch-i i plotë,
+  // pa ri-tërhequr historikun/llogarinë. Përditëson VETËM në sukses (ruan të fundit në gabim kalimtar).
+  const fetchPositions = useCallback(async () => {
+    if (!user || !metaConfigured) return;
+    const pos = await loadOpenPositions();
+    if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
+  }, [user, metaConfigured]);
+
   // Rifreskim manual i të dhënave (me reagim vizual).
   const refreshAll = async () => {
     setRefreshing(true);
@@ -198,6 +206,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const id = setInterval(() => { fetchBase(); fetchMeta(); }, 20000);
     return () => clearInterval(id);
   }, [fetchBase, fetchMeta]);
+
+  // Poll i veçantë e i shpejtë i pozicioneve (çdo 8s) → P&L live ndjek tregun nga afër.
+  useEffect(() => {
+    if (!metaConfigured) return;
+    const id = setInterval(fetchPositions, 8000);
+    return () => clearInterval(id);
+  }, [metaConfigured, fetchPositions]);
 
   const handleTrade = async () => {
     const vol = parseFloat(lot);
@@ -323,14 +338,23 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const fcur = account?.currency || '$';
   const posVpp = /XAU/i.test(selected) ? 100 : /(USOIL|UKOIL|WTI|BRENT)/i.test(selected) ? 1000 : 100;
   const r2 = (n: number) => n.toFixed(2);
-  // P&L LIVE i një pozicioni — llogaritur nga çmimi AKTUAL i grafikut (më i freskët se profit-i i fetch-uar).
+  // Çmimi LIVE për simbolin: çmimi spot i aktivit (i freskët, përditësohet shpesh) ose, si rezervë,
+  // mbyllja e qiririt të fundit. Përdoret për linjën "Tani" dhe si rezervë për P&L.
   const lastClose = candles.length ? candles[candles.length - 1].close : null;
+  const livePrice = (() => {
+    const a = assets.find(x => symMatch(selected, x.symbol));
+    const cp = a?.current_price;
+    return (cp != null && Number(cp) > 0) ? Number(cp) : lastClose;
+  })();
+  // P&L LIVE i një pozicioni: PREFERO profit-in REAL të brokerit (pikërisht ç'ka tregon MT5) —
+  // pozicionet polohen çdo 8s. Vetëm nëse mungon, vlerëso nga çmimi live (rezervë).
   const livePnlOf = (p: OpenPosition): number | null => {
-    if (p.openPrice != null && lastClose != null) {
+    if (p.profit != null) return Number(p.profit);
+    if (p.openPrice != null && livePrice != null) {
       const isBuy = (p.type || '').includes('BUY');
-      return (lastClose - p.openPrice) * (isBuy ? 1 : -1) * posVpp * (p.volume || 0);
+      return (livePrice - p.openPrice) * (isBuy ? 1 : -1) * posVpp * (p.volume || 0);
     }
-    return p.profit != null ? Number(p.profit) : null;
+    return null;
   };
   const riskOf = (p: OpenPosition) => (p.openPrice && p.stopLoss) ? Math.abs(p.openPrice - p.stopLoss) * posVpp * (p.volume || 0) : null;
   const rewardOf = (p: OpenPosition) => (p.openPrice && p.takeProfit) ? Math.abs(p.takeProfit - p.openPrice) * posVpp * (p.volume || 0) : null;
@@ -349,7 +373,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         ...(p.takeProfit ? [{ price: p.takeProfit, color: '#22c55e', title: `TP${tag}${reward != null ? ` · +${r2(reward)} ${fcur}` : ''}` }] : []),
       ];
     }),
-    ...((lastClose != null && totalLivePnl != null && posnsForSymbol.length) ? [{ price: lastClose, color: '#fbbf24', title: `${t('Tani')} · ${totalLivePnl >= 0 ? '+' : ''}${r2(totalLivePnl)} ${fcur}` }] : []),
+    ...((livePrice != null && totalLivePnl != null && posnsForSymbol.length) ? [{ price: livePrice, color: '#fbbf24', title: `${t('Tani')} · ${totalLivePnl >= 0 ? '+' : ''}${r2(totalLivePnl)} ${fcur}` }] : []),
   ];
 
   // Parambush SL/TP kur ndryshon pozicioni.
