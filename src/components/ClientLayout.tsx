@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -44,6 +44,7 @@ const navSections = [
   {
     label: 'Llogaria',
     items: [
+      { id: 'manual' as ClientPage, label: 'Manuali i përdorimit', icon: BookOpen },
       { id: 'notifications' as ClientPage, label: 'Njoftimet', icon: Bell },
       { id: 'settings' as ClientPage, label: 'Cilësimet', icon: Settings },
     ],
@@ -68,6 +69,7 @@ const pageLabels: Record<ClientPage, string> = {
   notifications: 'Njoftimet',
   reports: 'Raporte',
   settings: 'Cilësimet',
+  manual: 'Manuali i përdorimit',
 };
 
 export default function ClientLayout({ currentPage, onNavigate, children }: ClientLayoutProps) {
