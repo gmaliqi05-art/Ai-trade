@@ -29,7 +29,7 @@ async function claude(db: ReturnType<typeof createClient>, sys: string, user: st
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
       body: JSON.stringify({ model, max_tokens: maxTokens, system: sys, messages: [{ role: "user", content: user }] }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(55000),
     });
     if (!resp.ok) return { error: `Claude error ${resp.status}` };
     const data = await resp.json();
@@ -162,7 +162,7 @@ Deno.serve(async (req: Request) => {
   try {
     if (isCron) {
       let runs = 0; const results: unknown[] = [];
-      for (let i = 0; i < 3; i++) { const r = await runBatch(db); if (!r) break; results.push(r); runs++; if ((r as { error?: string }).error) break; }
+      for (let i = 0; i < 2; i++) { const r = await runBatch(db); if (!r) break; results.push(r); runs++; if ((r as { error?: string }).error) break; }
       return json({ cron: true, runs, results });
     }
 
@@ -177,8 +177,11 @@ Deno.serve(async (req: Request) => {
 
     if (body.run === true) { const r = await runBatch(db); if (r && (r as { error?: string }).error) return json({ error: (r as { error?: string }).error }); }
     if (body.research === true) {
-      const profs = await profiles(db);
-      for (const p of profs) if (!p.doctrine || body.force === true) await researchOne(db, p);
+      // NJË ekspert për kërkesë — që të mos kalohet afati (150s) i edge function-it.
+      // UI-ja e thërret në lak derisa 'researchRemaining' të bëhet 0.
+      const profs2 = await profiles(db);
+      const next = profs2.find((p) => !p.doctrine);
+      if (next) await researchOne(db, next);
     }
     if (body.synthesize === true) { const r = await synthesize(db); if ((r as { error?: string }).error) return json({ error: (r as { error?: string }).error }); }
     if (typeof body.set_autotrade === "boolean") {
@@ -193,7 +196,8 @@ Deno.serve(async (req: Request) => {
     ]);
     const pend = await pendingRows(db);
     const autotrade = (await getCfg(db, "expert_autotrade_enabled")) === "true";
-    return json({ analyses: analyses ?? [], profiles: profs, knowledge: (knw ?? [])[0] ?? null, pending: pend.length, batchSize: BATCH, autotrade });
+    const researchRemaining = (profs as Profile[]).filter((p) => !p.doctrine).length;
+    return json({ analyses: analyses ?? [], profiles: profs, knowledge: (knw ?? [])[0] ?? null, pending: pend.length, batchSize: BATCH, autotrade, researchRemaining });
   } catch (err) {
     return json({ error: (err as Error).message }, 500);
   }

@@ -62,19 +62,40 @@ export default function AdminExpertRoomPage() {
   const [busy, setBusy] = useState<string | null>(null); // 'run' | 'research' | 'synthesize' | 'toggle'
   const [err, setErr] = useState<string | null>(null);
 
+  const [researchProg, setResearchProg] = useState<string | null>(null);
+
+  type Resp = { analyses?: Analysis[]; profiles?: Profile[]; knowledge?: Knowledge | null; pending?: number; batchSize?: number; autotrade?: boolean; researchRemaining?: number; error?: string };
+  const applyResp = (d: Resp) => {
+    setAnalyses(d.analyses ?? []); setProfs(d.profiles ?? []); setKnowledge(d.knowledge ?? null);
+    setPending(d.pending ?? 0); setBatchSize(d.batchSize ?? 10); setAutotrade(!!d.autotrade);
+  };
+
   const call = useCallback(async (body: Record<string, unknown>, busyKey: string | null) => {
     if (busyKey) setBusy(busyKey); else setLoading(true);
     setErr(null);
     const { data, error } = await supabase.functions.invoke('expert-room', { body });
     if (error) setErr(error.message);
-    else if ((data as { error?: string })?.error) setErr((data as { error?: string }).error!);
-    else {
-      const d = data as { analyses?: Analysis[]; profiles?: Profile[]; knowledge?: Knowledge | null; pending?: number; batchSize?: number; autotrade?: boolean };
-      setAnalyses(d.analyses ?? []); setProfs(d.profiles ?? []); setKnowledge(d.knowledge ?? null);
-      setPending(d.pending ?? 0); setBatchSize(d.batchSize ?? 10); setAutotrade(!!d.autotrade);
-    }
+    else if ((data as Resp)?.error) setErr((data as Resp).error!);
+    else applyResp(data as Resp);
     if (busyKey) setBusy(null); else setLoading(false);
   }, []);
+
+  // Hulumtimi: NJË ekspert për thirrje (që të mos kalohet afati i edge function-it), në lak derisa 0.
+  const researchAll = useCallback(async () => {
+    setBusy('research'); setErr(null);
+    const total = profs.length || 6;
+    for (let i = 0; i < total + 2; i++) {
+      const { data, error } = await supabase.functions.invoke('expert-room', { body: { research: true } });
+      if (error) { setErr(error.message); break; }
+      const d = data as Resp;
+      if (d.error) { setErr(d.error); break; }
+      applyResp(d);
+      const remaining = d.researchRemaining ?? (d.profiles ?? []).filter(p => !p.doctrine).length;
+      setResearchProg(`${total - remaining}/${total}`);
+      if (remaining <= 0) break;
+    }
+    setResearchProg(null); setBusy(null);
+  }, [profs.length]);
 
   useEffect(() => { call({}, null); }, [call]);
 
@@ -183,10 +204,10 @@ export default function AdminExpertRoomPage() {
         <>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <p className="text-gray-400 text-[12px] max-w-xl">{t('Hulumtimi i thellë (Claude) mbledh parimet, rregullat dhe modelet PUBLIKE të secilës metodologji dhe i ruan si doktrinë — që paneli të analizojë me to.')}</p>
-            <button onClick={() => call({ research: true }, 'research')} disabled={busy != null}
+            <button onClick={researchAll} disabled={busy != null}
               className="flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg bg-violet-500 text-white hover:bg-violet-400 disabled:opacity-40">
               {busy === 'research' ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpenCheck className="w-4 h-4" />}
-              {busy === 'research' ? t('Duke hulumtuar…') : t('Hulumto doktrinat')}
+              {busy === 'research' ? `${t('Duke hulumtuar…')}${researchProg ? ` ${researchProg}` : ''}` : t('Hulumto doktrinat')}
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
