@@ -135,6 +135,18 @@ export async function saveMetaApiConfig(userId: string, cfg: MetaApiConfig): Pro
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Ruajtje E PJESSHME: shkruan VETËM fushat e dhëna (jo gjithë konfigurimin).
+ * Kritike për sigurinë: pengon që një gjendje e ngarkuar gabim (p.sh. sesion i skaduar →
+ * vlera DEFAULT) t'i mbishkruajë fushat e tjera si `auto_trade` (që fikej "vetvetiu").
+ */
+export async function saveMetaApiConfigPartial(userId: string, patch: Partial<MetaApiConfig>): Promise<void> {
+  const { error } = await supabase
+    .from('metaapi_config')
+    .upsert({ user_id: userId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) throw new Error(error.message);
+}
+
 /** Pozicion i hapur nga MetaApi (fushat kryesore që na duhen). */
 export interface OpenPosition {
   id: string;

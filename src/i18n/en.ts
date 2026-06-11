@@ -1192,4 +1192,6 @@ export const en: Record<string, string> = {
   "Bëj": "Do",
   "Mos bëj": "Don't",
   "Harta për robotin (parametra → sugjerime)": "Robot map (parameters → suggestions)",
+  "Po ngarkohet konfigurimi — rifresko faqen para se të ndryshosh.": "Config is still loading — refresh the page before changing.",
+  "Po ngarkohet konfigurimi — rifresko faqen para se të ruash.": "Config is still loading — refresh the page before saving.",
 };

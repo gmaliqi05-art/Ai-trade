@@ -10,7 +10,7 @@ import {
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
 import {
-  loadMetaApiConfig, saveMetaApiConfig, checkMetaApiConnection,
+  loadMetaApiConfig, saveMetaApiConfigPartial, checkMetaApiConnection,
   DEFAULT_CONFIG, type MetaApiConfig,
 } from '../services/metaapi';
 
@@ -48,10 +48,14 @@ export default function MetaApiPanel() {
   const [connOpen, setConnOpen] = useState(false); // kredencialet — të palosura/mbyllura si default (mos i prek aksidentalisht)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // `loaded` bëhet true VETËM kur konfigurimi real u lexua me sukses. Pa këtë, asnjë ruajtje
+  // nuk lejohet — që një gjendje DEFAULT (p.sh. nga sesion i skaduar) të mos mbishkruajë realin.
+  const [loaded, setLoaded] = useState(false);
+
   const refresh = useCallback(async () => {
     if (!user) return;
-    try { const c = await loadMetaApiConfig(user.id); setCfg(c); }
-    catch { /* dështim kalimtar → ruaj gjendjen ekzistuese */ }
+    try { const c = await loadMetaApiConfig(user.id); setCfg(c); setLoaded(true); }
+    catch { setLoaded(false); /* dështim kalimtar → ruaj gjendjen; mos lejo ruajtje që mbishkruan */ }
     finally { setLoading(false); }
   }, [user]);
 
@@ -59,28 +63,29 @@ export default function MetaApiPanel() {
 
   const set = <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
 
-  // Ndryshon dhe RUAN menjëherë — për kontrollet kritike (Auto-trade, Kill-switch, Mode, strategjitë).
+  // Ndryshon dhe RUAN menjëherë — ruajtje E PJESSHME (vetëm fusha që ndryshoi), që të mos preken
+  // fushat e tjera (p.sh. auto_trade). Bllokohet derisa konfigurimi real të jetë ngarkuar.
   const setAndSave = async <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => {
-    const next = { ...cfg, [k]: v };
-    setCfg(next);
+    setCfg(p => ({ ...p, [k]: v }));
     if (!user) return;
+    if (!loaded) { setMsg({ type: 'error', text: t('Po ngarkohet konfigurimi — rifresko faqen para se të ndryshosh.') }); return; }
     setMsg(null);
     try {
-      await saveMetaApiConfig(user.id, next);
+      await saveMetaApiConfigPartial(user.id, { [k]: v });
       setMsg({ type: 'success', text: t('U ruajt automatikisht.') });
     } catch (e) {
       setMsg({ type: 'error', text: (e as Error).message });
     }
   };
 
-  // Ndryshon DISA fusha njëherësh dhe i ruan — p.sh. për metodat reciprokisht-përjashtuese (Trailing A/B).
+  // Ndryshon DISA fusha njëherësh dhe i ruan (vetëm ato fusha) — p.sh. presetet, Trailing A/B.
   const setManyAndSave = async (patch: Partial<MetaApiConfig>) => {
-    const next = { ...cfg, ...patch };
-    setCfg(next);
+    setCfg(p => ({ ...p, ...patch }));
     if (!user) return;
+    if (!loaded) { setMsg({ type: 'error', text: t('Po ngarkohet konfigurimi — rifresko faqen para se të ndryshosh.') }); return; }
     setMsg(null);
     try {
-      await saveMetaApiConfig(user.id, next);
+      await saveMetaApiConfigPartial(user.id, patch);
       setMsg({ type: 'success', text: t('U ruajt automatikisht.') });
     } catch (e) {
       setMsg({ type: 'error', text: (e as Error).message });
@@ -92,8 +97,13 @@ export default function MetaApiPanel() {
 
   const save = async () => {
     if (!user) return;
+    if (!loaded) { setMsg({ type: 'error', text: t('Po ngarkohet konfigurimi — rifresko faqen para se të ruash.') }); return; }
     setSaving(true); setMsg(null);
-    try { await saveMetaApiConfig(user.id, cfg); setMsg({ type: 'success', text: t('Cilësimet u ruajtën.') }); }
+    // Ruaj gjithçka PËRVEÇ çelësave të kohës-reale (auto_trade, kill_switch) — ata ruhen vetëm nga
+    // butonat e tyre, që "Ruaj cilësimet" të mos i ndryshojë kurrë pa dashje.
+    const { auto_trade: _at, kill_switch: _ks, ...rest } = cfg;
+    void _at; void _ks;
+    try { await saveMetaApiConfigPartial(user.id, rest); setMsg({ type: 'success', text: t('Cilësimet u ruajtën.') }); }
     catch (e) { setMsg({ type: 'error', text: (e as Error).message }); }
     setSaving(false);
   };
