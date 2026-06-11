@@ -46,15 +46,35 @@ function marketDataHost(region: string): string {
 }
 
 async function metaApiGet(cfg: MetaApiConfig, path: string) {
-  const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
-    headers: { "auth-token": cfg.token },
-    signal: AbortSignal.timeout(15000),
-  });
-  const text = await resp.text();
-  let body: unknown = text;
-  try { body = JSON.parse(text); } catch { /* mbaje si tekst */ }
-  if (!resp.ok) throw new Error(`MetaApi ${resp.status}: ${typeof body === "string" ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200)}`);
-  return body;
+  // RIPROVË: rrjeti Supabase→MetaApi herë-herë jep "connection refused"/timeout kalimtar, ose
+  // MetaApi kthen 502/503 ndërsa sinkronizon. Llogaria mund të jetë e lidhur — provo deri në 3 herë
+  // me prapakthim të shkurtër para se të dorëzohemi. (Vetëm GET-e idempotentë; jo urdhrat e trade-it.)
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
+        headers: { "auth-token": cfg.token },
+        signal: AbortSignal.timeout(15000),
+      });
+      const text = await resp.text();
+      let body: unknown = text;
+      try { body = JSON.parse(text); } catch { /* mbaje si tekst */ }
+      if (resp.status === 502 || resp.status === 503) {
+        lastErr = new Error(`MetaApi ${resp.status} (po sinkronizon)`); // kalimtar → riprovo
+      } else if (!resp.ok) {
+        throw new Error(`MetaApi ${resp.status}: ${typeof body === "string" ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200)}`);
+      } else {
+        return body;
+      }
+    } catch (e) {
+      // Gabim rrjeti (connection refused/timeout/DNS) → riprovo; gabim aplikacioni (throw lart) → dil.
+      const msg = (e as Error).message || String(e);
+      if (/MetaApi \d{3}:/.test(msg)) throw e; // përgjigje e qartë jo-OK → mos riprovo
+      lastErr = e as Error;
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+  }
+  throw lastErr || new Error("MetaApi unreachable");
 }
 
 // Disa brokerë (p.sh. Vantage) e quajnë arin me prapashtesë (XAUUSD+, XAUUSD., GOLD…).
