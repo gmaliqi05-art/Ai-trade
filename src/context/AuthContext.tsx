@@ -99,7 +99,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // Dalja duhet të punojë GJITHMONË — edhe kur sesioni ka skaduar (token i pavlefshëm).
+    // Scope 'local' s'i kërkon serverit ta revokojë (që dështon/ngec kur token-i s'vlen më);
+    // pastron vetëm sesionin lokal. Pastaj fshijmë gjendjen + ruajtjen me dorë dhe rifreskojmë.
+    try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* injoro — vazhdo me pastrimin lokal */ }
+    try { setSession(null); setUser(null); setProfile(null); } catch { /* injoro */ }
+    try {
+      // Fshi çdo gjurmë sesioni të Supabase nga localStorage (çelësat sb-*).
+      Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+    } catch { /* injoro */ }
+    // Rikthe te ekrani i hyrjes me një ngarkim të pastër.
+    if (typeof window !== 'undefined') window.location.href = '/';
   };
 
   return (
