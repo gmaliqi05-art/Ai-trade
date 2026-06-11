@@ -113,8 +113,8 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                   {isBuy ? <TrendingUp className="w-3.5 h-3.5 text-green-400" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
                   <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
                   <span className="text-white">{p.symbol}</span>
-                  <span className="text-gray-500">{p.volume} {t('lot')}</span>
-                  {p.openPrice != null && <span className="text-gray-600">@ {p.openPrice}</span>}
+                  <span className="text-gray-300">{p.volume} {t('lot')}</span>
+                  {p.openPrice != null && <span className="text-gray-400">@ {p.openPrice}</span>}
                 </span>
                 <span className="flex items-center gap-3">
                   <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>

@@ -326,10 +326,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const r2 = (n: number) => n.toFixed(2);
   const posRisk = (posForSymbol?.openPrice && posForSymbol?.stopLoss) ? Math.abs(posForSymbol.openPrice - posForSymbol.stopLoss) * posVpp * (posForSymbol.volume || 0) : null;
   const posReward = (posForSymbol?.openPrice && posForSymbol?.takeProfit) ? Math.abs(posForSymbol.takeProfit - posForSymbol.openPrice) * posVpp * (posForSymbol.volume || 0) : null;
+  const posPnl = posForSymbol?.profit != null ? Number(posForSymbol.profit) : null; // P&L live (floating) i pozicionit
   const chartLines: PriceLineDef[] = posForSymbol ? [
-    ...(posForSymbol.openPrice ? [{ price: posForSymbol.openPrice, color: '#3b82f6', title: `${t('Hyrje')} · ${posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}` }] : []),
-    ...(posForSymbol.stopLoss ? [{ price: posForSymbol.stopLoss, color: '#ef4444', title: `SL ${r2(posForSymbol.stopLoss)}${posRisk != null ? ` · -${r2(posRisk)} ${fcur}` : ''}` }] : []),
-    ...(posForSymbol.takeProfit ? [{ price: posForSymbol.takeProfit, color: '#22c55e', title: `TP ${r2(posForSymbol.takeProfit)}${posReward != null ? ` · +${r2(posReward)} ${fcur}` : ''}` }] : []),
+    // Çmimet shfaqen te boshti djathtas — te linjat lëmë vetëm etiketën + paranë (pa dyfishuar çmimin).
+    // Linja e hyrjes shton P&L-në LIVE (sa je në fitim/humbje tani).
+    ...(posForSymbol.openPrice ? [{ price: posForSymbol.openPrice, color: '#3b82f6', title: `${t('Hyrje')} · ${posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}${posPnl != null ? ` · ${posPnl >= 0 ? '+' : ''}${r2(posPnl)} ${fcur}` : ''}` }] : []),
+    ...(posForSymbol.stopLoss ? [{ price: posForSymbol.stopLoss, color: '#ef4444', title: `SL${posRisk != null ? ` · -${r2(posRisk)} ${fcur}` : ''}` }] : []),
+    ...(posForSymbol.takeProfit ? [{ price: posForSymbol.takeProfit, color: '#22c55e', title: `TP${posReward != null ? ` · +${r2(posReward)} ${fcur}` : ''}` }] : []),
   ] : [];
 
   // Parambush SL/TP kur ndryshon pozicioni.
@@ -438,9 +441,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             {posForSymbol && (
               <div className="flex items-center gap-3 px-4 py-1.5 border-t border-gray-800 text-[11px] flex-wrap">
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${posIsScalp ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-500" />{t('Hyrje')} {posForSymbol.openPrice}</span>
-                {posForSymbol.stopLoss ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500" />SL {posForSymbol.stopLoss}{posRisk != null && <span className="text-red-400 ml-1">(-{r2(posRisk)} {fcur})</span>}</span> : <span className="text-gray-600">{t('SL pa vendosur')}</span>}
-                {posForSymbol.takeProfit ? <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500" />TP {posForSymbol.takeProfit}{posReward != null && <span className="text-green-400 ml-1">(+{r2(posReward)} {fcur})</span>}</span> : <span className="text-gray-600">{t('TP pa vendosur')}</span>}
+                {posPnl != null && (
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-500" />{t('Tani')}: <span className={`font-bold ${posPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{posPnl >= 0 ? '+' : ''}{r2(posPnl)} {fcur}</span></span>
+                )}
+                {posRisk != null && <span className="flex items-center gap-1 text-gray-300"><span className="w-3 h-0.5 bg-red-500" />SL <span className="text-red-400">-{r2(posRisk)} {fcur}</span></span>}
+                {posReward != null && <span className="flex items-center gap-1 text-gray-300"><span className="w-3 h-0.5 bg-green-500" />TP <span className="text-green-400">+{r2(posReward)} {fcur}</span></span>}
               </div>
             )}
       </div>
