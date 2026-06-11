@@ -1023,4 +1023,5 @@ export const en: Record<string, string> = {
   "Hap faqen e rikonfigurimit te MetaApi": "Open the MetaApi reconfiguration page",
   "Shkurtore për ta rregulluar lidhjen kur bie: hap faqen e MetaApi për të rifutur kredencialet. NUK është mënyrë lidhjeje — roboti lidhet me Account ID + Token.": "Shortcut to fix the connection when it drops: opens the MetaApi page to re-enter credentials. NOT a connection method — the robot connects with Account ID + Token.",
   "Tani": "Now",
+  "pozicione hapur": "open positions",
 };
