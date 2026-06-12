@@ -50,7 +50,7 @@ export default function DemoTradingPage() {
   const { user } = useAuth();
   const [balance, setBalance] = useState<number>(100);
   const [startBalance, setStartBalance] = useState<number>(100);
-  const [enabled, setEnabled] = useState<boolean>(true);
+  const [enabled, setEnabled] = useState<boolean>(false); // robot auto-demo (opt-in, OFF si default)
   const [trades, setTrades] = useState<DemoTrade[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [livePx, setLivePx] = useState<number | null>(null); // çmimi real-time i arit (Binance, ~2s)
@@ -76,7 +76,7 @@ export default function DemoTradingPage() {
     const since24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const nowIso = new Date().toISOString();
     const [{ data: prof }, { data: tr }, { data: assets }, { data: sig }, { data: done }] = await Promise.all([
-      supabase.from('profiles').select('demo_balance, demo_start_balance, demo_enabled').eq('id', user.id).maybeSingle(),
+      supabase.from('profiles').select('demo_balance, demo_start_balance, demo_auto').eq('id', user.id).maybeSingle(),
       supabase.from('demo_trades').select('*').eq('user_id', user.id).order('opened_at', { ascending: false }).limit(200),
       supabase.from('assets').select('symbol, current_price'),
       // Të NJËJTAT sinjale të motorit si te terminali Live (roboti demo tregton mbi këto).
@@ -89,7 +89,7 @@ export default function DemoTradingPage() {
     if (prof) {
       setBalance(Number(prof.demo_balance ?? 100));
       setStartBalance(Number(prof.demo_start_balance ?? 100));
-      setEnabled(!!prof.demo_enabled);
+      setEnabled(!!prof.demo_auto);
     }
     if (tr) setTrades(tr as DemoTrade[]);
     if (sig) setSignals(sig as Signal[]);
@@ -231,7 +231,7 @@ export default function DemoTradingPage() {
     if (!user) return;
     const next = !enabled;
     setEnabled(next);
-    await supabase.from('profiles').update({ demo_enabled: next }).eq('id', user.id);
+    await supabase.from('profiles').update({ demo_auto: next }).eq('id', user.id);
   }
 
   return (
@@ -247,13 +247,13 @@ export default function DemoTradingPage() {
               Tregto Demo
               <span className="text-[10px] font-bold uppercase tracking-wide bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded">Virtual</span>
             </h1>
-            <p className="text-xs text-gray-400">Roboti tregton virtualisht me çmimet reale të arit — pa para reale, pa MetaApi.</p>
+            <p className="text-xs text-gray-400">Hapësira jote personale — tregto manualisht me çmime reale të arit. Ndez "Robot AUTO" nëse do që roboti të tregtojë vetë te demoja jote. Pa para reale.</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={toggleEnabled}
             className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition ${enabled ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
-            <Power className="w-3.5 h-3.5" /> {enabled ? 'Demo ON' : 'Demo OFF'}
+            <Power className="w-3.5 h-3.5" /> {enabled ? 'Robot AUTO' : 'Vetëm manual'}
           </button>
           <button onClick={load} className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white transition">
             <RefreshCw className="w-4 h-4" />
@@ -339,7 +339,7 @@ export default function DemoTradingPage() {
       {/* Open positions */}
       <Section title={`Pozicione të hapura (${open.length})`}>
         {loading ? <Empty text="Po ngarkohet…" /> : open.length === 0 ? (
-          <Empty text="Asnjë pozicion i hapur. Roboti hap trade virtuale kur dalin sinjale të reja." />
+          <Empty text="Asnjë pozicion i hapur. Hap një trade nga forma poshtë, ose ndez 'Robot AUTO' që roboti të tregtojë vetë." />
         ) : (
           <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'SL', 'TP', 'P&L tani', '']}>
             {open.map((t) => {
