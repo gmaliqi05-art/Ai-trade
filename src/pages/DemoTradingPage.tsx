@@ -53,6 +53,7 @@ export default function DemoTradingPage() {
   const [enabled, setEnabled] = useState<boolean>(true);
   const [trades, setTrades] = useState<DemoTrade[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [livePx, setLivePx] = useState<number | null>(null); // çmimi real-time i arit (Binance, ~2s)
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [tf, setTf] = useState<Timeframe>('5m');
@@ -123,19 +124,44 @@ export default function DemoTradingPage() {
     return () => clearInterval(t);
   }, [loadCandles]);
 
+  // Çmimi real-time i arit (Binance ticker, çdo 2s) — i njëjti feed si grafiku, që P&L-ja
+  // dhe mbyllja të mos kenë vonesë (assets.current_price freskohet vetëm ~1×/min).
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT', { signal: AbortSignal.timeout(5000) });
+        if (!r.ok) return;
+        const j = await r.json();
+        const p = Number(j.price);
+        if (alive && p > 0) setLivePx(p);
+      } catch { /* mban të fundit */ }
+    };
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  // Çmimi i përdorur për një simbol: ar → çmimi real-time i Binance; përndryshe → assets.
+  const priceFor = useCallback((symbol: string): number | null => {
+    const g = normSym(symbol);
+    if ((g.includes('XAU') || g.includes('GOLD')) && livePx != null) return livePx;
+    return prices[g] ?? null;
+  }, [livePx, prices]);
+
   const open = useMemo(() => trades.filter((t) => t.status === 'open'), [trades]);
   const closed = useMemo(() => trades.filter((t) => t.status === 'closed'), [trades]);
 
   const unrealizedOf = useCallback((t: DemoTrade): number => {
-    const px = prices[normSym(t.symbol)];
+    const px = priceFor(t.symbol);
     if (px == null) return 0;
     const dir = (t.side || '').toLowerCase() === 'buy' ? 1 : -1;
     return (px - Number(t.entry_price)) * dir * Number(t.volume) * valuePerPrice(t.symbol);
-  }, [prices]);
+  }, [priceFor]);
 
   const floating = useMemo(() => open.reduce((s, t) => s + unrealizedOf(t), 0), [open, unrealizedOf]);
   const equity = balance + floating;
-  const curPrice = prices[normSym(formSym)] ?? null;
+  const curPrice = priceFor(formSym);
 
   // Klik mbi një sinjal → mbush formën (anë, SL, TP) dhe rrëshqit te forma (si te Live).
   const applySignal = (s: Signal) => {
@@ -180,10 +206,14 @@ export default function DemoTradingPage() {
     setBusy(false);
   };
 
-  // Linjat Entry/SL/TP të pozicioneve demo të arit mbi grafik (si te terminali Live).
+  // Linjat Entry/SL/TP të pozicioneve demo të arit + vija "Tani" te çmimi real-time (si te Live).
   const chartLines = useMemo<PriceLineDef[]>(() => {
     const lines: PriceLineDef[] = [];
     const gold = open.filter((t) => normSym(t.symbol).includes('XAU') || normSym(t.symbol).includes('GOLD'));
+    if (livePx != null) {
+      const goldPnl = gold.reduce((s, t) => s + unrealizedOf(t), 0);
+      lines.push({ price: livePx, color: '#fbbf24', title: gold.length ? `Tani · ${goldPnl >= 0 ? '+' : ''}€${fmt(goldPnl)}` : 'Tani' });
+    }
     for (const t of gold.slice(0, 4)) {
       const buy = (t.side || '').toLowerCase() === 'buy';
       lines.push({ price: Number(t.entry_price), color: buy ? '#3b82f6' : '#f59e0b', title: `Hyrje ${buy ? 'BLEJ' : 'SHIT'}` });
@@ -191,7 +221,7 @@ export default function DemoTradingPage() {
       if (t.tp != null) lines.push({ price: Number(t.tp), color: '#22c55e', title: 'TP' });
     }
     return lines;
-  }, [open]);
+  }, [open, livePx, unrealizedOf]);
 
   const realizedPnl = useMemo(() => closed.reduce((s, t) => s + (Number(t.profit) || 0), 0), [closed]);
   const wins = closed.filter((t) => (Number(t.profit) || 0) > 0).length;

@@ -5,7 +5,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // Kërkon JWT-në e përdoruesit; shkruan me service role (pa prekur RLS). Asnjë para reale.
 //   POST { action:'open', side:'buy'|'sell', volume, sl?, tp?, symbol?, signal_id? }
 //   POST { action:'close', id }
-// Hapja bëhet me ÇMIMIN REAL aktual të arit; mbyllja llogarit P&L-në në € dhe përditëson demo_balance.
+// Çmimi i hapjes/mbylljes merret REAL-TIME nga Binance (PAXG = ar) që të përputhet me ekranin;
+// për simbole jo-ar bie te assets.current_price. Mbyllja llogarit P&L në € dhe përditëson demo_balance.
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -16,11 +17,22 @@ function json(o: unknown, s = 200) {
   return new Response(JSON.stringify(o), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 }
 function normSym(s: string): string { return (s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function isGold(symbol: string): boolean { const s = normSym(symbol); return s.includes("XAU") || s.includes("GOLD"); }
 function valuePerPrice(symbol: string): number {
   const s = normSym(symbol);
   if (s.includes("XAU") || s.includes("GOLD")) return 100;
   if (s.includes("OIL") || s.includes("WTI") || s.includes("BRENT")) return 1000;
   return 100000;
+}
+// Çmimi real-time i arit nga Binance (PAXGUSDT) — i njëjti feed si grafiku te klienti.
+async function binancePaxg(): Promise<number | null> {
+  try {
+    const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT", { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null;
+    const j = await r.json() as { price?: string };
+    const p = Number(j.price);
+    return p > 0 ? p : null;
+  } catch { return null; }
 }
 
 Deno.serve(async (req: Request) => {
@@ -40,11 +52,16 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { /* */ }
   const action = String(body.action || "");
 
-  // Çmimi aktual sipas simbolit.
+  // Çmimet e assets (rezervë për simbole jo-ar).
   const { data: assetRows } = await db.from("assets").select("symbol, current_price");
   const priceBy = new Map<string, number>();
   for (const a of (assetRows ?? []) as { symbol: string; current_price: number | null }[]) {
     if (a.current_price != null) priceBy.set(normSym(a.symbol), Number(a.current_price));
+  }
+  // Çmimi REAL: ar → Binance real-time; përndryshe → assets.
+  async function realPrice(symbol: string): Promise<number | null> {
+    if (isGold(symbol)) { const b = await binancePaxg(); if (b != null) return b; }
+    return priceBy.get(normSym(symbol)) ?? null;
   }
 
   try {
@@ -54,12 +71,11 @@ Deno.serve(async (req: Request) => {
       const symbol = String(body.symbol || "XAUUSD");
       const vol = Number(body.volume);
       if (!(vol >= 0.01 && vol <= 100)) return json({ error: "bad_volume" }, 400);
-      const price = priceBy.get(normSym(symbol));
+      const price = await realPrice(symbol);
       if (price == null || !(price > 0)) return json({ error: "no_price" }, 400);
       const sl = body.sl != null && body.sl !== "" ? Number(body.sl) : null;
       const tp = body.tp != null && body.tp !== "" ? Number(body.tp) : null;
       const signal_id = body.signal_id ? String(body.signal_id) : null;
-      // Mbroj nga gabimi: SL/TP në anën e duhur (përndryshe i lëmë bosh që roboti t'i menaxhojë).
       const slOk = sl == null || (side === "buy" ? sl < price : sl > price);
       const tpOk = tp == null || (side === "buy" ? tp > price : tp < price);
       const { error } = await db.from("demo_trades").insert({
@@ -77,7 +93,7 @@ Deno.serve(async (req: Request) => {
         .select("id, symbol, side, volume, entry_price, status")
         .eq("id", id).eq("user_id", user.id).eq("status", "open").maybeSingle();
       if (!t) return json({ error: "not_found" }, 404);
-      const price = priceBy.get(normSym(t.symbol as string));
+      const price = await realPrice(t.symbol as string);
       if (price == null || !(price > 0)) return json({ error: "no_price" }, 400);
       const isBuy = String(t.side).toLowerCase() === "buy";
       const profit = (price - Number(t.entry_price)) * (isBuy ? 1 : -1) * Number(t.volume) * valuePerPrice(t.symbol as string);
@@ -88,7 +104,7 @@ Deno.serve(async (req: Request) => {
       const { data: p } = await db.from("profiles").select("demo_balance").eq("id", user.id).maybeSingle();
       const newBal = Math.round((Number(p?.demo_balance ?? 100) + profit) * 100) / 100;
       await db.from("profiles").update({ demo_balance: newBal }).eq("id", user.id);
-      return json({ ok: true, profit: rp, balance: newBal });
+      return json({ ok: true, profit: rp, exit: price, balance: newBal });
     }
 
     return json({ error: "bad_action" }, 400);
