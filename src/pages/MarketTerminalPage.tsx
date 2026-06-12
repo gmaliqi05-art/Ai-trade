@@ -11,7 +11,7 @@ import OpenPositionsPanel from '../components/OpenPositionsPanel';
 import CompletedSignals from '../components/CompletedSignals';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
-  loadCandles, loadOpenPositions, modifyPosition,
+  loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice,
   type AccountInfo, type HistoryDeal, type OpenPosition,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
@@ -80,6 +80,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [history, setHistory] = useState<ClosedTrade[]>([]);
   const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [candles, setCandles] = useState<ChartCandle[]>([]);
+  const [brokerPx, setBrokerPx] = useState<{ bid: number; ask: number } | null>(null); // çmimi LIVE i broker-it për 'selected'
   const [slInput, setSlInput] = useState('');
   const [tpInput, setTpInput] = useState('');
   const [modifyMsg, setModifyMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -204,6 +205,25 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const id = setInterval(loadChart, 5000);
     return () => clearInterval(id);
   }, [loadChart]);
+
+  // Çmimi LIVE i broker-it (bid/ask) për simbolin e zgjedhur — çdo 2s. Bën vijën "Tani" dhe
+  // P&L-në në grafik real-time (përkon me mbylljen e broker-it), pa pritur leximin 3s të pozicioneve.
+  useEffect(() => {
+    if (!metaConfigured) { setBrokerPx(null); return; }
+    let alive = true;
+    setBrokerPx(null);
+    const tick = async () => {
+      try {
+        const r = await loadSymbolPrice(selected);
+        const px = (r as { price?: { bid?: number; ask?: number } })?.price;
+        const bid = Number(px?.bid), ask = Number(px?.ask);
+        if (alive && bid > 0 && ask > 0) setBrokerPx({ bid, ask });
+      } catch { /* mban të fundit */ }
+    };
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(id); };
+  }, [metaConfigured, selected]);
 
   useEffect(() => {
     fetchBase();
@@ -346,23 +366,33 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Çmimi LIVE për simbolin: çmimi spot i aktivit (i freskët, përditësohet shpesh) ose, si rezervë,
   // mbyllja e qiririt të fundit. Përdoret për linjën "Tani" dhe si rezervë për P&L.
   const lastClose = candles.length ? candles[candles.length - 1].close : null;
+  // Çmimi mesatar LIVE i broker-it (bid/ask, çdo 2s) për vijën "Tani". Rezervë: mbyllja e qiririt (5s) ose spot-i.
+  const brokerMid = brokerPx ? (brokerPx.bid + brokerPx.ask) / 2 : null;
   const livePrice = (() => {
+    if (brokerMid != null) return brokerMid; // çmimi REAL i broker-it, real-time
     const a = assets.find(x => symMatch(selected, x.symbol));
     const cp = a?.current_price;
     const spot = (cp != null && Number(cp) > 0) ? Number(cp) : null;
-    // Me MT5: çmimi më i freskët është mbyllja e qiririt të fundit (poll çdo 5s), jo spot-i i DB-së
-    // (që freskohet vetëm 1×/min). Pa MT5: përdor spot-in e tregut, përndryshe mbylljen e fundit.
     if (metaConfigured && lastClose != null) return lastClose;
     return spot ?? lastClose;
   })();
-  // P&L LIVE i një pozicioni: PREFERO profit-in REAL të brokerit (pikërisht ç'ka tregon MT5) —
-  // pozicionet polohen çdo 8s. Vetëm nëse mungon, vlerëso nga çmimi live (rezervë).
+  // P&L LIVE real-time: kalibron "njësi → fitim" nga profit-i i SAKTË i broker-it (monedhë/spread/komision
+  // brenda) e pastaj e aplikon te çmimi LIVE (bid për BLEJ, ask për SHIT) → përkon me mbylljen. Pa çmim live
+  // ose pozicion shumë i ri → profit-i i broker-it; përndryshe → vlerësim nga livePrice.
   const livePnlOf = (p: OpenPosition): number | null => {
-    if (p.profit != null) return Number(p.profit);
-    if (p.openPrice != null && livePrice != null) {
-      const isBuy = (p.type || '').includes('BUY');
-      return (livePrice - p.openPrice) * (isBuy ? 1 : -1) * posVpp * (p.volume || 0);
+    const brokerProfit = p.profit != null ? Number(p.profit) : null;
+    const open = p.openPrice != null ? Number(p.openPrice) : null;
+    const cur = p.currentPrice != null ? Number(p.currentPrice) : null;
+    const isBuy = (p.type || '').includes('BUY');
+    if (brokerPx && brokerProfit != null && open != null && cur != null) {
+      const dist = (cur - open) * (isBuy ? 1 : -1);
+      if (Math.abs(dist) >= 0.05) {
+        const closePx = isBuy ? brokerPx.bid : brokerPx.ask;
+        return ((closePx - open) * (isBuy ? 1 : -1)) * (brokerProfit / dist);
+      }
     }
+    if (brokerProfit != null) return brokerProfit;
+    if (open != null && livePrice != null) return (livePrice - open) * (isBuy ? 1 : -1) * posVpp * (p.volume || 0);
     return null;
   };
   const riskOf = (p: OpenPosition) => (p.openPrice && p.stopLoss) ? Math.abs(p.openPrice - p.stopLoss) * posVpp * (p.volume || 0) : null;

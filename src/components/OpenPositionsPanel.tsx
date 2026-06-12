@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
-import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
+import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, loadSymbolPrice, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
 
 export default function OpenPositionsPanel({ configured, section = 'both' }: { configured: boolean; section?: 'positions' | 'executions' | 'both' }) {
   const { t } = useI18n();
@@ -20,6 +20,8 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const [posLoading, setPosLoading] = useState(false);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // Çmimi LIVE i broker-it (bid/ask) për simbolet e pozicioneve — për P&L real-time.
+  const [pxMap, setPxMap] = useState<Record<string, { bid: number; ask: number }>>({});
 
   const showPositions = section === 'positions' || section === 'both';
   const showExecutions = section === 'executions' || section === 'both';
@@ -54,6 +56,49 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     }, 4000);
     return () => clearInterval(id);
   }, [configured, showPositions, showExecutions, refreshPositions, refreshExecutions]);
+
+  // Çmimi LIVE i broker-it (bid/ask) për simbolet e pozicioneve — çdo 2s. Bën P&L-në real-time
+  // (pozicionet nga MT5 lexohen çdo 4s; ky çmim e përditëson P&L mes leximeve që ekrani të mos vonohet).
+  const posSymbolsKey = Array.from(new Set(positions.map((p) => p.symbol).filter(Boolean))).sort().join(',');
+  useEffect(() => {
+    if (!configured || !showPositions || !posSymbolsKey) return;
+    let alive = true;
+    const syms = posSymbolsKey.split(',');
+    const tick = async () => {
+      const res = await Promise.all(syms.map(async (s) => {
+        try {
+          const r = await loadSymbolPrice(s);
+          const px = (r as { price?: { bid?: number; ask?: number } })?.price;
+          const bid = Number(px?.bid), ask = Number(px?.ask);
+          return [s, bid > 0 && ask > 0 ? { bid, ask } : null] as const;
+        } catch { return [s, null] as const; }
+      }));
+      if (!alive) return;
+      setPxMap((prev) => { const n = { ...prev }; for (const [s, v] of res) if (v) n[s] = v; return n; });
+    };
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(id); };
+  }, [configured, showPositions, posSymbolsKey]);
+
+  // P&L real-time: kalibron "euro për njësi çmimi" nga fitimi i SAKTË i broker-it (që përfshin
+  // monedhën/spread/komisionin), pastaj e aplikon te çmimi LIVE (bid për BLEJ, ask për SHIT).
+  // Kështu numri përkon me mbylljen reale. Pa çmim live ose pozicion shumë i ri → fitimi i broker-it.
+  const livePnl = (p: OpenPosition): number => {
+    const px = pxMap[p.symbol];
+    const open = Number(p.openPrice), cur = Number(p.currentPrice);
+    const brokerProfit = Number(p.profit ?? 0);
+    const isBuy = (p.type || '').includes('BUY');
+    if (px && Number.isFinite(open) && Number.isFinite(cur)) {
+      const dist = (cur - open) * (isBuy ? 1 : -1);
+      if (Math.abs(dist) >= 0.05) {
+        const eurPerUnit = brokerProfit / dist;
+        const closePx = isBuy ? px.bid : px.ask;
+        return ((closePx - open) * (isBuy ? 1 : -1)) * eurPerUnit;
+      }
+    }
+    return brokerProfit;
+  };
 
   const handleClose = async (posId: string) => {
     setClosingId(posId); setMsg(null);
@@ -120,7 +165,7 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
         <div className="space-y-1.5">
           {positions.map((p) => {
             const isBuy = (p.type || '').includes('BUY');
-            const profit = Number(p.profit ?? 0);
+            const profit = livePnl(p);
             return (
               <div key={p.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-2">
                 <span className="flex items-center gap-2">
