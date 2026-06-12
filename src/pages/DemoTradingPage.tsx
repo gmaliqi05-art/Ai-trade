@@ -2,6 +2,10 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { TrendingUp, TrendingDown, RefreshCw, Wallet, Activity, FlaskConical, Power } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
+import { fetchBinanceCandles, type Timeframe } from '../ai-trader/market/candles';
+
+const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
 // Faqja Demo — pasqyron terminalin live, por tregton VIRTUALISHT (demo_trades + demo_balance),
 // me çmimet reale të arit. E pavarur nga MetaApi: punon edhe kur MetaApi është poshtë.
@@ -32,6 +36,8 @@ export default function DemoTradingPage() {
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const [tf, setTf] = useState<Timeframe>('5m');
+  const [candles, setCandles] = useState<ChartCandle[]>([]);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -63,6 +69,19 @@ export default function DemoTradingPage() {
     return () => clearInterval(t);
   }, [load]);
 
+  // Grafiku i arit (XAUUSD → PAXG nga Binance) — i njëjti çmim real si te Live, pa MetaApi.
+  const loadCandles = useCallback(async () => {
+    try {
+      const raw = await fetchBinanceCandles('PAXGUSDT', tf, 200);
+      setCandles(raw.map((c) => ({ time: Math.floor(c.time / 1000), open: c.open, high: c.high, low: c.low, close: c.close })));
+    } catch { /* mban të fundit */ }
+  }, [tf]);
+  useEffect(() => { loadCandles(); }, [loadCandles]);
+  useEffect(() => {
+    const t = setInterval(loadCandles, 15000);
+    return () => clearInterval(t);
+  }, [loadCandles]);
+
   const open = useMemo(() => trades.filter((t) => t.status === 'open'), [trades]);
   const closed = useMemo(() => trades.filter((t) => t.status === 'closed'), [trades]);
 
@@ -75,6 +94,19 @@ export default function DemoTradingPage() {
 
   const floating = useMemo(() => open.reduce((s, t) => s + unrealizedOf(t), 0), [open, unrealizedOf]);
   const equity = balance + floating;
+
+  // Linjat Entry/SL/TP të pozicioneve demo të arit mbi grafik (si te terminali Live).
+  const chartLines = useMemo<PriceLineDef[]>(() => {
+    const lines: PriceLineDef[] = [];
+    const gold = open.filter((t) => normSym(t.symbol).includes('XAU') || normSym(t.symbol).includes('GOLD'));
+    for (const t of gold.slice(0, 4)) {
+      const buy = (t.side || '').toLowerCase() === 'buy';
+      lines.push({ price: Number(t.entry_price), color: buy ? '#3b82f6' : '#f59e0b', title: `Hyrje ${buy ? 'BLEJ' : 'SHIT'}` });
+      if (t.sl != null) lines.push({ price: Number(t.sl), color: '#ef4444', title: 'SL' });
+      if (t.tp != null) lines.push({ price: Number(t.tp), color: '#22c55e', title: 'TP' });
+    }
+    return lines;
+  }, [open]);
 
   const realizedPnl = useMemo(() => closed.reduce((s, t) => s + (Number(t.profit) || 0), 0), [closed]);
   const wins = closed.filter((t) => (Number(t.profit) || 0) > 0).length;
@@ -128,6 +160,25 @@ export default function DemoTradingPage() {
         <Mini label="P&L i realizuar" value={`${realizedPnl >= 0 ? '+' : ''}€${fmt(realizedPnl)}`} tone={realizedPnl >= 0 ? 'pos' : 'neg'} />
         <Mini label="Trade të mbyllura" value={`${closed.length}`} />
         <Mini label="Win rate" value={`${winRate}%`} tone={winRate >= 50 ? 'pos' : undefined} />
+      </div>
+
+      {/* Chart — gold (same real price feed as Live), with demo position lines */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold bg-amber-500/15 text-amber-400 px-2 py-1 rounded">XAUUSD</span>
+            <span className="text-[11px] text-gray-500">Ar · çmim real (demo)</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {TIMEFRAMES.map((x) => (
+              <button key={x} onClick={() => setTf(x)}
+                className={`text-[11px] px-2 py-1 rounded transition ${tf === x ? 'bg-amber-500 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{x}</button>
+            ))}
+          </div>
+        </div>
+        {candles.length === 0
+          ? <div className="h-[320px] flex items-center justify-center text-xs text-gray-500">Po ngarkohet grafiku…</div>
+          : <Mt5Chart candles={candles} lines={chartLines} height={320} fitKey={`XAUUSD-${tf}`} />}
       </div>
 
       {/* Open positions */}
