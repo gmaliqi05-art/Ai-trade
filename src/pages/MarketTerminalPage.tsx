@@ -198,7 +198,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setCandles(out);
   }, [metaConfigured, selected, tf, assets]);
 
-  useEffect(() => { loadChart(); }, [loadChart]);
+  useEffect(() => {
+    loadChart();
+    // Poll i shpejtë i qirinjve (çdo 5s) → grafiku + çmimi i fundit lëvizin pothuajse në kohë reale.
+    const id = setInterval(loadChart, 5000);
+    return () => clearInterval(id);
+  }, [loadChart]);
 
   useEffect(() => {
     fetchBase();
@@ -207,10 +212,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     return () => clearInterval(id);
   }, [fetchBase, fetchMeta]);
 
-  // Poll i veçantë e i shpejtë i pozicioneve (çdo 8s) → P&L live ndjek tregun nga afër.
+  // Poll i veçantë e i shpejtë i pozicioneve (çdo 3s) → P&L live ndjek tregun nga afër.
   useEffect(() => {
     if (!metaConfigured) return;
-    const id = setInterval(fetchPositions, 8000);
+    const id = setInterval(fetchPositions, 3000);
     return () => clearInterval(id);
   }, [metaConfigured, fetchPositions]);
 
@@ -344,7 +349,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const livePrice = (() => {
     const a = assets.find(x => symMatch(selected, x.symbol));
     const cp = a?.current_price;
-    return (cp != null && Number(cp) > 0) ? Number(cp) : lastClose;
+    const spot = (cp != null && Number(cp) > 0) ? Number(cp) : null;
+    // Me MT5: çmimi më i freskët është mbyllja e qiririt të fundit (poll çdo 5s), jo spot-i i DB-së
+    // (që freskohet vetëm 1×/min). Pa MT5: përdor spot-in e tregut, përndryshe mbylljen e fundit.
+    if (metaConfigured && lastClose != null) return lastClose;
+    return spot ?? lastClose;
   })();
   // P&L LIVE i një pozicioni: PREFERO profit-in REAL të brokerit (pikërisht ç'ka tregon MT5) —
   // pozicionet polohen çdo 8s. Vetëm nëse mungon, vlerëso nga çmimi live (rezervë).
