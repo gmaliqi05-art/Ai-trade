@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { TrendingUp, TrendingDown, RefreshCw, Wallet, Activity, FlaskConical, Power, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -59,6 +59,16 @@ export default function DemoTradingPage() {
   const [candles, setCandles] = useState<ChartCandle[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [doneSignals, setDoneSignals] = useState<DoneSignal[]>([]);
+  // Forma manuale BLEJ/SHIT (si te Live): klik sinjalin → mbushen vlerat → klik BLEJ/SHIT.
+  const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  const [lot, setLot] = useState('0.01');
+  const [formSl, setFormSl] = useState('');
+  const [formTp, setFormTp] = useState('');
+  const [formSym, setFormSym] = useState('XAUUSD');
+  const [appliedSignalId, setAppliedSignalId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -125,6 +135,50 @@ export default function DemoTradingPage() {
 
   const floating = useMemo(() => open.reduce((s, t) => s + unrealizedOf(t), 0), [open, unrealizedOf]);
   const equity = balance + floating;
+  const curPrice = prices[normSym(formSym)] ?? null;
+
+  // Klik mbi një sinjal → mbush formën (anë, SL, TP) dhe rrëshqit te forma (si te Live).
+  const applySignal = (s: Signal) => {
+    setSide(s.type === 'sell' ? 'sell' : 'buy');
+    setFormSym(s.symbol || 'XAUUSD');
+    setFormSl(s.stop_loss != null ? String(s.stop_loss) : '');
+    setFormTp(s.target_price != null ? String(s.target_price) : '');
+    setAppliedSignalId(s.id);
+    setMsg({ type: 'success', text: `Sinjali u aplikua — kliko ${s.type === 'sell' ? 'SHIT' : 'BLEJ'} për ta hapur virtualisht.` });
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  // Hap trade virtual me çmimin real aktual + SL/TP nga forma.
+  const execute = async () => {
+    const vol = parseFloat(lot);
+    if (!(vol >= 0.01)) { setMsg({ type: 'error', text: 'Vendos një lot të vlefshëm (p.sh. 0.01).' }); return; }
+    setBusy(true); setMsg(null);
+    const { data, error } = await supabase.functions.invoke('demo-trade-action', {
+      body: { action: 'open', side, volume: vol, sl: formSl, tp: formTp, symbol: formSym, signal_id: appliedSignalId },
+    });
+    if (error || (data as { error?: string })?.error) {
+      setMsg({ type: 'error', text: `Hapja dështoi: ${(data as { error?: string })?.error || error?.message || ''}` });
+    } else {
+      setMsg({ type: 'success', text: `U hap ${side === 'buy' ? 'BLEJ' : 'SHIT'} ${formSym} @ ${fmt(Number((data as { entry?: number }).entry ?? 0))}` });
+      setAppliedSignalId(null);
+      await load();
+    }
+    setBusy(false);
+  };
+
+  // Mbyll manualisht një pozicion demo (llogarit P&L në € dhe përditëson balancën).
+  const closeTrade = async (id: string) => {
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke('demo-trade-action', { body: { action: 'close', id } });
+    if (error || (data as { error?: string })?.error) {
+      setMsg({ type: 'error', text: `Mbyllja dështoi: ${(data as { error?: string })?.error || error?.message || ''}` });
+    } else {
+      const p = Number((data as { profit?: number }).profit ?? 0);
+      setMsg({ type: p >= 0 ? 'success' : 'error', text: `Pozicioni u mbyll · ${p >= 0 ? '+' : ''}€${fmt(p)}` });
+      await load();
+    }
+    setBusy(false);
+  };
 
   // Linjat Entry/SL/TP të pozicioneve demo të arit mbi grafik (si te terminali Live).
   const chartLines = useMemo<PriceLineDef[]>(() => {
@@ -212,12 +266,52 @@ export default function DemoTradingPage() {
           : <Mt5Chart candles={candles} lines={chartLines} height={320} fitKey={`XAUUSD-${tf}`} />}
       </div>
 
+      {/* Manual order form (demo) — like Live: click a signal to fill, then BLEJ/SHIT */}
+      <div ref={formRef} className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-white font-semibold text-sm">Porosi e re — {formSym} <span className="text-violet-400 text-[11px]">(demo)</span></h3>
+          {curPrice != null && <span className="text-[11px] text-gray-400">Çmimi tani: <span className="text-white">{fmt(curPrice)}</span></span>}
+        </div>
+        <div className="flex rounded-lg overflow-hidden border border-gray-700">
+          <button onClick={() => setSide('buy')} className={`flex-1 py-2 text-sm font-semibold transition ${side === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>BLEJ</button>
+          <button onClick={() => setSide('sell')} className={`flex-1 py-2 text-sm font-semibold transition ${side === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>SHIT</button>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-gray-400 text-xs shrink-0 w-8">Lot</label>
+          <input type="number" value={lot} onChange={(e) => setLot(e.target.value)} min="0.01" step="0.01"
+            className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500" />
+        </div>
+        <div className="grid grid-cols-4 gap-1.5">
+          {['0.01', '0.05', '0.10', '0.25'].map((v) => (
+            <button key={v} onClick={() => setLot(v)} className={`text-[11px] py-1.5 rounded-lg transition ${lot === v ? 'bg-amber-500 text-gray-950 font-medium' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white'}`}>{v}</button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[10px] text-red-400 mb-1">Stop Loss</label>
+            <input type="number" step="0.01" value={formSl} onChange={(e) => setFormSl(e.target.value)} placeholder="opsionale"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-red-500" />
+          </div>
+          <div>
+            <label className="block text-[10px] text-green-400 mb-1">Take Profit</label>
+            <input type="number" step="0.01" value={formTp} onChange={(e) => setFormTp(e.target.value)} placeholder="opsionale"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
+          </div>
+        </div>
+        {msg && <div className={`text-[11px] rounded-lg px-2 py-1.5 ${msg.type === 'success' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>{msg.text}</div>}
+        <button onClick={execute} disabled={busy}
+          className={`w-full py-2.5 rounded-lg text-sm font-bold text-white transition disabled:opacity-50 ${side === 'buy' ? 'bg-green-500 hover:bg-green-400' : 'bg-red-500 hover:bg-red-400'}`}>
+          {busy ? 'Po hapet…' : side === 'buy' ? 'BLEJ (demo)' : 'SHIT (demo)'}
+        </button>
+        <p className="text-[10px] text-gray-600">Hapet virtualisht me çmimin real aktual. Roboti e mbyll te SL/TP, ose mbylle vetë te tabela poshtë.</p>
+      </div>
+
       {/* Open positions */}
       <Section title={`Pozicione të hapura (${open.length})`}>
         {loading ? <Empty text="Po ngarkohet…" /> : open.length === 0 ? (
           <Empty text="Asnjë pozicion i hapur. Roboti hap trade virtuale kur dalin sinjale të reja." />
         ) : (
-          <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'SL', 'TP', 'P&L tani']}>
+          <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'SL', 'TP', 'P&L tani', '']}>
             {open.map((t) => {
               const pnl = unrealizedOf(t);
               const buy = (t.side || '').toLowerCase() === 'buy';
@@ -233,6 +327,7 @@ export default function DemoTradingPage() {
                   <Td>{t.sl != null ? fmt(Number(t.sl)) : '—'}</Td>
                   <Td>{t.tp != null ? fmt(Number(t.tp)) : '—'}</Td>
                   <Td><span className={pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{pnl >= 0 ? '+' : ''}€{fmt(pnl)}</span></Td>
+                  <Td><button onClick={() => closeTrade(t.id)} disabled={busy} className="text-[11px] px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition disabled:opacity-40">Mbyll</button></Td>
                 </tr>
               );
             })}
@@ -278,7 +373,8 @@ export default function DemoTradingPage() {
               const fresh = signalIsFresh(s.created_at);
               const short = isShortHorizon(s.timeframe);
               return (
-                <div key={s.id} className={`text-left rounded-xl px-3 py-2 border border-gray-700/50 bg-gray-800/40 ${fresh ? '' : 'opacity-60'}`}>
+                <button key={s.id} onClick={() => applySignal(s)}
+                  className={`text-left w-full rounded-xl px-3 py-2 border transition ${appliedSignalId === s.id ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-800/40 border-gray-700/50 hover:bg-gray-800'} ${fresh ? '' : 'opacity-60'}`}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="flex items-center gap-2">
                       <span className="text-white text-sm font-bold">{s.symbol}</span>
@@ -292,8 +388,11 @@ export default function DemoTradingPage() {
                     {s.target_price != null && <span>Objektiv: <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
                     {s.stop_loss != null && <span>Stop: <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
                   </div>
-                  <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}</div>
-                </div>
+                  <div className="text-[10px] text-gray-600 mt-1 flex items-center justify-between">
+                    <span>🕒 {fmtTime(s.created_at)}</span>
+                    <span className="text-amber-400">Kliko për të tregtuar →</span>
+                  </div>
+                </button>
               );
             })}
           </div>
