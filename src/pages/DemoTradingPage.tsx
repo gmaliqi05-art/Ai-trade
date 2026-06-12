@@ -354,7 +354,7 @@ export default function DemoTradingPage() {
                   <Td>{t.exit_price != null ? fmt(Number(t.exit_price)) : '—'}</Td>
                   <Td><span className={`text-[11px] uppercase ${t.exit_reason === 'tp' ? 'text-emerald-400' : t.exit_reason === 'sl' ? 'text-rose-400' : 'text-gray-400'}`}>{t.exit_reason || '—'}</span></Td>
                   <Td><span className={pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{pnl >= 0 ? '+' : ''}€{fmt(pnl)}</span></Td>
-                  <Td className="text-gray-500">{t.closed_at ? new Date(t.closed_at).toLocaleString() : '—'}</Td>
+                  <Td><span className="text-gray-500">{t.closed_at ? new Date(t.closed_at).toLocaleString() : '—'}</span></Td>
                 </tr>
               );
             })}
@@ -445,7 +445,7 @@ function Table({ head, children }: { head: string[]; children: React.ReactNode }
   );
 }
 function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-2 whitespace-nowrap ${className}`}>{children}</td>;
+  return <td className={`px-3 py-2 whitespace-nowrap text-gray-200 ${className}`}>{children}</td>;
 }
 function Empty({ text }: { text: string }) {
   return <div className="px-4 py-8 text-center text-xs text-gray-500">{text}</div>;
