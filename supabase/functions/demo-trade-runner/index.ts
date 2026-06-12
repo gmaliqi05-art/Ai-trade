@@ -197,40 +197,51 @@ Deno.serve(async (req: Request) => {
   try { const b = await req.json(); dryRun = b?.dryRun === true; } catch { /* pa trup */ }
 
   try {
-    // 1) Userat me demo aktive + kuleta.
-    const { data: profs } = await db.from("profiles").select("id, demo_balance, demo_enabled").eq("demo_enabled", true);
-    const users = (profs ?? []) as { id: string; demo_balance: number | null; demo_enabled: boolean }[];
-    if (users.length === 0) return json({ ok: true, dryRun, opened: 0, closed: 0, note: "no demo users" });
-
-    // 2) Konfigurimi per-user.
+    // 1) Konfigurimi per-user.
     const { data: cfgRows } = await db.from("metaapi_config").select("*");
     const cfgBy = new Map<string, Record<string, unknown>>();
     for (const c of (cfgRows ?? []) as Record<string, unknown>[]) cfgBy.set(String(c.user_id), c);
     const cfgFor = (uid: string) => ({ ...DEFAULT_CFG, ...(cfgBy.get(uid) ?? {}) });
 
-    // 3) Çmimet aktuale (real) sipas simbolit.
+    // 2) Çmimet aktuale (real) sipas simbolit.
     const { data: assetRows } = await db.from("assets").select("symbol, current_price");
     const priceBy = new Map<string, number>();
     for (const a of (assetRows ?? []) as { symbol: string; current_price: number | null }[]) {
       if (a.current_price != null) priceBy.set(normSym(a.symbol), Number(a.current_price));
     }
 
-    const bal = new Map<string, number>();
-    for (const u of users) bal.set(u.id, Number(u.demo_balance ?? 100));
-
-    let opened = 0, closed = 0, openedScalp = 0;
-
-    // 4) VLERËSIM — mbyll demo-trade-t e hapura kur prekin TP/SL (ose skadojnë).
+    // 3) Trade-t e hapura — vlerësohen TË GJITHA (edhe ato manuale, që të mbyllen te SL/TP).
     const { data: openTrades } = await db
       .from("demo_trades")
       .select("id, user_id, symbol, side, volume, entry_price, sl, tp, signal_id, opened_at")
       .eq("status", "open")
       .limit(2000);
+    const openRows = (openTrades ?? []) as { id: string; user_id: string; symbol: string; side: string; volume: number; entry_price: number; sl: number | null; tp: number | null; signal_id: string | null; opened_at: string }[];
+
+    // 4) SANDBOX PERSONAL: roboti auto-demo hap trade VETËM për userat që e kanë ndezur VETË
+    //    (profiles.demo_auto = true). Vlerësimi/mbyllja vlen për këdo që ka trade të hapura.
+    const { data: autoProfs } = await db.from("profiles").select("id, demo_balance").eq("demo_auto", true);
+    const autoUsers = (autoProfs ?? []) as { id: string; demo_balance: number | null }[];
+
+    // 5) Balanca per-user: për këdo me trade të hapura + userat me robot auto.
+    const idsNeeded = new Set<string>(autoUsers.map((u) => u.id));
+    for (const t of openRows) idsNeeded.add(t.user_id);
+    if (idsNeeded.size === 0) return json({ ok: true, dryRun, opened: 0, closed: 0, note: "no demo activity" });
+    const bal = new Map<string, number>();
+    const startBal = new Map<string, number>();
+    const { data: balProfs } = await db.from("profiles").select("id, demo_balance").in("id", Array.from(idsNeeded));
+    for (const p of (balProfs ?? []) as { id: string; demo_balance: number | null }[]) {
+      bal.set(p.id, Number(p.demo_balance ?? 100)); startBal.set(p.id, Number(p.demo_balance ?? 100));
+    }
+
+    let opened = 0, closed = 0, openedScalp = 0;
+
+    // 6) VLERËSIM — mbyll demo-trade-t e hapura kur prekin TP/SL (ose skadojnë).
     const expireBefore = Date.now() - EXPIRE_H * 60 * 60 * 1000;
     const openCountBy = new Map<string, number>();   // gjithsej të hapura
     const scalpOpenBy = new Map<string, number>();   // vetëm scalp (signal_id null)
 
-    for (const t of (openTrades ?? []) as { id: string; user_id: string; symbol: string; side: string; volume: number; entry_price: number; sl: number | null; tp: number | null; signal_id: string | null; opened_at: string }[]) {
+    for (const t of openRows) {
       if (!bal.has(t.user_id)) continue;
       const price = priceBy.get(normSym(t.symbol));
       const isBuy = (t.side || "").toLowerCase() === "buy";
@@ -262,7 +273,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 5) HAPJE SWING — sinjale reale të freskëta, virtuale për çdo demo user (dedup per user+signal).
+    // 7) HAPJE SWING — sinjale reale, vetëm për userat me robot auto të ndezur (dedup per user+signal).
     const sinceIso = new Date(Date.now() - OPEN_WINDOW_MIN * 60 * 1000).toISOString();
     const { data: sigs } = await db
       .from("signals")
@@ -279,7 +290,7 @@ Deno.serve(async (req: Request) => {
         if (e.signal_id) seen.add(`${e.user_id}|${e.signal_id}`);
       }
       const toInsert: Record<string, unknown>[] = [];
-      for (const u of users) {
+      for (const u of autoUsers) {
         const cfg = cfgFor(u.id);
         const minConf = Number(cfg.min_confidence);
         const maxOpen = Number(cfg.max_open_trades) || 5;
@@ -303,7 +314,7 @@ Deno.serve(async (req: Request) => {
       if (!dryRun && toInsert.length) await db.from("demo_trades").insert(toInsert);
     }
 
-    // 6) HAPJE SCALP — momentum 1m/5m i arit (qirinj realë Binance), si te live. Vetëm në sesion.
+    // 8) HAPJE SCALP — momentum 1m/5m i arit, vetëm për userat me robot auto. Vetëm në sesion.
     let scalp: { action: "BUY" | "SELL"; reason: string } | null = null;
     let scalpEntry = 0;
     if (goldSessionOpen()) {
@@ -325,7 +336,7 @@ Deno.serve(async (req: Request) => {
 
       const isBuy = scalp.action === "BUY";
       const toInsert: Record<string, unknown>[] = [];
-      for (const u of users) {
+      for (const u of autoUsers) {
         if (onCooldown.has(u.id)) continue;
         const cfg = cfgFor(u.id);
         const maxOpen = Number(cfg.max_open_trades) || 5;
@@ -344,15 +355,15 @@ Deno.serve(async (req: Request) => {
       if (!dryRun && toInsert.length) await db.from("demo_trades").insert(toInsert);
     }
 
-    // 7) Shkruaj balancat e ndryshuara.
+    // 9) Shkruaj balancat e ndryshuara (vetëm aty ku mbyllja ndryshoi balancën).
     if (!dryRun) {
-      for (const u of users) {
-        const nb = Math.round((bal.get(u.id) ?? 0) * 100) / 100;
-        if (nb !== Number(u.demo_balance ?? 100)) await db.from("profiles").update({ demo_balance: nb }).eq("id", u.id);
+      for (const [id, nbRaw] of bal) {
+        const nb = Math.round(nbRaw * 100) / 100;
+        if (nb !== Math.round((startBal.get(id) ?? 100) * 100) / 100) await db.from("profiles").update({ demo_balance: nb }).eq("id", id);
       }
     }
 
-    return json({ ok: true, dryRun, users: users.length, opened, openedScalp, closed, session: goldSessionOpen(), scalp: scalp?.reason ?? null });
+    return json({ ok: true, dryRun, autoUsers: autoUsers.length, evaluated: openRows.length, opened, openedScalp, closed, session: goldSessionOpen(), scalp: scalp?.reason ?? null });
   } catch (err) {
     return json({ error: (err as Error).message }, 500);
   }
