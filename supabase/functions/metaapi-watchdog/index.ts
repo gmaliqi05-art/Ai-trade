@@ -2,10 +2,13 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // metaapi-watchdog — cron (çdo 2 min). ALARM I ZGJUAR për lidhjen MT5, PA prekur tregtimin.
-// Provisioning API i MetaApi-t s'arrihet nga Supabase (DNS/SSL) → redeploy automatik s'bëhet dot;
-// prandaj detektojmë me CLIENT-API (account-information) dhe NJOFTOJMË përdoruesin.
-// Mbron nga false-alarme: (1) kërkon >=2 dështime radhazi (jo timeout kalimtar),
-// (2) alarmon vetëm për llogari që ishin AKTIVE së fundi (jo ato të fikura me qëllim).
+// Dy nivele monitorimi:
+//  (1) PER-LLOGARI (client-api /account-information): a po shërben llogaria të dhëna (200 + balance)?
+//      Mbron nga false-alarme: kërkon >=2 dështime radhazi dhe vetëm për llogari aktive më parë.
+//  (2) GLOBAL (provisioning-api /users/current/regions): a është vetë platforma MetaApi lart?
+//      Ky është serveri që ra sot me 503 dhe bëri dashboard-in të japë "Network error" + llogaritë
+//      të "zhdukeshin". Kur bie >=~6 min njoftojmë (paratë janë të sigurta — s'është faji i klientit),
+//      dhe kur kthehet njoftojmë rikthimin. Gjendja ruhet te app_config (prov_down_since/prov_alerted).
 // Mbështet { dryRun: true } për testim.
 
 const corsHeaders = {
@@ -15,7 +18,11 @@ const corsHeaders = {
 };
 
 const FAIL_CONFIRM = 2;                  // dështime radhazi para se të nisë ora e shkëputjes
-const ALERT_AFTER_MS = 10 * 60 * 1000;   // njofto pas 10 min shkëputje
+const ALERT_AFTER_MS = 10 * 60 * 1000;   // njofto pas 10 min shkëputje (per-llogari)
+
+// Provisioning global health — hosti i saktë ka 'agiliumtrade' të dyfishuar (jo gabim).
+const PROV_HOST = "https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai";
+const PROV_ALERT_AFTER_MS = 6 * 60 * 1000; // ~3 cikle dështimi para alarmit global
 
 interface Cfg {
   user_id: string; account_id: string; token: string; region: string;
@@ -56,6 +63,63 @@ Deno.serve(async (req: Request) => {
   const upd = async (uid: string, patch: Record<string, unknown>) => { if (!dryRun && Object.keys(patch).length) await db.from("metaapi_config").update(patch).eq("user_id", uid); };
   const notify = async (uid: string, title: string, body: string) => { if (!dryRun) await db.from("notifications").insert({ user_id: uid, type: "system", title, body }); };
 
+  // app_config helpers (gjendja globale e provisioning-ut)
+  const getCfg = async (k: string): Promise<string | null> => {
+    const { data } = await db.from("app_config").select("value").eq("key", k).maybeSingle();
+    return (data as { value?: string } | null)?.value ?? null;
+  };
+  const setCfg = async (k: string, v: string) => { if (!dryRun) await db.from("app_config").upsert({ key: k, value: v }, { onConflict: "key" }); };
+  // Njofto të gjithë përdoruesit që kanë MetaApi të konfiguruar (incident global).
+  const notifyAll = async (title: string, body: string) => {
+    if (dryRun) return;
+    const { data: users } = await db.from("metaapi_config").select("user_id");
+    const ids = [...new Set((users ?? []).map((u) => (u as { user_id: string }).user_id).filter(Boolean))];
+    if (ids.length) await db.from("notifications").insert(ids.map((uid) => ({ user_id: uid, type: "system", title, body })));
+  };
+
+  // ── (2) GLOBAL: shëndeti i provisioning-API të MetaApi-t ───────────────────────────────
+  let provOut: Record<string, unknown> = { status: "skip" };
+  try {
+    const { data: anyCfg } = await db.from("metaapi_config").select("token").not("token", "is", null).limit(1).maybeSingle();
+    const token = (anyCfg as { token?: string } | null)?.token;
+    if (token) {
+      let okProv = false;
+      try {
+        const r = await call(`${PROV_HOST}/users/current/regions`, { headers: { "auth-token": token } }, 12000);
+        okProv = r.status === 200 && Array.isArray(r.body);
+      } catch { okProv = false; }
+
+      const downSince = await getCfg("metaapi_prov_down_since");
+      const wasAlerted = (await getCfg("metaapi_prov_alerted")) === "true";
+
+      if (okProv) {
+        if (downSince) await setCfg("metaapi_prov_down_since", "");
+        if (wasAlerted) {
+          await setCfg("metaapi_prov_alerted", "false");
+          await notifyAll(
+            "MetaApi restored",
+            "MetaApi's service is back online — your accounts and dashboard are available again. Your funds and positions were never affected (this was on MetaApi's side).",
+          );
+        }
+        provOut = { status: "up", recovered: wasAlerted };
+      } else {
+        let sinceTs = downSince ? new Date(downSince).getTime() : 0;
+        if (!sinceTs) { sinceTs = now; await setCfg("metaapi_prov_down_since", nowIso); }
+        let provAlerted = false;
+        if ((now - sinceTs) >= PROV_ALERT_AFTER_MS && !wasAlerted) {
+          await setCfg("metaapi_prov_alerted", "true");
+          provAlerted = true;
+          await notifyAll(
+            "MetaApi temporary outage",
+            "MetaApi's service is temporarily unavailable (their servers, not your account). Your funds and open positions are safe at your broker. The dashboard and connection will return automatically once MetaApi recovers — no action needed.",
+          );
+        }
+        provOut = { status: "down", downMin: Math.round((now - sinceTs) / 60000), alerted: provAlerted };
+      }
+    }
+  } catch (e) { provOut = { status: "probe_error", error: String(e) }; }
+
+  // ── (1) PER-LLOGARI: a po shërben llogaria të dhëna? ──────────────────────────────────
   try {
     const { data: configs } = await db
       .from("metaapi_config")
@@ -104,8 +168,8 @@ Deno.serve(async (req: Request) => {
       out.push({ user: cfg.user_id, action: "fail", failCount, downMin: sinceTs ? Math.round((now - sinceTs) / 60000) : 0, alerted });
     }
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: String(e), provisioning: provOut }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  return new Response(JSON.stringify({ ok: true, dryRun, checked: out.length, out }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  return new Response(JSON.stringify({ ok: true, dryRun, provisioning: provOut, checked: out.length, out }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
