@@ -45,10 +45,13 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     if (!configured) return;
     if (showPositions) refreshPositions();
     if (showExecutions) refreshExecutions();
+    // Pozicionet (P&L live nga MT5) çdo 4s; ekzekutimet (DB) më rrallë, çdo ~12s.
+    let tick = 0;
     const id = setInterval(() => {
+      tick++;
       if (showPositions) refreshPositions();
-      if (showExecutions) refreshExecutions();
-    }, 8000);
+      if (showExecutions && tick % 3 === 0) refreshExecutions();
+    }, 4000);
     return () => clearInterval(id);
   }, [configured, showPositions, showExecutions, refreshPositions, refreshExecutions]);
 
