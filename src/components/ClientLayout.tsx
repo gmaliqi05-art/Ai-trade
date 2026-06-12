@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -23,6 +23,7 @@ const navSections = [
     label: 'Kryesore',
     items: [
       { id: 'market_prices' as ClientPage, label: 'Tregto Live', icon: Activity },
+      { id: 'demo_trading' as ClientPage, label: 'Tregto Demo', icon: FlaskConical },
       { id: 'dashboard' as ClientPage, label: 'Paneli', icon: LayoutDashboard },
     ],
   },
@@ -62,6 +63,7 @@ const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }
 const pageLabels: Record<ClientPage, string> = {
   dashboard: 'Paneli',
   market_prices: 'Tregto Live',
+  demo_trading: 'Tregto Demo',
   chart_analysis: 'Analizë grafiku',
   signals: 'Sinjalet',
   protrade: 'ProTrade Intelligence',

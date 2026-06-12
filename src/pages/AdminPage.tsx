@@ -23,6 +23,8 @@ interface UserRow {
   subscription_tier: string;
   is_admin: boolean;
   created_at: string;
+  demo_balance?: number;
+  demo_enabled?: boolean;
 }
 
 interface AssetRow {
@@ -285,6 +287,25 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     setSaving(false);
   };
 
+  const setDemoBalance = async (u: UserRow, op: 'set' | 'topup') => {
+    const current = Number(u.demo_balance ?? 0);
+    const promptMsg = op === 'topup' ? t('Sa € të shtohen te krediti demo i {name}?', { name: u.full_name || u.email || '' })
+      : t('Cakto kreditin demo (€) për {name}:', { name: u.full_name || u.email || '' });
+    const raw = window.prompt(promptMsg, op === 'topup' ? '100' : String(current || 100));
+    if (raw == null) return;
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount < 0) { flash('error', t('Shumë e pavlefshme.')); return; }
+    setSaving(true);
+    const { data, error } = await supabase.rpc('admin_set_demo_balance', { target_user: u.id, amount, op });
+    if (!error) {
+      await fetchUsers();
+      flash('success', t('Krediti demo u përditësua: €{bal}', { bal: String(data ?? amount) }));
+    } else {
+      flash('error', t('Dështoi: {msg}', { msg: error.message }));
+    }
+    setSaving(false);
+  };
+
   const changePassword = async (u: UserRow) => {
     if (passwordForm.password !== passwordForm.confirm) { flash('error', t('Fjalëkalimet nuk përputhen.')); return; }
     if (passwordForm.password.length < 6) { flash('error', t('Fjalëkalimi duhet të ketë të paktën 6 karaktere.')); return; }
@@ -496,6 +517,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                     <tr className="border-b border-gray-800">
                       <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Përdoruesi')}</th>
                       <th className="text-left text-gray-500 font-medium px-4 py-3">Email</th>
+                      <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Demo (€)')}</th>
                       <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Admin')}</th>
                       <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Veprime')}</th>
                     </tr>
@@ -517,6 +539,15 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                           </td>
                           <td className="px-4 py-3">
                             <span className="text-gray-300 text-xs font-mono">{u.email || <span className="text-gray-600">—</span>}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <span className="text-emerald-400 text-sm font-semibold tabular-nums">€{Number(u.demo_balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <button onClick={() => setDemoBalance(u, 'topup')} disabled={saving} title={t('Shto kredit demo')}
+                                className="px-1.5 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-all disabled:opacity-40">+</button>
+                              <button onClick={() => setDemoBalance(u, 'set')} disabled={saving} title={t('Cakto kreditin demo')}
+                                className="px-1.5 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] font-medium transition-all disabled:opacity-40">{t('Cakto')}</button>
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-center">
                             {u.is_admin ? <Shield className="w-4 h-4 text-amber-400 mx-auto" /> : <span className="text-gray-600 text-xs">—</span>}
@@ -548,7 +579,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                         </tr>
                         {editingUser === u.id && (
                           <tr key={u.id + '-edit'} className="bg-gray-800/40">
-                            <td colSpan={4} className="px-4 py-4">
+                            <td colSpan={5} className="px-4 py-4">
                               <div className="flex flex-wrap gap-3 items-end">
                                 <div className="flex items-center gap-2">
                                   <label className="text-xs text-gray-400">{t('Admin')}</label>
@@ -568,7 +599,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                         )}
                         {changingPasswordUser === u.id && (
                           <tr key={u.id + '-pwd'} className="bg-blue-500/5">
-                            <td colSpan={4} className="px-4 py-4">
+                            <td colSpan={5} className="px-4 py-4">
                               <div className="flex flex-wrap gap-3 items-end">
                                 <div>
                                   <label className="text-xs text-gray-400 flex items-center gap-1 mb-1"><Key className="w-3 h-3" />{t('Fjalëkalimi i ri')}</label>
