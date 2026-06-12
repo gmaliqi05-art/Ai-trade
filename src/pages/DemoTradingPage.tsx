@@ -1,22 +1,41 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { TrendingUp, TrendingDown, RefreshCw, Wallet, Activity, FlaskConical, Power } from 'lucide-react';
+import { TrendingUp, TrendingDown, RefreshCw, Wallet, Activity, FlaskConical, Power, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
 import { fetchBinanceCandles, type Timeframe } from '../ai-trader/market/candles';
+import CompletedSignals, { type DoneSignal } from '../components/CompletedSignals';
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
+
+type Signal = {
+  id: string; type: string; symbol: string; confidence: number;
+  entry_price: number | null; target_price: number | null; stop_loss: number | null;
+  source: string; created_at: string; timeframe?: string | null;
+};
+
+// Të njëjtët ndihmës si terminali Live — afati nga periudha e sinjalit, freskia 30 min.
+const SHORT_TFS = ['1m', '5m', '15m'];
+const isShortHorizon = (tf?: string | null) => !!tf && SHORT_TFS.includes(tf);
+const signalIsFresh = (iso?: string | null) => (iso ? (Date.now() - new Date(iso).getTime()) / 60000 : Infinity) <= 30;
+const fmtTime = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 // Faqja Demo — pasqyron terminalin live, por tregton VIRTUALISHT (demo_trades + demo_balance),
 // me çmimet reale të arit. E pavarur nga MetaApi: punon edhe kur MetaApi është poshtë.
 // Konfigurimet (preset/rrezik) janë të njëjta si live (te "Lidhja & Konfigurimi").
 
 type DemoTrade = {
-  id: string; symbol: string; side: string; volume: number;
+  id: string; symbol: string; side: string; volume: number; signal_id: string | null;
   entry_price: number; sl: number | null; tp: number | null;
   status: string; exit_price: number | null; exit_reason: string | null;
   profit: number | null; opened_at: string; closed_at: string | null;
 };
+
+// Afati & Burimi i një demo-trade (si te live): scalp (pa sinjal) = afat-shkurt; swing (me sinjal) = afat-gjatë.
+const tradeKind = (t: DemoTrade) => (t.signal_id == null
+  ? { horizon: 'short' as const, src: 'Scalp', cls: 'bg-amber-500/20 text-amber-400' }
+  : { horizon: 'long' as const, src: 'Sinjal', cls: 'bg-blue-500/20 text-blue-400' });
 
 const normSym = (s: string) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function valuePerPrice(symbol: string): number {
@@ -38,13 +57,23 @@ export default function DemoTradingPage() {
   const [now, setNow] = useState(Date.now());
   const [tf, setTf] = useState<Timeframe>('5m');
   const [candles, setCandles] = useState<ChartCandle[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [doneSignals, setDoneSignals] = useState<DoneSignal[]>([]);
 
   const load = useCallback(async () => {
     if (!user) return;
-    const [{ data: prof }, { data: tr }, { data: assets }] = await Promise.all([
+    const since24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const nowIso = new Date().toISOString();
+    const [{ data: prof }, { data: tr }, { data: assets }, { data: sig }, { data: done }] = await Promise.all([
       supabase.from('profiles').select('demo_balance, demo_start_balance, demo_enabled').eq('id', user.id).maybeSingle(),
       supabase.from('demo_trades').select('*').eq('user_id', user.id).order('opened_at', { ascending: false }).limit(200),
       supabase.from('assets').select('symbol, current_price'),
+      // Të NJËJTAT sinjale të motorit si te terminali Live (roboti demo tregton mbi këto).
+      supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, timeframe')
+        .eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${nowIso}`).gte('created_at', since24)
+        .order('confidence', { ascending: false }).limit(8),
+      supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, outcome, result_pct, closed_at, created_at')
+        .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', since24).order('closed_at', { ascending: false }).limit(12),
     ]);
     if (prof) {
       setBalance(Number(prof.demo_balance ?? 100));
@@ -52,6 +81,8 @@ export default function DemoTradingPage() {
       setEnabled(!!prof.demo_enabled);
     }
     if (tr) setTrades(tr as DemoTrade[]);
+    if (sig) setSignals(sig as Signal[]);
+    if (done) setDoneSignals(done as DoneSignal[]);
     if (assets) {
       const m: Record<string, number> = {};
       for (const a of assets as { symbol: string; current_price: number | null }[]) {
@@ -186,14 +217,17 @@ export default function DemoTradingPage() {
         {loading ? <Empty text="Po ngarkohet…" /> : open.length === 0 ? (
           <Empty text="Asnjë pozicion i hapur. Roboti hap trade virtuale kur dalin sinjale të reja." />
         ) : (
-          <Table head={['Lloji', 'Simboli', 'Vol', 'Hyrja', 'SL', 'TP', 'P&L tani']}>
+          <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'SL', 'TP', 'P&L tani']}>
             {open.map((t) => {
               const pnl = unrealizedOf(t);
               const buy = (t.side || '').toLowerCase() === 'buy';
+              const k = tradeKind(t);
               return (
                 <tr key={t.id} className="border-t border-gray-800">
                   <Td><span className={`inline-flex items-center gap-1 font-medium ${buy ? 'text-emerald-400' : 'text-rose-400'}`}>{buy ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}{buy ? 'BLEJ' : 'SHIT'}</span></Td>
                   <Td>{t.symbol}</Td>
+                  <Td><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${k.cls}`}>{k.horizon === 'short' ? 'Shkurt' : 'Gjatë'}</span></Td>
+                  <Td><span className="text-[10px] text-gray-400">{k.src}</span></Td>
                   <Td>{fmt(Number(t.volume), 2)}</Td>
                   <Td>{fmt(Number(t.entry_price))}</Td>
                   <Td>{t.sl != null ? fmt(Number(t.sl)) : '—'}</Td>
@@ -209,14 +243,17 @@ export default function DemoTradingPage() {
       {/* History */}
       <Section title={`Historiku (${closed.length})`}>
         {closed.length === 0 ? <Empty text="Ende s'ka trade të mbyllura." /> : (
-          <Table head={['Lloji', 'Simboli', 'Vol', 'Hyrja', 'Dalja', 'Arsyeja', 'P&L', 'Mbyllur']}>
+          <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'Dalja', 'Arsyeja', 'P&L', 'Mbyllur']}>
             {closed.slice(0, 50).map((t) => {
               const buy = (t.side || '').toLowerCase() === 'buy';
               const pnl = Number(t.profit) || 0;
+              const k = tradeKind(t);
               return (
                 <tr key={t.id} className="border-t border-gray-800">
                   <Td><span className={buy ? 'text-emerald-400' : 'text-rose-400'}>{buy ? 'BLEJ' : 'SHIT'}</span></Td>
                   <Td>{t.symbol}</Td>
+                  <Td><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${k.cls}`}>{k.horizon === 'short' ? 'Shkurt' : 'Gjatë'}</span></Td>
+                  <Td><span className="text-[10px] text-gray-400">{k.src}</span></Td>
                   <Td>{fmt(Number(t.volume), 2)}</Td>
                   <Td>{fmt(Number(t.entry_price))}</Td>
                   <Td>{t.exit_price != null ? fmt(Number(t.exit_price)) : '—'}</Td>
@@ -229,6 +266,42 @@ export default function DemoTradingPage() {
           </Table>
         )}
       </Section>
+
+      {/* Sinjalet aktive — TË NJËJTAT që përdor roboti (njësoj si terminali Live) */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+        <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><Zap className="w-4 h-4 text-amber-400" />Sinjalet aktive</h3>
+        {signals.length === 0 ? (
+          <p className="text-gray-600 text-xs text-center py-3">Asnjë sinjal aktiv tani.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {signals.map((s) => {
+              const fresh = signalIsFresh(s.created_at);
+              const short = isShortHorizon(s.timeframe);
+              return (
+                <div key={s.id} className={`text-left rounded-xl px-3 py-2 border border-gray-700/50 bg-gray-800/40 ${fresh ? '' : 'opacity-60'}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="flex items-center gap-2">
+                      <span className="text-white text-sm font-bold">{s.symbol}</span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${short ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{short ? 'Afat-shkurt' : 'Afat-gjatë'}</span>
+                    </span>
+                    <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
+                  </div>
+                  <div className="flex gap-3 text-[11px] text-gray-400 flex-wrap">
+                    {s.entry_price != null && <span>Hyrje: <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
+                    {s.target_price != null && <span>Objektiv: <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
+                    {s.stop_loss != null && <span>Stop: <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
+                  </div>
+                  <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Sinjalet e përfunduara (i njëjti komponent si Live) */}
+      <CompletedSignals signals={doneSignals} variant="compact" />
 
       <p className="text-[11px] text-gray-500 text-center">
         Përditësuar: {new Date(now).toLocaleTimeString()} · Modul demo i pavarur — punon edhe kur lidhja live (MetaApi) është jashtë shërbimit.
