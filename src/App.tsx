@@ -7,6 +7,7 @@ import ClientLayout from './components/ClientLayout';
 
 import DashboardPage from './pages/DashboardPage';
 import MarketTerminalPage from './pages/MarketTerminalPage';
+import DemoTradingPage from './pages/DemoTradingPage';
 import ChartAnalysisPage from './pages/ChartAnalysisPage';
 import SignalsPage from './pages/SignalsPage';
 import MetaTraderPage from './pages/MetaTraderPage';
@@ -26,7 +27,7 @@ import AdminExpertRoomPage from './admin/AdminExpertRoomPage';
 import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
-  | 'dashboard' | 'market_prices' | 'chart_analysis'
+  | 'dashboard' | 'market_prices' | 'demo_trading' | 'chart_analysis'
   | 'signals' | 'protrade' | 'metatrader' | 'notifications' | 'reports' | 'settings' | 'manual';
 
 export type AdminPage =
@@ -36,7 +37,7 @@ export type AdminPage =
 
 export type Page = ClientPage | AdminPage;
 
-const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'notifications', 'reports', 'settings', 'manual'];
+const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'demo_trading', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'notifications', 'reports', 'settings', 'manual'];
 const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_assets', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
@@ -88,6 +89,7 @@ function ClientApp() {
     <ClientLayout currentPage={currentPage} onNavigate={setCurrentPage}>
       {currentPage === 'dashboard' && <DashboardPage onNavigate={setCurrentPage} />}
       {currentPage === 'market_prices' && <MarketTerminalPage onNavigate={setCurrentPage} />}
+      {currentPage === 'demo_trading' && <DemoTradingPage />}
       {currentPage === 'chart_analysis' && <ChartAnalysisPage />}
       {currentPage === 'signals' && <SignalsPage />}
       {currentPage === 'protrade' && <ProTradePage onNavigate={setCurrentPage} />}
