@@ -782,6 +782,9 @@ Deno.serve(async (req: Request) => {
           const withinDaily = maxRisk <= 0 || (openHeat + thisRisk) <= maxRisk;
           if (equity > 0 && (openHeat + thisRisk) > heatCap && !(volume <= 0.01 && withinDaily)) { await slog("rejected", `Scalp portfolio heat: rreziku total do kalonte ${MAX_HEAT_PCT}%`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "portfolio_heat" }); continue; }
 
+          // SIGURI: asnjë trade pa stop-loss (mbron nga humbje e pakufizuar). S'ekzekuton pa SL të vlefshëm.
+          if (!(stopLoss > 0)) { await slog("rejected", "Scalp pa stop-loss — refuzuar (siguri)", null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "no_sl" }); continue; }
+
           const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, takeProfit, comment: SCALP_TAG };
           try {
             const r = await maTrade(cfg, body);
@@ -909,6 +912,9 @@ Deno.serve(async (req: Request) => {
           await log("rejected", `Portfolio heat: rreziku total i hapur do kalonte ${MAX_HEAT_PCT}% të kapitalit`, null, null);
           summary.push({ user: cfg.user_id, signal: sig.id, status: "portfolio_heat" }); continue;
         }
+
+        // SIGURI: asnjë trade pa stop-loss (mbron nga humbje e pakufizuar). S'ekzekuton pa SL të vlefshëm.
+        if (!(Number(stopLoss) > 0)) { await log("rejected", "Trade pa stop-loss — refuzuar (siguri)", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "no_sl" }); continue; }
 
         // CLAUDE SI PORTË — me kontekstin e grafikut MT5.
         const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);
