@@ -78,6 +78,8 @@ Deno.serve(async (req: Request) => {
         .limit(50);
 
       for (const s of (sigs ?? []) as { id: string; symbol: string; type: string; entry_price: number | null; stop_loss: number | null; confidence: number; created_at: string }[]) {
+        // MMTI është për ARIN — simulo vetëm sinjale ari (jo crypto/naftë), që mësimi të jetë i pastër.
+        if (!/XAU|GOLD/i.test((s.symbol || "").toUpperCase())) continue;
         if (s.entry_price == null || s.stop_loss == null) continue;
         const entry = Number(s.entry_price);
         const slDist = Math.abs(entry - Number(s.stop_loss));

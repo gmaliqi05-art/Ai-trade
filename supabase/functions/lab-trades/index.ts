@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
       const b = await resp.json(); if (Array.isArray(b)) deals = b as Deal[];
     } catch (e) { return json({ error: "fetch_failed", detail: String(e) }); }
 
-    const closing: CD[] = deals
+    const closingAll: CD[] = deals
       .filter((d) => (d.type === "DEAL_TYPE_BUY" || d.type === "DEAL_TYPE_SELL") && Number(d.profit) !== 0)
       .map((d) => ({
         net: (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0),
@@ -108,8 +108,13 @@ Deno.serve(async (req: Request) => {
         hour: new Date(d.time || 0).getUTCHours(),
       }));
 
+    // MMTI është për ARIN — analizo VETËM trade-t e arit (llogaria mund të ketë tregtuar edhe
+    // crypto/naftë; ato s'duhet të ndikojnë te plani i arit). Përndryshe "best symbol" del jo-ari.
+    const closing: CD[] = closingAll.filter((d) => /XAU|GOLD/i.test((d.symbol || "").toUpperCase()));
+
     const result: Record<string, unknown> = {
       account: String(c.account_id).slice(0, 8), days, total: closing.length,
+      excludedNonGold: closingAll.length - closing.length,
       overall: stat(closing),
       bySession: groupStats(closing, (d) => sessionOf(d.hour)),
       byStrategy: groupStats(closing, (d) => d.scalp ? "Scalp (afat-shkurt)" : "Swing/Tjeter"),
