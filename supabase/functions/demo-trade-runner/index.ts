@@ -306,7 +306,7 @@ Deno.serve(async (req: Request) => {
           const isBuy = (s.type || "").toLowerCase() === "buy";
           const tp = s.target_price != null ? Number(s.target_price) : (isBuy ? entry + slDist * 2 : entry - slDist * 2);
           const volume = sizeVolume(cfg, bal.get(u.id) ?? 100, Number(s.confidence ?? 70), slDist, s.symbol);
-          toInsert.push({ user_id: u.id, signal_id: s.id, symbol: s.symbol, side: isBuy ? "buy" : "sell", volume, entry_price: entry, sl, tp, status: "open" });
+          toInsert.push({ user_id: u.id, signal_id: s.id, symbol: s.symbol, side: isBuy ? "buy" : "sell", volume, entry_price: entry, sl, tp, status: "open", source: "signal" });
           seen.add(`${u.id}|${s.id}`); cnt++; opened++;
         }
         openCountBy.set(u.id, cnt);
@@ -348,7 +348,7 @@ Deno.serve(async (req: Request) => {
         const sl = isBuy ? scalpEntry - slUsd : scalpEntry + slUsd;
         const tp = isBuy ? scalpEntry + tpUsd : scalpEntry - tpUsd;
         const volume = sizeVolume(cfg, bal.get(u.id) ?? 100, 70, slUsd, "XAUUSD");
-        toInsert.push({ user_id: u.id, signal_id: null, symbol: "XAUUSD", side: isBuy ? "buy" : "sell", volume, entry_price: scalpEntry, sl, tp, status: "open" });
+        toInsert.push({ user_id: u.id, signal_id: null, symbol: "XAUUSD", side: isBuy ? "buy" : "sell", volume, entry_price: scalpEntry, sl, tp, status: "open", source: "scalp" });
         openCountBy.set(u.id, (openCountBy.get(u.id) ?? 0) + 1);
         openedScalp++;
       }

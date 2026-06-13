@@ -80,7 +80,7 @@ Deno.serve(async (req: Request) => {
       const tpOk = tp == null || (side === "buy" ? tp > price : tp < price);
       const { error } = await db.from("demo_trades").insert({
         user_id: user.id, signal_id, symbol, side, volume: vol,
-        entry_price: price, sl: slOk ? sl : null, tp: tpOk ? tp : null, status: "open",
+        entry_price: price, sl: slOk ? sl : null, tp: tpOk ? tp : null, status: "open", source: "manual",
       });
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true, entry: price });

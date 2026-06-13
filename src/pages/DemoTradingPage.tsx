@@ -26,16 +26,22 @@ const fmtTime = (iso?: string | null) =>
 // Konfigurimet (preset/rrezik) janë të njëjta si live (te "Lidhja & Konfigurimi").
 
 type DemoTrade = {
-  id: string; symbol: string; side: string; volume: number; signal_id: string | null;
+  id: string; symbol: string; side: string; volume: number; signal_id: string | null; source: string | null;
   entry_price: number; sl: number | null; tp: number | null;
   status: string; exit_price: number | null; exit_reason: string | null;
   profit: number | null; opened_at: string; closed_at: string | null;
 };
 
-// Afati & Burimi i një demo-trade (si te live): scalp (pa sinjal) = afat-shkurt; swing (me sinjal) = afat-gjatë.
-const tradeKind = (t: DemoTrade) => (t.signal_id == null
-  ? { horizon: 'short' as const, src: 'Scalp', cls: 'bg-amber-500/20 text-amber-400' }
-  : { horizon: 'long' as const, src: 'Sinjal', cls: 'bg-blue-500/20 text-blue-400' });
+// Burimi i një demo-trade: manual (user) ose auto (robot: scalp/sinjal).
+const srcOf = (t: DemoTrade) => t.source || (t.signal_id != null ? 'signal' : 'scalp');
+const isAuto = (t: DemoTrade) => srcOf(t) !== 'manual';
+// Afati & etiketa e burimit (si te live).
+const tradeKind = (t: DemoTrade) => {
+  const s = srcOf(t);
+  if (s === 'manual') return { horizon: 'short' as const, src: 'Manual', cls: 'bg-emerald-500/20 text-emerald-400' };
+  if (s === 'signal') return { horizon: 'long' as const, src: 'Sinjal', cls: 'bg-blue-500/20 text-blue-400' };
+  return { horizon: 'short' as const, src: 'Scalp', cls: 'bg-amber-500/20 text-amber-400' };
+};
 
 const normSym = (s: string) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function valuePerPrice(symbol: string): number {
@@ -69,6 +75,7 @@ export default function DemoTradingPage() {
   const [appliedSignalId, setAppliedSignalId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [srcFilter, setSrcFilter] = useState<'all' | 'auto' | 'manual'>('all'); // filtri i raporteve
   const formRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -151,6 +158,10 @@ export default function DemoTradingPage() {
 
   const open = useMemo(() => trades.filter((t) => t.status === 'open'), [trades]);
   const closed = useMemo(() => trades.filter((t) => t.status === 'closed'), [trades]);
+  // Filtri Auto/Manual për tabelat (raportet).
+  const matchSrc = useCallback((t: DemoTrade) => srcFilter === 'all' || (srcFilter === 'auto' ? isAuto(t) : !isAuto(t)), [srcFilter]);
+  const fOpen = useMemo(() => open.filter(matchSrc), [open, matchSrc]);
+  const fClosed = useMemo(() => closed.filter(matchSrc), [closed, matchSrc]);
 
   const unrealizedOf = useCallback((t: DemoTrade): number => {
     const px = priceFor(t.symbol);
@@ -223,9 +234,9 @@ export default function DemoTradingPage() {
     return lines;
   }, [open, livePx, unrealizedOf]);
 
-  const realizedPnl = useMemo(() => closed.reduce((s, t) => s + (Number(t.profit) || 0), 0), [closed]);
-  const wins = closed.filter((t) => (Number(t.profit) || 0) > 0).length;
-  const winRate = closed.length ? Math.round((wins / closed.length) * 100) : 0;
+  const realizedPnl = useMemo(() => fClosed.reduce((s, t) => s + (Number(t.profit) || 0), 0), [fClosed]);
+  const wins = fClosed.filter((t) => (Number(t.profit) || 0) > 0).length;
+  const winRate = fClosed.length ? Math.round((wins / fClosed.length) * 100) : 0;
 
   async function toggleEnabled() {
     if (!user) return;
@@ -273,7 +284,7 @@ export default function DemoTradingPage() {
       {/* Performance strip */}
       <div className="grid grid-cols-3 gap-3">
         <Mini label="P&L i realizuar" value={`${realizedPnl >= 0 ? '+' : ''}€${fmt(realizedPnl)}`} tone={realizedPnl >= 0 ? 'pos' : 'neg'} />
-        <Mini label="Trade të mbyllura" value={`${closed.length}`} />
+        <Mini label="Trade të mbyllura" value={`${fClosed.length}`} />
         <Mini label="Win rate" value={`${winRate}%`} tone={winRate >= 50 ? 'pos' : undefined} />
       </div>
 
@@ -336,13 +347,22 @@ export default function DemoTradingPage() {
         <p className="text-[10px] text-gray-600">Hapet virtualisht me çmimin real aktual. Roboti e mbyll te SL/TP, ose mbylle vetë te tabela poshtë.</p>
       </div>
 
+      {/* Filtri i raporteve: Të gjitha / Auto / Manual */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] text-gray-500">Filtro raportet:</span>
+        {([['all', 'Të gjitha'], ['auto', 'Auto (robot)'], ['manual', 'Manual']] as const).map(([v, l]) => (
+          <button key={v} onClick={() => setSrcFilter(v)}
+            className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${srcFilter === v ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>{l}</button>
+        ))}
+      </div>
+
       {/* Open positions */}
-      <Section title={`Pozicione të hapura (${open.length})`}>
-        {loading ? <Empty text="Po ngarkohet…" /> : open.length === 0 ? (
-          <Empty text="Asnjë pozicion i hapur. Hap një trade nga forma poshtë, ose ndez 'Robot AUTO' që roboti të tregtojë vetë." />
+      <Section title={`Pozicione të hapura (${fOpen.length})`}>
+        {loading ? <Empty text="Po ngarkohet…" /> : fOpen.length === 0 ? (
+          <Empty text={srcFilter === 'manual' ? "Asnjë pozicion manual i hapur. Hap një trade nga forma poshtë." : srcFilter === 'auto' ? "Asnjë pozicion auto i hapur. Ndez 'Robot AUTO'." : "Asnjë pozicion i hapur. Hap një trade nga forma poshtë, ose ndez 'Robot AUTO'."} />
         ) : (
           <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'SL', 'TP', 'P&L tani', '']}>
-            {open.map((t) => {
+            {fOpen.map((t) => {
               const pnl = unrealizedOf(t);
               const buy = (t.side || '').toLowerCase() === 'buy';
               const k = tradeKind(t);
@@ -366,10 +386,10 @@ export default function DemoTradingPage() {
       </Section>
 
       {/* History */}
-      <Section title={`Historiku (${closed.length})`}>
-        {closed.length === 0 ? <Empty text="Ende s'ka trade të mbyllura." /> : (
+      <Section title={`Historiku (${fClosed.length})`}>
+        {fClosed.length === 0 ? <Empty text={srcFilter === 'all' ? "Ende s'ka trade të mbyllura." : `Asnjë trade ${srcFilter === 'manual' ? 'manual' : 'auto'} i mbyllur.`} /> : (
           <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'Dalja', 'Arsyeja', 'P&L', 'Mbyllur']}>
-            {closed.slice(0, 50).map((t) => {
+            {fClosed.slice(0, 50).map((t) => {
               const buy = (t.side || '').toLowerCase() === 'buy';
               const pnl = Number(t.profit) || 0;
               const k = tradeKind(t);
