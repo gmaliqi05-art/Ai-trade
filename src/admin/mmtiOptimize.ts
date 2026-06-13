@@ -42,12 +42,19 @@ export interface OptimizedPlan {
 // Beso vetëm grupet me mostër të mjaftueshme (mostra të vogla = rastësi).
 const MIN_GROUP_N = 10;
 
+// MMTI është ndërtuar VETËM për arin — fokusi i simbolit s'duhet të dalë kurrë te crypto/naftë.
+function isGoldSymbol(label: string): boolean {
+  return /XAU|GOLD/i.test((label || "").toUpperCase());
+}
+
 function pickBest(groups: TIGroup[]): OptiPick | null {
   const eligible = groups.filter((g) => g.n >= MIN_GROUP_N);
   const pool = eligible.length ? eligible : groups.slice();
   if (!pool.length) return null;
   // Më fitimprurësi sipas expectancy-së (jo vetëm net-i total, që mund të jetë nga vëllimi).
   const top = [...pool].sort((a, b) => b.expectancy - a.expectancy)[0];
+  // MOS rekomando një dimension që HUMB para (përndryshe zgjedh "humbësin më të vogël").
+  if (!(top.expectancy > 0)) return null;
   return { label: top.label, winRate: top.winRate, expectancy: top.expectancy, n: top.n };
 }
 
@@ -72,7 +79,8 @@ export function optimizeFromIntel(ti: TradeIntelLite): OptimizedPlan {
 
   const bestSession = pickBest(ti.bySession || []);
   const bestStrategy = pickBest(ti.byStrategy || []);
-  const bestSymbol = pickBest(ti.bySymbol || []);
+  // MMTI = ari: shqyrto vetëm simbolet e arit. Kurrë BTC/naftë, edhe nëse llogaria i ka tregtuar.
+  const bestSymbol = pickBest((ti.bySymbol || []).filter((g) => isGoldSymbol(g.label)));
 
   // Win-rate bazë: i strategjisë fituese nëse e besueshme, përndryshe i përgjithshmi.
   const baseWinRate = (bestStrategy && bestStrategy.n >= MIN_GROUP_N)
