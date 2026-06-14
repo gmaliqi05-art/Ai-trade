@@ -47,13 +47,13 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     if (!configured) return;
     if (showPositions) refreshPositions();
     if (showExecutions) refreshExecutions();
-    // Pozicionet (P&L live nga MT5) çdo 4s; ekzekutimet (DB) më rrallë, çdo ~12s.
+    // Pozicionet (P&L live nga MT5) çdo 2s; ekzekutimet (DB) më rrallë, çdo ~12s.
     let tick = 0;
     const id = setInterval(() => {
       tick++;
       if (showPositions) refreshPositions();
-      if (showExecutions && tick % 3 === 0) refreshExecutions();
-    }, 4000);
+      if (showExecutions && tick % 6 === 0) refreshExecutions();
+    }, 2000);
     return () => clearInterval(id);
   }, [configured, showPositions, showExecutions, refreshPositions, refreshExecutions]);
 
@@ -139,9 +139,13 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
         <h3 className="text-white font-semibold text-sm flex items-center gap-2">
           {t('Pozicionet e hapura (live nga MT5)')}
           <span className="bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-md text-xs font-semibold">{positions.length}</span>
-          {posStale && (
+          {posStale ? (
             <span className="flex items-center gap-1 text-[10px] text-amber-400" title={t('Lidhje e ngadaltë — vlerat e fundit të njohura')}>
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />{t('po rifreskohet…')}
+            </span>
+          ) : Object.keys(pxMap).length > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-green-400" title={t('Çmimi live nga MT5 — rifreskohet çdo 2 sekonda; mbyllja bëhet me çmimin real të tregut')}>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />{t('live · 2s')}
             </span>
           )}
         </h3>
