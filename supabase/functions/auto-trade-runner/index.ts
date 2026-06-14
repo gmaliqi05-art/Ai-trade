@@ -68,17 +68,9 @@ function marketDataHost(region: string) {
   return `https://mt-market-data-client-api-v1.${(region || "new-york").trim()}.agiliumtrade.ai`;
 }
 
-// Sesioni i arit i ankoruar te Frankfurt (Europe/Berlin) 09:00–23:00, DST automatik.
-// Jashtë sesionit s'hapim trade TË REJA (trailing/break-even vazhdon 24/7).
-function frankfurtHour(d = new Date()): number {
-  const s = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hourCycle: "h23" }).format(d);
-  return parseInt(s, 10) || 0;
-}
-function goldSessionOpen(): boolean {
-  const h = frankfurtHour();
-  return h >= 9 && h < 23;
-}
 // Tregu FX/metale i HAPUR tani? Mbyllur fundjavën: E premte pas 21:00 UTC → E diel 22:00 UTC.
+// Roboti hap trade TË REJA për arin sa herë tregu është i hapur (jo më vetëm 09:00–23:00 Frankfurt).
+// Trailing/break-even vazhdon 24/7 te blloku i menaxhimit (s'preket nga kjo portë).
 // Përdoret për të dërguar porositë në radhë para-hapjeje pikërisht kur rihapet tregu.
 function isMarketOpen(d = new Date()): boolean {
   const day = d.getUTCDay(), h = d.getUTCHours();
@@ -764,10 +756,13 @@ Deno.serve(async (req: Request) => {
       const allowed = new Set((cfg.auto_symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
       if (allowed.size === 0) continue;
 
-      // Jashtë sesionit të arit: lejo crypto (24/7) dhe naftë (~23h/ditë pune); ari & të tjerat presin orarin.
-      if (!goldSessionOpen()) {
+      // ARI tregtohet SA HERË tregu është i HAPUR (rihapja e së dielës ~22:00 UTC → mbyllja e së premtes
+      // 21:00 UTC), JO vetëm 09:00–23:00 Frankfurt. Kërkesë e përdoruesit: roboti të fillojë sapo hapet
+      // tregu të dielën në mbrëmje. (Crypto 24/7 & naftë ~23h kalojnë gjithsesi; trailing/break-even
+      // vazhdon 24/7 te blloku i menaxhimit më sipër — kjo portë prek vetëm HYRJET E REJA.)
+      if (!isMarketOpen()) {
         for (const s of [...allowed]) { if (!isCrypto(s) && !isOil(s)) allowed.delete(s); }
-        if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "jashtë_sesionit" }); continue; }
+        if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "treg_i_mbyllur" }); continue; }
       }
       // NAFTË: bllokim rreth raportit javor EIA (e mërkurë 10:00–11:00 ET) — hiq naftën nga lista atëherë.
       if (eiaBlackout()) {
