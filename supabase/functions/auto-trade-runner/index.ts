@@ -79,15 +79,6 @@ function isMarketOpen(d = new Date()): boolean {
   if (day === 5 && h >= 21) return false; // E premte pas 21:00 UTC
   return true;
 }
-// Tregu FX/metale i HAPUR tani? Mbyllur fundjavën: E premte pas 21:00 UTC → E diel 22:00 UTC.
-// Përdoret për të dërguar porositë në radhë para-hapjeje pikërisht kur rihapet tregu.
-function isMarketOpen(d = new Date()): boolean {
-  const day = d.getUTCDay(), h = d.getUTCHours();
-  if (day === 6) return false;            // E shtunë
-  if (day === 0 && h < 22) return false;  // E diel para 22:00 UTC
-  if (day === 5 && h >= 21) return false; // E premte pas 21:00 UTC
-  return true;
-}
 // Crypto tregtohet 24/7 → s'i nënshtrohet sesionit të arit.
 function isCrypto(symbol: string): boolean {
   return /^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test((symbol || "").toUpperCase());
