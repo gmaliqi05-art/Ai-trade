@@ -251,6 +251,13 @@ function analyzeTF(candles: Candle[]): TFResult | null {
 //  - Filtër trendi: çmimi mbi EMA200 për BLEJ, nën EMA200 për SHIT (në 1h).
 //  - Filtër force: ADX(1h) ≥ 20 (vetëm trende të forta).
 const ADX_MIN = 18;
+// EKSPERTËT (Dhoma e Ekspertëve, nga trade-t REALE): humbjet grumbulloheshin te hyrjet "të
+// mbi-ekstenduara" — ADX shumë i lartë (trend i rraskapitur para kthimit) dhe RSI ekstrem
+// (hyrje pikërisht kundër një kthimi të mundshëm). Këto dy filtra i refuzojnë ato hyrje.
+// Versioni 1 (pa këto) ruhet te tag-u git 'robot-signal-v1' për rikthim nëse dëmtojnë tregtimin.
+const ADX_MAX = 50;           // refuzo hyrjet kur trendi është i rraskapitur (ADX > 50)
+const RSI_EXTREME_LOW = 25;   // refuzo SHIT kur RSI < 25 (oversold ekstrem → rrezik bounce)
+const RSI_EXTREME_HIGH = 75;  // refuzo BLEJ kur RSI > 75 (overbought ekstrem → rrezik pullback)
 // advanced = aplikon filtrat Tier-1 (Efficiency Ratio + Supertrend + Funding). Default false:
 // logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor + confluence).
 async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = false): Promise<EngineResult | null> {
@@ -272,7 +279,7 @@ async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = f
   const isBuy = dir === "BUY";
   if (isBuy && !(price > s1h.ema200)) return null;
   if (!isBuy && !(price < s1h.ema200)) return null;
-  if (s1h.adx < ADX_MIN) return null;
+  if (s1h.adx < ADX_MIN || s1h.adx > ADX_MAX) return null; // EKSPERTËT: shmang trendin e rraskapitur (ADX i lartë)
 
   const reasons: string[] = [
     `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
@@ -314,6 +321,8 @@ async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = f
   // (3) CONFLUENCE — faktorë të pavarur mbështetës (ADX≥25, RSI me hapësirë, MACD në harmoni).
   const c1hCloses = c1h.map((c) => c.close);
   const rsi1h = rsi(c1hCloses, 14)[c1hCloses.length - 1];
+  // EKSPERTËT: RSI ekstrem → hyrje kundër një kthimi të mundshëm; refuzo.
+  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) return null;
   const macdH = macd(c1hCloses).histogram[c1hCloses.length - 1];
   const adxStrong = s1h.adx >= 25;
   const rsiRoom = Number.isFinite(rsi1h) && (isBuy ? rsi1h < 68 : rsi1h > 32);
@@ -403,7 +412,7 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
   const isBuy = dir === "BUY";
   if (isBuy && !(price > s1h.ema200)) return null;
   if (!isBuy && !(price < s1h.ema200)) return null;
-  if (s1h.adx < ADX_MIN) return null;
+  if (s1h.adx < ADX_MIN || s1h.adx > ADX_MAX) return null; // EKSPERTËT: shmang trendin e rraskapitur (ADX i lartë)
 
   const reasons: string[] = [
     `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
@@ -466,6 +475,8 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
   //     shumë faktorë pajtohen, aq më cilësor sinjali (përdoret për ranking + besueshmëri).
   const c1hCloses = c1h.map((c) => c.close);
   const rsi1h = rsi(c1hCloses, 14)[c1hCloses.length - 1];
+  // EKSPERTËT: RSI ekstrem → hyrje kundër një kthimi të mundshëm; refuzo.
+  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) return null;
   const macdH = macd(c1hCloses).histogram[c1hCloses.length - 1];
   const adxStrong = s1h.adx >= 25;
   const rsiRoom = Number.isFinite(rsi1h) && (isBuy ? rsi1h < 68 : rsi1h > 32); // hapësirë para mbiblerjes/mbishitjes
