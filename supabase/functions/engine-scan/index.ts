@@ -392,13 +392,14 @@ async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = f
 //   (1) Sesionet e tregut, (2) volatiliteti, (3) trendi ditor D1, (4) nivelet
 //   psikologjike. Çdo filtër mund ta refuzojë sinjalin; harmonia i jep "boost".
 // ============================================================================
-async function generateGold(symbol: string): Promise<EngineResult | null> {
+async function generateGold(symbol: string, broker?: BrokerCreds): Promise<EngineResult | null> {
   // ARI: mos gjenero sinjale kur tregu i arit është i MBYLLUR (fundjavë) — s'tregtohet dot.
   // (PAXG/Binance jep qirinj 24/7, por XAUUSD te brokeri mbyllet fundjavën.)
   if (!commodityMarketOpen()) return null;
+  // broker = rezervë qirinjsh kur Binance dështon (geo-bllokim) — që sinjalet të mos ndalen.
   const [c15, c1h, c4h, c1d] = await Promise.all([
-    fetchCandles(symbol, "15m"), fetchCandles(symbol, "1h"),
-    fetchCandles(symbol, "4h"), fetchCandles(symbol, "1d"),
+    fetchCandles(symbol, "15m", broker), fetchCandles(symbol, "1h", broker),
+    fetchCandles(symbol, "4h", broker), fetchCandles(symbol, "1d", broker),
   ]);
   if (!c15 || !c1h || !c4h) return null;
   const s15 = analyzeTF(c15), s1h = analyzeTF(c1h), s4h = analyzeTF(c4h);
@@ -529,7 +530,7 @@ async function generateGold(symbol: string): Promise<EngineResult | null> {
 // Përzgjedh gjeneratorin: ari → i dedikuar me 4 analizat; të tjerat → standard.
 // broker = kredencialet MetaApi të përdoruesit (rezervë për naftë etj. kur Twelve Data s'jep të dhëna).
 function generateFor(symbol: string, broker?: BrokerCreds, advanced = false): Promise<EngineResult | null> {
-  return symbol.toUpperCase() === GOLD_SYMBOL ? generateGold(symbol) : generateStrong(symbol, broker, advanced);
+  return symbol.toUpperCase() === GOLD_SYMBOL ? generateGold(symbol, broker) : generateStrong(symbol, broker, advanced);
 }
 
 // ---------- Candles nga Binance — vetëm ari (XAUUSD→PAXGUSDT) ----------
@@ -543,13 +544,25 @@ async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCred
     try {
       const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=300`;
       const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!resp.ok) return null;
-      const raw = (await resp.json()) as unknown[][];
-      return raw.map((k) => ({
-        time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string),
-        low: +(k[3] as string), close: +(k[4] as string), volume: +(k[5] as string),
-      }));
-    } catch { return null; }
+      if (resp.ok) {
+        const raw = (await resp.json()) as unknown[][];
+        const mapped = raw.map((k) => ({
+          time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string),
+          low: +(k[3] as string), close: +(k[4] as string), volume: +(k[5] as string),
+        }));
+        if (mapped.length > 0) return mapped;
+      }
+    } catch { /* Binance i paarritshëm (geo-bllokim/rate-limit nga IP cloud) — kalo te rezerva */ }
+    // REZERVË për ARIN kur Binance dështon: qirinjtë e brokerit MetaApi (XAUUSD real) → Twelve Data
+    // (XAU/USD). PA këtë, një bllokim i Binance-it nga IP-ja e Supabase i ndalte KREJT sinjalet e arit
+    // (pikë e vetme dështimi). Kur Binance punon, kjo degë s'preket — sjellja mbetet identike.
+    if (broker) {
+      const m = await fetchMetaApiCandles(broker, symbol, interval);
+      if (m && m.length > 0) return m;
+    }
+    const td = await fetchTwelveData(symbol, interval);
+    if (td && td.length > 0) return td;
+    return null;
   }
   // Simbolet jo-Binance (naftë USOIL/UKOIL): MetaApi i brokerit (PRIMAR — zgjedhja e
   // përdoruesit; plani falas i Twelve Data s'e mbulon naftën). Twelve Data mbetet vetëm
@@ -563,7 +576,7 @@ async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCred
 
 // ---------- NAFTË (Oil) & simbole jo-Binance: Twelve Data primar + MetaApi rezervë ----------
 interface BrokerCreds { account_id: string; token: string; region: string; }
-const TD_SYMBOLS: Record<string, string> = { USOIL: "WTI/USD", WTIUSD: "WTI/USD", XTIUSD: "WTI/USD", UKOIL: "BRENT/USD", XBRUSD: "BRENT/USD" };
+const TD_SYMBOLS: Record<string, string> = { USOIL: "WTI/USD", WTIUSD: "WTI/USD", XTIUSD: "WTI/USD", UKOIL: "BRENT/USD", XBRUSD: "BRENT/USD", XAUUSD: "XAU/USD", XAU: "XAU/USD" };
 const TD_INTERVAL: Record<string, string> = { "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1day" };
 // Çelësi Twelve Data: env (i preferuar) ose rezervë nga tabela e sigurt app_config.
 // Cache në nivel instance (një lexim DB për cold-start).
@@ -603,6 +616,15 @@ async function resolveBrokerSymbol(b: BrokerCreds, requested: string): Promise<s
     if (resp.ok) {
       const list = (await resp.json()) as string[];
       const req = requested.toUpperCase();
+      // ARI: brokerë të ndryshëm e quajnë me prapashtesë (XAUUSD+, XAUUSD., GOLD…) — gjej emrin REAL.
+      if (req.includes("XAU")) {
+        const gold = list.find((s) => s.toUpperCase() === req)
+          || list.find((s) => s.toUpperCase().startsWith(req))
+          || list.find((s) => /xau.*usd/i.test(s))
+          || list.find((s) => /^gold/i.test(s.trim()))
+          || requested;
+        _oilSym.set(k, gold); return gold;
+      }
       // Brent vs WTI: zgjedh familjen e duhur kur s'ka përputhje të saktë.
       const isBrent = /^(UKOIL|XBR|BRENT)/i.test(req);
       const fam = isBrent ? /^(UKOIL|XBRUSD|XBR|BRENT|UKO)/i : /^(USOIL|XTIUSD|XTI|WTI|CL|USO)/i;
@@ -666,11 +688,24 @@ async function platformPass(
     .eq("status", "active");
   if ((activeCount ?? 0) >= PLATFORM_MAX) return;
 
+  // REZERVË qirinjsh për arin kur Binance dështon: merr kredencialet MetaApi të një përdoruesi të
+  // lidhur (çfarëdo llogarie me account_id+token). Përdoret VETËM nëse Binance s'jep qirinj — që
+  // sinjalet platform-wide të mos varen nga një burim i vetëm.
+  let platformBroker: BrokerCreds | undefined;
+  try {
+    const { data: bc } = await db.from("metaapi_config")
+      .select("account_id, token, region")
+      .not("account_id", "is", null).not("token", "is", null)
+      .limit(1).maybeSingle();
+    const b = bc as { account_id?: string; token?: string; region?: string } | null;
+    if (b?.account_id && b?.token) platformBroker = { account_id: b.account_id, token: b.token, region: b.region || "new-york" };
+  } catch { /* pa rezervë broker — Binance/Twelve Data mbeten */ }
+
   // Llogarit sinjalet për watchlist-in (ari, me 4 analizat) dhe rendit sipas besueshmërisë.
   const candidates: { symbol: string; sig: EngineResult }[] = [];
   for (const symbol of PLATFORM_WATCHLIST) {
     try {
-      const sig = await generateFor(symbol);
+      const sig = await generateFor(symbol, platformBroker);
       if (sig && sig.action !== "HOLD" && sig.confidence >= PLATFORM_MIN_CONF) candidates.push({ symbol, sig });
     } catch { /* anashkalo simbolin */ }
   }
