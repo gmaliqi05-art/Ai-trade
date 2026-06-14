@@ -444,6 +444,19 @@ export default function MetaApiPanel() {
           <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{t('Përqindja (%) e Metodës A nuk përdoret kur kjo metodë është aktive.')}</p>
         </div>
 
+        {/* —— BREAK-EVEN AUTO (rrezik zero + offset) — i pavarur, mund të punojë bashkë me Metodën A —— */}
+        <div className={`rounded-xl border p-3.5 transition-colors ${cfg.be_enabled ? 'bg-blue-500/10 border-blue-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4 text-blue-400" />{t('Break-even auto (rrezik zero)')}</span>
+            <TogglePill on={cfg.be_enabled} onClick={() => setAndSave('be_enabled', !cfg.be_enabled)} t={t} />
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Sapo trade-i të jetë mjaftueshëm në profit, SL kalon te <span class="text-gray-300">linja e hyrjes + offset</span> (p.sh. +9 pips) — pas kësaj trade-i <span class="text-gray-300">s\'mund të humbë</span>. Vlen për çdo trade (auto ose manual); ngjitet vetëm përpara.') }} />
+          <div className={`mt-3 transition-opacity ${cfg.be_enabled ? '' : 'opacity-40 pointer-events-none'}`}>
+            <NumField label={t('Offset mbi hyrjen (në çmim $)')} hint={t('Sa $ mbi hyrjen bllokohet SL-ja. 0.9 ≈ 9 pips për ar (1 pip = $0.1). Aktivizohet kur fitimi kalon 2× këtë vlerë.')}
+              value={cfg.be_offset_usd} step="0.1" min="0" onChange={v => set('be_offset_usd', v)} onBlur={save} />
+          </div>
+        </div>
+
         {/* UDHËZIM: si të zgjedhësh */}
         <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3 space-y-1.5">
           <div className="text-[11px] font-semibold text-blue-300">{t('📘 Cilën të zgjedhësh?')}</div>
