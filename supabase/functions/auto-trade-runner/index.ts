@@ -35,6 +35,8 @@ interface Cfg {
   trail_lock_pct?: number;   // % e fitimit që mbahet (SL ndjek këtë fraksion); default 50
   trail_start_usd?: number;  // profit minimal ($) para se të fillojë trailing-u; default 1
   broker_trailing?: boolean; // trailing në anë të MT5/MetaApi (tick-by-tick); default false
+  be_enabled?: boolean;      // break-even auto: SL → hyrja ± offset kur fitimi rritet; default false
+  be_offset_usd?: number;    // offset-i i break-even në çmim ($); default 0.9 (≈ 9 pips ari)
   day_start_equity?: number; // ekuiteti në fillim të ditës UTC (për limitin ditor të humbjes)
   day_start_date?: string;   // data UTC e ruajtjes së day_start_equity
 }
@@ -662,18 +664,33 @@ Deno.serve(async (req: Request) => {
             summary.push({ user: cfg.user_id, broker_trail: p.id, dist, ok });
           }
         }
-        // 2b) TRAILING ynë (polling) — SL ndjek një PJESË të fitimit (trail_lock_pct), pasi profiti
-        //     kalon trail_start_usd. Përdoret kur broker-trailing-u është OFF. Vlen për ÇDO pozicion.
-        else if (sl != null && cfg.trail_enabled !== false) {
-          const startUsd = Math.max(0.1, Number(cfg.trail_start_usd ?? 1));
-          const lockFrac = Math.min(0.95, Math.max(0.05, Number(cfg.trail_lock_pct ?? 50) / 100));
-          if (moved >= startUsd) {
-            const newSL = isBuy ? entry + moved * lockFrac : entry - moved * lockFrac;
-            const better = isBuy ? newSL > sl : newSL < sl;
-            if (better) {
-              const beSL = Math.round(newSL * 100) / 100;
-              try { const r = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: p.id, stopLoss: beSL, takeProfit: p.takeProfit ?? undefined }); summary.push({ user: cfg.user_id, trail: p.id, sl: beSL, ok: r.ok }); } catch { /* */ }
+        // 2b) MENAXHIM I SL-së (polling) — Break-even+offset DHE/OSE trailing me %. Të dyja e ngrenë
+        //     SL-në vetëm PËRPARA. Përdoret kur broker-trailing-u është OFF. Vlen për ÇDO pozicion
+        //     (auto OSE manual — të gjitha pozicionet e hapura në llogari).
+        else if (sl != null && (cfg.trail_enabled !== false || cfg.be_enabled === true)) {
+          let target = sl;
+          // BREAK-EVEN + offset: kur fitimi (lëvizja në favor) kalon 2× offset, ngul SL te hyrja ± offset
+          // → mbyll rrezikun dhe bllokon offset-in (p.sh. +9 pips). Aktivizimi te 2× siguron SL të vlefshëm.
+          if (cfg.be_enabled === true) {
+            const off = Math.max(0, Number(cfg.be_offset_usd ?? 0.9));
+            if (off > 0 && moved >= off * 2) {
+              const beTarget = isBuy ? entry + off : entry - off;
+              if (isBuy ? beTarget > target : beTarget < target) target = beTarget;
             }
+          }
+          // TRAILING me %: SL mban një fraksion (trail_lock_pct) të fitimit, pasi profiti kalon trail_start_usd.
+          if (cfg.trail_enabled !== false) {
+            const startUsd = Math.max(0.1, Number(cfg.trail_start_usd ?? 1));
+            const lockFrac = Math.min(0.95, Math.max(0.05, Number(cfg.trail_lock_pct ?? 50) / 100));
+            if (moved >= startUsd) {
+              const newSL = isBuy ? entry + moved * lockFrac : entry - moved * lockFrac;
+              if (isBuy ? newSL > target : newSL < target) target = newSL;
+            }
+          }
+          const better = isBuy ? target > sl : target < sl;
+          if (better) {
+            const beSL = Math.round(target * 100) / 100;
+            try { const r = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: p.id, stopLoss: beSL, takeProfit: p.takeProfit ?? undefined }); summary.push({ user: cfg.user_id, trail: p.id, sl: beSL, ok: r.ok }); } catch { /* */ }
           }
         }
       }
