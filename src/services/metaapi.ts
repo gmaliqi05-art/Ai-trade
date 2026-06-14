@@ -66,6 +66,9 @@ export interface MetaApiConfig {
   /** Filtrat e avancuar (Tier-1: Efficiency Ratio + Supertrend + Funding). Default OFF =
    *  logjika e thjeshtë e provuar. ON = shton filtrat Tier-1 për simbolet e tua. */
   advanced_filters: boolean;
+  /** Mënyra e porosive PARA-HAPJES (kur tregu i mbyllur):
+   *  'A' = pending te brokeri (te niveli i hyrjes); 'B' = radha jonë → hyn në treg kur hapet. Default 'B'. */
+  preopen_mode: 'A' | 'B';
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
@@ -80,6 +83,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   trail_enabled: true, trail_lock_pct: 50, trail_start_usd: 1, broker_trailing: false,
   be_enabled: false, be_offset_usd: 0.9,
   advanced_filters: false,
+  preopen_mode: 'B',
 };
 
 export interface TradeExecution {
@@ -129,6 +133,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     be_enabled: !!data.be_enabled,
     be_offset_usd: Number(data.be_offset_usd ?? 0.9),
     advanced_filters: !!data.advanced_filters,
+    preopen_mode: (data.preopen_mode === 'A' ? 'A' : 'B'),
     };
   }
   throw new Error(lastErr?.message || 'metaapi_config_load_failed');

@@ -22,6 +22,8 @@ interface MetaApiConfig {
   max_daily_loss: number;
   max_open_trades: number;
   kill_switch: boolean;
+  // Mënyra e porosive para-hapjes (kur tregu i mbyllur): 'A' = pending te brokeri; 'B' = radha jonë (default).
+  preopen_mode?: string;
 }
 
 function host(region: string): string {
@@ -384,6 +386,26 @@ Deno.serve(async (req: Request) => {
     // (hyn vetëm kur çmimi e arrin). Përndryshe → porosi tregu menjëherë.
     const entryPrice: number | undefined =
       body.entryPrice != null && Number.isFinite(Number(body.entryPrice)) ? Number(body.entryPrice) : undefined;
+
+    // MËNYRA E PARA-HAPJES (zgjedhur nga përdoruesi): 'A' = pending te brokeri; 'B' = radha jonë (default).
+    // RRUGA B: kur tregu është i mbyllur, MOS e prek brokerin fare — ruaje në RADHË; auto-trade-runner
+    // e dërgon si porosi TREGU pikërisht kur hapet tregu. Sjellje e parashikueshme, 100% nën kontrollin tonë.
+    const preopenMode = (config.preopen_mode ?? "B").toUpperCase();
+    if (!isMarketOpen() && preopenMode === "B") {
+      try {
+        await db.from("pre_open_orders").insert({
+          user_id: user.id, symbol, action, volume,
+          entry_price: entryPrice ?? null, stop_loss: stopLoss ?? null, take_profit: takeProfit ?? null,
+          source: signalId ? "signal" : "manual", signal_id: signalId,
+          status: "queued", reason: "Tregu i mbyllur — në radhë (Rruga B) për hapje në treg",
+          expires_at: new Date(Date.now() + 36 * 3600 * 1000).toISOString(),
+        });
+      } catch { /* */ }
+      await logExec("info", "Në radhë për hapje (Rruga B — radha jonë)", null, null);
+      return json({ success: true, queued: true, mode: config.mode, symbol, action, volume,
+        message: "Porosia u vendos në RADHË — hyn automatikisht kur hapet tregu." });
+    }
+
     let actionType = action === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL";
     let openPrice: number | undefined;
     let pending = false;
