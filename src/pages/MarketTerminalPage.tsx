@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Activity, RefreshCw, Loader2, TrendingUp, Zap, Brain,
   Wallet, AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
+  ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -81,6 +82,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [candles, setCandles] = useState<ChartCandle[]>([]);
   const [brokerPx, setBrokerPx] = useState<{ bid: number; ask: number } | null>(null); // çmimi LIVE i broker-it për 'selected'
+  const [pxDir, setPxDir] = useState<'up' | 'down' | 'flat'>('flat'); // drejtimi i lëvizjes së fundit (ticker)
+  const [pxTick, setPxTick] = useState(0); // çelës rirenderimi → flash në çdo ndryshim çmimi
+  const lastMidRef = useRef<number | null>(null);
   const [slInput, setSlInput] = useState('');
   const [tpInput, setTpInput] = useState('');
   const [modifyMsg, setModifyMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -211,13 +215,20 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   useEffect(() => {
     if (!metaConfigured) { setBrokerPx(null); return; }
     let alive = true;
-    setBrokerPx(null);
+    setBrokerPx(null); setPxDir('flat'); lastMidRef.current = null;
     const tick = async () => {
       try {
         const r = await loadSymbolPrice(selected);
         const px = (r as { price?: { bid?: number; ask?: number } })?.price;
         const bid = Number(px?.bid), ask = Number(px?.ask);
-        if (alive && bid > 0 && ask > 0) setBrokerPx({ bid, ask });
+        if (alive && bid > 0 && ask > 0) {
+          const mid = (bid + ask) / 2;
+          const prev = lastMidRef.current;
+          if (prev != null && Math.abs(mid - prev) > 1e-9) setPxDir(mid > prev ? 'up' : 'down');
+          lastMidRef.current = mid;
+          setBrokerPx({ bid, ask });
+          setPxTick(k => k + 1);
+        }
       } catch { /* mban të fundit */ }
     };
     tick();
@@ -493,6 +504,36 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           })}
         </div>
       )}
+
+      {/* TICKER LIVE — çmimi real-time i simbolit të zgjedhur (bid/ask/spread + drejtim + pulsim) */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
+        <style>{`@keyframes mtPulse{0%,100%{opacity:1}50%{opacity:.25}}.mt-pulse{animation:mtPulse 1.2s ease-in-out infinite}@keyframes mtFlash{from{background-color:rgba(251,191,36,.16)}to{background-color:transparent}}.mt-flash{animation:mtFlash .5s ease-out}`}</style>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-white font-bold text-base sm:text-lg shrink-0">{selected}</span>
+          <span key={pxTick} className="mt-flash rounded-md px-1 inline-flex items-center gap-1.5">
+            <span className={`text-xl sm:text-2xl font-black tabular-nums ${pxDir === 'up' ? 'text-green-400' : pxDir === 'down' ? 'text-red-400' : 'text-white'}`}>
+              {livePrice != null ? livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+            </span>
+            {pxDir === 'up' && <ArrowUp className="w-4 h-4 text-green-400" />}
+            {pxDir === 'down' && <ArrowDown className="w-4 h-4 text-red-400" />}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 sm:gap-4 text-[11px] sm:text-xs flex-wrap">
+          {brokerPx ? (
+            <>
+              <div><span className="text-gray-500">Bid </span><span className="text-red-400 font-semibold tabular-nums">{brokerPx.bid.toFixed(2)}</span></div>
+              <div><span className="text-gray-500">Ask </span><span className="text-green-400 font-semibold tabular-nums">{brokerPx.ask.toFixed(2)}</span></div>
+              <div><span className="text-gray-500">{t('Spread')} </span><span className="text-gray-300 tabular-nums">{(brokerPx.ask - brokerPx.bid).toFixed(2)}</span></div>
+            </>
+          ) : (
+            <span className="text-gray-600">{metaConfigured ? t('Po pritet çmimi live…') : t('Lidh MT5 për çmim live')}</span>
+          )}
+          <span className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${brokerPx ? 'bg-green-400 mt-pulse' : 'bg-gray-600'}`} />
+            <span className={brokerPx ? 'text-green-400 font-semibold' : 'text-gray-500'}>{brokerPx ? t('LIVE · 2s') : t('jo live')}</span>
+          </span>
+        </div>
+      </div>
 
       {/* GRAFIK — full width (të dhëna reale nga MT5 kur je i lidhur) */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
