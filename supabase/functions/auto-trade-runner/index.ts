@@ -307,27 +307,55 @@ function buildContext(symbol: string, t15: TF, t1h: TF, t4h: TF, price: number) 
 }
 
 async function fetchMt5Candles(cfg: Cfg, symbol: string, tf: string, limit = 300): Promise<Candle[] | null> {
-  try {
-    const url = `${marketDataHost(cfg.region)}/users/current/accounts/${cfg.account_id}/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${tf}/candles?limit=${limit}`;
-    const resp = await fetch(url, { headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(12000) });
-    if (!resp.ok) return null;
-    const arr = await resp.json();
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    return arr.map((k: Record<string, unknown>) => ({
-      time: new Date((k.time ?? k.brokerTime) as string).getTime(),
-      open: +(k.open as number), high: +(k.high as number), low: +(k.low as number), close: +(k.close as number),
-    }));
-  } catch { return null; }
+  const url = `${marketDataHost(cfg.region)}/users/current/accounts/${cfg.account_id}/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${tf}/candles?limit=${limit}`;
+  // Riprovo te 429 (rate-limit i llogarisë)/502/503 — që scalp-i të mund të vlerësojë edhe nën ngarkesë.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch(url, { headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(12000) });
+      if (resp.status === 429 || resp.status === 502 || resp.status === 503) {
+        if (attempt < 2) { await new Promise((r) => setTimeout(r, 600 * (attempt + 1))); continue; }
+        return null;
+      }
+      if (!resp.ok) return null;
+      const arr = await resp.json();
+      if (!Array.isArray(arr) || arr.length === 0) return null;
+      return arr.map((k: Record<string, unknown>) => ({
+        time: new Date((k.time ?? k.brokerTime) as string).getTime(),
+        open: +(k.open as number), high: +(k.high as number), low: +(k.low as number), close: +(k.close as number),
+      }));
+    } catch { /* gabim rrjeti → riprovo */ }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+  }
+  return null;
 }
 
 async function maGet(cfg: Cfg, path: string) {
-  const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
-    headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(15000),
-  });
-  const txt = await resp.text();
-  let body: unknown = txt; try { body = JSON.parse(txt); } catch { /* */ }
-  if (!resp.ok) throw new Error(`MetaApi ${resp.status}`);
-  return body;
+  // RIPROVË për gabime KALIMTARE: 429 (TooManyRequests — kur llogaria e përdoruesit po bën shumë
+  // thirrje njëkohësisht) dhe 502/503 (MetaApi po sinkronizon). Pa këtë, një 429 i vetëm e hiqte
+  // përdoruesin nga cikli i robotit. Vetëm GET-e (idempotentë); urdhrat e tregtisë S'riprovohen kurrë.
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
+        headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(15000),
+      });
+      const txt = await resp.text();
+      let body: unknown = txt; try { body = JSON.parse(txt); } catch { /* */ }
+      if (resp.status === 429 || resp.status === 502 || resp.status === 503) {
+        lastErr = new Error(`MetaApi ${resp.status} (kalimtar)`); // riprovo me prapakthim
+      } else if (!resp.ok) {
+        throw new Error(`MetaApi ${resp.status}`); // jo-kalimtar → dil
+      } else {
+        return body;
+      }
+    } catch (e) {
+      const msg = (e as Error).message || "";
+      if (/^MetaApi \d{3}$/.test(msg)) throw e; // përgjigje e qartë jo-OK → mos riprovo
+      lastErr = e as Error; // gabim rrjeti (timeout/DNS) → riprovo
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+  }
+  throw lastErr || new Error("MetaApi unreachable");
 }
 
 async function maTrade(cfg: Cfg, body: Record<string, unknown>) {
