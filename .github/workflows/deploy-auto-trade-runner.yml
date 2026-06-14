@@ -23,3 +23,8 @@ jobs:
         run: supabase functions deploy auto-trade-runner --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy metaapi-trade (verify_jwt=true — kërkon JWT të përdoruesit)
+        run: supabase functions deploy metaapi-trade --project-ref zwyuscgqacfpjafznybg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
