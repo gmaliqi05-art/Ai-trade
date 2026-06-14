@@ -78,6 +78,15 @@ function goldSessionOpen(): boolean {
   const h = frankfurtHour();
   return h >= 9 && h < 23;
 }
+// Tregu FX/metale i HAPUR tani? Mbyllur fundjavën: E premte pas 21:00 UTC → E diel 22:00 UTC.
+// Përdoret për të dërguar porositë në radhë para-hapjeje pikërisht kur rihapet tregu.
+function isMarketOpen(d = new Date()): boolean {
+  const day = d.getUTCDay(), h = d.getUTCHours();
+  if (day === 6) return false;            // E shtunë
+  if (day === 0 && h < 22) return false;  // E diel para 22:00 UTC
+  if (day === 5 && h >= 21) return false; // E premte pas 21:00 UTC
+  return true;
+}
 // Crypto tregtohet 24/7 → s'i nënshtrohet sesionit të arit.
 function isCrypto(symbol: string): boolean {
   return /^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test((symbol || "").toUpperCase());
@@ -551,6 +560,47 @@ async function inNewsBlackout(): Promise<boolean> {
 
 const MAX_HEAT_PCT = 6; // rreziku total i hapur (portfolio heat) s'kalon 6% të kapitalit
 
+// ===== RRUGA B: porositë në RADHË para-hapjeje → dërgo te brokeri sapo hapet tregu =====
+// Vetëm porositë 'queued' (kur Rruga A — pending te brokeri — dështoi). Dërgohen si porosi TREGU
+// me çmimin real të hapjes + SL/TP të ruajtura. ('placed' i menaxhon brokeri → nuk preken këtu,
+// kështu shmanget hyrja e DYFISHTË.) Kërkon SL (siguri). Skadon porositë e vjetra.
+async function submitQueuedOrders(db: DB, cfg: Cfg): Promise<void> {
+  if (!isMarketOpen()) return; // tregu ende i mbyllur → prit hapjen
+  let queued: Array<Record<string, unknown>> = [];
+  try {
+    const { data } = await db.from("pre_open_orders")
+      .select("id, symbol, action, volume, stop_loss, take_profit, expires_at")
+      .eq("user_id", cfg.user_id).eq("status", "queued").limit(20);
+    queued = (data ?? []) as Array<Record<string, unknown>>;
+  } catch { return; }
+  for (const q of queued) {
+    const id = q.id as string;
+    const exp = q.expires_at ? new Date(q.expires_at as string).getTime() : 0;
+    if (exp && Date.now() > exp) { try { await db.from("pre_open_orders").update({ status: "expired" }).eq("id", id); } catch { /* */ } continue; }
+    const sym = String(q.symbol || ""), action = String(q.action || "");
+    const volume = Number(q.volume) || 0;
+    const sl = q.stop_loss != null ? Number(q.stop_loss) : null;
+    const tp = q.take_profit != null ? Number(q.take_profit) : null;
+    if (!(volume >= 0.01) || (action !== "BUY" && action !== "SELL")) { try { await db.from("pre_open_orders").update({ status: "failed", reason: "parametra të pavlefshëm" }).eq("id", id); } catch { /* */ } continue; }
+    // SIGURI: mos dërgo pa stop-loss (njësoj si rregulli i robotit).
+    if (!(sl != null && sl > 0)) { try { await db.from("pre_open_orders").update({ status: "failed", reason: "pa stop-loss — refuzuar (siguri)" }).eq("id", id); } catch { /* */ } continue; }
+    const body: Record<string, unknown> = { actionType: action === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss: sl };
+    if (tp != null) body.takeProfit = tp;
+    try {
+      const r = await maTrade(cfg, body);
+      const br = brokerResult(r.body);
+      if (br.ok) {
+        await db.from("pre_open_orders").update({ status: "submitted", broker_order_id: br.orderId, submitted_at: new Date().toISOString() }).eq("id", id);
+        try { await db.from("trade_executions").insert({ user_id: cfg.user_id, symbol: sym, action, volume, stop_loss: sl, take_profit: tp, mode: cfg.mode, status: "executed", reason: "Porosi para-hapjeje — hyri në hapje të tregut", metaapi_order_id: br.orderId, raw_response: r.body }); } catch { /* */ }
+      } else {
+        await db.from("pre_open_orders").update({ status: "failed", reason: `Brokeri: ${(br.msg || "refuzuar").slice(0, 150)} (${br.code})` }).eq("id", id);
+      }
+    } catch (e) {
+      try { await db.from("pre_open_orders").update({ status: "failed", reason: (e as Error).message.slice(0, 150) }).eq("id", id); } catch { /* */ }
+    }
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -561,6 +611,22 @@ Deno.serve(async (req: Request) => {
   try {
     // Filtri i lajmeve (një herë për ekzekutim): a jemi rreth një lajmi USD me ndikim të lartë?
     const newsBlock = await inNewsBlackout();
+
+    // RRUGA B: sapo hapet tregu, dërgo porositë në radhë para-hapjeje — për ÇDO përdorues me radhë
+    // (jo vetëm ata me auto-trade; një porosi manuale para-hapjeje duhet të hyjë edhe pa auto-trade).
+    if (isMarketOpen()) {
+      try {
+        const { data: qUsers } = await db.from("pre_open_orders").select("user_id").eq("status", "queued").limit(200);
+        const uids = [...new Set((qUsers ?? []).map((r) => (r as { user_id: string }).user_id))];
+        for (const uid of uids) {
+          const { data: ucfg } = await db.from("metaapi_config").select("*").eq("user_id", uid).maybeSingle();
+          const c = ucfg as Cfg | null;
+          if (c && c.account_id && c.token && c.kill_switch !== true) {
+            try { await submitQueuedOrders(db, c); } catch { /* */ }
+          }
+        }
+      } catch { /* */ }
+    }
 
     const { data: configs } = await db
       .from("metaapi_config").select("*").eq("auto_trade", true).eq("kill_switch", false);

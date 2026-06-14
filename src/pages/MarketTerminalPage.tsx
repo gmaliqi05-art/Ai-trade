@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Activity, RefreshCw, Loader2, TrendingUp, Zap, Brain,
   Wallet, AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, Clock, X,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -13,7 +13,8 @@ import CompletedSignals from '../components/CompletedSignals';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
   loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice,
-  type AccountInfo, type HistoryDeal, type OpenPosition,
+  loadPreOpenOrders, cancelPreOpenOrder,
+  type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { groupDeals, attachSource, exitKind, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
@@ -30,6 +31,29 @@ interface Signal {
 // Orë e saktë e sinjalit (dt + orë:min).
 const fmtTime = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleString(dtLocale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+// Tregu FX/metale i hapur tani? Mbyllur fundjavën (E premte 21:00 UTC → E diel 22:00 UTC).
+function isMktOpen(d = new Date()): boolean {
+  const day = d.getUTCDay(), h = d.getUTCHours();
+  if (day === 6) return false;
+  if (day === 0 && h < 22) return false;
+  if (day === 5 && h >= 21) return false;
+  return true;
+}
+// Ms deri në hapjen e radhës (E diel 22:00 UTC) kur tregu është i mbyllur; 0 nëse hapur.
+function msToOpen(d = new Date()): number {
+  if (isMktOpen(d)) return 0;
+  const next = new Date(d);
+  while (next.getUTCDay() !== 0) next.setUTCDate(next.getUTCDate() + 1);
+  next.setUTCHours(22, 0, 0, 0);
+  if (next.getTime() <= d.getTime()) next.setUTCDate(next.getUTCDate() + 7);
+  return next.getTime() - d.getTime();
+}
+function fmtCountdown(ms: number): string {
+  const tot = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(tot / 3600), m = Math.floor((tot % 3600) / 60);
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
+}
 
 // Përputhja e simbolit të platformës (p.sh. UKOIL) me simbolin REAL të brokerit te pozicioni
 // (p.sh. UKOUSD/XBRUSD/BRENT për Brent, XTIUSD/WTI/CL për WTI). Pa këtë, linjat e pozicionit
@@ -104,6 +128,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [showSignalInfo, setShowSignalInfo] = useState(false);
   const [confirmNoSLTP, setConfirmNoSLTP] = useState(false);
   const [showBalances, setShowBalances] = useState(false); // privatësi: shifrat e fshehura (të turbullta) si default
+  const [preOpenOrders, setPreOpenOrders] = useState<PreOpenOrder[]>([]); // porositë para-hapjeje (radhë/pending te brokeri)
+  const [nowTs, setNowTs] = useState(Date.now()); // tik për numëruesin e hapjes së tregut
 
   // Plotëson SL/TP default rreth çmimit aktual (gold: SL $3, TP $6), sipas drejtimit.
   const fillDefaultProtection = () => {
@@ -118,6 +144,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   const goldFirst = (arr: Asset[]) =>
     [...arr].sort((a, b) => (a.symbol === 'XAUUSD' ? 0 : a.category === 'commodity' ? 1 : 2) - (b.symbol === 'XAUUSD' ? 0 : b.category === 'commodity' ? 1 : 2));
+
+  // Porositë para-hapjeje (radhë/pending) + numëruesi i hapjes — rifreskim çdo 15s.
+  const loadPreOpen = useCallback(async () => {
+    if (user) setPreOpenOrders(await loadPreOpenOrders(user.id));
+  }, [user]);
+  useEffect(() => {
+    loadPreOpen();
+    const id = setInterval(() => { loadPreOpen(); setNowTs(Date.now()); }, 15000);
+    return () => clearInterval(id);
+  }, [loadPreOpen]);
+  const cancelPreOpen = async (id: string) => { await cancelPreOpenOrder(id); loadPreOpen(); };
 
   const fetchBase = useCallback(async () => {
     const now = new Date().toISOString();
@@ -282,12 +319,15 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     else {
       const dir = tradeType === 'buy' ? t('BLEJ') : t('SHIT');
       const extra = `${sl ? ` · SL ${sl}` : ''}${tp ? ` · TP ${tp}` : ''}`;
-      if (r.pending) {
+      if ((r as { queued?: boolean }).queued) {
+        setTradeMsg({ type: 'success', text: t('Porosia {dir} {sym} ({vol} lot){extra} u vendos në RADHË — hyn automatikisht kur hapet tregu.', { dir, sym: selected, vol, extra }) });
+      } else if (r.pending) {
         setTradeMsg({ type: 'success', text: t('Porosi në pritje {dir} {sym} ({vol} lot) @ {price}{extra} — hyn automatik kur çmimi e arrin ({mode}).', { dir, sym: selected, vol, price: r.open_price ?? entry ?? '', extra, mode: r.mode ?? '' }) });
       } else {
         setTradeMsg({ type: 'success', text: t('Urdhër {dir} {sym} ({vol} lot){extra} dërguar ({mode}).', { dir, sym: selected, vol, extra, mode: r.mode ?? '' }) });
       }
       fetchMeta();
+      loadPreOpen();
     }
     setTradeLoading(false);
   };
@@ -502,6 +542,45 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* PARA-HAPJEJE — tregu i mbyllur: numëruesi + porositë në radhë/pending që hyjnë në hapje */}
+      {(!isMktOpen(new Date(nowTs)) || preOpenOrders.length > 0) && (
+        <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-gray-900 p-4 space-y-3">
+          <div className="flex items-center gap-2.5">
+            <Clock className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <div className="text-white font-bold text-sm">{isMktOpen(new Date(nowTs)) ? t('Tregu u hap — porositë po dërgohen') : t('Tregu i mbyllur — modë para-hapjeje')}</div>
+              <div className="text-gray-400 text-[11px]">
+                {isMktOpen(new Date(nowTs))
+                  ? t('Porositë e radhës hyjnë automatikisht brenda pak çastesh.')
+                  : <>{t('Hapet pas')} <span className="text-amber-400 font-semibold">{fmtCountdown(msToOpen(new Date(nowTs)))}</span> · {t('porosia që vendos tani rri në pritje dhe hyn automatikisht në hapje.')}</>}
+              </div>
+            </div>
+          </div>
+          {preOpenOrders.length > 0 && (
+            <div className="space-y-1.5">
+              {preOpenOrders.map((o) => (
+                <div key={o.id} className="flex items-center justify-between text-xs bg-gray-950/60 border border-gray-800 rounded-lg px-3 py-2 gap-2">
+                  <span className="flex items-center gap-2 flex-wrap min-w-0">
+                    <span className={`font-bold ${o.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.action === 'BUY' ? t('BLEJ') : t('SHIT')}</span>
+                    <span className="text-white">{o.symbol}</span>
+                    <span className="text-gray-400">{o.volume} {t('lot')}</span>
+                    {o.entry_price != null && <span className="text-gray-500">@ {o.entry_price}</span>}
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${o.status === 'placed' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-amber-500/15 text-amber-300 border-amber-500/30'}`}>
+                      {o.status === 'placed' ? t('pending te brokeri') : t('në radhë → hyn në hapje')}
+                    </span>
+                  </span>
+                  {o.status === 'queued' && (
+                    <button onClick={() => cancelPreOpen(o.id)} className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 px-2 py-1 rounded-lg transition-all shrink-0">
+                      <X className="w-3 h-3" />{t('Anulo')}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

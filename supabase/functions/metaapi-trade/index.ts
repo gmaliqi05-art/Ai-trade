@@ -451,11 +451,40 @@ Deno.serve(async (req: Request) => {
     const brokerMsg = String(rb.message ?? "");
     const ok = code === 10009 || code === 10008 || code === 10010 || (!!orderId && !Number.isFinite(code));
 
+    const preOpen = !isMarketOpen(); // jashtë orarit → kontekst "para-hapjeje"
     if (!ok) {
+      // RRUGA B: tregu i mbyllur dhe brokeri s'pranoi pending → ruaj në RADHË; auto-trade-runner
+      // e dërgon si porosi tregu pikërisht kur hapet tregu (shmang dyfishim: vetëm kur A dështon).
+      if (preOpen) {
+        try {
+          await db.from("pre_open_orders").insert({
+            user_id: user.id, symbol, action, volume,
+            entry_price: entryPrice ?? openPrice ?? null, stop_loss: stopLoss ?? null, take_profit: takeProfit ?? null,
+            source: signalId ? "signal" : "manual", signal_id: signalId,
+            status: "queued", reason: `Brokeri s'pranoi pending tani (${code}) — në radhë për hapje`,
+            expires_at: new Date(Date.now() + 36 * 3600 * 1000).toISOString(),
+          });
+        } catch { /* */ }
+        await logExec("info", `Në radhë për hapje (brokeri s'pranoi pending): ${brokerMsg || code}`, null, respBody);
+        return json({ success: true, queued: true, mode: config.mode, symbol, action, volume,
+          message: "Porosia u vendos në RADHË — hyn automatikisht kur hapet tregu." });
+      }
       await logExec("rejected", `Brokeri: ${brokerMsg || "refuzuar"} (${code})`, null, respBody);
       return json({ error: "broker_rejected", code, message: brokerMsg || "Urdhri u refuzua nga brokeri.", result: respBody }, 200);
     }
 
+    // RRUGA A: pending u PRANUA nga brokeri gjatë mbylljes → regjistro për gjurmim/UI (roboti S'e ridërgon).
+    if (preOpen && pending && orderId) {
+      try {
+        await db.from("pre_open_orders").insert({
+          user_id: user.id, symbol, action, volume,
+          entry_price: openPrice ?? null, stop_loss: stopLoss ?? null, take_profit: takeProfit ?? null,
+          source: signalId ? "signal" : "manual", signal_id: signalId,
+          status: "placed", broker_order_id: orderId,
+          expires_at: new Date(Date.now() + 36 * 3600 * 1000).toISOString(),
+        });
+      } catch { /* */ }
+    }
     await logExec("executed", pending ? `Porosi në pritje @ ${openPrice} (${config.mode})` : `OK (${config.mode})`, orderId, respBody);
     return json({
       success: true,

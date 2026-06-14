@@ -300,6 +300,27 @@ export function executeTrade(input: {
   return callTrade({ ...input });
 }
 
+/** Porosi para-hapjeje: 'placed' = pending te brokeri; 'queued' = pret robotin për hapje (Rruga B). */
+export interface PreOpenOrder {
+  id: string; symbol: string; action: 'BUY' | 'SELL'; volume: number;
+  entry_price: number | null; stop_loss: number | null; take_profit: number | null;
+  source: string; status: string; reason: string | null; created_at: string;
+}
+
+/** Porositë e mia në radhë para-hapjeje (queued/placed) — për t'i parë e anuluar te "Tregto Live". */
+export async function loadPreOpenOrders(userId: string): Promise<PreOpenOrder[]> {
+  const { data } = await supabase.from('pre_open_orders')
+    .select('id, symbol, action, volume, entry_price, stop_loss, take_profit, source, status, reason, created_at')
+    .eq('user_id', userId).in('status', ['queued', 'placed'])
+    .order('created_at', { ascending: false }).limit(20);
+  return (data ?? []) as PreOpenOrder[];
+}
+
+/** Anulon një porosi radhe (status → cancelled). Për 'placed' (pending te brokeri) anuloje edhe te brokeri. */
+export async function cancelPreOpenOrder(id: string): Promise<void> {
+  await supabase.from('pre_open_orders').update({ status: 'cancelled' }).eq('id', id);
+}
+
 /** Lexon ekzekutimet e fundit për përdoruesin. */
 export async function loadExecutions(userId: string, limit = 10): Promise<TradeExecution[]> {
   const { data } = await supabase
