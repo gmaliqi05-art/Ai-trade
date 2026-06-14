@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Users, RefreshCw, Loader2, AlertTriangle, Brain, TrendingUp, Lightbulb, ScrollText,
   BookOpenCheck, BarChart3, Database, Power, ShieldCheck, GraduationCap, Sparkles,
+  Wrench, ListChecks,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useI18n, dtLocale } from '../i18n/i18n';
@@ -22,12 +23,49 @@ interface Synthesis { core_rules?: string[]; trading_models?: { name: string; de
   robot_mapping?: { param: string; suggestion: string; basis?: string }[]; readiness?: { score?: number; missing?: string[] }; caution?: string }
 interface Knowledge { id: string; payload: Synthesis | null; created_at: string }
 
-type Tab = 'overview' | 'experts' | 'analyses' | 'charts' | 'informator';
+type Tab = 'improvements' | 'overview' | 'experts' | 'analyses' | 'charts' | 'informator';
 
 function confChip(c?: string) {
   if (c === 'high') return 'bg-green-500/15 text-green-400 border-green-500/30';
   if (c === 'medium') return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
   return 'bg-gray-600/20 text-gray-300 border-gray-600/40';
+}
+
+// ===== RAPORTI I PËRMIRËSIMEVE TË ROBOTIT =====
+// Konsolidon TË GJITHA rekomandimet e batch-eve në fusha përmirësimi, të grupuara sipas temës
+// dhe të renditura sipas (a) sa grupe trade-sh e ngritën dhe (b) besueshmërisë. Që pronari të
+// lexojë në një vend KU mund të përmirësohet roboti — pa kërkuar nëpër çdo analizë veç e veç.
+const IMPROVE_THEMES: { key: string; label: string; tip: string; re: RegExp }[] = [
+  { key: 'confidence', label: 'Pragu i besueshmërisë (confidence)', tip: 'min_confidence te cilësimet e robotit', re: /besueshm|confidence|conf\s*[≥<>=]/i },
+  { key: 'rsi', label: 'Filtër RSI (shmang oversold/overbought ekstrem)', tip: 'shto filtër RSI te motori i sinjaleve', re: /\brsi\b|oversold|overbought/i },
+  { key: 'adx', label: 'Forca e trendit (ADX) — tavan/dysheme', tip: 'kufi ADX te filtri i hyrjes', re: /\badx\b/i },
+  { key: 'atr', label: 'Volatiliteti (ATR%) — filtër minimal', tip: 'prag ATR% te hyrja', re: /\batr\b/i },
+  { key: 'macd', label: 'Momentum (MACD)', tip: 'prag MACD te hyrja', re: /macd/i },
+  { key: 'session', label: 'Sesioni / orari / overlap', tip: 'dritaret e orarit te auto-trade', re: /sesion|overlap|or[aëit]|t[eë]\s*h[eë]n|mbr[eë]mje|dit[eë]|kohor|et\s*\d/i },
+];
+const CONF_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+function confLabelSq(c?: string) { return c === 'high' ? 'e lartë' : c === 'medium' ? 'mesatare' : 'e ulët'; }
+
+interface ImpItem { batch_no: number; win_rate: number | null; title: string; detail: string; confidence?: string }
+interface ImpGroup { key: string; label: string; tip: string; items: ImpItem[]; batches: number; conf: number }
+
+function buildImprovements(analyses: Analysis[]): ImpGroup[] {
+  const groups = new Map<string, ImpGroup>();
+  for (const a of analyses) {
+    for (const r of (a.payload?.recommendations ?? [])) {
+      const hay = `${r.title} ${r.detail}`;
+      const theme = IMPROVE_THEMES.find((th) => th.re.test(hay));
+      const key = theme?.key ?? 'other';
+      if (!groups.has(key)) groups.set(key, { key, label: theme?.label ?? 'Të tjera', tip: theme?.tip ?? '', items: [], batches: 0, conf: 0 });
+      groups.get(key)!.items.push({ batch_no: a.batch_no, win_rate: a.win_rate, title: r.title, detail: r.detail, confidence: r.confidence });
+    }
+  }
+  const out = [...groups.values()].map((g) => {
+    g.items.sort((x, y) => (CONF_RANK[y.confidence ?? 'low'] ?? 1) - (CONF_RANK[x.confidence ?? 'low'] ?? 1));
+    return { ...g, batches: new Set(g.items.map((i) => i.batch_no)).size, conf: Math.max(1, ...g.items.map((i) => CONF_RANK[i.confidence ?? 'low'] ?? 1)) };
+  });
+  out.sort((a, b) => b.batches - a.batches || b.conf - a.conf || b.items.length - a.items.length);
+  return out;
 }
 
 // Krahasim TP vs SL i një metrike (bar të dyfishtë) — për "Grafikët".
@@ -51,7 +89,7 @@ function CompareBars({ label, tp, sl, unit }: { label: string; tp: number | null
 
 export default function AdminExpertRoomPage() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('improvements');
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [profs, setProfs] = useState<Profile[]>([]);
   const [knowledge, setKnowledge] = useState<Knowledge | null>(null);
@@ -104,8 +142,12 @@ export default function AdminExpertRoomPage() {
   const totalRecs = analyses.reduce((s, a) => s + ((a.payload?.recommendations?.length) || 0), 0);
   const syn = knowledge?.payload || null;
   const latestStats = analyses[0]?.payload?.stats;
+  const improvements = buildImprovements(analyses);
+  const tradesAnalyzed = analyses.reduce((s, a) => s + (a.trades_count || 0), 0);
+  const avgWinRate = analyses.length ? Math.round(analyses.reduce((s, a) => s + (a.win_rate ?? 0), 0) / analyses.length) : 0;
 
   const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+    { id: 'improvements', label: t('Përmirësimet e robotit'), icon: Wrench },
     { id: 'overview', label: t('Përmbledhje'), icon: BarChart3 },
     { id: 'experts', label: t('Ekspertët'), icon: GraduationCap },
     { id: 'analyses', label: t('Analizat'), icon: Brain },
@@ -145,6 +187,70 @@ export default function AdminExpertRoomPage() {
       </div>
 
       {err && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-3 py-2">{err}</div>}
+
+      {/* ============ PËRMIRËSIMET E ROBOTIT (raport për pronarin) ============ */}
+      {tab === 'improvements' && (
+        improvements.length === 0 ? (
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center">
+            <Wrench className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+            <p className="text-white font-medium">{t('Ende pa rekomandime përmirësimi')}</p>
+            <p className="text-gray-500 text-sm mt-1">{t('Sapo ekspertët të analizojnë grupet e para të trade-ve, përmirësimet e konsoliduara shfaqen këtu si raport.')}</p>
+          </div>
+        ) : (
+          <>
+            {/* Përmbledhja për pronarin */}
+            <div className="rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/5 to-gray-900 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-amber-400" />
+                <h3 className="text-white font-bold text-base">{t('Ku mund të përmirësohet roboti')}</h3>
+              </div>
+              <p className="text-gray-300 text-[13px] leading-relaxed">
+                {t('Raport i konsoliduar nga ekspertët mbi trade-t REALE të robotit.')}{' '}
+                <b className="text-white">{analyses.length}</b> {t('analiza')} · <b className="text-white">{tradesAnalyzed}</b> {t('trade')} · {t('win-rate mesatar')} <b className={avgWinRate >= 50 ? 'text-green-400' : 'text-amber-300'}>{avgWinRate}%</b>.{' '}
+                <b className="text-white">{improvements.length}</b> {t('fusha përmirësimi, të renditura sipas sa herë i ngritën ekspertët + besueshmërisë.')}
+              </p>
+            </div>
+
+            {improvements.map((g, gi) => {
+              const lvl = g.conf >= 3 ? 'high' : g.conf >= 2 ? 'medium' : 'low';
+              return (
+                <div key={g.key} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-2.5">
+                  <div className="flex items-start justify-between gap-3 flex-wrap border-b border-gray-800 pb-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-300 font-black flex items-center justify-center text-[13px]">{gi + 1}</div>
+                      <div>
+                        <div className="text-white font-semibold text-sm">{g.label}</div>
+                        {g.tip && <div className="text-gray-500 text-[11px] flex items-center gap-1"><Wrench className="w-3 h-3" />{t('Ku')}: {g.tip}</div>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-indigo-500/15 text-indigo-300 border-indigo-500/30">{g.batches}× {t('nga ekspertët')}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${confChip(lvl)}`}>{t('besueshmëri')} {confLabelSq(lvl)}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {g.items.map((it, i) => (
+                      <div key={i} className="bg-gray-950 border border-gray-800 rounded-lg p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-white text-[13px] font-medium flex items-center gap-1.5"><Lightbulb className="w-3.5 h-3.5 text-amber-400 shrink-0" />{it.title}</div>
+                          {it.confidence && <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0 ${confChip(it.confidence)}`}>{confLabelSq(it.confidence)}</span>}
+                        </div>
+                        <div className="text-gray-400 text-[12px] mt-1">{it.detail}</div>
+                        <div className="text-gray-600 text-[10px] mt-1">{t('nga Grupi')} #{it.batch_no}{it.win_rate != null ? ` · win-rate ${it.win_rate}%` : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="flex items-start gap-2 text-[12px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-200 rounded-lg p-3">
+              <ListChecks className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{t('Këto janë sugjerime nga ekspertët mbi trade-t reale — NUK aplikohen vetë te roboti. Zgjidh ato që do, ndryshoji te cilësimet, dhe validoji në DEMO para se t\'i mbash.')}</span>
+            </div>
+          </>
+        )
+      )}
 
       {/* ============ PËRMBLEDHJE ============ */}
       {tab === 'overview' && (
