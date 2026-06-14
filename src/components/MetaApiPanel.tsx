@@ -5,7 +5,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Cloud, Loader2, ShieldAlert, Power, CheckCircle, AlertCircle, Play, Save,
-  Eye, EyeOff, Layers, ChevronDown, Gauge, TrendingUp, Zap, Plus, X, Lock, Check,
+  Eye, EyeOff, Layers, ChevronDown, Gauge, TrendingUp, Zap, Plus, X, Lock, Check, Clock,
 } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
@@ -465,6 +465,50 @@ export default function MetaApiPanel() {
             <li dangerouslySetInnerHTML={{ __html: t('<span class="text-amber-400 font-semibold">Metoda B (MT5, tick-by-tick):</span> ndjek me distancë fikse pas çdo tiku — më e shpejtë, por jo me %. Provoje në DEMO së pari.') }} />
             <li dangerouslySetInnerHTML={{ __html: t('<span class="text-gray-300">Që trailing-u të punojë, çdo trade duhet të ketë SL.</span> Të dyja metodat e ngrenë SL vetëm përpara — kurrë mbrapa.') }} />
             <li dangerouslySetInnerHTML={{ __html: t('Nuk ka konflikt: kur ndez njërën metodë, tjetra fiket automatikisht.') }} />
+          </ul>
+        </div>
+      </Section>
+
+      {/* ======= 7. POROSITË PARA HAPJES SË TREGUT (fundjavë/natë) ======= */}
+      <Section icon={Clock} title={t('7. Porositë para hapjes së tregut')}
+        subtitle={t('Kur tregu është i mbyllur (fundjavë/natë) dhe ti hap një trade, si të trajtohet? Zgjidh VETËM njërën — A ose B.')}>
+
+        {/* Statusi: cila rrugë është aktive tani */}
+        <div className={`flex items-center gap-2 text-[11px] rounded-xl px-3 py-2 border ${
+          cfg.preopen_mode === 'A' ? 'bg-blue-500/10 border-blue-500/30 text-blue-300' : 'bg-green-500/10 border-green-500/30 text-green-400'}`}>
+          <CheckCircle className="w-4 h-4 shrink-0" />
+          <span>
+            {cfg.preopen_mode === 'A'
+              ? t('Aktive: Rruga A (pending te brokeri). Porosia mbahet te niveli yt i hyrjes; hyn kur çmimi e prek.')
+              : t('Aktive: Rruga B (radha jonë). Porosia hyn në treg automatik pikërisht kur hapet tregu.')}
+          </span>
+        </div>
+
+        {/* —— RRUGA B: Radha jonë (default, e rekomanduar) —— */}
+        <div className={`rounded-xl border p-3.5 transition-colors ${cfg.preopen_mode === 'B' ? 'bg-green-500/10 border-green-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-white flex items-center gap-2"><Layers className="w-4 h-4 text-green-400" />{t('Rruga B — Radha jonë (e rekomanduar)')}</span>
+            <TogglePill on={cfg.preopen_mode === 'B'} onClick={() => setAndSave('preopen_mode', 'B')} t={t} />
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Porosia ruhet te <span class="text-gray-300">radha jonë</span> dhe roboti e dërgon si <span class="text-gray-300">porosi tregu</span> pikërisht kur hapet tregu — hyn me çmimin e hapjes. <span class="text-gray-300">E parashikueshme dhe 100% nën kontrollin tonë</span> (s\'varet nga brokeri). Kërkon SL për siguri.') }} />
+        </div>
+
+        {/* —— RRUGA A: Pending te brokeri —— */}
+        <div className={`rounded-xl border p-3.5 transition-colors ${cfg.preopen_mode === 'A' ? 'bg-blue-500/10 border-blue-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-white flex items-center gap-2"><Cloud className="w-4 h-4 text-blue-400" />{t('Rruga A — Pending te brokeri')}</span>
+            <TogglePill on={cfg.preopen_mode === 'A'} onClick={() => setAndSave('preopen_mode', 'A')} t={t} />
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Porosia dërgohet te brokeri si <span class="text-gray-300">pending (limit/stop)</span> te niveli yt i hyrjes — hyn vetëm kur çmimi e prek atë nivel pas hapjes. ⚠️ Jo çdo broker e pranon kur tregu është i mbyllur; nëse e refuzon, porosia bie automatik te radha (Rruga B) që të mos humbasë.') }} />
+        </div>
+
+        {/* UDHËZIM */}
+        <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3 space-y-1.5">
+          <div className="text-[11px] font-semibold text-blue-300">{t('📘 Cilën të zgjedhësh?')}</div>
+          <ul className="space-y-1 text-[10px] text-gray-400 leading-snug">
+            <li dangerouslySetInnerHTML={{ __html: t('<span class="text-green-400 font-semibold">Rruga B (radha jonë):</span> hyn në hapje me çmimin e tregut, e parashikueshme. <span class="text-gray-300">E rekomanduar për shumicën.</span>') }} />
+            <li dangerouslySetInnerHTML={{ __html: t('<span class="text-blue-300 font-semibold">Rruga A (pending te brokeri):</span> respekton nivelin tënd të hyrjes, por varet nga brokeri (mund të mos e pranojë kur tregu mbyllur).') }} />
+            <li dangerouslySetInnerHTML={{ __html: t('Sapo hapet tregu, sistemi vepron sipas asaj që ke zgjedhur këtu. Ndezja e njërës e fik tjetrën vetë.') }} />
           </ul>
         </div>
       </Section>
