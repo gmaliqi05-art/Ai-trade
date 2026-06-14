@@ -669,6 +669,18 @@ const PLATFORM_MIN_CONF = 0.30;   // pragu i besueshmërisë (0..1)
 const PLATFORM_MAX = 3;            // maksimumi i sinjaleve platform-wide aktive njëkohësisht
 const PLATFORM_DEDUP_H = 4;        // mos krijo sinjal të ri për të njëjtin simbol brenda 4 orëve
 
+// Njoftim Web Push (best-effort) — thërret web-push-send me service-role. S'duhet të ndalë motorin.
+async function pushNotify(payload: Record<string, unknown>): Promise<void> {
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch { /* njoftimi s'duhet të ndalë motorin */ }
+}
+
 /**
  * Gjeneron deri në PLATFORM_MAX sinjale REALE platform-wide (user_id = NULL),
  * me throttle: një sinjal për simbol jo më shumë se një herë në PLATFORM_DEDUP_H orë.
@@ -736,6 +748,8 @@ async function platformPass(
     });
     created++;
     out.push({ platform: symbol, action: sig.action, confidence: Math.round(sig.confidence * 100), created: true });
+    // Push te të gjithë përdoruesit e abonuar: sinjal i ri.
+    await pushNotify({ audience: "all", title: "Sinjal i ri", body: `${symbol} ${sig.action} • besueshmëri ${Math.round(sig.confidence * 100)}%`, url: "/", tag: "signal" });
   }
 }
 

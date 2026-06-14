@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown } from 'lucide-react';
+import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown, BellRing, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
+import { isPushSupported, isStandalone, getPushState, subscribePush, unsubscribePush, sendTestPush } from '../services/push';
 
 type Section = 'profile' | 'security' | 'notifications' | 'subscription';
 
@@ -19,6 +20,41 @@ export default function SettingsPage() {
   const [pwForm, setPwForm] = useState({ new: '', confirm: '' });
   const [notifications, setNotifications] = useState<NotificationPrefs>({ signals: true, priceAlerts: true, newsletter: false, tradeConfirmations: true });
   const [pwMsg, setPwMsg] = useState('');
+
+  // Web Push (web + PWA): gjendja e abonimit në këtë pajisje.
+  const [push, setPush] = useState<{ supported: boolean; permission: NotificationPermission; subscribed: boolean }>({ supported: false, permission: 'default', subscribed: false });
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMsg, setPushMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => { getPushState().then(setPush); }, []);
+
+  const enablePush = async () => {
+    if (!user) return;
+    setPushBusy(true); setPushMsg(null);
+    const r = await subscribePush(user.id);
+    if (r.ok) { setPushMsg({ type: 'success', text: t('Njoftimet push u aktivizuan për këtë pajisje.') }); }
+    else if (r.error === 'denied') { setPushMsg({ type: 'error', text: t('Leja u refuzua. Lejo njoftimet te cilësimet e shfletuesit.') }); }
+    else if (r.error === 'unsupported') { setPushMsg({ type: 'error', text: t('Ky shfletues/pajisje nuk i mbështet njoftimet push.') }); }
+    else { setPushMsg({ type: 'error', text: r.error || t('Gabim gjatë aktivizimit.') }); }
+    setPush(await getPushState());
+    setPushBusy(false);
+  };
+
+  const disablePush = async () => {
+    if (!user) return;
+    setPushBusy(true); setPushMsg(null);
+    await unsubscribePush(user.id);
+    setPushMsg({ type: 'success', text: t('Njoftimet push u çaktivizuan për këtë pajisje.') });
+    setPush(await getPushState());
+    setPushBusy(false);
+  };
+
+  const testPush = async () => {
+    setPushBusy(true); setPushMsg(null);
+    const r = await sendTestPush();
+    setPushMsg(r.ok ? { type: 'success', text: t('Njoftimi i provës u dërgua — duhet të shfaqet brenda pak sekondash.') } : { type: 'error', text: r.error || t('Dërgimi dështoi.') });
+    setPushBusy(false);
+  };
 
   useEffect(() => {
     if (profile) {
@@ -153,6 +189,51 @@ export default function SettingsPage() {
                 <h3 className="text-white font-semibold flex items-center gap-2"><Bell className="w-4 h-4 text-amber-400" />{t('Preferencat e njoftimeve')}</h3>
                 {notifSaved && <span className="text-green-400 text-xs flex items-center gap-1"><Check className="w-3 h-3" />{t('U ruajt')}</span>}
               </div>
+
+              {/* ——— NJOFTIME PUSH (web + PWA) — kur roboti hap/mbyll trade dhe kur vjen sinjal i ri ——— */}
+              <div className="mb-5 p-4 bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/30 rounded-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0"><BellRing className="w-4 h-4 text-amber-400" /></div>
+                    <div>
+                      <div className="text-white text-sm font-semibold">{t('Njoftime push (web & telefon)')}</div>
+                      <div className="text-gray-400 text-xs mt-0.5 leading-snug">{t('Merr njoftim edhe kur app-i është i mbyllur: kur roboti hap ose mbyll një trade, dhe kur vjen një sinjal i ri.')}</div>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${push.subscribed ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-400'}`}>
+                    {push.subscribed ? t('AKTIV') : t('JOAKTIV')}
+                  </span>
+                </div>
+
+                {!push.supported ? (
+                  <p className="text-[11px] text-amber-300/90 mt-3">{t('Ky shfletues/pajisje nuk i mbështet njoftimet push.')}</p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
+                    {push.subscribed ? (
+                      <button onClick={disablePush} disabled={pushBusy} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-gray-800 text-gray-200 border border-gray-700 hover:border-gray-500 disabled:opacity-50">
+                        {pushBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}{t('Çaktivizo në këtë pajisje')}
+                      </button>
+                    ) : (
+                      <button onClick={enablePush} disabled={pushBusy} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-amber-500 text-gray-950 hover:bg-amber-400 disabled:opacity-50">
+                        {pushBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BellRing className="w-3.5 h-3.5" />}{t('Aktivizo njoftimet push')}
+                      </button>
+                    )}
+                    {push.subscribed && (
+                      <button onClick={testPush} disabled={pushBusy} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-gray-800 text-amber-300 border border-amber-500/30 hover:bg-gray-700 disabled:opacity-50">
+                        {t('Dërgo njoftim prove')}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {pushMsg && (
+                  <div className={`mt-2.5 text-[11px] rounded-lg px-2.5 py-1.5 ${pushMsg.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{pushMsg.text}</div>
+                )}
+                {push.supported && !isStandalone() && /iphone|ipad|ipod/i.test(navigator.userAgent) && (
+                  <p className="text-[10px] text-gray-400 mt-2 flex items-start gap-1.5"><Smartphone className="w-3 h-3 mt-0.5 shrink-0" />{t('Në iPhone: shto app-in te "Home Screen" (Share → Add to Home Screen) që push-i të punojë.')}</p>
+                )}
+              </div>
+
               <div className="space-y-3">
                 {[
                   { key: 'signals' as const, label: t('Sinjale AI'), desc: t('Njoftohu kur gjenerohen sinjale të reja tregtimi') },

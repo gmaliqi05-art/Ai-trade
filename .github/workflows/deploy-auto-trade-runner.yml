@@ -33,3 +33,8 @@ jobs:
         run: supabase functions deploy engine-scan --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy web-push-send (verify_jwt=false — internal service-role + user JWT)
+        run: supabase functions deploy web-push-send --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

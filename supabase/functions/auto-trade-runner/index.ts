@@ -469,6 +469,19 @@ function brokerResult(body: unknown): { ok: boolean; code: number; msg: string; 
   return { ok, code, msg, orderId };
 }
 
+// Njoftim Web Push (best-effort) — thërret funksionin web-push-send me service-role (internal).
+// S'duhet të ndalë KURRË robotin: timeout i shkurtër + gabimet injorohen.
+async function pushNotify(payload: Record<string, unknown>): Promise<void> {
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch { /* njoftimi s'duhet të ndalë robotin */ }
+}
+
 // Claude si "portë" — tani me KONTEKSTIN real të grafikut MT5 (15m/1h/4h + nivele).
 // Verifikon trendin, momentumin, dhe a po hyn trade-i drejt e në nivel kundërshtues.
 type DB = ReturnType<typeof createClient>;
@@ -695,7 +708,11 @@ Deno.serve(async (req: Request) => {
         if (scalp && moved > 0.3) {
           const c1 = await get1m((p.symbol || "XAUUSD").toUpperCase());
           if (c1 && scalpReversal(c1, isBuy)) {
-            try { const r = await maTrade(cfg, { actionType: "POSITION_CLOSE_ID", positionId: p.id }); summary.push({ user: cfg.user_id, scalp_exit: p.id, reason: "reversal_lock_profit", ok: r.ok }); } catch { /* */ }
+            try {
+              const r = await maTrade(cfg, { actionType: "POSITION_CLOSE_ID", positionId: p.id });
+              if (r.ok) await pushNotify({ user_id: cfg.user_id, title: "Roboti mbylli një trade", body: `${(p.symbol || "XAUUSD")} ${isBuy ? "BLEJ" : "SHIT"} • mbyllur në fitim (${moved >= 0 ? "+" : ""}${moved.toFixed(2)}$)`, url: "/", tag: "trade-close" });
+              summary.push({ user: cfg.user_id, scalp_exit: p.id, reason: "reversal_lock_profit", ok: r.ok });
+            } catch { /* */ }
             continue;
           }
         }
@@ -871,6 +888,7 @@ Deno.serve(async (req: Request) => {
             if (!br.ok) { await slog("rejected", `Scalp brokeri: ${br.msg || "refuzuar"} (${br.code})`, null, r.body); summary.push({ user: cfg.user_id, scalp: sym, status: "broker_rejected", code: br.code }); continue; }
             await slog("executed", `Scalp auto (${cfg.mode}${cfg.auto_sltp === true ? ", SL/TP auto" : ""}): ${sgl.reason}`, br.orderId, r.body);
             openTrades += 1; scalpOpen += 1; openHeat += thisRisk;
+            await pushNotify({ user_id: cfg.user_id, title: "Roboti hapi një trade", body: `${isBuyS ? "BLEJ" : "SHIT"} ${sym} • ${volume} lot (scalp, ${cfg.mode})`, url: "/", tag: "trade-open" });
             summary.push({ user: cfg.user_id, scalp: sym, status: "executed", order: br.orderId });
           } catch (e) { await slog("error", `Scalp: ${(e as Error).message}`, null, null); summary.push({ user: cfg.user_id, scalp: sym, status: "error" }); }
         }
@@ -1016,6 +1034,7 @@ Deno.serve(async (req: Request) => {
           }
           await log("executed", `auto (${cfg.mode}, ${dataSrc})`, br.orderId, r.body);
           openTrades += 1;
+          await pushNotify({ user_id: cfg.user_id, title: "Roboti hapi një trade", body: `${isBuy ? "BLEJ" : "SHIT"} ${tradeSym} • ${volume} lot (${cfg.mode})`, url: "/", tag: "trade-open" });
           summary.push({ user: cfg.user_id, signal: sig.id, status: "executed", order: br.orderId, src: dataSrc });
         } catch (e) {
           await log("error", (e as Error).message, null, null);
