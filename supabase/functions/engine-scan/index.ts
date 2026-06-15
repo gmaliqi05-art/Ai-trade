@@ -456,12 +456,12 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
       const d1Up = price > e50d;
       const d1Aligned = (isBuy && d1Up) || (!isBuy && !d1Up);
       const d1Gap = e50d > 0 ? Math.abs(price - e50d) / e50d : 0;
-      // SOFT: mos e ndal trade kundër trendit ditor — vetëm ul besueshmërinë (më parë ishte VETO i fortë,
-      // që linte 0 sinjale kur intraday është pro-trend por çmimi ende pak nën/mbi EMA50 ditore).
-      // VETO i fortë VETËM kur çmimi është QARTË kundër (≥1.5% larg EMA50 ditore = trend ditor i fortë kundër).
-      if (!d1Aligned && d1Gap >= 0.015) return rejGold(`d1_strong_against(${(d1Gap * 100).toFixed(1)}%)`);
-      d1Boost = d1Aligned ? 0.05 : -0.08;
-      reasons.push(d1Aligned ? `Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})` : `Kundër trendit ditor (besueshmëri e ulur)`);
+      // PA VETO (zgjedhja e përdoruesit): lejo edhe kundër trendit ditor, por me PENALLTI besueshmërie
+      // që rritet me distancën nga EMA50 ditore — sinjalet kundër-trend SHFAQEN (display ≥30%), por bien
+      // nën pragun e auto-tregtimit (≥70%) përveçse kur setup-i është vërtet i fortë.
+      const d1Pen = 0.12 + Math.min(0.30, d1Gap * 8);
+      d1Boost = d1Aligned ? 0.05 : -d1Pen;
+      reasons.push(d1Aligned ? `Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})` : `Kundër trendit ditor (−${Math.round(d1Pen * 100)}% besueshmëri)`);
     }
   }
 
@@ -509,7 +509,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   // Besueshmëria me boost-et e harmonisë + confluence (bonusi s'e ul kurrë bazën → s'pakëson sinjalet).
   const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
   const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0) + (erGood ? 0.02 : 0) + (stOk ? 0.02 : 0);
-  const confidence = Math.min(1, base + d1Boost + (overlap ? 0.05 : 0) + confBonus);
+  const confidence = Math.max(0, Math.min(1, base + d1Boost + (overlap ? 0.05 : 0) + confBonus));
   const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
   // FAZA 2: "pikat kyçe" për arin — përfshijnë sesionin (overlap London+NY).
   const et = etContext();
