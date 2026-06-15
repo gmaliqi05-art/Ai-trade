@@ -454,10 +454,14 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     const e50d = ema(dc, 50)[dc.length - 1];
     if (Number.isFinite(e50d)) {
       const d1Up = price > e50d;
-      if (isBuy && !d1Up) return rejGold("d1_down_vs_buy");   // BLEJ kundër trendit ditor rënës
-      if (!isBuy && d1Up) return rejGold("d1_up_vs_sell");    // SHIT kundër trendit ditor rritës
-      d1Boost = 0.05;
-      reasons.push(`Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})`);
+      const d1Aligned = (isBuy && d1Up) || (!isBuy && !d1Up);
+      const d1Gap = e50d > 0 ? Math.abs(price - e50d) / e50d : 0;
+      // SOFT: mos e ndal trade kundër trendit ditor — vetëm ul besueshmërinë (më parë ishte VETO i fortë,
+      // që linte 0 sinjale kur intraday është pro-trend por çmimi ende pak nën/mbi EMA50 ditore).
+      // VETO i fortë VETËM kur çmimi është QARTË kundër (≥1.5% larg EMA50 ditore = trend ditor i fortë kundër).
+      if (!d1Aligned && d1Gap >= 0.015) return rejGold(`d1_strong_against(${(d1Gap * 100).toFixed(1)}%)`);
+      d1Boost = d1Aligned ? 0.05 : -0.08;
+      reasons.push(d1Aligned ? `Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})` : `Kundër trendit ditor (besueshmëri e ulur)`);
     }
   }
 
