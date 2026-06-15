@@ -538,6 +538,8 @@ function generateFor(symbol: string, broker?: BrokerCreds, advanced = false): Pr
 const PAIRS: Record<string, string> = {
   XAUUSD: "PAXGUSDT",
 };
+// Diagnostikë e ekzekutimit të fundit (cili burim qirinjsh u përdor, gabime) — shkruhet te app_config.
+const _diag: Record<string, unknown> = {};
 async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCreds): Promise<Candle[] | null> {
   const pair = PAIRS[symbol.toUpperCase()];
   if (pair) {
@@ -550,18 +552,19 @@ async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCred
           time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string),
           low: +(k[3] as string), close: +(k[4] as string), volume: +(k[5] as string),
         }));
-        if (mapped.length > 0) return mapped;
-      }
-    } catch { /* Binance i paarritshëm (geo-bllokim/rate-limit nga IP cloud) — kalo te rezerva */ }
+        if (mapped.length > 0) { _diag[`${symbol}:${interval}`] = "binance"; return mapped; }
+      } else { _diag[`binance_status:${interval}`] = resp.status; }
+    } catch (e) { _diag[`binance_err:${interval}`] = String((e as Error).message || e).slice(0, 60); }
     // REZERVË për ARIN kur Binance dështon: qirinjtë e brokerit MetaApi (XAUUSD real) → Twelve Data
     // (XAU/USD). PA këtë, një bllokim i Binance-it nga IP-ja e Supabase i ndalte KREJT sinjalet e arit
     // (pikë e vetme dështimi). Kur Binance punon, kjo degë s'preket — sjellja mbetet identike.
     if (broker) {
       const m = await fetchMetaApiCandles(broker, symbol, interval);
-      if (m && m.length > 0) return m;
+      if (m && m.length > 0) { _diag[`${symbol}:${interval}`] = "broker"; return m; }
     }
     const td = await fetchTwelveData(symbol, interval);
-    if (td && td.length > 0) return td;
+    if (td && td.length > 0) { _diag[`${symbol}:${interval}`] = "twelvedata"; return td; }
+    _diag[`${symbol}:${interval}`] = broker ? "none(binance+broker+td_failed)" : "none(binance+td_failed,no_broker)";
     return null;
   }
   // Simbolet jo-Binance (naftë USOIL/UKOIL): MetaApi i brokerit (PRIMAR — zgjedhja e
@@ -835,6 +838,13 @@ Deno.serve(async (req: Request) => {
         out.push({ symbol, user: u.user_id, action: sig.action, confidence: confPct, created: true });
       }
     }
+    // Diagnostikë e ekzekutimit të fundit — që të shohim PSE s'gjenerohen sinjale (burimi i qirinjve, filtrat).
+    try {
+      await db.from("app_config").upsert(
+        { key: "engine_last_run", value: JSON.stringify({ at: new Date().toISOString(), out, candles: _diag }).slice(0, 7000) },
+        { onConflict: "key" },
+      );
+    } catch { /* */ }
     return json({ success: true, processed: out });
   } catch (err) {
     return json({ error: (err as Error).message }, 500);
