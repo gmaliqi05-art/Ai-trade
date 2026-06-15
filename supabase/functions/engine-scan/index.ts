@@ -413,7 +413,11 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const isBuy = dir === "BUY";
   if (isBuy && !(price > s1h.ema200)) return rejGold("price_below_ema200_for_buy");
   if (!isBuy && !(price < s1h.ema200)) return rejGold("price_above_ema200_for_sell");
-  if (s1h.adx < ADX_MIN || s1h.adx > ADX_MAX) return rejGold(`adx_out(${s1h.adx.toFixed(0)})`); // 18..50
+  if (s1h.adx < ADX_MIN) return rejGold(`adx_low(${s1h.adx.toFixed(0)})`); // pa trend → s'ka setup (veto)
+  // Penalltitë e cilësisë (mbi-ekstendim/kthim): s'e ndalin sinjalin (zgjedhja jote: shfaqi), por ulin
+  // besueshmërinë → bien nën pragun e auto-tregtimit (70%) përveçse kur gjithçka tjetër është e fortë.
+  let qPen = 0;
+  if (s1h.adx > ADX_MAX) qPen += 0.12; // trend i rraskapitur (ADX i lartë) → rrezik kthimi
 
   const reasons: string[] = [
     `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
@@ -472,8 +476,8 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const nearestAbove = price <= round10 ? round10 : round10 + 10;
   const nearestBelow = price >= round10 ? round10 : round10 - 10;
   const TOO_CLOSE = 0.0012; // ~0.12% (≈ $4 te $3300)
-  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) return rejGold("near_resistance_50");
-  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) return rejGold("near_support_50");
+  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) qPen += 0.06; // përballë rezistencës
+  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) qPen += 0.06; // përballë mbështetjes
   reasons.push(`Nivele kyçe: mbështetje ~$${nearestBelow}, rezistencë ~$${nearestAbove}`);
 
   // (5) CONFLUENCE SCORING (Tier-2) — numëron faktorët e pavarur mbështetës. Sa më
@@ -481,7 +485,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const c1hCloses = c1h.map((c) => c.close);
   const rsi1h = rsi(c1hCloses, 14)[c1hCloses.length - 1];
   // EKSPERTËT: RSI ekstrem → hyrje kundër një kthimi të mundshëm; refuzo.
-  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) return rejGold(`rsi_extreme(${Math.round(rsi1h)})`);
+  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) qPen += 0.10; // RSI ekstrem → rrezik kthimi
   const macdH = macd(c1hCloses).histogram[c1hCloses.length - 1];
   const adxStrong = s1h.adx >= 25;
   const rsiRoom = Number.isFinite(rsi1h) && (isBuy ? rsi1h < 68 : rsi1h > 32); // hapësirë para mbiblerjes/mbishitjes
@@ -498,7 +502,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
 
   // (7) SUPERTREND (ATR) — konfirmim drejtimi; veto kur është qartë kundër.
   const stDir = supertrendDir(c1h.map((c) => c.high), c1h.map((c) => c.low), c1hCloses, 10, 3);
-  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return rejGold(`supertrend_against(${stDir})`);
+  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) qPen += 0.10; // Supertrend kundër → konfirmim i dobët
   const stOk = (isBuy && stDir > 0) || (!isBuy && stDir < 0);
   if (stOk) reasons.push("Supertrend në harmoni");
 
@@ -509,7 +513,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   // Besueshmëria me boost-et e harmonisë + confluence (bonusi s'e ul kurrë bazën → s'pakëson sinjalet).
   const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
   const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0) + (erGood ? 0.02 : 0) + (stOk ? 0.02 : 0);
-  const confidence = Math.max(0, Math.min(1, base + d1Boost + (overlap ? 0.05 : 0) + confBonus));
+  const confidence = Math.max(0, Math.min(1, base + d1Boost - qPen + (overlap ? 0.05 : 0) + confBonus));
   const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
   // FAZA 2: "pikat kyçe" për arin — përfshijnë sesionin (overlap London+NY).
   const et = etContext();
@@ -523,7 +527,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     d1_aligned: d1Boost > 0, overlap, fh, confluence: confFactors, conf_max: 9,
     et_hour: et.hour, dow: et.dow, oil: false, ts: Date.now(),
   };
-  _diag.gold_conf = Math.round(confidence * 100); _diag.gold_action = dir; _diag.gold_d1 = d1Boost > 0 ? "aligned" : `against(${(d1Gap * 100).toFixed(1)}%)`;
+  _diag.gold_conf = Math.round(confidence * 100); _diag.gold_action = dir; _diag.gold_qpen = Math.round(qPen * 100); _diag.gold_d1boost = Math.round(d1Boost * 100);
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
