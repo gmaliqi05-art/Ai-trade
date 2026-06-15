@@ -679,7 +679,7 @@ function isSupported(symbol: string): boolean {
 // Sinjalet platform-wide (display "Sinjale AI"): vetëm ari. Nafta s'ka burim pa broker
 // (platform pass s'ka kredenciale), prandaj sinjalet e naftës janë vetëm per-përdorues (MetaApi).
 const PLATFORM_WATCHLIST = [GOLD_SYMBOL];
-const PLATFORM_MIN_CONF = 0.30;   // pragu i besueshmërisë (0..1)
+const PLATFORM_MIN_CONF = 0.20;   // pragu i SHFAQJES (display). Auto-tregtimi mbetet te min_confidence (70%).
 const PLATFORM_MAX = 3;            // maksimumi i sinjaleve platform-wide aktive njëkohësisht
 const PLATFORM_DEDUP_H = 4;        // mos krijo sinjal të ri për të njëjtin simbol brenda 4 orëve
 
