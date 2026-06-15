@@ -774,27 +774,11 @@ Deno.serve(async (req: Request) => {
       const swingOn = cfg.strategy_swing !== false; // default ON
       let scalpOpen = positions.filter(isScalpPosition).length;
 
-      // FILTRA EKSPERIMENTALË (opt-in): cool-off pas serie humbjesh. Ndal hapjet pas 3 humbjesh radhazi
-      // sot; pauzë 20 min pas 2 humbjesh radhazi. (Spread-guard zbatohet brenda lak-eve të hyrjes.)
+      // FILTRA EKSPERIMENTALË (opt-in): vetëm spread-guard (zbatohet brenda lak-eve të hyrjes).
+      // Cool-off pas serie humbjesh u HOQ me kërkesë të përdoruesit — roboti NUK ndalon vetë pas humbjesh
+      // radhazi. Nëse përdoruesi do të ndalet, fik vetë auto-trade.
       const expOn = cfg.experimental_filters === true;
-      let expBlockOpens = false;
-      if (expOn) {
-        const ls = await lossStreakToday(cfg);
-        const streakStop = ls.consecutive >= 3;
-        const coolOff = ls.consecutive === 2 && ls.lastLossAt > 0 && (Date.now() - ls.lastLossAt) < 20 * 60 * 1000;
-        expBlockOpens = streakStop || coolOff;
-        if (streakStop) {
-          try {
-            const { data: already } = await db.from("trade_executions").select("id")
-              .eq("user_id", cfg.user_id).eq("status", "info").ilike("reason", "Cool-off%")
-              .gte("created_at", frankfurtDayStart().toISOString()).limit(1);
-            if (!already || already.length === 0) {
-              await db.from("trade_executions").insert({ user_id: cfg.user_id, symbol: "XAUUSD", action: "BUY", volume: 0.01, mode: cfg.mode, status: "info", reason: `Cool-off: 3 humbje radhazi sot — hapjet u ndalën deri nesër (filtra eksperimentalë).` });
-              await pushNotify({ user_id: cfg.user_id, title: "Roboti — cool-off", body: "3 humbje radhazi sot. Hapjet e reja u ndalën deri nesër (mbrojtje nga humbjet).", url: "/", tag: "cooloff" });
-            }
-          } catch { /* */ }
-        }
-      }
+      const expBlockOpens = false; // pa ndalim automatik pas humbjesh radhazi
       // Cache spread-i (një thirrje për simbol) për spread-guard-in eksperimental.
       const spreadCache = new Map<string, number | null>();
       const getSpread = async (s: string) => { if (!spreadCache.has(s)) spreadCache.set(s, await symbolSpread(cfg, s)); return spreadCache.get(s) ?? null; };
