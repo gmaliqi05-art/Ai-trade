@@ -401,19 +401,19 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     fetchCandles(symbol, "15m", broker), fetchCandles(symbol, "1h", broker),
     fetchCandles(symbol, "4h", broker), fetchCandles(symbol, "1d", broker),
   ]);
-  if (!c15 || !c1h || !c4h) return null;
+  if (!c15 || !c1h || !c4h) return rejGold("no_candles");
   const s15 = analyzeTF(c15), s1h = analyzeTF(c1h), s4h = analyzeTF(c4h);
-  if (!s15 || !s1h || !s4h) return null;
+  if (!s15 || !s1h || !s4h) return rejGold("analyzeTF_null");
 
   // Baza: e njëjta logjikë si generateStrong (multi-TF + EMA200 + ADX).
   const dir = s1h.action;
-  if (dir === "HOLD") return null;
-  if (s4h.action !== dir) return null; // 1h+4h pajtohen (4h busull); 15m vetëm te besueshmëria
+  if (dir === "HOLD") return rejGold("1h_HOLD");
+  if (s4h.action !== dir) return rejGold(`4h_disagree(1h=${dir},4h=${s4h.action})`); // 1h+4h pajtohen
   const price = s1h.price;
   const isBuy = dir === "BUY";
-  if (isBuy && !(price > s1h.ema200)) return null;
-  if (!isBuy && !(price < s1h.ema200)) return null;
-  if (s1h.adx < ADX_MIN || s1h.adx > ADX_MAX) return null; // EKSPERTËT: shmang trendin e rraskapitur (ADX i lartë)
+  if (isBuy && !(price > s1h.ema200)) return rejGold("price_below_ema200_for_buy");
+  if (!isBuy && !(price < s1h.ema200)) return rejGold("price_above_ema200_for_sell");
+  if (s1h.adx < ADX_MIN || s1h.adx > ADX_MAX) return rejGold(`adx_out(${s1h.adx.toFixed(0)})`); // 18..50
 
   const reasons: string[] = [
     `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
@@ -439,8 +439,8 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
       const atrAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
       if (atrAvg > 0) {
         const ratio = atrNow / atrAvg;
-        if (ratio < 0.5) return null;  // treg i ngrirë
-        if (ratio > 3.5) return null;  // vetëm spike EKSTREM (lajme) — lejo lëvizjet e forta
+        if (ratio < 0.5) return rejGold(`vol_frozen(${ratio.toFixed(2)})`);  // treg i ngrirë
+        if (ratio > 3.5) return rejGold(`vol_spike(${ratio.toFixed(2)})`);  // spike ekstrem
         reasons.push(`Volatilitet normal (ATR ${((atrNow / price) * 100).toFixed(2)}%)`);
       }
     }
@@ -454,8 +454,8 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     const e50d = ema(dc, 50)[dc.length - 1];
     if (Number.isFinite(e50d)) {
       const d1Up = price > e50d;
-      if (isBuy && !d1Up) return null;   // BLEJ kundër trendit ditor rënës
-      if (!isBuy && d1Up) return null;    // SHIT kundër trendit ditor rritës
+      if (isBuy && !d1Up) return rejGold("d1_down_vs_buy");   // BLEJ kundër trendit ditor rënës
+      if (!isBuy && d1Up) return rejGold("d1_up_vs_sell");    // SHIT kundër trendit ditor rritës
       d1Boost = 0.05;
       reasons.push(`Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})`);
     }
@@ -468,8 +468,8 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const nearestAbove = price <= round10 ? round10 : round10 + 10;
   const nearestBelow = price >= round10 ? round10 : round10 - 10;
   const TOO_CLOSE = 0.0012; // ~0.12% (≈ $4 te $3300)
-  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) return null;
-  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) return null;
+  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) return rejGold("near_resistance_50");
+  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) return rejGold("near_support_50");
   reasons.push(`Nivele kyçe: mbështetje ~$${nearestBelow}, rezistencë ~$${nearestAbove}`);
 
   // (5) CONFLUENCE SCORING (Tier-2) — numëron faktorët e pavarur mbështetës. Sa më
@@ -477,7 +477,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const c1hCloses = c1h.map((c) => c.close);
   const rsi1h = rsi(c1hCloses, 14)[c1hCloses.length - 1];
   // EKSPERTËT: RSI ekstrem → hyrje kundër një kthimi të mundshëm; refuzo.
-  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) return null;
+  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) return rejGold(`rsi_extreme(${Math.round(rsi1h)})`);
   const macdH = macd(c1hCloses).histogram[c1hCloses.length - 1];
   const adxStrong = s1h.adx >= 25;
   const rsiRoom = Number.isFinite(rsi1h) && (isBuy ? rsi1h < 68 : rsi1h > 32); // hapësirë para mbiblerjes/mbishitjes
@@ -488,13 +488,13 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
 
   // (6) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX.
   const er = efficiencyRatio(c1hCloses, 10);
-  if (er < 0.20) return null; // treg shumë jo-efikas (choppy)
+  if (er < 0.20) return rejGold(`er_low(${er.toFixed(2)})`); // treg shumë jo-efikas (choppy)
   const erGood = er >= 0.35;
   if (erGood) reasons.push(`Efficiency Ratio ${er.toFixed(2)} (lëvizje efikase)`);
 
   // (7) SUPERTREND (ATR) — konfirmim drejtimi; veto kur është qartë kundër.
   const stDir = supertrendDir(c1h.map((c) => c.high), c1h.map((c) => c.low), c1hCloses, 10, 3);
-  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return null;
+  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return rejGold(`supertrend_against(${stDir})`);
   const stOk = (isBuy && stDir > 0) || (!isBuy && stDir < 0);
   if (stOk) reasons.push("Supertrend në harmoni");
 
@@ -540,6 +540,8 @@ const PAIRS: Record<string, string> = {
 };
 // Diagnostikë e ekzekutimit të fundit (cili burim qirinjsh u përdor, gabime) — shkruhet te app_config.
 const _diag: Record<string, unknown> = {};
+// Regjistron PSE u refuzua sinjali i arit (cila portë) — për të parë çfarë e bllokon.
+function rejGold(r: string): null { _diag.gold_reject = r; return null; }
 async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCreds): Promise<Candle[] | null> {
   const pair = PAIRS[symbol.toUpperCase()];
   if (pair) {
@@ -748,6 +750,7 @@ async function platformPass(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  for (const k in _diag) delete _diag[k]; // diagnostikë e pastër për këtë ekzekutim
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   // Portë sigurie për cron (vetëm akses — S'PREK logjikën e motorit). Fail-safe: lejo nëse s'ka sekret/gabim.
   try {
