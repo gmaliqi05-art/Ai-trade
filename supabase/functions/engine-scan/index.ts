@@ -413,11 +413,11 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const isBuy = dir === "BUY";
   if (isBuy && !(price > s1h.ema200)) return rejGold("price_below_ema200_for_buy");
   if (!isBuy && !(price < s1h.ema200)) return rejGold("price_above_ema200_for_sell");
-  if (s1h.adx < ADX_MIN) return rejGold(`adx_low(${s1h.adx.toFixed(0)})`); // pa trend → s'ka setup (veto)
-  // Penalltitë e cilësisë (mbi-ekstendim/kthim): s'e ndalin sinjalin (zgjedhja jote: shfaqi), por ulin
-  // besueshmërinë → bien nën pragun e auto-tregtimit (70%) përveçse kur gjithçka tjetër është e fortë.
+  // Penalltitë e cilësisë (s'e ndalin sinjalin — zgjedhja jote "shfaqi" — por ulin besueshmërinë → nën 70%
+  // përveçse kur gjithçka tjetër është e fortë). Veto i fortë mbetet vetëm për "s'ka setup fare".
   let qPen = 0;
-  if (s1h.adx > ADX_MAX) qPen += 0.12; // trend i rraskapitur (ADX i lartë) → rrezik kthimi
+  if (s1h.adx < ADX_MIN) qPen += 0.10; // trend i dobët
+  if (s1h.adx > ADX_MAX) qPen += 0.12; // trend i rraskapitur → rrezik kthimi
 
   const reasons: string[] = [
     `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
@@ -443,8 +443,8 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
       const atrAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
       if (atrAvg > 0) {
         const ratio = atrNow / atrAvg;
-        if (ratio < 0.5) return rejGold(`vol_frozen(${ratio.toFixed(2)})`);  // treg i ngrirë
-        if (ratio > 3.5) return rejGold(`vol_spike(${ratio.toFixed(2)})`);  // spike ekstrem
+        if (ratio < 0.5) qPen += 0.08;  // treg i ngrirë → besueshmëri më e ulët
+        if (ratio > 3.5) return rejGold(`vol_spike(${ratio.toFixed(2)})`);  // spike lajmesh — VETO (siguri)
         reasons.push(`Volatilitet normal (ATR ${((atrNow / price) * 100).toFixed(2)}%)`);
       }
     }
@@ -496,7 +496,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
 
   // (6) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX.
   const er = efficiencyRatio(c1hCloses, 10);
-  if (er < 0.20) return rejGold(`er_low(${er.toFixed(2)})`); // treg shumë jo-efikas (choppy)
+  if (er < 0.20) qPen += 0.10 + Math.min(0.15, (0.20 - er) * 1.5); // choppy → penallti (sa më jo-efikas, aq më shumë)
   const erGood = er >= 0.35;
   if (erGood) reasons.push(`Efficiency Ratio ${er.toFixed(2)} (lëvizje efikase)`);
 
