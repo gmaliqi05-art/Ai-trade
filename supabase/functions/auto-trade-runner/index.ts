@@ -39,6 +39,7 @@ interface Cfg {
   be_offset_usd?: number;    // offset-i i break-even në çmim ($); default 0.9 (≈ 9 pips ari)
   day_start_equity?: number; // ekuiteti në fillim të ditës UTC (për limitin ditor të humbjes)
   day_start_date?: string;   // data UTC e ruajtjes së day_start_equity
+  experimental_filters?: boolean; // opt-in per-përdorues: spread-guard + cool-off pas serie humbjesh
 }
 
 interface Signal {
@@ -441,6 +442,45 @@ async function grossLossToday(cfg: Cfg): Promise<number> {
   } catch { return 0; }
 }
 
+// ===== FILTRA EKSPERIMENTALË (opt-in per-përdorues: experimental_filters) =====
+// Spread-guard: spread-i aktual (ask-bid) i një simboli. Kthen null nëse s'merret.
+async function symbolSpread(cfg: Cfg, sym: string): Promise<number | null> {
+  try {
+    const p = await maGet(cfg, `/symbols/${encodeURIComponent(sym)}/current-price`) as { ask?: number; bid?: number };
+    const ask = Number(p?.ask), bid = Number(p?.bid);
+    if (Number.isFinite(ask) && Number.isFinite(bid) && ask > 0 && bid > 0) return Math.abs(ask - bid);
+  } catch { /* */ }
+  return null;
+}
+// Spread-i "i gjerë" për arin — pragu mbi të cilin shmangim hyrjet (orë të holla/lajme). Të tjerët: pa kufi.
+const GOLD_SPREAD_MAX = 0.50;
+function spreadTooWide(sym: string, spread: number | null): boolean {
+  if (spread == null) return false; // s'e dimë → mos blloko
+  if (/XAU/i.test(sym)) return spread > GOLD_SPREAD_MAX;
+  return false;
+}
+
+// Cool-off: numëron humbjet RADHAZI (trailing) sot dhe kohën e humbjes së fundit, nga deal-et e mbyllura.
+async function lossStreakToday(cfg: Cfg): Promise<{ consecutive: number; lastLossAt: number }> {
+  try {
+    const start = frankfurtDayStart();
+    const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
+    const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number; time?: string; entryType?: string }>;
+    if (!Array.isArray(deals)) return { consecutive: 0, lastLossAt: 0 };
+    const closes = deals
+      .filter((d) => d.entryType == null || /OUT/i.test(String(d.entryType))) // vetëm mbylljet (P&L real)
+      .map((d) => ({ net: (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), t: new Date(d.time || 0).getTime() }))
+      .filter((d) => Number.isFinite(d.t) && d.t > 0)
+      .sort((a, b) => b.t - a.t);
+    let consecutive = 0, lastLossAt = 0;
+    for (const d of closes) {
+      if (Math.abs(d.net) < 0.01) continue; // injoro break-even
+      if (d.net < 0) { consecutive++; if (lastLossAt === 0) lastLossAt = d.t; } else break;
+    }
+    return { consecutive, lastLossAt };
+  } catch { return { consecutive: 0, lastLossAt: 0 }; }
+}
+
 // TRAILING I SHPEJTË: ndjek SL-në te ÇDO pozicion duke mbajtur një PJESË të fitimit (trail_lock_pct),
 // pasi profiti kalon trail_start_usd. I lehtë (vetëm /positions + modifikim) — thirret disa herë/minutë
 // që SL-ja të ndjekë lëvizjen sa më shpejt që lejon sistemi.
@@ -725,6 +765,31 @@ Deno.serve(async (req: Request) => {
       const swingOn = cfg.strategy_swing !== false; // default ON
       let scalpOpen = positions.filter(isScalpPosition).length;
 
+      // FILTRA EKSPERIMENTALË (opt-in): cool-off pas serie humbjesh. Ndal hapjet pas 3 humbjesh radhazi
+      // sot; pauzë 20 min pas 2 humbjesh radhazi. (Spread-guard zbatohet brenda lak-eve të hyrjes.)
+      const expOn = cfg.experimental_filters === true;
+      let expBlockOpens = false;
+      if (expOn) {
+        const ls = await lossStreakToday(cfg);
+        const streakStop = ls.consecutive >= 3;
+        const coolOff = ls.consecutive === 2 && ls.lastLossAt > 0 && (Date.now() - ls.lastLossAt) < 20 * 60 * 1000;
+        expBlockOpens = streakStop || coolOff;
+        if (streakStop) {
+          try {
+            const { data: already } = await db.from("trade_executions").select("id")
+              .eq("user_id", cfg.user_id).eq("status", "info").ilike("reason", "Cool-off%")
+              .gte("created_at", frankfurtDayStart().toISOString()).limit(1);
+            if (!already || already.length === 0) {
+              await db.from("trade_executions").insert({ user_id: cfg.user_id, symbol: "XAUUSD", action: "BUY", volume: 0.01, mode: cfg.mode, status: "info", reason: `Cool-off: 3 humbje radhazi sot — hapjet u ndalën deri nesër (filtra eksperimentalë).` });
+              await pushNotify({ user_id: cfg.user_id, title: "Roboti — cool-off", body: "3 humbje radhazi sot. Hapjet e reja u ndalën deri nesër (mbrojtje nga humbjet).", url: "/", tag: "cooloff" });
+            }
+          } catch { /* */ }
+        }
+      }
+      // Cache spread-i (një thirrje për simbol) për spread-guard-in eksperimental.
+      const spreadCache = new Map<string, number | null>();
+      const getSpread = async (s: string) => { if (!spreadCache.has(s)) spreadCache.set(s, await symbolSpread(cfg, s)); return spreadCache.get(s) ?? null; };
+
       // PORTFOLIO HEAT (Tier-2): rreziku total i hapur (distanca te SL × vlerë × lot).
       let openHeat = 0;
       for (const p of positions) {
@@ -841,9 +906,12 @@ Deno.serve(async (req: Request) => {
         for (const rawSym of allowed) {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
           if (dailyStop) break; // limit humbjeje ditore (neto te ekuiteti OSE bruto e trade-ve humbëse)
+          if (expBlockOpens) break; // EKSPERIMENTAL: cool-off pas serie humbjesh
           // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301").
           const sym = await resolveSymbol(cfg, rawSym);
           if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym.toUpperCase())) continue; // një scalp për simbol
+          // EKSPERIMENTAL: spread-guard — mos hap kur spread-i i arit është i gjerë (orë të holla/lajme).
+          if (expOn && spreadTooWide(sym, await getSpread(sym))) { summary.push({ user: cfg.user_id, scalp: sym, status: "spread_too_wide" }); continue; }
           // COOLDOWN: mos hap scalp të ri brenda 3 min nga scalp-i i fundit (shmang grumbullimin në ekstreme).
           const { data: lastSc } = await db.from("trade_executions").select("created_at")
             .eq("user_id", cfg.user_id).eq("symbol", sym).eq("status", "executed")
@@ -1043,6 +1111,8 @@ Deno.serve(async (req: Request) => {
         if (openTrades >= cfg.max_open_trades) { await log("rejected", `Max pozicione (${cfg.max_open_trades})`, null, null); continue; }
         // Limit REAL i humbjes ditore: realized(sot) + floating(tani).
         if (dailyStop) { await log("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDailyRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
+        // EKSPERIMENTAL: cool-off pas serie humbjesh — ndal edhe sinjalet swing.
+        if (expBlockOpens) { summary.push({ user: cfg.user_id, signal: sig.id, status: "cooloff" }); continue; }
         // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
         if (netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
         // KONFIRMIM DOLLARI (DXY via EURUSD) — refuzo kur dollari shkon qartë kundër arit.
@@ -1056,6 +1126,9 @@ Deno.serve(async (req: Request) => {
 
         // SIGURI: asnjë trade pa stop-loss (mbron nga humbje e pakufizuar). S'ekzekuton pa SL të vlefshëm.
         if (!(Number(stopLoss) > 0)) { await log("rejected", "Trade pa stop-loss — refuzuar (siguri)", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "no_sl" }); continue; }
+
+        // EKSPERIMENTAL: spread-guard — mos hap kur spread-i i arit është i gjerë (orë të holla/lajme).
+        if (expOn && spreadTooWide(tradeSym, await getSpread(tradeSym))) { summary.push({ user: cfg.user_id, signal: sig.id, status: "spread_too_wide" }); continue; }
 
         // CLAUDE SI PORTË — me kontekstin e grafikut MT5.
         const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);
