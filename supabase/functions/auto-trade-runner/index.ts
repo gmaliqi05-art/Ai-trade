@@ -40,6 +40,7 @@ interface Cfg {
   day_start_equity?: number; // ekuiteti në fillim të ditës UTC (për limitin ditor të humbjes)
   day_start_date?: string;   // data UTC e ruajtjes së day_start_equity
   experimental_filters?: boolean; // opt-in per-përdorues: spread-guard + cool-off pas serie humbjesh
+  risk_reset_at?: string;    // pikë rinisjeje e numëruesve të rrezikut (humbja/seria) — injoro trade-t para saj
 }
 
 interface Signal {
@@ -413,6 +414,14 @@ function frankfurtDateStr(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
+// Fillimi i dritares së rrezikut: mesnata e Frankfurtit, OSE pika e rinisjes manuale (risk_reset_at)
+// nëse është më e vonë — që pas ndryshimeve të cilësimeve numëruesit e humbjes/serisë të fillojnë nga zero.
+function riskWindowStart(cfg: Cfg): Date {
+  const dayStart = frankfurtDayStart();
+  const reset = cfg.risk_reset_at ? new Date(cfg.risk_reset_at) : null;
+  return (reset && Number.isFinite(reset.getTime()) && reset.getTime() > dayStart.getTime()) ? reset : dayStart;
+}
+
 // P&L i REALIZUAR i ditës (që nga mesnata e Frankfurtit) — shuma e fitim/humbjeve të trade-ve
 // të mbyllura sot (profit+commission+swap). Përdoret për limitin REAL të humbjes ditore.
 async function realizedToday(cfg: Cfg): Promise<number> {
@@ -429,7 +438,7 @@ async function realizedToday(cfg: Cfg): Promise<number> {
 // Përdoret për ndalues më të rreptë: "kur humbjet kalojnë X, ndalo" (pavarësisht fitimeve).
 async function grossLossToday(cfg: Cfg): Promise<number> {
   try {
-    const start = frankfurtDayStart();
+    const start = riskWindowStart(cfg);
     const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
     const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
     if (!Array.isArray(deals)) return 0;
@@ -463,7 +472,7 @@ function spreadTooWide(sym: string, spread: number | null): boolean {
 // Cool-off: numëron humbjet RADHAZI (trailing) sot dhe kohën e humbjes së fundit, nga deal-et e mbyllura.
 async function lossStreakToday(cfg: Cfg): Promise<{ consecutive: number; lastLossAt: number }> {
   try {
-    const start = frankfurtDayStart();
+    const start = riskWindowStart(cfg);
     const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
     const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number; time?: string; entryType?: string }>;
     if (!Array.isArray(deals)) return { consecutive: 0, lastLossAt: 0 };
