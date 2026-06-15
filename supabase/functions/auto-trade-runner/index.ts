@@ -703,6 +703,23 @@ Deno.serve(async (req: Request) => {
       // NDALUES DITOR: ndalon kur humbja NETO (ekuiteti) OSE humbja BRUTO kalon kufirin.
       const maxDailyRisk = Number(cfg.max_daily_loss) || 0;
       const dailyStop = maxDailyRisk > 0 && (dayPnl <= -maxDailyRisk || grossLoss >= maxDailyRisk);
+      // DUKSHMËRI: kur roboti ndalet nga limiti ditor, shëno NJË rresht + push (një herë në ditë), që
+      // përdoruesi ta dijë pse s'po hapen trade (më parë heshtte → dukej sikur s'punon).
+      if (dailyStop) {
+        try {
+          const { data: alreadyStopped } = await db.from("trade_executions").select("id")
+            .eq("user_id", cfg.user_id).eq("status", "info").ilike("reason", "Roboti u ndal për sot%")
+            .gte("created_at", frankfurtDayStart().toISOString()).limit(1);
+          if (!alreadyStopped || alreadyStopped.length === 0) {
+            const which = grossLoss >= maxDailyRisk ? `bruto ${grossLoss.toFixed(2)}` : `neto ${dayPnl.toFixed(2)}`;
+            await db.from("trade_executions").insert({
+              user_id: cfg.user_id, symbol: "XAUUSD", action: "BUY", volume: 0.01, mode: cfg.mode, status: "info",
+              reason: `Roboti u ndal për sot — limiti ditor i humbjes (${maxDailyRisk}) u arrit (${which}). Tregtitë e reja u pauzuan deri nesër.`,
+            });
+            await pushNotify({ user_id: cfg.user_id, title: "Roboti u ndal për sot", body: `Limiti ditor i humbjes (${maxDailyRisk}€) u arrit (${which}). Tregtitë e reja u pauzuan deri nesër.`, url: "/", tag: "daily-stop" });
+          }
+        } catch { /* njoftimi s'duhet të ndalë robotin */ }
+      }
       let openTrades = positions.length;
       const scalpOn = cfg.strategy_scalp === true;
       const swingOn = cfg.strategy_swing !== false; // default ON
