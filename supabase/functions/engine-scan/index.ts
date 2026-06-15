@@ -459,7 +459,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
       // PA VETO (zgjedhja e përdoruesit): lejo edhe kundër trendit ditor, por me PENALLTI besueshmërie
       // që rritet me distancën nga EMA50 ditore — sinjalet kundër-trend SHFAQEN (display ≥30%), por bien
       // nën pragun e auto-tregtimit (≥70%) përveçse kur setup-i është vërtet i fortë.
-      const d1Pen = 0.12 + Math.min(0.30, d1Gap * 8);
+      const d1Pen = 0.08 + Math.min(0.15, d1Gap * 4);
       d1Boost = d1Aligned ? 0.05 : -d1Pen;
       reasons.push(d1Aligned ? `Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})` : `Kundër trendit ditor (−${Math.round(d1Pen * 100)}% besueshmëri)`);
     }
@@ -523,6 +523,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     d1_aligned: d1Boost > 0, overlap, fh, confluence: confFactors, conf_max: 9,
     et_hour: et.hour, dow: et.dow, oil: false, ts: Date.now(),
   };
+  _diag.gold_conf = Math.round(confidence * 100); _diag.gold_action = dir; _diag.gold_d1 = d1Boost > 0 ? "aligned" : `against(${(d1Gap * 100).toFixed(1)}%)`;
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
