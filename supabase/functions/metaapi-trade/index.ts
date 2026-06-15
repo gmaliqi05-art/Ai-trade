@@ -61,8 +61,8 @@ async function metaApiGet(cfg: MetaApiConfig, path: string) {
       const text = await resp.text();
       let body: unknown = text;
       try { body = JSON.parse(text); } catch { /* mbaje si tekst */ }
-      if (resp.status === 502 || resp.status === 503) {
-        lastErr = new Error(`MetaApi ${resp.status} (po sinkronizon)`); // kalimtar → riprovo
+      if (resp.status === 429 || resp.status === 502 || resp.status === 503) {
+        lastErr = new Error(`MetaApi ${resp.status} (kalimtar: rate-limit/sinkronizim)`); // kalimtar → riprovo
       } else if (!resp.ok) {
         throw new Error(`MetaApi ${resp.status}: ${typeof body === "string" ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200)}`);
       } else {

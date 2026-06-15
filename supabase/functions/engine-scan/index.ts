@@ -700,24 +700,14 @@ async function platformPass(
     .eq("status", "active");
   if ((activeCount ?? 0) >= PLATFORM_MAX) return;
 
-  // REZERVË qirinjsh për arin kur Binance dështon: merr kredencialet MetaApi të një përdoruesi të
-  // lidhur (çfarëdo llogarie me account_id+token). Përdoret VETËM nëse Binance s'jep qirinj — që
-  // sinjalet platform-wide të mos varen nga një burim i vetëm.
-  let platformBroker: BrokerCreds | undefined;
-  try {
-    const { data: bc } = await db.from("metaapi_config")
-      .select("account_id, token, region")
-      .not("account_id", "is", null).not("token", "is", null)
-      .limit(1).maybeSingle();
-    const b = bc as { account_id?: string; token?: string; region?: string } | null;
-    if (b?.account_id && b?.token) platformBroker = { account_id: b.account_id, token: b.token, region: b.region || "new-york" };
-  } catch { /* pa rezervë broker — Binance/Twelve Data mbeten */ }
-
-  // Llogarit sinjalet për watchlist-in (ari, me 4 analizat) dhe rendit sipas besueshmërisë.
+  // SINJALET PLATFORM-WIDE (display): qirinjt vetëm nga burime JO-përdoruesi — Binance, pastaj
+  // Twelve Data (XAU/USD). NUK huazojmë kurrë llogarinë MetaApi të një përdoruesi këtu (që të mos
+  // shtojmë ngarkesë/rate-limit te llogaria e tij). Sinjalet PER-PËRDORUES (te cikli kryesor)
+  // përdorin secili llogarinë e VET — të izoluara.
   const candidates: { symbol: string; sig: EngineResult }[] = [];
   for (const symbol of PLATFORM_WATCHLIST) {
     try {
-      const sig = await generateFor(symbol, platformBroker);
+      const sig = await generateFor(symbol);
       if (sig && sig.action !== "HOLD" && sig.confidence >= PLATFORM_MIN_CONF) candidates.push({ symbol, sig });
     } catch { /* anashkalo simbolin */ }
   }

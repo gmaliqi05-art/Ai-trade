@@ -39,6 +39,8 @@ interface Cfg {
   be_offset_usd?: number;    // offset-i i break-even në çmim ($); default 0.9 (≈ 9 pips ari)
   day_start_equity?: number; // ekuiteti në fillim të ditës UTC (për limitin ditor të humbjes)
   day_start_date?: string;   // data UTC e ruajtjes së day_start_equity
+  experimental_filters?: boolean; // opt-in per-përdorues: spread-guard + cool-off pas serie humbjesh
+  risk_reset_at?: string;    // pikë rinisjeje e numëruesve të rrezikut (humbja/seria) — injoro trade-t para saj
 }
 
 interface Signal {
@@ -307,27 +309,55 @@ function buildContext(symbol: string, t15: TF, t1h: TF, t4h: TF, price: number) 
 }
 
 async function fetchMt5Candles(cfg: Cfg, symbol: string, tf: string, limit = 300): Promise<Candle[] | null> {
-  try {
-    const url = `${marketDataHost(cfg.region)}/users/current/accounts/${cfg.account_id}/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${tf}/candles?limit=${limit}`;
-    const resp = await fetch(url, { headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(12000) });
-    if (!resp.ok) return null;
-    const arr = await resp.json();
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    return arr.map((k: Record<string, unknown>) => ({
-      time: new Date((k.time ?? k.brokerTime) as string).getTime(),
-      open: +(k.open as number), high: +(k.high as number), low: +(k.low as number), close: +(k.close as number),
-    }));
-  } catch { return null; }
+  const url = `${marketDataHost(cfg.region)}/users/current/accounts/${cfg.account_id}/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${tf}/candles?limit=${limit}`;
+  // Riprovo te 429 (rate-limit i llogarisë)/502/503 — që scalp-i të mund të vlerësojë edhe nën ngarkesë.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch(url, { headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(12000) });
+      if (resp.status === 429 || resp.status === 502 || resp.status === 503) {
+        if (attempt < 2) { await new Promise((r) => setTimeout(r, 600 * (attempt + 1))); continue; }
+        return null;
+      }
+      if (!resp.ok) return null;
+      const arr = await resp.json();
+      if (!Array.isArray(arr) || arr.length === 0) return null;
+      return arr.map((k: Record<string, unknown>) => ({
+        time: new Date((k.time ?? k.brokerTime) as string).getTime(),
+        open: +(k.open as number), high: +(k.high as number), low: +(k.low as number), close: +(k.close as number),
+      }));
+    } catch { /* gabim rrjeti → riprovo */ }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+  }
+  return null;
 }
 
 async function maGet(cfg: Cfg, path: string) {
-  const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
-    headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(15000),
-  });
-  const txt = await resp.text();
-  let body: unknown = txt; try { body = JSON.parse(txt); } catch { /* */ }
-  if (!resp.ok) throw new Error(`MetaApi ${resp.status}`);
-  return body;
+  // RIPROVË për gabime KALIMTARE: 429 (TooManyRequests — kur llogaria e përdoruesit po bën shumë
+  // thirrje njëkohësisht) dhe 502/503 (MetaApi po sinkronizon). Pa këtë, një 429 i vetëm e hiqte
+  // përdoruesin nga cikli i robotit. Vetëm GET-e (idempotentë); urdhrat e tregtisë S'riprovohen kurrë.
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
+        headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(15000),
+      });
+      const txt = await resp.text();
+      let body: unknown = txt; try { body = JSON.parse(txt); } catch { /* */ }
+      if (resp.status === 429 || resp.status === 502 || resp.status === 503) {
+        lastErr = new Error(`MetaApi ${resp.status} (kalimtar)`); // riprovo me prapakthim
+      } else if (!resp.ok) {
+        throw new Error(`MetaApi ${resp.status}`); // jo-kalimtar → dil
+      } else {
+        return body;
+      }
+    } catch (e) {
+      const msg = (e as Error).message || "";
+      if (/^MetaApi \d{3}$/.test(msg)) throw e; // përgjigje e qartë jo-OK → mos riprovo
+      lastErr = e as Error; // gabim rrjeti (timeout/DNS) → riprovo
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+  }
+  throw lastErr || new Error("MetaApi unreachable");
 }
 
 async function maTrade(cfg: Cfg, body: Record<string, unknown>) {
@@ -384,6 +414,14 @@ function frankfurtDateStr(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
+// Fillimi i dritares së rrezikut: mesnata e Frankfurtit, OSE pika e rinisjes manuale (risk_reset_at)
+// nëse është më e vonë — që pas ndryshimeve të cilësimeve numëruesit e humbjes/serisë të fillojnë nga zero.
+function riskWindowStart(cfg: Cfg): Date {
+  const dayStart = frankfurtDayStart();
+  const reset = cfg.risk_reset_at ? new Date(cfg.risk_reset_at) : null;
+  return (reset && Number.isFinite(reset.getTime()) && reset.getTime() > dayStart.getTime()) ? reset : dayStart;
+}
+
 // P&L i REALIZUAR i ditës (që nga mesnata e Frankfurtit) — shuma e fitim/humbjeve të trade-ve
 // të mbyllura sot (profit+commission+swap). Përdoret për limitin REAL të humbjes ditore.
 async function realizedToday(cfg: Cfg): Promise<number> {
@@ -400,7 +438,7 @@ async function realizedToday(cfg: Cfg): Promise<number> {
 // Përdoret për ndalues më të rreptë: "kur humbjet kalojnë X, ndalo" (pavarësisht fitimeve).
 async function grossLossToday(cfg: Cfg): Promise<number> {
   try {
-    const start = frankfurtDayStart();
+    const start = riskWindowStart(cfg);
     const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
     const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
     if (!Array.isArray(deals)) return 0;
@@ -411,6 +449,45 @@ async function grossLossToday(cfg: Cfg): Promise<number> {
     }
     return loss;
   } catch { return 0; }
+}
+
+// ===== FILTRA EKSPERIMENTALË (opt-in per-përdorues: experimental_filters) =====
+// Spread-guard: spread-i aktual (ask-bid) i një simboli. Kthen null nëse s'merret.
+async function symbolSpread(cfg: Cfg, sym: string): Promise<number | null> {
+  try {
+    const p = await maGet(cfg, `/symbols/${encodeURIComponent(sym)}/current-price`) as { ask?: number; bid?: number };
+    const ask = Number(p?.ask), bid = Number(p?.bid);
+    if (Number.isFinite(ask) && Number.isFinite(bid) && ask > 0 && bid > 0) return Math.abs(ask - bid);
+  } catch { /* */ }
+  return null;
+}
+// Spread-i "i gjerë" për arin — pragu mbi të cilin shmangim hyrjet (orë të holla/lajme). Të tjerët: pa kufi.
+const GOLD_SPREAD_MAX = 0.50;
+function spreadTooWide(sym: string, spread: number | null): boolean {
+  if (spread == null) return false; // s'e dimë → mos blloko
+  if (/XAU/i.test(sym)) return spread > GOLD_SPREAD_MAX;
+  return false;
+}
+
+// Cool-off: numëron humbjet RADHAZI (trailing) sot dhe kohën e humbjes së fundit, nga deal-et e mbyllura.
+async function lossStreakToday(cfg: Cfg): Promise<{ consecutive: number; lastLossAt: number }> {
+  try {
+    const start = riskWindowStart(cfg);
+    const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
+    const deals = await maGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number; time?: string; entryType?: string }>;
+    if (!Array.isArray(deals)) return { consecutive: 0, lastLossAt: 0 };
+    const closes = deals
+      .filter((d) => d.entryType == null || /OUT/i.test(String(d.entryType))) // vetëm mbylljet (P&L real)
+      .map((d) => ({ net: (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), t: new Date(d.time || 0).getTime() }))
+      .filter((d) => Number.isFinite(d.t) && d.t > 0)
+      .sort((a, b) => b.t - a.t);
+    let consecutive = 0, lastLossAt = 0;
+    for (const d of closes) {
+      if (Math.abs(d.net) < 0.01) continue; // injoro break-even
+      if (d.net < 0) { consecutive++; if (lastLossAt === 0) lastLossAt = d.t; } else break;
+    }
+    return { consecutive, lastLossAt };
+  } catch { return { consecutive: 0, lastLossAt: 0 }; }
 }
 
 // TRAILING I SHPEJTË: ndjek SL-në te ÇDO pozicion duke mbajtur një PJESË të fitimit (trail_lock_pct),
@@ -675,10 +752,52 @@ Deno.serve(async (req: Request) => {
       // NDALUES DITOR: ndalon kur humbja NETO (ekuiteti) OSE humbja BRUTO kalon kufirin.
       const maxDailyRisk = Number(cfg.max_daily_loss) || 0;
       const dailyStop = maxDailyRisk > 0 && (dayPnl <= -maxDailyRisk || grossLoss >= maxDailyRisk);
+      // DUKSHMËRI: kur roboti ndalet nga limiti ditor, shëno NJË rresht + push (një herë në ditë), që
+      // përdoruesi ta dijë pse s'po hapen trade (më parë heshtte → dukej sikur s'punon).
+      if (dailyStop) {
+        try {
+          const { data: alreadyStopped } = await db.from("trade_executions").select("id")
+            .eq("user_id", cfg.user_id).eq("status", "info").ilike("reason", "Roboti u ndal për sot%")
+            .gte("created_at", frankfurtDayStart().toISOString()).limit(1);
+          if (!alreadyStopped || alreadyStopped.length === 0) {
+            const which = grossLoss >= maxDailyRisk ? `bruto ${grossLoss.toFixed(2)}` : `neto ${dayPnl.toFixed(2)}`;
+            await db.from("trade_executions").insert({
+              user_id: cfg.user_id, symbol: "XAUUSD", action: "BUY", volume: 0.01, mode: cfg.mode, status: "info",
+              reason: `Roboti u ndal për sot — limiti ditor i humbjes (${maxDailyRisk}) u arrit (${which}). Tregtitë e reja u pauzuan deri nesër.`,
+            });
+            await pushNotify({ user_id: cfg.user_id, title: "Roboti u ndal për sot", body: `Limiti ditor i humbjes (${maxDailyRisk}€) u arrit (${which}). Tregtitë e reja u pauzuan deri nesër.`, url: "/", tag: "daily-stop" });
+          }
+        } catch { /* njoftimi s'duhet të ndalë robotin */ }
+      }
       let openTrades = positions.length;
       const scalpOn = cfg.strategy_scalp === true;
       const swingOn = cfg.strategy_swing !== false; // default ON
       let scalpOpen = positions.filter(isScalpPosition).length;
+
+      // FILTRA EKSPERIMENTALË (opt-in): cool-off pas serie humbjesh. Ndal hapjet pas 3 humbjesh radhazi
+      // sot; pauzë 20 min pas 2 humbjesh radhazi. (Spread-guard zbatohet brenda lak-eve të hyrjes.)
+      const expOn = cfg.experimental_filters === true;
+      let expBlockOpens = false;
+      if (expOn) {
+        const ls = await lossStreakToday(cfg);
+        const streakStop = ls.consecutive >= 3;
+        const coolOff = ls.consecutive === 2 && ls.lastLossAt > 0 && (Date.now() - ls.lastLossAt) < 20 * 60 * 1000;
+        expBlockOpens = streakStop || coolOff;
+        if (streakStop) {
+          try {
+            const { data: already } = await db.from("trade_executions").select("id")
+              .eq("user_id", cfg.user_id).eq("status", "info").ilike("reason", "Cool-off%")
+              .gte("created_at", frankfurtDayStart().toISOString()).limit(1);
+            if (!already || already.length === 0) {
+              await db.from("trade_executions").insert({ user_id: cfg.user_id, symbol: "XAUUSD", action: "BUY", volume: 0.01, mode: cfg.mode, status: "info", reason: `Cool-off: 3 humbje radhazi sot — hapjet u ndalën deri nesër (filtra eksperimentalë).` });
+              await pushNotify({ user_id: cfg.user_id, title: "Roboti — cool-off", body: "3 humbje radhazi sot. Hapjet e reja u ndalën deri nesër (mbrojtje nga humbjet).", url: "/", tag: "cooloff" });
+            }
+          } catch { /* */ }
+        }
+      }
+      // Cache spread-i (një thirrje për simbol) për spread-guard-in eksperimental.
+      const spreadCache = new Map<string, number | null>();
+      const getSpread = async (s: string) => { if (!spreadCache.has(s)) spreadCache.set(s, await symbolSpread(cfg, s)); return spreadCache.get(s) ?? null; };
 
       // PORTFOLIO HEAT (Tier-2): rreziku total i hapur (distanca te SL × vlerë × lot).
       let openHeat = 0;
@@ -796,9 +915,12 @@ Deno.serve(async (req: Request) => {
         for (const rawSym of allowed) {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
           if (dailyStop) break; // limit humbjeje ditore (neto te ekuiteti OSE bruto e trade-ve humbëse)
+          if (expBlockOpens) break; // EKSPERIMENTAL: cool-off pas serie humbjesh
           // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301").
           const sym = await resolveSymbol(cfg, rawSym);
           if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym.toUpperCase())) continue; // një scalp për simbol
+          // EKSPERIMENTAL: spread-guard — mos hap kur spread-i i arit është i gjerë (orë të holla/lajme).
+          if (expOn && spreadTooWide(sym, await getSpread(sym))) { summary.push({ user: cfg.user_id, scalp: sym, status: "spread_too_wide" }); continue; }
           // COOLDOWN: mos hap scalp të ri brenda 3 min nga scalp-i i fundit (shmang grumbullimin në ekstreme).
           const { data: lastSc } = await db.from("trade_executions").select("created_at")
             .eq("user_id", cfg.user_id).eq("symbol", sym).eq("status", "executed")
@@ -998,6 +1120,8 @@ Deno.serve(async (req: Request) => {
         if (openTrades >= cfg.max_open_trades) { await log("rejected", `Max pozicione (${cfg.max_open_trades})`, null, null); continue; }
         // Limit REAL i humbjes ditore: realized(sot) + floating(tani).
         if (dailyStop) { await log("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDailyRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
+        // EKSPERIMENTAL: cool-off pas serie humbjesh — ndal edhe sinjalet swing.
+        if (expBlockOpens) { summary.push({ user: cfg.user_id, signal: sig.id, status: "cooloff" }); continue; }
         // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
         if (netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
         // KONFIRMIM DOLLARI (DXY via EURUSD) — refuzo kur dollari shkon qartë kundër arit.
@@ -1011,6 +1135,9 @@ Deno.serve(async (req: Request) => {
 
         // SIGURI: asnjë trade pa stop-loss (mbron nga humbje e pakufizuar). S'ekzekuton pa SL të vlefshëm.
         if (!(Number(stopLoss) > 0)) { await log("rejected", "Trade pa stop-loss — refuzuar (siguri)", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "no_sl" }); continue; }
+
+        // EKSPERIMENTAL: spread-guard — mos hap kur spread-i i arit është i gjerë (orë të holla/lajme).
+        if (expOn && spreadTooWide(tradeSym, await getSpread(tradeSym))) { summary.push({ user: cfg.user_id, signal: sig.id, status: "spread_too_wide" }); continue; }
 
         // CLAUDE SI PORTË — me kontekstin e grafikut MT5.
         const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);
