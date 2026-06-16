@@ -81,7 +81,17 @@ function isMarketOpen(d = new Date()): boolean {
   if (day === 5 && h >= 21) return false; // E premte pas 21:00 UTC
   return true;
 }
-// Crypto tregtohet 24/7 → s'i nënshtrohet sesionit të arit.
+// Orari i tregtimit të arit sipas kërkesës së përdoruesit (orë lokale Europe/Berlin = CET/CEST, me DST):
+// Hën–Pre 06:00–23:00; e Diel nga 23:00 (hapja e tregut); e Shtunë mbyllur. Shmang orët e holla të natës
+// (23:00–06:00) ku scalp-i bën whipsaw. Prek vetëm HYRJET E REJA të arit — menaxhimi i pozicioneve vazhdon 24/7.
+function goldSessionOpen(d = new Date()): boolean {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", hour12: false }).formatToParts(d);
+  const wd = p.find((x) => x.type === "weekday")?.value || "";
+  const h = parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24;
+  if (wd === "Sat") return false;       // e shtunë: mbyllur
+  if (wd === "Sun") return h >= 23;     // e diel: vetëm pas hapjes 23:00
+  return h >= 6 && h < 23;              // Hën–Pre: 06:00–23:00
+}
 function isCrypto(symbol: string): boolean {
   return /^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test((symbol || "").toUpperCase());
 }
@@ -213,6 +223,16 @@ function swingLevels(highs: number[], lows: number[], lb = 3): { res: number[]; 
 // Momentum i shpejtë: drejtimi nga 5m (EMA9 vs EMA21), hyrja konfirmohet nga thyerja
 // (breakout/breakdown) në 1m me qiri në drejtim + RSI me hapësirë + MACD hist pajtohet.
 // Nuk përdor Claude (është strategji e shpejtë reagimi brenda çiklit 1-minutësh).
+// Efficiency Ratio (Kaufman): |lëvizja neto| / shuma e lëvizjeve absolute mbi n qirinj. ~1 = trend i pastër, ~0 = chop.
+function efficiencyRatio(closes: number[], n = 10): number {
+  if (closes.length < n + 1) return 0;
+  const seg = closes.slice(-(n + 1));
+  const change = Math.abs(seg[seg.length - 1] - seg[0]);
+  let vol = 0;
+  for (let i = 1; i < seg.length; i++) vol += Math.abs(seg[i] - seg[i - 1]);
+  return vol > 0 ? change / vol : 0;
+}
+
 function scalpSignal(c1m: Candle[], c5m: Candle[], loose = false): { action: "BUY" | "SELL"; reason: string } | null {
   if (c1m.length < 35 || c5m.length < 30) return null;
   const cl1 = c1m.map((c) => c.close), cl5 = c5m.map((c) => c.close);
@@ -231,6 +251,20 @@ function scalpSignal(c1m: Candle[], c5m: Candle[], loose = false): { action: "BU
   const price = cl1[i1];
   const last = c1m[i1];
   if (!Number.isFinite(e9_1) || !Number.isFinite(e21_1) || !Number.isFinite(r1) || !Number.isFinite(mh1)) return null;
+
+  // ---- FILTRI I REGJIMIT (anti-whipsaw): tregto VETËM kur ka trend real, jo "chop" ----
+  // Shkaku kryesor i humbjeve/"pozicioneve të kundërta" ishte tregtimi në treg pa drejtim: hyrje në breakout
+  // 1m që kthehet menjëherë. ADX(5m) ≥ 22 = forcë trendi e mjaftueshme; Efficiency Ratio(5m,10) ≥ 0.35 =
+  // lëvizje efikase (jo dridhje anash). Nëse s'plotësohen → s'ka scalp (pritet treg më i mirë).
+  const hi5r = c5m.map((c) => c.high), lo5r = c5m.map((c) => c.low);
+  const adx5 = adx(hi5r, lo5r, cl5, 14)[i5];
+  const er5 = efficiencyRatio(cl5, 10);
+  if (!Number.isFinite(adx5) || adx5 < 22) return null;
+  if (er5 < 0.35) return null;
+  // Over-extension veto: mos hyr kur çmimi është shumë larg EMA9(1m) (>1.5×ATR(1m)) — hyrje pas lëvizjes = rrezik kthimi.
+  const atr1g = atr(c1m.map((c) => c.high), c1m.map((c) => c.low), cl1, 14)[i1];
+  const overExt = Number.isFinite(atr1g) && atr1g > 0 && Math.abs(price - e9_1) > 1.5 * atr1g;
+  if (overExt) return null;
 
   // ---- HYRJE NË LËVIZJE TË VOGLA (loose): PULLBACK në trend, jo ndjekje rraskapitjeje ----
   // Përmirësim: (1) kërkon trend real 5m (jo chop); (2) çmimi pranë EMA9(1m) = pullback, jo i
@@ -884,6 +918,12 @@ Deno.serve(async (req: Request) => {
         for (const s of [...allowed]) { if (!isCrypto(s) && !isOil(s)) allowed.delete(s); }
         if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "treg_i_mbyllur" }); continue; }
       }
+      // ORARI I ARIT (kërkesa jote): Hën–Pre 06:00–23:00, e Diel nga 23:00, e Shtunë mbyllur (orë lokale CET/CEST).
+      // Shmang orët e holla të natës ku ndodhte whipsaw-i. Crypto/naftë s'preken; menaxhimi i pozicioneve vazhdon 24/7.
+      if (!goldSessionOpen()) {
+        for (const s of [...allowed]) { if (!isCrypto(s) && !isOil(s)) allowed.delete(s); }
+        if (allowed.size === 0) { summary.push({ user: cfg.user_id, status: "jashte_orarit_ari" }); continue; }
+      }
       // NAFTË: bllokim rreth raportit javor EIA (e mërkurë 10:00–11:00 ET) — hiq naftën nga lista atëherë.
       if (eiaBlackout()) {
         for (const s of [...allowed]) { if (isOil(s)) allowed.delete(s); }
@@ -951,7 +991,8 @@ Deno.serve(async (req: Request) => {
             slUsd = Math.min(Math.max(atrSL, floorSL), capSL);
             rrUsed = 2;
           } else if (Number.isFinite(atr5v) && atr5v > 0) {
-            slUsd = Math.min(Math.max(atr5v, 0.7 * baseSL), 2 * baseSL);
+            // SL me ATR (kërkesa jote): 1.5×ATR(5m) jashtë zhurmës, me dysheme baseSL dhe tavan 2.5×baseSL.
+            slUsd = Math.min(Math.max(atr5v * 1.5, baseSL), 2.5 * baseSL);
           }
           slUsd = Math.round(slUsd * 100) / 100;
           const tpUsd = Math.round(slUsd * rrUsed * 100) / 100;
