@@ -401,19 +401,23 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     fetchCandles(symbol, "15m", broker), fetchCandles(symbol, "1h", broker),
     fetchCandles(symbol, "4h", broker), fetchCandles(symbol, "1d", broker),
   ]);
-  if (!c15 || !c1h || !c4h) return null;
+  if (!c15 || !c1h || !c4h) return rejGold("no_candles");
   const s15 = analyzeTF(c15), s1h = analyzeTF(c1h), s4h = analyzeTF(c4h);
-  if (!s15 || !s1h || !s4h) return null;
+  if (!s15 || !s1h || !s4h) return rejGold("analyzeTF_null");
 
   // Baza: e njëjta logjikë si generateStrong (multi-TF + EMA200 + ADX).
   const dir = s1h.action;
-  if (dir === "HOLD") return null;
-  if (s4h.action !== dir) return null; // 1h+4h pajtohen (4h busull); 15m vetëm te besueshmëria
+  if (dir === "HOLD") return rejGold("1h_HOLD");
+  if (s4h.action !== dir) return rejGold(`4h_disagree(1h=${dir},4h=${s4h.action})`); // 1h+4h pajtohen
   const price = s1h.price;
   const isBuy = dir === "BUY";
-  if (isBuy && !(price > s1h.ema200)) return null;
-  if (!isBuy && !(price < s1h.ema200)) return null;
-  if (s1h.adx < ADX_MIN || s1h.adx > ADX_MAX) return null; // EKSPERTËT: shmang trendin e rraskapitur (ADX i lartë)
+  if (isBuy && !(price > s1h.ema200)) return rejGold("price_below_ema200_for_buy");
+  if (!isBuy && !(price < s1h.ema200)) return rejGold("price_above_ema200_for_sell");
+  // Penalltitë e cilësisë (s'e ndalin sinjalin — zgjedhja jote "shfaqi" — por ulin besueshmërinë → nën 70%
+  // përveçse kur gjithçka tjetër është e fortë). Veto i fortë mbetet vetëm për "s'ka setup fare".
+  let qPen = 0;
+  if (s1h.adx < ADX_MIN) qPen += 0.10; // trend i dobët
+  if (s1h.adx > ADX_MAX) qPen += 0.12; // trend i rraskapitur → rrezik kthimi
 
   const reasons: string[] = [
     `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
@@ -439,8 +443,8 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
       const atrAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
       if (atrAvg > 0) {
         const ratio = atrNow / atrAvg;
-        if (ratio < 0.5) return null;  // treg i ngrirë
-        if (ratio > 3.5) return null;  // vetëm spike EKSTREM (lajme) — lejo lëvizjet e forta
+        if (ratio < 0.5) qPen += 0.08;  // treg i ngrirë → besueshmëri më e ulët
+        if (ratio > 3.5) return rejGold(`vol_spike(${ratio.toFixed(2)})`);  // spike lajmesh — VETO (siguri)
         reasons.push(`Volatilitet normal (ATR ${((atrNow / price) * 100).toFixed(2)}%)`);
       }
     }
@@ -454,10 +458,14 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     const e50d = ema(dc, 50)[dc.length - 1];
     if (Number.isFinite(e50d)) {
       const d1Up = price > e50d;
-      if (isBuy && !d1Up) return null;   // BLEJ kundër trendit ditor rënës
-      if (!isBuy && d1Up) return null;    // SHIT kundër trendit ditor rritës
-      d1Boost = 0.05;
-      reasons.push(`Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})`);
+      const d1Aligned = (isBuy && d1Up) || (!isBuy && !d1Up);
+      const d1Gap = e50d > 0 ? Math.abs(price - e50d) / e50d : 0;
+      // PA VETO (zgjedhja e përdoruesit): lejo edhe kundër trendit ditor, por me PENALLTI besueshmërie
+      // që rritet me distancën nga EMA50 ditore — sinjalet kundër-trend SHFAQEN (display ≥30%), por bien
+      // nën pragun e auto-tregtimit (≥70%) përveçse kur setup-i është vërtet i fortë.
+      const d1Pen = 0.08 + Math.min(0.15, d1Gap * 4);
+      d1Boost = d1Aligned ? 0.05 : -d1Pen;
+      reasons.push(d1Aligned ? `Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})` : `Kundër trendit ditor (−${Math.round(d1Pen * 100)}% besueshmëri)`);
     }
   }
 
@@ -468,8 +476,8 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const nearestAbove = price <= round10 ? round10 : round10 + 10;
   const nearestBelow = price >= round10 ? round10 : round10 - 10;
   const TOO_CLOSE = 0.0012; // ~0.12% (≈ $4 te $3300)
-  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) return null;
-  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) return null;
+  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) qPen += 0.06; // përballë rezistencës
+  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) qPen += 0.06; // përballë mbështetjes
   reasons.push(`Nivele kyçe: mbështetje ~$${nearestBelow}, rezistencë ~$${nearestAbove}`);
 
   // (5) CONFLUENCE SCORING (Tier-2) — numëron faktorët e pavarur mbështetës. Sa më
@@ -477,7 +485,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const c1hCloses = c1h.map((c) => c.close);
   const rsi1h = rsi(c1hCloses, 14)[c1hCloses.length - 1];
   // EKSPERTËT: RSI ekstrem → hyrje kundër një kthimi të mundshëm; refuzo.
-  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) return null;
+  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) qPen += 0.10; // RSI ekstrem → rrezik kthimi
   const macdH = macd(c1hCloses).histogram[c1hCloses.length - 1];
   const adxStrong = s1h.adx >= 25;
   const rsiRoom = Number.isFinite(rsi1h) && (isBuy ? rsi1h < 68 : rsi1h > 32); // hapësirë para mbiblerjes/mbishitjes
@@ -488,13 +496,13 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
 
   // (6) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX.
   const er = efficiencyRatio(c1hCloses, 10);
-  if (er < 0.20) return null; // treg shumë jo-efikas (choppy)
+  if (er < 0.20) qPen += 0.10 + Math.min(0.15, (0.20 - er) * 1.5); // choppy → penallti (sa më jo-efikas, aq më shumë)
   const erGood = er >= 0.35;
   if (erGood) reasons.push(`Efficiency Ratio ${er.toFixed(2)} (lëvizje efikase)`);
 
   // (7) SUPERTREND (ATR) — konfirmim drejtimi; veto kur është qartë kundër.
   const stDir = supertrendDir(c1h.map((c) => c.high), c1h.map((c) => c.low), c1hCloses, 10, 3);
-  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return null;
+  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) qPen += 0.10; // Supertrend kundër → konfirmim i dobët
   const stOk = (isBuy && stDir > 0) || (!isBuy && stDir < 0);
   if (stOk) reasons.push("Supertrend në harmoni");
 
@@ -505,7 +513,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   // Besueshmëria me boost-et e harmonisë + confluence (bonusi s'e ul kurrë bazën → s'pakëson sinjalet).
   const base = Math.min(1, (s15.confidence + s1h.confidence + s4h.confidence) / 3);
   const confBonus = (adxStrong ? 0.02 : 0) + (rsiRoom ? 0.02 : 0) + (macdAligned ? 0.02 : 0) + (erGood ? 0.02 : 0) + (stOk ? 0.02 : 0);
-  const confidence = Math.min(1, base + d1Boost + (overlap ? 0.05 : 0) + confBonus);
+  const confidence = Math.max(0, Math.min(1, base + d1Boost - qPen + (overlap ? 0.05 : 0) + confBonus));
   const stopDist = s1h.atr > 0 ? s1h.atr * 1.5 : price * 0.015;
   // FAZA 2: "pikat kyçe" për arin — përfshijnë sesionin (overlap London+NY).
   const et = etContext();
@@ -519,6 +527,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     d1_aligned: d1Boost > 0, overlap, fh, confluence: confFactors, conf_max: 9,
     et_hour: et.hour, dow: et.dow, oil: false, ts: Date.now(),
   };
+  _diag.gold_conf = Math.round(confidence * 100); _diag.gold_action = dir; _diag.gold_qpen = Math.round(qPen * 100); _diag.gold_d1boost = Math.round(d1Boost * 100);
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
@@ -538,6 +547,10 @@ function generateFor(symbol: string, broker?: BrokerCreds, advanced = false): Pr
 const PAIRS: Record<string, string> = {
   XAUUSD: "PAXGUSDT",
 };
+// Diagnostikë e ekzekutimit të fundit (cili burim qirinjsh u përdor, gabime) — shkruhet te app_config.
+const _diag: Record<string, unknown> = {};
+// Regjistron PSE u refuzua sinjali i arit (cila portë) — për të parë çfarë e bllokon.
+function rejGold(r: string): null { _diag.gold_reject = r; return null; }
 async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCreds): Promise<Candle[] | null> {
   const pair = PAIRS[symbol.toUpperCase()];
   if (pair) {
@@ -550,18 +563,19 @@ async function fetchCandles(symbol: string, interval = "1h", broker?: BrokerCred
           time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string),
           low: +(k[3] as string), close: +(k[4] as string), volume: +(k[5] as string),
         }));
-        if (mapped.length > 0) return mapped;
-      }
-    } catch { /* Binance i paarritshëm (geo-bllokim/rate-limit nga IP cloud) — kalo te rezerva */ }
+        if (mapped.length > 0) { _diag[`${symbol}:${interval}`] = "binance"; return mapped; }
+      } else { _diag[`binance_status:${interval}`] = resp.status; }
+    } catch (e) { _diag[`binance_err:${interval}`] = String((e as Error).message || e).slice(0, 60); }
     // REZERVË për ARIN kur Binance dështon: qirinjtë e brokerit MetaApi (XAUUSD real) → Twelve Data
     // (XAU/USD). PA këtë, një bllokim i Binance-it nga IP-ja e Supabase i ndalte KREJT sinjalet e arit
     // (pikë e vetme dështimi). Kur Binance punon, kjo degë s'preket — sjellja mbetet identike.
     if (broker) {
       const m = await fetchMetaApiCandles(broker, symbol, interval);
-      if (m && m.length > 0) return m;
+      if (m && m.length > 0) { _diag[`${symbol}:${interval}`] = "broker"; return m; }
     }
     const td = await fetchTwelveData(symbol, interval);
-    if (td && td.length > 0) return td;
+    if (td && td.length > 0) { _diag[`${symbol}:${interval}`] = "twelvedata"; return td; }
+    _diag[`${symbol}:${interval}`] = broker ? "none(binance+broker+td_failed)" : "none(binance+td_failed,no_broker)";
     return null;
   }
   // Simbolet jo-Binance (naftë USOIL/UKOIL): MetaApi i brokerit (PRIMAR — zgjedhja e
@@ -665,7 +679,7 @@ function isSupported(symbol: string): boolean {
 // Sinjalet platform-wide (display "Sinjale AI"): vetëm ari. Nafta s'ka burim pa broker
 // (platform pass s'ka kredenciale), prandaj sinjalet e naftës janë vetëm per-përdorues (MetaApi).
 const PLATFORM_WATCHLIST = [GOLD_SYMBOL];
-const PLATFORM_MIN_CONF = 0.30;   // pragu i besueshmërisë (0..1)
+const PLATFORM_MIN_CONF = 0.20;   // pragu i SHFAQJES (display). Auto-tregtimi mbetet te min_confidence (70%).
 const PLATFORM_MAX = 3;            // maksimumi i sinjaleve platform-wide aktive njëkohësisht
 const PLATFORM_DEDUP_H = 4;        // mos krijo sinjal të ri për të njëjtin simbol brenda 4 orëve
 
@@ -745,6 +759,7 @@ async function platformPass(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  for (const k in _diag) delete _diag[k]; // diagnostikë e pastër për këtë ekzekutim
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   // Portë sigurie për cron (vetëm akses — S'PREK logjikën e motorit). Fail-safe: lejo nëse s'ka sekret/gabim.
   try {
@@ -835,6 +850,13 @@ Deno.serve(async (req: Request) => {
         out.push({ symbol, user: u.user_id, action: sig.action, confidence: confPct, created: true });
       }
     }
+    // Diagnostikë e ekzekutimit të fundit — që të shohim PSE s'gjenerohen sinjale (burimi i qirinjve, filtrat).
+    try {
+      await db.from("app_config").upsert(
+        { key: "engine_last_run", value: JSON.stringify({ at: new Date().toISOString(), out, candles: _diag }).slice(0, 7000) },
+        { onConflict: "key" },
+      );
+    } catch { /* */ }
     return json({ success: true, processed: out });
   } catch (err) {
     return json({ error: (err as Error).message }, 500);

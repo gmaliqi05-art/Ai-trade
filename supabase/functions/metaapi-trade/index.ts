@@ -147,6 +147,18 @@ async function grossLossToday(cfg: MetaApiConfig): Promise<number> {
   } catch { return 0; }
 }
 
+// Njoftim Web Push (best-effort) për tregtitë MANUALE — thërret web-push-send me service-role.
+async function pushNotify(payload: Record<string, unknown>): Promise<void> {
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch { /* njoftimi s'duhet të ndalë tregtimin */ }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -316,6 +328,7 @@ Deno.serve(async (req: Request) => {
         const txt = await resp.text();
         let rb: unknown = txt; try { rb = JSON.parse(txt); } catch { /* tekst */ }
         if (!resp.ok) return json({ error: "close_failed", status: resp.status, details: rb }, 502);
+        await pushNotify({ user_id: user.id, title: "Trade i mbyllur (manual)", body: `${body.symbol || "Pozicioni"} u mbyll.`, url: "/", tag: "manual-close" });
         return json({ success: true, result: rb });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
@@ -508,6 +521,12 @@ Deno.serve(async (req: Request) => {
       } catch { /* */ }
     }
     await logExec("executed", pending ? `Porosi në pritje @ ${openPrice} (${config.mode})` : `OK (${config.mode})`, orderId, respBody);
+    await pushNotify({
+      user_id: user.id,
+      title: pending ? "Porosi në pritje (manual)" : "Trade i hapur (manual)",
+      body: `${action === "BUY" ? "BLEJ" : "SHIT"} ${symbol} • ${volume} lot${pending && openPrice ? ` @ ${openPrice}` : ""} (${config.mode})`,
+      url: "/", tag: "manual-open",
+    });
     return json({
       success: true,
       mode: config.mode,
