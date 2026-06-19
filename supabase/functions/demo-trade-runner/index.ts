@@ -183,6 +183,24 @@ const DEFAULT_CFG: Record<string, unknown> = {
   scalp_sl_usd: 2, scalp_tp_usd: 4, scalp_max_trades: 3, scalp_small_moves: true,
 };
 
+// FILTRA TË EKSPERTËVE (provë VETËM në DEMO — para integrimit te roboti real).
+// Bazuar te analizat e Dhomës së Ekspertëve mbi trade-t REALE: humbjet (SL)
+// grumbullohen te hyrjet e MBI-EKSTENDUARA (ADX shumë i lartë + RSI në ekstrem,
+// rrezik kthimi) dhe në orët e MBRËMJES ET 17–20 (likuiditet i ulët).
+// Kthen arsyen e bllokimit nëse sinjali duhet kaluar, ose null nëse lejohet.
+const EXPERT_FILTERS_DEMO = true;
+function expertVeto(f: Record<string, unknown> | null | undefined): string | null {
+  if (!EXPERT_FILTERS_DEMO || !f) return null;
+  const adx = typeof f.adx === "number" ? f.adx : null;
+  const rsi = typeof f.rsi === "number" ? f.rsi : null;
+  const et = typeof f.et_hour === "number" ? f.et_hour : null;
+  // 1) Mbi-ekstendim: ADX>50 me RSI në ekstrem (<25 ose >75) → lëvizje e shteruar.
+  if (adx != null && adx > 50 && rsi != null && (rsi < 25 || rsi > 75)) return "over-extended";
+  // 2) Sesioni i mbrëmjes ET 17–20: dalje me SL në likuiditet të ulët.
+  if (et != null && et >= 17 && et <= 20) return "evening-ET";
+  return null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -234,7 +252,7 @@ Deno.serve(async (req: Request) => {
       bal.set(p.id, Number(p.demo_balance ?? 100)); startBal.set(p.id, Number(p.demo_balance ?? 100));
     }
 
-    let opened = 0, closed = 0, openedScalp = 0;
+    let opened = 0, closed = 0, openedScalp = 0, vetoed = 0;
 
     // 6) VLERËSIM — mbyll demo-trade-t e hapura kur prekin TP/SL (ose skadojnë).
     const expireBefore = Date.now() - EXPIRE_H * 60 * 60 * 1000;
@@ -277,10 +295,10 @@ Deno.serve(async (req: Request) => {
     const sinceIso = new Date(Date.now() - OPEN_WINDOW_MIN * 60 * 1000).toISOString();
     const { data: sigs } = await db
       .from("signals")
-      .select("id, symbol, type, entry_price, target_price, stop_loss, confidence, created_at")
+      .select("id, symbol, type, entry_price, target_price, stop_loss, confidence, created_at, features")
       .eq("source", "engine").gte("created_at", sinceIso)
       .order("created_at", { ascending: false }).limit(50);
-    const signals = (sigs ?? []) as { id: string; symbol: string; type: string; entry_price: number | null; target_price: number | null; stop_loss: number | null; confidence: number | null; created_at: string }[];
+    const signals = (sigs ?? []) as { id: string; symbol: string; type: string; entry_price: number | null; target_price: number | null; stop_loss: number | null; confidence: number | null; created_at: string; features: Record<string, unknown> | null }[];
 
     if (signals.length > 0) {
       const sigIds = signals.map((s) => s.id);
@@ -300,6 +318,8 @@ Deno.serve(async (req: Request) => {
           if (s.entry_price == null || s.stop_loss == null) continue;
           if (Number(s.confidence ?? 0) < minConf) continue;
           if (seen.has(`${u.id}|${s.id}`)) continue;
+          const veto = expertVeto(s.features);   // FILTËR EKSPERTËSH (DEMO) — kalo hyrjet e dobëta
+          if (veto) { vetoed++; continue; }
           const entry = Number(s.entry_price), sl = Number(s.stop_loss);
           const slDist = Math.abs(entry - sl);
           if (!(slDist > 0)) continue;
@@ -363,7 +383,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    return json({ ok: true, dryRun, autoUsers: autoUsers.length, evaluated: openRows.length, opened, openedScalp, closed, session: goldSessionOpen(), scalp: scalp?.reason ?? null });
+    return json({ ok: true, dryRun, autoUsers: autoUsers.length, evaluated: openRows.length, opened, openedScalp, closed, vetoed, session: goldSessionOpen(), scalp: scalp?.reason ?? null });
   } catch (err) {
     return json({ error: (err as Error).message }, 500);
   }

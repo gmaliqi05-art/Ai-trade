@@ -1,0 +1,24 @@
+name: Deploy demo-trade-runner
+
+# Deploy VETËM i demo-trade-runner (paper-trading; nuk prek robotin real as MetaApi).
+# Nxitet manualisht (workflow_dispatch). Kërkon sekretin e repos: SUPABASE_ACCESS_TOKEN.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy demo-trade-runner (verify_jwt=false — cron me x-cron-secret)
+        run: supabase functions deploy demo-trade-runner --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
