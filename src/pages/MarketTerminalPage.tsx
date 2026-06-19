@@ -109,9 +109,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // "I shëndetshëm" = i lidhur DHE po jep tick-e të freskëta (< 6s). Vetëm atëherë e fikim REST-in;
   // nëse lidhet por s'jep çmim (p.sh. emër simboli ende pa u zgjidhur), REST rikthehet vetvetiu.
   const streamHealthy = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 6000);
-  // Tregu konsiderohet HAPUR nëse marrim tick-e reale nga brokeri (< 90s) — sinjal autentik,
-  // pa orare të koduara fort. Kështu ke qasje 24h kur brokeri kuoton, si roboti.
-  const marketOpenLive = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 90000);
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [history, setHistory] = useState<ClosedTrade[]>([]);
@@ -316,10 +313,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         if (alive && bid > 0 && ask > 0) {
           const mid = (bid + ask) / 2;
           const prev = lastMidRef.current;
-          if (prev != null && Math.abs(mid - prev) > 1e-9) setPxDir(mid > prev ? 'up' : 'down');
+          const changed = prev == null || Math.abs(mid - prev) > 1e-9;
+          if (prev != null && changed) setPxDir(mid > prev ? 'up' : 'down');
           lastMidRef.current = mid;
           setBrokerPx({ bid, ask });
-          setPxAt(Date.now());
+          if (changed) setPxAt(Date.now()); // freskia rritet VETËM kur çmimi lëviz (frozen=mbyllur → jo-live)
           setPxTick(k => k + 1);
         }
       } catch { /* mban të fundit, por freskia bie → shënohet jo-live */ }
@@ -476,8 +474,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const lastClose = candles.length ? candles[candles.length - 1].close : null;
   // FRESKIA e çmimit live: brokerPx vlen vetëm nëse u përditësua brenda ~4s. Përndryshe e
   // konsiderojmë JO-LIVE (mos shfaq fitim/humbje të rreme nga një çmim i ngrirë).
-  const PX_FRESH_MS = 4000;
+  // pxAt përditësohet VETËM kur çmimi LËVIZ (shih ticker-in/streaming-un). Pra "i freskët" do të
+  // thotë "po lëviz" — jo thjesht "u mor një vlerë". Treg i mbyllur = çmim i ngrirë → JO-LIVE.
+  const PX_FRESH_MS = 8000;
   const pxFresh = brokerPx != null && pxAt > 0 && (pxClock - pxAt) < PX_FRESH_MS;
+  // Tregu duket i MBYLLUR/i ngrirë kur çmimi s'ka lëvizur prej >40s (ari i hapur s'rri kurrë kaq gjatë).
+  const pxAgeMs = pxAt > 0 ? (pxClock - pxAt) : Infinity;
+  const marketFrozen = brokerPx != null && pxAgeMs > 40000;
   // Çmimi mesatar LIVE i broker-it (bid/ask) për vijën "Tani" — VETËM kur është i freskët.
   const brokerMid = (pxFresh && brokerPx) ? (brokerPx.bid + brokerPx.ask) / 2 : null;
   // SINKRONIZIM REAL-TIME: "ngjit" çmimin LIVE të broker-it te qiriri i fundit, që trupi i grafikut të
@@ -633,17 +636,22 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
-      {/* PARA-HAPJEJE — tregu i mbyllur: numëruesi + porositë në radhë/pending që hyjnë në hapje */}
-      {((!isMktOpen(new Date(nowTs)) && !marketOpenLive) || preOpenOrders.length > 0) && (
+      {/* PARA-HAPJEJE — tregu i mbyllur OSE i ngrirë (çmimi s'lëviz): numëruesi + porositë në radhë */}
+      {(() => {
+        const calOpen = isMktOpen(new Date(nowTs));
+        const tradingNow = calOpen && !marketFrozen; // hapur sipas kalendarit DHE çmimi po lëviz
+        return ((!tradingNow) || preOpenOrders.length > 0) && (
         <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-gray-900 p-4 space-y-3">
           <div className="flex items-center gap-2.5">
             <Clock className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
-              <div className="text-white font-bold text-sm">{(isMktOpen(new Date(nowTs)) || marketOpenLive) ? t('Tregu u hap — porositë po dërgohen') : t('Tregu i mbyllur — modë para-hapjeje')}</div>
+              <div className="text-white font-bold text-sm">{tradingNow ? t('Tregu u hap — porositë po dërgohen') : t('Tregu i mbyllur — modë para-hapjeje')}</div>
               <div className="text-gray-400 text-[11px]">
-                {(isMktOpen(new Date(nowTs)) || marketOpenLive)
+                {tradingNow
                   ? t('Porositë e radhës hyjnë automatikisht brenda pak çastesh.')
-                  : <>{t('Hapet pas')} <span className="text-amber-400 font-semibold">{fmtCountdown(msToOpen(new Date(nowTs)))}</span> · {t('porosia që vendos tani rri në pritje dhe hyn automatikisht në hapje.')}</>}
+                  : !calOpen
+                    ? <>{t('Hapet pas')} <span className="text-amber-400 font-semibold">{fmtCountdown(msToOpen(new Date(nowTs)))}</span> · {t('porosia që vendos tani rri në pritje dhe hyn automatikisht në hapje.')}</>
+                    : t('Çmimi s\'po lëviz — tregu duket i mbyllur tani (p.sh. festë/fundjavë e brokerit). Porosia që vendos rri në radhë dhe hyn automatik kur rikthehet çmimi.')}
               </div>
             </div>
           </div>
@@ -670,7 +678,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* TICKER LIVE — çmimi real-time i simbolit të zgjedhur (bid/ask/spread + drejtim + pulsim) */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
