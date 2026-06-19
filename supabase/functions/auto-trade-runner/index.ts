@@ -15,6 +15,7 @@ interface Cfg {
   user_id: string; account_id: string; token: string; region: string; mode: string;
   default_lot: number; max_lot: number; max_daily_loss: number; max_open_trades: number;
   kill_switch: boolean; min_confidence: number; auto_symbols: string;
+  symbol_map?: Record<string, string> | null; // cache i qëndrueshëm i emrave REALË të brokerit (anti "Unknown symbol")
   dynamic_lot?: boolean; lot_conf_70?: number; lot_conf_80?: number; lot_conf_90?: number;
   lot_conf_t1?: number; lot_conf_t2?: number; lot_conf_t3?: number; // pragjet e besueshmërisë (default 70/80/90)
   risk_per_trade_pct?: number; // % e kapitalit për trade (fixed-fractional); default 1%
@@ -407,15 +408,19 @@ async function maTrade(cfg: Cfg, body: Record<string, unknown>) {
 // Disa brokerë (p.sh. Vantage) e quajnë arin me prapashtesë (XAUUSD+, XAUUSD., GOLD…).
 // Gjen emrin REAL te lista e brokerit (me cache) — rregullon "Unknown symbol 4301".
 const _symCache = new Map<string, string>();
-async function resolveSymbol(cfg: Cfg, requested: string): Promise<string> {
-  const key = `${cfg.account_id}:${requested.toUpperCase()}`;
-  const cached = _symCache.get(key);
-  if (cached) return cached;
+async function resolveSymbol(cfg: Cfg, requested: string, db?: ReturnType<typeof createClient>): Promise<string> {
+  const req = requested.toUpperCase();
+  const key = `${cfg.account_id}:${req}`;
+  const inMem = _symCache.get(key);
+  if (inMem) return inMem;
+  // CACHE I QËNDRUESHËM (metaapi_config.symbol_map): nëse e kemi mësuar njëherë emrin REAL të brokerit,
+  // përdore drejtpërdrejt — imun ndaj dështimeve kalimtare të /symbols që shkaktonin "Unknown symbol (4301)".
+  const persisted = (cfg.symbol_map && typeof cfg.symbol_map === "object") ? (cfg.symbol_map as Record<string, string>)[req] : undefined;
+  if (persisted) { _symCache.set(key, persisted); return persisted; }
   try {
     const list = await maGet(cfg, `/symbols`) as unknown;
     if (Array.isArray(list) && list.length > 0) {
       const names = list.map(String);
-      const req = requested.toUpperCase();
       // NAFTË: familja e simbolit te brokeri (USOIL↔XTIUSD/WTI/CL; UKOIL↔XBRUSD/BRENT).
       // E njëjta logjikë si te engine-scan, që sinjali dhe ekzekutimi të gjejnë të NJËJTIN simbol.
       const oilReq = /^(USOIL|UKOIL|WTI|XTI|XBR|BRENT|UKO|USO|CL)/i.test(req);
@@ -426,12 +431,18 @@ async function resolveSymbol(cfg: Cfg, requested: string): Promise<string> {
         || names.find(s => s.toUpperCase().startsWith(req))
         || (req.includes("XAU") ? (names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()))) : undefined)
         || (oilReq ? names.find(s => oilFam.test(s)) : undefined);
-      const resolved = found || requested;
-      _symCache.set(key, resolved);
-      return resolved;
+      if (found) {
+        _symCache.set(key, found);
+        // Shkruaj te cache-i i qëndrueshëm VETËM emra të VERIFIKUAR (kurrë fallback-un e papërpunuar).
+        if (db) {
+          const map = (cfg.symbol_map && typeof cfg.symbol_map === "object") ? cfg.symbol_map as Record<string, string> : {};
+          try { await db.from("metaapi_config").update({ symbol_map: { ...map, [req]: found } }).eq("user_id", cfg.user_id); } catch { /* best-effort */ }
+        }
+        return found;
+      }
     }
-  } catch { /* */ }
-  return requested;
+  } catch { /* /symbols dështoi kalimtar → bie te i kërkuari (mos e cache-o) */ }
+  return persisted || requested;
 }
 
 // Fillimi i ditës sipas Frankfurt (Europe/Berlin) si instant UTC — që "dita" e humbjes
@@ -693,7 +704,9 @@ async function submitQueuedOrders(db: DB, cfg: Cfg): Promise<void> {
     const id = q.id as string;
     const exp = q.expires_at ? new Date(q.expires_at as string).getTime() : 0;
     if (exp && Date.now() > exp) { try { await db.from("pre_open_orders").update({ status: "expired" }).eq("id", id); } catch { /* */ } continue; }
-    const sym = String(q.symbol || ""), action = String(q.action || "");
+    // Ri-zgjidh emrin REAL të brokerit (porositë e vjetra në radhë mund të jenë ruajtur me emër të papërpunuar
+    // p.sh. XAUUSD para rregullimit) — me cache të qëndrueshëm → anti "Unknown symbol".
+    const sym = await resolveSymbol(cfg, String(q.symbol || ""), db), action = String(q.action || "");
     const volume = Number(q.volume) || 0;
     const sl = q.stop_loss != null ? Number(q.stop_loss) : null;
     const tp = q.take_profit != null ? Number(q.take_profit) : null;
@@ -940,8 +953,8 @@ Deno.serve(async (req: Request) => {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
           if (dailyStop) break; // limit humbjeje ditore (neto te ekuiteti OSE bruto e trade-ve humbëse)
           if (expBlockOpens) break; // EKSPERIMENTAL: cool-off pas serie humbjesh
-          // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301").
-          const sym = await resolveSymbol(cfg, rawSym);
+          // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301") — me cache të qëndrueshëm.
+          const sym = await resolveSymbol(cfg, rawSym, db);
           if (positions.some((p) => isScalpPosition(p) && (p.symbol || "").toUpperCase() === sym.toUpperCase())) continue; // një scalp për simbol
           // EKSPERIMENTAL: spread-guard — mos hap kur spread-i i arit është i gjerë (orë të holla/lajme).
           if (expOn && spreadTooWide(sym, await getSpread(sym))) { summary.push({ user: cfg.user_id, scalp: sym, status: "spread_too_wide" }); continue; }
@@ -1066,8 +1079,8 @@ Deno.serve(async (req: Request) => {
 
         const action = sig.type === "buy" ? "BUY" : "SELL";
         const isBuy = action === "BUY";
-        // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301").
-        const tradeSym = await resolveSymbol(cfg, sig.symbol);
+        // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301") — me cache të qëndrueshëm.
+        const tradeSym = await resolveSymbol(cfg, sig.symbol, db);
 
         // ---- ANKORIM te çmimi REAL MT5 (zgjidh bug-un PAXG→MT5) + konteksti i grafikut ----
         let entryPx: number | undefined;
