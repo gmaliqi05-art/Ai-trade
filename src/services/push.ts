@@ -5,7 +5,7 @@
 import { supabase } from '../lib/supabase';
 
 export const VAPID_PUBLIC_KEY =
-  'BLJE4paBZxIiNs3iMIDvUSE4kHH-LgFN9ltxfDOO-1RnvAb_sf_am_UWjUE7n7pyYj4O0wJZsry3MJ-Y-MH88-w';
+  'BNI4ADV2fLYvVeuThu0yCGMNcAj6NEmp1CLAMjiDRKcOSFOS6ooyItBGboYWRklVSRFbZAC18yj0eKGZ7UFxOF4';
 
 /** A i mbështet shfletuesi njoftimet push (service worker + PushManager + Notification)? */
 export function isPushSupported(): boolean {
