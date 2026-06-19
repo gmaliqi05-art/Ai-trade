@@ -25,12 +25,12 @@ async function claude(db: ReturnType<typeof createClient>, sys: string, user: st
   const { data: prov } = await db.from("ai_providers").select("api_key_encrypted, model").eq("slug", "anthropic").eq("is_active", true).maybeSingle();
   const key = (prov as { api_key_encrypted?: string } | null)?.api_key_encrypted;
   if (!key) return { error: "Pa çelës Claude të konfiguruar." };
-  const model = (prov as { model?: string }).model || "claude-opus-4-8";
+  const model = (prov as { model?: string }).model || "claude-sonnet-4-6";
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
       body: JSON.stringify({ model, max_tokens: maxTokens, system: sys, messages: [{ role: "user", content: user }] }),
-      signal: AbortSignal.timeout(55000),
+      signal: AbortSignal.timeout(70000),
     });
     if (!resp.ok) return { error: `Claude error ${resp.status}` };
     const data = await resp.json();
