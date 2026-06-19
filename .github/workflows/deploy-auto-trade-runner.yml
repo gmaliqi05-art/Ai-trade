@@ -43,3 +43,8 @@ jobs:
         run: supabase functions deploy expert-room --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy mmti-shadow (verify_jwt=false — cron x-cron-secret)
+        run: supabase functions deploy mmti-shadow --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
