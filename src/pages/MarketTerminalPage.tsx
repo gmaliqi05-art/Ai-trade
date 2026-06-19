@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   Activity, RefreshCw, Loader2, TrendingUp, Zap, Brain,
   Wallet, AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
@@ -230,7 +230,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       }
     }
     if (out.length === 0) {
-      // Fallback: feed-i i motorit (qirinj realë për ari/crypto).
+      // MT5 i konfiguruar por leximi i qirinjve dështoi/erdhi bosh (kalimtar) → RUAJ qirinjtë e fundit
+      // dhe mos kalo te feed-i PAXG/treg (që ka SHKALLË tjetër çmimi → shkakton mospërputhje me pozicionet).
+      // Feed-i rezervë përdoret VETËM kur MT5 s'është konfiguruar fare.
+      if (metaConfigured) return;
       const px = assets.find(a => a.symbol === selected)?.current_price || 0;
       try {
         const res = await fetchCandles({ symbol: selected, currentPrice: px, timeframe: tf as Timeframe, limit: 300 });
@@ -269,7 +272,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       } catch { /* mban të fundit */ }
     };
     tick();
-    const id = setInterval(tick, 2000);
+    const id = setInterval(tick, 1000);
     return () => { alive = false; clearInterval(id); };
   }, [metaConfigured, selected]);
 
@@ -280,10 +283,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     return () => clearInterval(id);
   }, [fetchBase, fetchMeta]);
 
-  // Poll i veçantë e i shpejtë i pozicioneve (çdo 3s) → P&L live ndjek tregun nga afër.
+  // Poll i veçantë e i shpejtë i pozicioneve (çdo 2s) → P&L live ndjek tregun nga afër.
   useEffect(() => {
     if (!metaConfigured) return;
-    const id = setInterval(fetchPositions, 3000);
+    const id = setInterval(fetchPositions, 2000);
     return () => clearInterval(id);
   }, [metaConfigured, fetchPositions]);
 
@@ -419,6 +422,21 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const lastClose = candles.length ? candles[candles.length - 1].close : null;
   // Çmimi mesatar LIVE i broker-it (bid/ask, çdo 2s) për vijën "Tani". Rezervë: mbyllja e qiririt (5s) ose spot-i.
   const brokerMid = brokerPx ? (brokerPx.bid + brokerPx.ask) / 2 : null;
+  // SINKRONIZIM REAL-TIME: "ngjit" çmimin LIVE të broker-it te qiriri i fundit, që trupi i grafikut të
+  // tregojë GJITHMONË të njëjtin çmim si vija "Tani" dhe si kolona e pozicioneve (pa mospërputhje).
+  // Qiriri i fundit ndjek broker-in çdo 1s; kur vjen qiri i ri nga MT5 (5s), ngjitja ri-aplikohet.
+  const displayCandles = useMemo<ChartCandle[]>(() => {
+    if (brokerMid == null || candles.length === 0) return candles;
+    const out = candles.slice();
+    const last = out[out.length - 1];
+    out[out.length - 1] = {
+      ...last,
+      close: brokerMid,
+      high: Math.max(last.high, brokerMid),
+      low: Math.min(last.low, brokerMid),
+    };
+    return out;
+  }, [candles, brokerMid]);
   const livePrice = (() => {
     if (brokerMid != null) return brokerMid; // çmimi REAL i broker-it, real-time
     const a = assets.find(x => symMatch(selected, x.symbol));
@@ -609,7 +627,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           )}
           <span className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${brokerPx ? 'bg-green-400 mt-pulse' : 'bg-gray-600'}`} />
-            <span className={brokerPx ? 'text-green-400 font-semibold' : 'text-gray-500'}>{brokerPx ? t('LIVE · 2s') : t('jo live')}</span>
+            <span className={brokerPx ? 'text-green-400 font-semibold' : 'text-gray-500'}>{brokerPx ? t('LIVE · 1s') : t('jo live')}</span>
           </span>
         </div>
       </div>
@@ -635,7 +653,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               {candles.length === 0 ? (
                 <div className="h-[460px] flex items-center justify-center text-gray-600 text-sm">{t('Po ngarkohet grafiku…')}</div>
               ) : (
-                <Mt5Chart candles={candles} lines={chartLines} height={460} fitKey={`${selected}_${tf}`} />
+                <Mt5Chart candles={displayCandles} lines={chartLines} height={460} fitKey={`${selected}_${tf}`} />
               )}
             </div>
             {posForSymbol && (
