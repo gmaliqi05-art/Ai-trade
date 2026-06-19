@@ -147,9 +147,10 @@ export default function Mt5Chart({ candles, lines = [], height = 380, fitKey }: 
       return { el, price: l.price };
     });
 
-    // Ruaj çmimet dhe forco rillogaritjen e shkallës që linjat të jenë brenda pamjes.
+    // Ruaj çmimet e linjave për autoscaleInfoProvider (i mban Hyrje/SL/TP brenda pamjes DERISA
+    // shkalla është në auto). NUK e rifoçojmë autoScale=true këtu: kjo do ta anulonte zoom-in
+    // manual të përdoruesit në çdo përditësim çmimi (≈200ms me streaming) → grafiku "kërcen" mbrapsht.
     linePricesRef.current = valid.map(l => l.price);
-    chartRef.current?.priceScale('right').applyOptions({ autoScale: true });
   }, [lines]);
 
   return (

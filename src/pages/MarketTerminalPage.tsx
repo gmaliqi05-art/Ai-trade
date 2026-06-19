@@ -106,6 +106,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [streamCfg, setStreamCfg] = useState<{ token: string; accountId: string; region: string } | null>(null);
   const stream = useMetaStream();
   const streamLive = stream.status === 'live';
+  // "I shëndetshëm" = i lidhur DHE po jep tick-e të freskëta (< 6s). Vetëm atëherë e fikim REST-in;
+  // nëse lidhet por s'jep çmim (p.sh. emër simboli ende pa u zgjidhur), REST rikthehet vetvetiu.
+  const streamHealthy = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 6000);
   // Tregu konsiderohet HAPUR nëse marrim tick-e reale nga brokeri (< 90s) — sinjal autentik,
   // pa orare të koduara fort. Kështu ke qasje 24h kur brokeri kuoton, si roboti.
   const marketOpenLive = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 90000);
@@ -282,9 +285,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   // Ushqe çmimin nga streaming-u te e njëjta gjendje brokerPx/pxAt që përdor UI-ja (≈200ms, i shtyrë).
   useEffect(() => {
-    if (!streamLive) return;
+    if (!streamHealthy) return;
     const p = stream.prices[selected];
-    if (!p || !(p.bid > 0 && p.ask > 0)) { setPxClock(Date.now()); return; }
+    if (!p || !(p.bid > 0 && p.ask > 0)) return;
     const mid = (p.bid + p.ask) / 2;
     const prev = lastMidRef.current;
     if (prev != null && Math.abs(mid - prev) > 1e-9) setPxDir(mid > prev ? 'up' : 'down');
@@ -293,16 +296,16 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setPxAt(p.time || Date.now());
     setPxClock(Date.now());
     setPxTick(k => k + 1);
-  }, [streamLive, stream.updatedAt, selected]);
+  }, [streamHealthy, stream.updatedAt, selected]);
 
-  // Pozicionet nga streaming-u (real-time) → P&L pa polling kur lidhja direkte është gati.
+  // Pozicionet nga streaming-u (real-time) → P&L pa polling kur lidhja direkte jep tick-e.
   useEffect(() => {
-    if (streamLive) setPositions(stream.positions as unknown as OpenPosition[]);
-  }, [streamLive, stream.updatedAt]);
+    if (streamHealthy) setPositions(stream.positions as unknown as OpenPosition[]);
+  }, [streamHealthy, stream.updatedAt]);
 
-  // POLL REST i çmimit (rezervë): aktiv VETËM kur streaming-u s'është 'live'.
+  // POLL REST i çmimit (rezervë): aktiv kur streaming-u s'po jep tick-e të freskëta.
   useEffect(() => {
-    if (!metaConfigured || streamLive) { if (!metaConfigured) setBrokerPx(null); return; }
+    if (!metaConfigured || streamHealthy) { if (!metaConfigured) setBrokerPx(null); return; }
     let alive = true;
     setBrokerPx(null); setPxDir('flat'); lastMidRef.current = null; setPxAt(0);
     const tick = async () => {
@@ -325,7 +328,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     tick();
     const id = setInterval(tick, 1000);
     return () => { alive = false; clearInterval(id); };
-  }, [metaConfigured, selected, streamLive]);
+  }, [metaConfigured, selected, streamHealthy]);
 
   useEffect(() => {
     fetchBase();
@@ -334,12 +337,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     return () => clearInterval(id);
   }, [fetchBase, fetchMeta]);
 
-  // Poll REST i pozicioneve (rezervë): aktiv VETËM kur streaming-u s'është 'live'.
+  // Poll REST i pozicioneve (rezervë): aktiv kur streaming-u s'po jep tick-e të freskëta.
   useEffect(() => {
-    if (!metaConfigured || streamLive) return;
+    if (!metaConfigured || streamHealthy) return;
     const id = setInterval(fetchPositions, 2000);
     return () => clearInterval(id);
-  }, [metaConfigured, streamLive, fetchPositions]);
+  }, [metaConfigured, streamHealthy, fetchPositions]);
 
   const handleTrade = async () => {
     const vol = parseFloat(lot);
@@ -695,7 +698,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           <span className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${pxFresh ? 'bg-green-400 mt-pulse' : brokerPx ? 'bg-amber-500 mt-pulse' : 'bg-gray-600'}`} />
             <span className={pxFresh ? 'text-green-400 font-semibold' : brokerPx ? 'text-amber-400 font-semibold' : 'text-gray-500'}>
-              {pxFresh ? (streamLive ? t('LIDHJE DIREKTE ●') : t('LIVE · 1s')) : brokerPx ? t('VONESË — jo live, mos mbyll') : t('jo live')}
+              {pxFresh ? (streamHealthy ? t('LIDHJE DIREKTE ●') : t('LIVE · 1s')) : brokerPx ? t('VONESË — jo live, mos mbyll') : t('jo live')}
             </span>
             {stream.status === 'connecting' || stream.status === 'synchronizing'
               ? <span className="text-[10px] text-amber-400/80">{t('po lidhet direkt…')}</span>
