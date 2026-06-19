@@ -8,6 +8,8 @@ import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCirc
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
 import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, loadSymbolPrice, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
+import { metaStream } from '../services/metaStream';
+import { useMetaStream } from '../hooks/useMetaStream';
 
 export default function OpenPositionsPanel({ configured, section = 'both' }: { configured: boolean; section?: 'positions' | 'executions' | 'both' }) {
   const { t } = useI18n();
@@ -26,6 +28,9 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const [posErr, setPosErr] = useState(false);         // leximi i parë dështoi → trego gabim + Riprovo
   const PX_FRESH_MS = 5000;
   const pxFresh = pxAt > 0 && (pxClock - pxAt) < PX_FRESH_MS;
+  // Lidhja DIREKTE streaming (websocket) — burimi parësor real-time; REST mbetet vetëm rezervë.
+  const stream = useMetaStream();
+  const streamLive = stream.status === 'live';
 
   const showPositions = section === 'positions' || section === 'both';
   const showExecutions = section === 'executions' || section === 'both';
@@ -47,8 +52,28 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     if (user) setExecutions(await loadExecutions(user.id, 8));
   }, [user]);
 
+  // STREAMING: pozicionet + çmimet real-time nga websocket-i (pa polling) kur lidhja është 'live'.
   useEffect(() => {
-    if (!configured) return;
+    if (!streamLive || !showPositions) return;
+    setPositions(stream.positions as unknown as OpenPosition[]);
+    setPosLoaded(true); setPosErr(false);
+    const pm: Record<string, { bid: number; ask: number }> = {};
+    for (const [s, p] of Object.entries(stream.prices)) pm[s] = { bid: p.bid, ask: p.ask };
+    if (Object.keys(pm).length) setPxMap(prev => ({ ...prev, ...pm }));
+    if (stream.lastTickAt > 0) setPxAt(stream.lastTickAt);
+    setPxClock(Date.now());
+  }, [streamLive, showPositions, stream.updatedAt]);
+
+  // Abono te streaming-u çdo simbol që ka pozicion → marrim bid/ask real-time për P&L-në e tij.
+  const posSymKey0 = positions.map(p => p.symbol).filter(Boolean).sort().join(',');
+  useEffect(() => {
+    if (!streamLive) return;
+    for (const s of posSymKey0.split(',')) if (s) void metaStream.subscribeSymbol(s);
+  }, [streamLive, posSymKey0]);
+
+  // POLL REST (rezervë): aktiv VETËM kur streaming-u s'është 'live'.
+  useEffect(() => {
+    if (!configured || streamLive) return;
     if (showPositions) refreshPositions();
     if (showExecutions) refreshExecutions();
     // Pozicionet (P&L live nga MT5) çdo 2s; ekzekutimet (DB) më rrallë, çdo ~12s.
@@ -59,13 +84,21 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
       if (showExecutions && tick % 6 === 0) refreshExecutions();
     }, 2000);
     return () => clearInterval(id);
-  }, [configured, showPositions, showExecutions, refreshPositions, refreshExecutions]);
+  }, [configured, streamLive, showPositions, showExecutions, refreshPositions, refreshExecutions]);
+
+  // Ekzekutimet (nga DB) nuk vijnë nga streaming — lexoji periodikisht edhe kur streaming-u është live.
+  useEffect(() => {
+    if (!configured || !streamLive || !showExecutions) return;
+    refreshExecutions();
+    const id = setInterval(refreshExecutions, 12000);
+    return () => clearInterval(id);
+  }, [configured, streamLive, showExecutions, refreshExecutions]);
 
   // Çmimi LIVE i broker-it (bid/ask) për simbolet e pozicioneve — çdo 2s. Bën P&L-në real-time
   // (pozicionet nga MT5 lexohen çdo 4s; ky çmim e përditëson P&L mes leximeve që ekrani të mos vonohet).
   const posSymbolsKey = Array.from(new Set(positions.map((p) => p.symbol).filter(Boolean))).sort().join(',');
   useEffect(() => {
-    if (!configured || !showPositions || !posSymbolsKey) return;
+    if (!configured || streamLive || !showPositions || !posSymbolsKey) return;
     let alive = true;
     const syms = posSymbolsKey.split(',');
     const tick = async () => {
@@ -86,7 +119,7 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     tick();
     const id = setInterval(tick, 2000);
     return () => { alive = false; clearInterval(id); };
-  }, [configured, showPositions, posSymbolsKey]);
+  }, [configured, streamLive, showPositions, posSymbolsKey]);
 
   // P&L real-time: kalibron "euro për njësi çmimi" nga fitimi i SAKTË i broker-it (që përfshin
   // monedhën/spread/komisionin), pastaj e aplikon te çmimi LIVE (bid për BLEJ, ask për SHIT).
@@ -95,7 +128,9 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   // (s'shfaqet fitim i rremë nga çmim i ngrirë; numri përkon me mbylljen reale).
   const livePnl = (p: OpenPosition): number | null => {
     const px = pxMap[p.symbol];
-    if (!pxFresh || !px) return null;
+    if (!pxFresh) return null;                  // çmimi jo-live → mos shfaq numër (mos mashtro)
+    const brokerProfit0 = Number(p.profit ?? 0);
+    if (!px) return brokerProfit0;              // s'ka bid/ask por çmimi është live → fitimi real-time i broker-it
     const open = Number(p.openPrice), cur = Number(p.currentPrice);
     const brokerProfit = Number(p.profit ?? 0);
     const isBuy = (p.type || '').includes('BUY');
@@ -150,8 +185,8 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
           {t('Pozicionet e hapura (live nga MT5)')}
           <span className="bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-md text-xs font-semibold">{positions.length}</span>
           {pxFresh ? (
-            <span className="flex items-center gap-1 text-[10px] text-green-400" title={t('Çmimi live nga MT5 — rifreskohet çdo 2 sekonda; mbyllja bëhet me çmimin real të tregut')}>
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />{t('live · 2s')}
+            <span className="flex items-center gap-1 text-[10px] text-green-400" title={t('Çmimi live direkt nga MT5; mbyllja bëhet me çmimin real të tregut')}>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />{streamLive ? t('DIREKT ●') : t('live · 2s')}
             </span>
           ) : (
             <span className="flex items-center gap-1 text-[10px] text-amber-400" title={t('Çmimi NUK është live — mos mbyll në vlerën e shfaqur derisa të kthehet "live"')}>
