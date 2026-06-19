@@ -4,10 +4,10 @@
 //  - "executions" → vetëm ekzekutimet e fundit
 //  - "both" (default) → të dyja bashkë
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Clock, Pencil, ShieldCheck } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
-import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, loadSymbolPrice, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
+import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, loadSymbolPrice, modifyPosition, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
 
@@ -20,6 +20,11 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const [executions, setExecutions] = useState<TradeExecution[]>([]);
   const [posLoading, setPosLoading] = useState(false);
   const [closingId, setClosingId] = useState<string | null>(null);
+  // Redaktimi i SL/TP për një pozicion të hapur (si te MetaTrader — vendos/ndrysho gjatë trade-it).
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editSl, setEditSl] = useState('');
+  const [editTp, setEditTp] = useState('');
+  const [modBusy, setModBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   // Çmimi LIVE i broker-it (bid/ask) për simbolet e pozicioneve — për P&L real-time.
   const [pxMap, setPxMap] = useState<Record<string, { bid: number; ask: number }>>({});
@@ -163,6 +168,28 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     setClosingId(null);
   };
 
+  // Hap redaktorin e SL/TP për një pozicion (parambush vlerat aktuale).
+  const openEdit = (p: OpenPosition) => {
+    if (editId === p.id) { setEditId(null); return; } // toggle
+    setEditId(p.id);
+    setEditSl(p.stopLoss ? String(p.stopLoss) : '');
+    setEditTp(p.takeProfit ? String(p.takeProfit) : '');
+    setMsg(null);
+  };
+
+  // Ruan SL/TP në MT5 për pozicionin e hapur (vendos i ri ose ndryshon ekzistuesin).
+  const saveSlTp = async (p: OpenPosition) => {
+    const sl = editSl.trim() ? parseFloat(editSl) : undefined;
+    const tp = editTp.trim() ? parseFloat(editTp) : undefined;
+    if (editSl.trim() && (isNaN(sl as number) || (sl as number) <= 0)) { setMsg({ type: 'error', text: t('SL i pavlefshëm.') }); return; }
+    if (editTp.trim() && (isNaN(tp as number) || (tp as number) <= 0)) { setMsg({ type: 'error', text: t('TP i pavlefshëm.') }); return; }
+    setModBusy(true); setMsg(null);
+    const r = await modifyPosition(p.id, sl, tp);
+    if (r.error) setMsg({ type: 'error', text: r.message || t('Përditësimi i SL/TP dështoi.') });
+    else { setMsg({ type: 'success', text: t('SL/TP u ruajtën në MT5.') }); setEditId(null); await refreshPositions(); }
+    setModBusy(false);
+  };
+
   const handleCancel = async (orderId: string) => {
     setClosingId(orderId); setMsg(null);
     const r = await cancelOrder(orderId);
@@ -235,30 +262,75 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
           {positions.map((p) => {
             const isBuy = (p.type || '').includes('BUY');
             const profit = livePnl(p);
+            const noProtection = !p.stopLoss || !p.takeProfit;
             return (
-              <div key={p.id} className="flex items-center justify-between text-xs bg-gray-800/40 rounded-lg px-3 py-2">
-                <span className="flex items-center gap-2">
-                  {isBuy ? <TrendingUp className="w-3.5 h-3.5 text-green-400" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
-                  <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
-                  <span className="text-white">{p.symbol}</span>
-                  <span className="text-gray-300">{p.volume} {t('lot')}</span>
-                  {p.openPrice != null && <span className="text-gray-400">@ {p.openPrice}</span>}
-                </span>
-                <span className="flex items-center gap-3">
-                  {profit == null ? (
-                    <span className="flex items-center gap-1 text-gray-500 font-semibold" title={t('Çmimi NUK është live — mos u beso kësaj vlere')}>
-                      <Clock className="w-3 h-3" />{t('jo-live')}
-                    </span>
-                  ) : (
-                    <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {profit >= 0 ? '+' : ''}{profit.toFixed(2)}
-                    </span>
-                  )}
-                  <button onClick={() => handleClose(p.id)} disabled={closingId === p.id}
-                    className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg font-medium transition-all disabled:opacity-50">
-                    {closingId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}{t('Mbyll')}
+              <div key={p.id} className="bg-gray-800/40 rounded-lg">
+                <div className="flex items-center justify-between text-xs px-3 py-2 gap-2">
+                  <span className="flex items-center gap-2 min-w-0 flex-wrap">
+                    {isBuy ? <TrendingUp className="w-3.5 h-3.5 text-green-400 shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                    <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
+                    <span className="text-white">{p.symbol}</span>
+                    <span className="text-gray-300">{p.volume} {t('lot')}</span>
+                    {p.openPrice != null && <span className="text-gray-400">@ {p.openPrice}</span>}
+                    {p.stopLoss != null && <span className="text-red-300/80">SL {p.stopLoss}</span>}
+                    {p.takeProfit != null && <span className="text-green-300/80">TP {p.takeProfit}</span>}
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    {profit == null ? (
+                      <span className="flex items-center gap-1 text-gray-500 font-semibold" title={t('Çmimi NUK është live — mos u beso kësaj vlere')}>
+                        <Clock className="w-3 h-3" />{t('jo-live')}
+                      </span>
+                    ) : (
+                      <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {profit >= 0 ? '+' : ''}{profit.toFixed(2)}
+                      </span>
+                    )}
+                    <button onClick={() => openEdit(p)}
+                      className={`flex items-center gap-1 border px-2 py-1 rounded-lg font-medium transition-all ${editId === p.id ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-gray-700/50 hover:bg-gray-700 text-gray-200 border-gray-600'}`}
+                      title={t('Vendos ose ndrysho SL & TP')}>
+                      <Pencil className="w-3 h-3" />SL/TP
+                    </button>
+                    <button onClick={() => handleClose(p.id)} disabled={closingId === p.id}
+                      className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg font-medium transition-all disabled:opacity-50">
+                      {closingId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}{t('Mbyll')}
+                    </button>
+                  </span>
+                </div>
+
+                {/* Paralajmërim: pozicion pa mbrojtje — kliko për t'i vendosur SL/TP gjatë trade-it. */}
+                {noProtection && editId !== p.id && (
+                  <button onClick={() => openEdit(p)} className="w-full text-left px-3 pb-2 -mt-0.5 text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {!p.stopLoss && !p.takeProfit ? t('Pa SL dhe TP — kliko për t\'i vendosur (mbrojtje nga humbja).') : !p.stopLoss ? t('Pa SL — kliko për ta vendosur.') : t('Pa TP — kliko për ta vendosur.')}
                   </button>
-                </span>
+                )}
+
+                {/* Redaktori inline i SL/TP (si te MetaTrader). */}
+                {editId === p.id && (
+                  <div className="px-3 pb-3 pt-2 border-t border-gray-700/50 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="text-[10px] text-red-300 font-semibold">Stop Loss (SL)</span>
+                        <input type="number" step="0.01" inputMode="decimal" value={editSl} onChange={e => setEditSl(e.target.value)} placeholder={t('pa SL')}
+                          className="mt-0.5 w-full bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:border-red-500/50 outline-none" />
+                      </label>
+                      <label className="block">
+                        <span className="text-[10px] text-green-300 font-semibold">Take Profit (TP)</span>
+                        <input type="number" step="0.01" inputMode="decimal" value={editTp} onChange={e => setEditTp(e.target.value)} placeholder={t('pa TP')}
+                          className="mt-0.5 w-full bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:border-green-500/50 outline-none" />
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => saveSlTp(p)} disabled={modBusy}
+                        className="flex items-center gap-1 bg-amber-500 hover:bg-amber-400 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
+                        {modBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}{t('Ruaj SL/TP në MT5')}
+                      </button>
+                      <button onClick={() => setEditId(null)} disabled={modBusy}
+                        className="text-gray-400 hover:text-white px-2 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50">{t('Anulo')}</button>
+                    </div>
+                    <p className="text-[10px] text-gray-500">{t('Lëre bosh një fushë për të mos e vendosur atë. SL/TP modifikohen edhe kur tregu është i mbyllur.')}</p>
+                  </div>
+                )}
               </div>
             );
           })}
