@@ -171,8 +171,9 @@ async function synthesize(db: ReturnType<typeof createClient>): Promise<Record<s
   const doctrines = profs.map((p) => ({ name: p.name, doctrine: p.doctrine ? { principles: ((p.doctrine.principles as string[]) || []).slice(0, 5), applies_to_bot: ((p.doctrine.applies_to_bot as string[]) || []).slice(0, 4) } : null }));
   const sys = "Je kryeanalisti i një dhome ekspertësh tregtimi. Nga DOKTRINAT e anëtarëve + ANALIZAT e grupeve të trade-ve reale, " +
     "ndërto SUPER INFORMATORIN: bazën e dijes së konsoliduar për robotin (ar, trend-following, scalp+swing). " +
-    "Përgjigju VETËM me JSON në SHQIP: {\"core_rules\":[\"rregull thelbësor i konsoliduar\"],\"trading_models\":[{\"name\":\"...\",\"desc\":\"...\",\"conditions\":[\"...\"]}],\"do\":[\"...\"],\"dont\":[\"...\"],\"robot_mapping\":[{\"param\":\"p.sh. min ADX\",\"suggestion\":\"...\",\"basis\":\"nga cili ekspert/analizë\"}],\"readiness\":{\"score\":0-100,\"missing\":[\"çfarë duhet ende para se të mendohet aktivizimi\"]},\"caution\":\"...\"}";
-  const res = await claude(db, sys, JSON.stringify({ doctrines, analyses }), 4500);
+    "JI KONCIZ dhe i shkurtër: MAX 6 core_rules, MAX 3 trading_models, MAX 5 do, MAX 5 dont, MAX 6 robot_mapping; çdo tekst ≤140 karaktere. " +
+    "Përgjigju VETËM me JSON të VLEFSHËM e të PLOTË (mos e ndërpre) në SHQIP: {\"core_rules\":[\"rregull thelbësor i konsoliduar\"],\"trading_models\":[{\"name\":\"...\",\"desc\":\"...\",\"conditions\":[\"...\"]}],\"do\":[\"...\"],\"dont\":[\"...\"],\"robot_mapping\":[{\"param\":\"p.sh. min ADX\",\"suggestion\":\"...\",\"basis\":\"nga cili ekspert/analizë\"}],\"readiness\":{\"score\":0-100,\"missing\":[\"çfarë duhet ende para se të mendohet aktivizimi\"]},\"caution\":\"...\"}";
+  const res = await claude(db, sys, JSON.stringify({ doctrines, analyses }), 6000);
   if (!(res as { error?: string }).error) await db.from("expert_knowledge").insert({ kind: "synthesis", payload: res });
   return res as Record<string, unknown>;
 }
