@@ -17,6 +17,8 @@ import {
   type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
+import { metaStream } from '../services/metaStream';
+import { useMetaStream } from '../hooks/useMetaStream';
 import { groupDeals, attachSource, exitKind, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
@@ -100,6 +102,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [allowedSymbols, setAllowedSymbols] = useState<string[]>(['XAUUSD']);
 
   const [metaConfigured, setMetaConfigured] = useState(false);
+  // Lidhja DIREKTE streaming (websocket) — kredencialet për ta nisur + snapshot-i live.
+  const [streamCfg, setStreamCfg] = useState<{ token: string; accountId: string; region: string } | null>(null);
+  const stream = useMetaStream();
+  const streamLive = stream.status === 'live';
+  // Tregu konsiderohet HAPUR nëse marrim tick-e reale nga brokeri (< 90s) — sinjal autentik,
+  // pa orare të koduara fort. Kështu ke qasje 24h kur brokeri kuoton, si roboti.
+  const marketOpenLive = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 90000);
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [history, setHistory] = useState<ClosedTrade[]>([]);
@@ -183,6 +192,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const configured = !!(cfg.account_id && cfg.token);
     setMetaConfigured(configured);
     setMtMode(cfg.mode);
+    // Ushqe lidhjen direkte streaming (vetëm kur ndryshojnë kredencialet → shmang rinisjet e kota).
+    if (configured) {
+      setStreamCfg(prev => (prev && prev.token === cfg!.token && prev.accountId === cfg!.account_id && prev.region === cfg!.region)
+        ? prev : { token: cfg!.token, accountId: cfg!.account_id, region: cfg!.region });
+    } else setStreamCfg(null);
     // Lista e simboleve për tab-et — Ari gjithmonë + ato që ka aktivizuar përdoruesi te Cilësimet.
     setAllowedSymbols(['XAUUSD', ...(cfg.auto_symbols || '').split(',').map(s => s.trim().toUpperCase()).filter(s => s && s !== 'XAUUSD')]);
     if (configured) {
@@ -254,8 +268,41 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   // Çmimi LIVE i broker-it (bid/ask) për simbolin e zgjedhur — çdo 2s. Bën vijën "Tani" dhe
   // P&L-në në grafik real-time (përkon me mbylljen e broker-it), pa pritur leximin 3s të pozicioneve.
+  // Lidhja DIREKTE streaming: nis kur ka kredenciale; mbyll websocket-in në dalje nga faqja.
   useEffect(() => {
-    if (!metaConfigured) { setBrokerPx(null); return; }
+    if (!streamCfg) return;
+    metaStream.start(streamCfg.token, streamCfg.accountId, streamCfg.region);
+    return () => { void metaStream.stop(); };
+  }, [streamCfg]);
+
+  // Abono simbolin e zgjedhur te streaming-u (quotes + candles 1m) sapo lidhja është gati.
+  useEffect(() => {
+    if (streamCfg && selected) void metaStream.subscribeSymbol(selected);
+  }, [streamCfg, selected, stream.status]);
+
+  // Ushqe çmimin nga streaming-u te e njëjta gjendje brokerPx/pxAt që përdor UI-ja (≈200ms, i shtyrë).
+  useEffect(() => {
+    if (!streamLive) return;
+    const p = stream.prices[selected];
+    if (!p || !(p.bid > 0 && p.ask > 0)) { setPxClock(Date.now()); return; }
+    const mid = (p.bid + p.ask) / 2;
+    const prev = lastMidRef.current;
+    if (prev != null && Math.abs(mid - prev) > 1e-9) setPxDir(mid > prev ? 'up' : 'down');
+    lastMidRef.current = mid;
+    setBrokerPx({ bid: p.bid, ask: p.ask });
+    setPxAt(p.time || Date.now());
+    setPxClock(Date.now());
+    setPxTick(k => k + 1);
+  }, [streamLive, stream.updatedAt, selected]);
+
+  // Pozicionet nga streaming-u (real-time) → P&L pa polling kur lidhja direkte është gati.
+  useEffect(() => {
+    if (streamLive) setPositions(stream.positions as unknown as OpenPosition[]);
+  }, [streamLive, stream.updatedAt]);
+
+  // POLL REST i çmimit (rezervë): aktiv VETËM kur streaming-u s'është 'live'.
+  useEffect(() => {
+    if (!metaConfigured || streamLive) { if (!metaConfigured) setBrokerPx(null); return; }
     let alive = true;
     setBrokerPx(null); setPxDir('flat'); lastMidRef.current = null; setPxAt(0);
     const tick = async () => {
@@ -278,7 +325,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     tick();
     const id = setInterval(tick, 1000);
     return () => { alive = false; clearInterval(id); };
-  }, [metaConfigured, selected]);
+  }, [metaConfigured, selected, streamLive]);
 
   useEffect(() => {
     fetchBase();
@@ -287,12 +334,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     return () => clearInterval(id);
   }, [fetchBase, fetchMeta]);
 
-  // Poll i veçantë e i shpejtë i pozicioneve (çdo 2s) → P&L live ndjek tregun nga afër.
+  // Poll REST i pozicioneve (rezervë): aktiv VETËM kur streaming-u s'është 'live'.
   useEffect(() => {
-    if (!metaConfigured) return;
+    if (!metaConfigured || streamLive) return;
     const id = setInterval(fetchPositions, 2000);
     return () => clearInterval(id);
-  }, [metaConfigured, fetchPositions]);
+  }, [metaConfigured, streamLive, fetchPositions]);
 
   const handleTrade = async () => {
     const vol = parseFloat(lot);
@@ -584,14 +631,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       )}
 
       {/* PARA-HAPJEJE — tregu i mbyllur: numëruesi + porositë në radhë/pending që hyjnë në hapje */}
-      {(!isMktOpen(new Date(nowTs)) || preOpenOrders.length > 0) && (
+      {((!isMktOpen(new Date(nowTs)) && !marketOpenLive) || preOpenOrders.length > 0) && (
         <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-gray-900 p-4 space-y-3">
           <div className="flex items-center gap-2.5">
             <Clock className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
-              <div className="text-white font-bold text-sm">{isMktOpen(new Date(nowTs)) ? t('Tregu u hap — porositë po dërgohen') : t('Tregu i mbyllur — modë para-hapjeje')}</div>
+              <div className="text-white font-bold text-sm">{(isMktOpen(new Date(nowTs)) || marketOpenLive) ? t('Tregu u hap — porositë po dërgohen') : t('Tregu i mbyllur — modë para-hapjeje')}</div>
               <div className="text-gray-400 text-[11px]">
-                {isMktOpen(new Date(nowTs))
+                {(isMktOpen(new Date(nowTs)) || marketOpenLive)
                   ? t('Porositë e radhës hyjnë automatikisht brenda pak çastesh.')
                   : <>{t('Hapet pas')} <span className="text-amber-400 font-semibold">{fmtCountdown(msToOpen(new Date(nowTs)))}</span> · {t('porosia që vendos tani rri në pritje dhe hyn automatikisht në hapje.')}</>}
               </div>
@@ -648,8 +695,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           <span className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${pxFresh ? 'bg-green-400 mt-pulse' : brokerPx ? 'bg-amber-500 mt-pulse' : 'bg-gray-600'}`} />
             <span className={pxFresh ? 'text-green-400 font-semibold' : brokerPx ? 'text-amber-400 font-semibold' : 'text-gray-500'}>
-              {pxFresh ? t('LIVE · 1s') : brokerPx ? t('VONESË — jo live, mos mbyll') : t('jo live')}
+              {pxFresh ? (streamLive ? t('LIDHJE DIREKTE ●') : t('LIVE · 1s')) : brokerPx ? t('VONESË — jo live, mos mbyll') : t('jo live')}
             </span>
+            {stream.status === 'connecting' || stream.status === 'synchronizing'
+              ? <span className="text-[10px] text-amber-400/80">{t('po lidhet direkt…')}</span>
+              : stream.status === 'reconnecting'
+              ? <span className="text-[10px] text-amber-400/80">{t('po rilidhet…')}</span>
+              : null}
           </span>
         </div>
       </div>
