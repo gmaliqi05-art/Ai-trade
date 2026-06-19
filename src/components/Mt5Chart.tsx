@@ -20,12 +20,29 @@ export interface PriceLineDef {
   title: string;
 }
 
-export default function Mt5Chart({ candles, lines = [], height = 380, fitKey }: {
+/** Pozicioni i hapur që mund t'i tërhiqen SL/TP-të direkt mbi grafik (si te MetaTrader 5). */
+export interface EditableSlTp {
+  positionId: string;
+  entry: number;
+  sl: number | null;
+  tp: number | null;
+  isBuy: boolean;
+  defStop?: number; // hapësira default ($) e SL kur s'është vendosur (pikënisje për tërheqje)
+  defTake?: number; // hapësira default ($) e TP kur s'është vendosur
+}
+
+export default function Mt5Chart({ candles, lines = [], height = 380, fitKey, editable = null, onDragSlTp, onCommitSlTp }: {
   candles: ChartCandle[];
   lines?: PriceLineDef[];
   height?: number;
   /** Kur ndryshon (p.sh. simboli ose periudha), grafiku ri-përshtatet; përndryshe ruan zoom-in manual. */
   fitKey?: string;
+  /** Pozicioni i përzgjedhur me SL/TP të tërheqshëm mbi grafik. */
+  editable?: EditableSlTp | null;
+  /** Thirret gjatë tërheqjes (live) me vlerat e reja SL/TP. */
+  onDragSlTp?: (next: { sl: number | null; tp: number | null }) => void;
+  /** Thirret kur lëshohet tërheqja (commit) — vetëm nëse vlera ndryshoi. */
+  onCommitSlTp?: (next: { sl: number | null; tp: number | null }) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null); // etiketat e majta (overlay HTML)
@@ -36,6 +53,64 @@ export default function Mt5Chart({ candles, lines = [], height = 380, fitKey }: 
   const lastFitRef = useRef<string | null>(null); // fitKey-i i fundit për të cilin u ri-përshtat
   const labelEls = useRef<{ el: HTMLDivElement; price: number }[]>([]); // etiketat aktive + çmimi i tyre
   const rafRef = useRef<number | null>(null);
+
+  // --- Tërheqja e SL/TP mbi grafik (si MetaTrader 5) ---
+  const editRef = useRef<EditableSlTp | null>(null);   // pozicioni aktual i editueshëm
+  const slRef = useRef<number | null>(null);           // draft SL (null = pa SL)
+  const tpRef = useRef<number | null>(null);           // draft TP
+  const slElRef = useRef<HTMLDivElement | null>(null); // doreza/linja e SL
+  const tpElRef = useRef<HTMLDivElement | null>(null); // doreza/linja e TP
+  const draggingRef = useRef<'sl' | 'tp' | null>(null);
+  const movedRef = useRef(false);
+  const dragCbRef = useRef(onDragSlTp);
+  const commitCbRef = useRef(onCommitSlTp);
+  useEffect(() => { dragCbRef.current = onDragSlTp; commitCbRef.current = onCommitSlTp; });
+
+  // Sinkronizo draft-in kur ndryshon pozicioni i editueshëm (jashtë tërheqjes).
+  useEffect(() => {
+    editRef.current = editable;
+    if (draggingRef.current == null) {
+      slRef.current = editable?.sl ?? null;
+      tpRef.current = editable?.tp ?? null;
+    }
+  }, [editable?.positionId, editable?.sl, editable?.tp, editable?.isBuy, editable?.entry]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const defStop = () => { const e = editRef.current; if (!e) return null; return e.isBuy ? e.entry - (e.defStop ?? 3) : e.entry + (e.defStop ?? 3); };
+  const defTake = () => { const e = editRef.current; if (!e) return null; return e.isBuy ? e.entry + (e.defTake ?? 6) : e.entry - (e.defTake ?? 6); };
+
+  const onDragMove = useRef((ev: PointerEvent) => {
+    const which = draggingRef.current; const s = seriesRef.current; const cont = containerRef.current;
+    if (!which || !s || !cont) return;
+    ev.preventDefault();
+    const rect = cont.getBoundingClientRect();
+    const price = s.coordinateToPrice(ev.clientY - rect.top);
+    if (price == null) return;
+    const p = Math.max(0, Number(price));
+    if (which === 'sl') slRef.current = p; else tpRef.current = p;
+    movedRef.current = true;
+    dragCbRef.current?.({ sl: slRef.current, tp: tpRef.current });
+  }).current;
+
+  const onDragUp = useRef((ev: PointerEvent) => {
+    if (!draggingRef.current) return;
+    ev.preventDefault();
+    draggingRef.current = null;
+    window.removeEventListener('pointermove', onDragMove);
+    window.removeEventListener('pointerup', onDragUp);
+    window.removeEventListener('pointercancel', onDragUp);
+    if (movedRef.current) commitCbRef.current?.({ sl: slRef.current, tp: tpRef.current });
+  }).current;
+
+  const startDrag = (which: 'sl' | 'tp') => (ev: React.PointerEvent) => {
+    if (!editRef.current) return;
+    ev.preventDefault(); ev.stopPropagation();
+    if (which === 'sl' && slRef.current == null) slRef.current = defStop();
+    if (which === 'tp' && tpRef.current == null) tpRef.current = defTake();
+    draggingRef.current = which; movedRef.current = false;
+    window.addEventListener('pointermove', onDragMove, { passive: false });
+    window.addEventListener('pointerup', onDragUp, { passive: false });
+    window.addEventListener('pointercancel', onDragUp, { passive: false });
+  };
 
   // Krijo grafikun një herë.
   useEffect(() => {
@@ -56,7 +131,7 @@ export default function Mt5Chart({ candles, lines = [], height = 380, fitKey }: 
       wickUpColor: '#22c55e', wickDownColor: '#ef4444',
       // Shtri auto-scale-in që linjat Hyrje/SL/TP të jenë GJITHMONË brenda pamjes
       // (me pak hapësirë sipër/poshtë) — që mos të dalin jashtë gjatë lëvizjes së çmimit.
-      autoscaleInfoProvider: (original) => {
+      autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
         const res = original();
         const prices = linePricesRef.current;
         if (!res || prices.length === 0) return res;
@@ -82,6 +157,19 @@ export default function Mt5Chart({ candles, lines = [], height = 380, fitKey }: 
           if (y == null) { el.style.display = 'none'; }
           else { el.style.display = ''; el.style.top = `${y}px`; }
         }
+        // Doreza të tërheqshme SL/TP (si MetaTrader). Vlera aktive = draft; përndryshe vendi default.
+        const e = editRef.current;
+        const place = (el: HTMLDivElement | null, price: number | null, active: boolean) => {
+          if (!el) return;
+          if (!e || price == null) { el.style.display = 'none'; return; }
+          const y = s.priceToCoordinate(price);
+          if (y == null) { el.style.display = 'none'; return; }
+          el.style.display = ''; el.style.top = `${y}px`; el.style.opacity = active ? '1' : '0.45';
+          const lab = el.querySelector('[data-px]') as HTMLElement | null;
+          if (lab) lab.textContent = price.toFixed(2);
+        };
+        place(slElRef.current, slRef.current ?? defStop(), slRef.current != null);
+        place(tpElRef.current, tpRef.current ?? defTake(), tpRef.current != null);
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -157,6 +245,28 @@ export default function Mt5Chart({ candles, lines = [], height = 380, fitKey }: 
     <div ref={containerRef} style={{ height, position: 'relative' }} className="w-full">
       {/* Overlay i etiketave të majta — nuk kap klikime, rri sipër grafikut. */}
       <div ref={overlayRef} className="absolute inset-0 z-10" style={{ pointerEvents: 'none' }} />
+
+      {/* Doreza të tërheqshme SL/TP (si MetaTrader 5): tërhiqe pilulën lart-poshtë për ta vendosur. */}
+      {editable && (
+        <>
+          <div ref={slElRef} onPointerDown={startDrag('sl')}
+            className="absolute left-0 right-0 z-20 flex items-center select-none"
+            style={{ height: '22px', display: 'none', transform: 'translateY(-50%)', touchAction: 'none', cursor: 'ns-resize', pointerEvents: 'auto' }}>
+            <div className="w-full" style={{ height: '2px', background: '#ef4444' }} />
+            <div className="absolute right-1 flex items-center gap-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-md">
+              SL <span data-px>—</span>
+            </div>
+          </div>
+          <div ref={tpElRef} onPointerDown={startDrag('tp')}
+            className="absolute left-0 right-0 z-20 flex items-center select-none"
+            style={{ height: '22px', display: 'none', transform: 'translateY(-50%)', touchAction: 'none', cursor: 'ns-resize', pointerEvents: 'auto' }}>
+            <div className="w-full" style={{ height: '2px', background: '#22c55e' }} />
+            <div className="absolute right-1 flex items-center gap-1 bg-green-500 text-gray-900 text-[10px] font-bold px-1.5 py-0.5 rounded shadow-md">
+              TP <span data-px>—</span>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

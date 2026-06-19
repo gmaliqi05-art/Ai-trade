@@ -7,7 +7,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ClientPage } from '../App';
-import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
+import Mt5Chart, { type ChartCandle, type PriceLineDef, type EditableSlTp } from '../components/Mt5Chart';
 import OpenPositionsPanel from '../components/OpenPositionsPanel';
 import CompletedSignals from '../components/CompletedSignals';
 import {
@@ -537,16 +537,29 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const totalLivePnl = (pxFresh && posnsForSymbol.length)
     ? posnsForSymbol.reduce((s, p) => s + (livePnlOf(p) ?? 0), 0) : null;
   const multiPos = posnsForSymbol.length > 1;
+  // Pozicioni i përzgjedhur me SL/TP të TËRHEQSHËM mbi grafik (si MetaTrader 5).
+  const editablePos: EditableSlTp | null = (posForSymbol && posForSymbol.openPrice)
+    ? {
+        positionId: posForSymbol.id,
+        entry: Number(posForSymbol.openPrice),
+        sl: posForSymbol.stopLoss != null ? Number(posForSymbol.stopLoss) : null,
+        tp: posForSymbol.takeProfit != null ? Number(posForSymbol.takeProfit) : null,
+        isBuy: (posForSymbol.type || '').includes('BUY'),
+        defStop: 3, defTake: 6,
+      }
+    : null;
   // Linjat: Hyrje/SL/TP për ÇDO pozicion të hapur (jo vetëm i pari) + linja "Tani" te çmimi aktual me P&L live.
+  // SL/TP të pozicionit të editueshëm NUK vizatohen këtu — i mbulon doreza e tërheqshme (që mos të dyfishohen).
   const chartLines: PriceLineDef[] = [
     ...posnsForSymbol.flatMap((p, i): PriceLineDef[] => {
       const isScalp = /SCALP/i.test(String(p.comment ?? '') + String(p.clientId ?? ''));
       const pnl = livePnlOf(p), risk = riskOf(p), reward = rewardOf(p);
       const tag = multiPos ? ` #${i + 1}` : '';
+      const draggable = editablePos?.positionId === p.id;
       return [
         ...(p.openPrice ? [{ price: p.openPrice, color: '#3b82f6', title: `${t('Hyrje')}${tag} · ${isScalp ? t('Afatshkurtër') : t('Afatgjatë')}${pnl != null ? ` · ${pnl >= 0 ? '+' : ''}${r2(pnl)} ${fcur}` : ''}` }] : []),
-        ...(p.stopLoss ? [{ price: p.stopLoss, color: '#ef4444', title: `SL${tag}${risk != null ? ` · -${r2(risk)} ${fcur}` : ''}` }] : []),
-        ...(p.takeProfit ? [{ price: p.takeProfit, color: '#22c55e', title: `TP${tag}${reward != null ? ` · +${r2(reward)} ${fcur}` : ''}` }] : []),
+        ...((p.stopLoss && !draggable) ? [{ price: p.stopLoss, color: '#ef4444', title: `SL${tag}${risk != null ? ` · -${r2(risk)} ${fcur}` : ''}` }] : []),
+        ...((p.takeProfit && !draggable) ? [{ price: p.takeProfit, color: '#22c55e', title: `TP${tag}${reward != null ? ` · +${r2(reward)} ${fcur}` : ''}` }] : []),
       ];
     }),
     ...((livePrice != null && posnsForSymbol.length)
@@ -572,6 +585,20 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       slInput ? parseFloat(slInput) : undefined,
       tpInput ? parseFloat(tpInput) : undefined,
     );
+    if (r.error) setModifyMsg({ type: 'error', text: errText(t, r.error, r.message) });
+    else { setModifyMsg({ type: 'success', text: t('SL/TP u përditësuan në MT5.') }); fetchMeta(); }
+    setModifyBusy(false);
+  };
+
+  // Tërheqja e SL/TP mbi grafik (MT5): live → përditëson fushat; lëshim → ruan në MT5.
+  const onDragSlTp = (next: { sl: number | null; tp: number | null }) => {
+    setSlInput(next.sl != null ? next.sl.toFixed(2) : '');
+    setTpInput(next.tp != null ? next.tp.toFixed(2) : '');
+  };
+  const onCommitSlTp = async (next: { sl: number | null; tp: number | null }) => {
+    if (!posForSymbol) return;
+    setModifyBusy(true); setModifyMsg(null);
+    const r = await modifyPosition(posForSymbol.id, next.sl ?? undefined, next.tp ?? undefined);
     if (r.error) setModifyMsg({ type: 'error', text: errText(t, r.error, r.message) });
     else { setModifyMsg({ type: 'success', text: t('SL/TP u përditësuan në MT5.') }); fetchMeta(); }
     setModifyBusy(false);
@@ -739,7 +766,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               {candles.length === 0 ? (
                 <div className="h-[460px] flex items-center justify-center text-gray-600 text-sm">{t('Po ngarkohet grafiku…')}</div>
               ) : (
-                <Mt5Chart candles={displayCandles} lines={chartLines} height={460} fitKey={`${selected}_${tf}`} />
+                <Mt5Chart candles={displayCandles} lines={chartLines} height={460} fitKey={`${selected}_${tf}`}
+                  editable={editablePos} onDragSlTp={onDragSlTp} onCommitSlTp={onCommitSlTp} />
+              )}
+              {editablePos && candles.length > 0 && (
+                <p className="mt-1.5 text-[10px] text-gray-500 flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-sm bg-red-500" /> {t('Tërhiq pilulën')} <span className="text-red-400 font-semibold">SL</span> / <span className="text-green-400 font-semibold">TP</span> {t('lart-poshtë mbi grafik për ta vendosur (si MetaTrader). Lëshimi e ruan në MT5.')}
+                </p>
               )}
             </div>
             {posForSymbol && (
