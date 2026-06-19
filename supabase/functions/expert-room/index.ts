@@ -2,7 +2,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // expert-room v2 — DHOMA E EKSPERTËVE (korporata këshilluese; vetëm super-admin / cron).
-// (1) BATCH: çdo 10 trade auto TP/SL → paneli i ekspertëve (me doktrinat e tyre) i analizon.
+// (1) BATCH: çdo 20 trade auto TP/SL → paneli i ekspertëve (me doktrinat e tyre) i analizon,
+//     pastaj njofton admin-at me PUSH + njoftim në dashboard (raport pas çdo 20 trade-sh auto).
 // (2) RESEARCH: Claude bën hulumtim të thellë për çdo anëtar — parimet/rregullat/metodat
 //     PUBLIKE të metodologjisë së tij → ruhen si 'doktrinë' te expert_profiles.
 // (3) SYNTHESIZE: doktrinat + analizat e batch-eve → SUPER INFORMATORI (modele tregtimi,
@@ -15,7 +16,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-cron-secret",
 };
-const BATCH = 10;
+const BATCH = 20;
 
 function json(o: unknown, s = 200) { return new Response(JSON.stringify(o), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 function r1(n: number) { return Math.round(n * 10) / 10; }
@@ -107,7 +108,35 @@ async function researchOne(db: ReturnType<typeof createClient>, p: Profile): Pro
   return { slug: p.slug, ok: !(res as { error?: string }).error, error: (res as { error?: string }).error };
 }
 
-// (1) BATCH — paneli (me doktrina nëse ka) analizon 10 trade.
+// Njofton admin-at për një raport të ri të Dhomës: njoftim në dashboard + PUSH (web/telefon).
+// Best-effort: çdo gabim injorohet që batch-i të mos prishet.
+async function notifyExperts(db: ReturnType<typeof createClient>, batchNo: number, stats: { count: number; wins: number; losses: number; winRate: number }, ai: unknown): Promise<void> {
+  try {
+    const recs = (((ai as { recommendations?: unknown[] }).recommendations) || []) as unknown[];
+    const title = `Dhoma e Ekspertëve — Raport #${batchNo}`;
+    const body = `${stats.count} trade auto: fitore ${stats.winRate}% (${stats.wins}W/${stats.losses}L). ${recs.length} rekomandim${recs.length === 1 ? "" : "e"}. Hape për detaje.`;
+    const { data: admins } = await db.from("profiles").select("id").eq("is_admin", true);
+    const ids = ((admins ?? []) as Array<{ id: string }>).map((a) => a.id);
+    if (ids.length === 0) return;
+    // Njoftim në dashboard (NotificationsPage) për secilin admin.
+    await db.from("notifications").insert(ids.map((uid) => ({
+      user_id: uid, type: "expert", title, body, data: { batch_no: batchNo, win_rate: stats.winRate, url: "/" }, sent_push: true,
+    })));
+    // PUSH te secili admin (përmes web-push-send me service-role).
+    const base = Deno.env.get("SUPABASE_URL"), svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    for (const uid of ids) {
+      try {
+        await fetch(`${base}/functions/v1/web-push-send`, {
+          method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${svc}` },
+          body: JSON.stringify({ user_id: uid, title, body, url: "/", tag: `expert-${batchNo}` }),
+          signal: AbortSignal.timeout(8000),
+        });
+      } catch { /* best-effort */ }
+    }
+  } catch { /* best-effort */ }
+}
+
+// (1) BATCH — paneli (me doktrina nëse ka) analizon 20 trade.
 async function runBatch(db: ReturnType<typeof createClient>): Promise<Record<string, unknown> | null> {
   const pend = await pendingRows(db);
   if (pend.length < BATCH) return null;
@@ -116,7 +145,7 @@ async function runBatch(db: ReturnType<typeof createClient>): Promise<Record<str
   const profs = await profiles(db);
   const panel = profs.map((p) => ({ slug: p.slug, name: p.name,
     doctrine_summary: p.doctrine ? { principles: ((p.doctrine.principles as string[]) || []).slice(0, 4), rules: ((p.doctrine.rules as string[]) || []).slice(0, 4) } : null }));
-  const sys = "Je një PANEL ekspertësh elitarë tregtimi (anëtarët + doktrinat e tyre të jepen). Analizoni një grup prej ~10 trade-sh REALE " +
+  const sys = "Je një PANEL ekspertësh elitarë tregtimi (anëtarët + doktrinat e tyre të jepen). Analizoni një grup prej ~20 trade-sh REALE " +
     "të një roboti trend-following ari që PREKËN TP/SL, nga kushtet në hyrje. SECILI anëtar analizon SIPAS doktrinës së vet " +
     "(2–3 gjetje konkrete nga të dhënat; mostra e vogël → shëno pasigurinë). Pastaj: konsensus i shkurtër, 2–4 rekomandime konkrete e " +
     "konservatore për robotin, dhe 0–2 'modele tregtimi' të vëzhguara (pattern që përsëritet në fitime/humbje). " +
@@ -129,6 +158,7 @@ async function runBatch(db: ReturnType<typeof createClient>): Promise<Record<str
   await db.from("expert_room_analyses").insert({ batch_no: batchNo, trades_count: batch.length, win_rate: stats.winRate,
     from_time: effTime(batch[0]), to_time: toTime, payload: { ...(ai as object), stats } });
   await setCfg(db, "expert_room_covered_through", toTime);
+  await notifyExperts(db, batchNo, stats, ai);
   return { inserted: true, batch_no: batchNo };
 }
 
