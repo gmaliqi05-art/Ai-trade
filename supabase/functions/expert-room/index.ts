@@ -147,10 +147,10 @@ async function runBatch(db: ReturnType<typeof createClient>): Promise<Record<str
     doctrine_summary: p.doctrine ? { principles: ((p.doctrine.principles as string[]) || []).slice(0, 4), rules: ((p.doctrine.rules as string[]) || []).slice(0, 4) } : null }));
   const sys = "Je një PANEL ekspertësh elitarë tregtimi (anëtarët + doktrinat e tyre të jepen). Analizoni një grup prej ~20 trade-sh REALE " +
     "të një roboti trend-following ari që PREKËN TP/SL, nga kushtet në hyrje. SECILI anëtar analizon SIPAS doktrinës së vet " +
-    "(2–3 gjetje konkrete nga të dhënat; mostra e vogël → shëno pasigurinë). Pastaj: konsensus i shkurtër, 2–4 rekomandime konkrete e " +
-    "konservatore për robotin, dhe 0–2 'modele tregtimi' të vëzhguara (pattern që përsëritet në fitime/humbje). " +
-    "Përgjigju VETËM me JSON në SHQIP: {\"experts\":[{\"slug\":\"...\",\"role\":\"emri i shkurt\",\"findings\":[\"...\"]}],\"consensus\":\"...\",\"patterns\":[{\"name\":\"...\",\"desc\":\"...\"}],\"recommendations\":[{\"title\":\"...\",\"detail\":\"...\",\"confidence\":\"low|medium|high\"}],\"caution\":\"...\"}";
-  const ai = await claude(db, sys, JSON.stringify({ panel, stats }), 3500);
+    "(SAKTË 2 gjetje TË SHKURTRA, ≤140 karaktere secila; mostra e vogël → shëno pasigurinë). Pastaj: konsensus ≤2 fjali, 2–4 rekomandime konkrete e " +
+    "konservatore për robotin (≤120 karaktere detaji), dhe 0–2 'modele tregtimi' të vëzhguara (pattern që përsëritet në fitime/humbje). " +
+    "JI KONCIZ — pa përsëritje, pa hyrje. Përgjigju VETËM me JSON të VLEFSHËM e të PLOTË në SHQIP: {\"experts\":[{\"slug\":\"...\",\"role\":\"emri i shkurt\",\"findings\":[\"...\"]}],\"consensus\":\"...\",\"patterns\":[{\"name\":\"...\",\"desc\":\"...\"}],\"recommendations\":[{\"title\":\"...\",\"detail\":\"...\",\"confidence\":\"low|medium|high\"}],\"caution\":\"...\"}";
+  const ai = await claude(db, sys, JSON.stringify({ panel, stats }), 4500);
   if ((ai as { error?: string }).error) return { error: (ai as { error?: string }).error };
   const { data: last } = await db.from("expert_room_analyses").select("batch_no").order("batch_no", { ascending: false }).limit(1).maybeSingle();
   const batchNo = (((last as { batch_no?: number } | null)?.batch_no) || 0) + 1;
@@ -172,7 +172,7 @@ async function synthesize(db: ReturnType<typeof createClient>): Promise<Record<s
   const sys = "Je kryeanalisti i një dhome ekspertësh tregtimi. Nga DOKTRINAT e anëtarëve + ANALIZAT e grupeve të trade-ve reale, " +
     "ndërto SUPER INFORMATORIN: bazën e dijes së konsoliduar për robotin (ar, trend-following, scalp+swing). " +
     "Përgjigju VETËM me JSON në SHQIP: {\"core_rules\":[\"rregull thelbësor i konsoliduar\"],\"trading_models\":[{\"name\":\"...\",\"desc\":\"...\",\"conditions\":[\"...\"]}],\"do\":[\"...\"],\"dont\":[\"...\"],\"robot_mapping\":[{\"param\":\"p.sh. min ADX\",\"suggestion\":\"...\",\"basis\":\"nga cili ekspert/analizë\"}],\"readiness\":{\"score\":0-100,\"missing\":[\"çfarë duhet ende para se të mendohet aktivizimi\"]},\"caution\":\"...\"}";
-  const res = await claude(db, sys, JSON.stringify({ doctrines, analyses }), 3500);
+  const res = await claude(db, sys, JSON.stringify({ doctrines, analyses }), 4500);
   if (!(res as { error?: string }).error) await db.from("expert_knowledge").insert({ kind: "synthesis", payload: res });
   return res as Record<string, unknown>;
 }
