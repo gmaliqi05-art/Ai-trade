@@ -17,7 +17,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.107.0
 
       - name: Deploy auto-trade-runner (verify_jwt=false për cron)
         run: supabase functions deploy auto-trade-runner --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
