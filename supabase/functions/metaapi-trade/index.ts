@@ -337,7 +337,19 @@ Deno.serve(async (req: Request) => {
         });
         const txt = await resp.text();
         let rb: unknown = txt; try { rb = JSON.parse(txt); } catch { /* tekst */ }
-        if (!resp.ok) return json({ error: "close_failed", status: resp.status, details: rb }, 502);
+        // Nxirr arsyen REALE nga brokeri. Mbyllja është urdhër TREGU → kur tregu i mbyllur,
+        // brokeri e refuzon (TRADE_RETCODE_MARKET_CLOSED). Trego mesazh të qartë, jo "dështoi".
+        const rbObj = (rb && typeof rb === "object") ? rb as Record<string, unknown> : {};
+        const brokerMsg = String(rbObj.message ?? "");
+        const strCode = String(rbObj.stringCode ?? "");
+        const blob = `${strCode} ${brokerMsg} ${typeof rb === "string" ? rb : ""}`;
+        const marketClosed = /market[_ ]?closed/i.test(blob);
+        if (!resp.ok || marketClosed) {
+          const msg = marketClosed
+            ? "Tregu është i mbyllur — pozicioni s'mund të mbyllet manualisht tani (mbyllja është urdhër tregu). Mbylle kur tregu të hapet, ose lëre SL/TP-në ta mbyllë automatik."
+            : (brokerMsg || `Mbyllja dështoi te brokeri (${resp.status}).`);
+          return json({ error: "close_failed", status: resp.status, message: msg, market_closed: marketClosed, details: rb }, 502);
+        }
         await pushNotify({ user_id: user.id, title: "Trade i mbyllur (manual)", body: `${body.symbol || "Pozicioni"} u mbyll.`, url: "/", tag: "manual-close" });
         return json({ success: true, result: rb });
       } catch (e) {
