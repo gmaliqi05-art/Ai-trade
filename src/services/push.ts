@@ -13,6 +13,16 @@ export function isPushSupported(): boolean {
     'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
+/** A jemi në iOS/iPadOS? (iPad-i modern raporton si "Macintosh" me prekje — e kapim me maxTouchPoints.)
+ *  Web Push në Apple punon VETËM kur app-i është shtuar te Home Screen me Safari (iOS/iPadOS 16.4+). */
+export function isIosLike(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const iphone = /iPad|iPhone|iPod/.test(ua);
+  const ipadOS = /Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1;
+  return iphone || ipadOS;
+}
+
 /** A jemi në PWA të instaluar (standalone) — për iOS push duhet "Add to Home Screen". */
 export function isStandalone(): boolean {
   return typeof window !== 'undefined' &&

@@ -92,7 +92,15 @@ Deno.serve(async (req: Request) => {
 
     const auth = req.headers.get("Authorization") || "";
     const bearer = auth.replace(/^Bearer\s+/i, "");
-    const internal = bearer && bearer === serviceKey;
+    let internal = !!(bearer && bearer === serviceKey);
+    // Alternativë INTERNE: header x-cron-secret që përputhet me app_config.cron_secret (për cron/diagnozë).
+    if (!internal) {
+      const cs = req.headers.get("x-cron-secret");
+      if (cs) {
+        const { data: csRow } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
+        if (cs === (csRow as { value?: string } | null)?.value) internal = true;
+      }
+    }
 
     const body = await req.json().catch(() => ({}));
     const title = String(body.title || "ProTrade");
@@ -131,10 +139,12 @@ Deno.serve(async (req: Request) => {
 
     const plaintext = enc.encode(JSON.stringify({ title, body: text, url, tag }));
     let sent = 0, removed = 0;
+    const details: Array<{ ep: string; status: number; note?: string }> = [];
     const jwtCache = new Map<string, string>();
 
     for (const s of subs) {
-      if (!s.token || !s.p256dh || !s.auth) continue;
+      if (!s.token || !s.p256dh || !s.auth) { details.push({ ep: "—", status: 0, note: "abonim i paplotë" }); continue; }
+      const epTail = s.token.slice(-14);
       try {
         const origin = new URL(s.token).origin;
         let jwt = jwtCache.get(origin);
@@ -151,14 +161,19 @@ Deno.serve(async (req: Request) => {
           body: payload,
           signal: AbortSignal.timeout(10000),
         });
-        if (resp.status === 201 || resp.status === 200 || resp.status === 202) sent++;
+        if (resp.status === 201 || resp.status === 200 || resp.status === 202) { sent++; details.push({ ep: epTail, status: resp.status }); }
         else if (resp.status === 404 || resp.status === 410) {
           // Abonim i skaduar → fshije.
           await db.from("push_tokens").delete().eq("token", s.token); removed++;
+          details.push({ ep: epTail, status: resp.status, note: "skaduar → fshirë" });
+        } else {
+          // Gabim tjetër (p.sh. 403 mospërputhje VAPID, 400 payload) — regjistro për diagnozë.
+          const t = await resp.text().catch(() => "");
+          details.push({ ep: epTail, status: resp.status, note: t.slice(0, 120) });
         }
-      } catch { /* anashkalo këtë abonim */ }
+      } catch (e) { details.push({ ep: epTail, status: -1, note: (e as Error).message.slice(0, 120) }); }
     }
-    return json({ sent, removed, recipients: userIds.length });
+    return json({ sent, removed, recipients: userIds.length, details });
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }

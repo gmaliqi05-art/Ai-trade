@@ -33,6 +33,23 @@ function json(obj: unknown, status = 200) {
 const OPEN_WINDOW_MIN = 15;      // sinjale të freskëta (si engine-scan) për të hapur shadow-trade
 const EXPIRE_H = 48;            // shadow-trade i pambyllur pas 48h → mbyllet si 'expired'
 
+// Njoftim Web Push te admin-at për aktivitetin e MMTI-së (provë/shadow) — best-effort.
+async function pushAdmins(db: ReturnType<typeof createClient>, title: string, body: string, tag: string): Promise<void> {
+  try {
+    const { data: admins } = await db.from("profiles").select("id").eq("is_admin", true);
+    const ids = ((admins ?? []) as Array<{ id: string }>).map((a) => a.id);
+    const base = Deno.env.get("SUPABASE_URL"), svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    for (const uid of ids) {
+      try {
+        await fetch(`${base}/functions/v1/web-push-send`, {
+          method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${svc}` },
+          body: JSON.stringify({ user_id: uid, title, body, url: "/", tag }), signal: AbortSignal.timeout(8000),
+        });
+      } catch { /* best-effort */ }
+    }
+  } catch { /* best-effort */ }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -56,6 +73,7 @@ Deno.serve(async (req: Request) => {
     const recommendedR = plan && typeof plan.recommendedR === "number" ? plan.recommendedR as number : 2;
 
     let opened = 0, evaluated = 0;
+    const closedMsgs: string[] = []; // përmbledhje e mbylljeve (për push)
 
     // 2) Çmimet aktuale (për hapje + vlerësim) — një lexim, hartë sipas simbolit të normalizuar.
     const { data: assetRows } = await db.from("assets").select("symbol, current_price");
@@ -130,7 +148,16 @@ Deno.serve(async (req: Request) => {
       if (status) {
         await db.from("mmti_shadow_trades").update({ status, pnl_r: pnlR, closed_at: new Date().toISOString() }).eq("id", t.id);
         evaluated++;
+        closedMsgs.push(`${t.symbol} ${status.toUpperCase()} ${pnlR != null && pnlR >= 0 ? "+" : ""}${pnlR}R`);
       }
+    }
+
+    // Njoftim push te admin-at kur MMTI pati aktivitet (provë/shadow) — i përmbledhur që të mos jetë zhurmë.
+    if (opened > 0 || closedMsgs.length > 0) {
+      const parts: string[] = [];
+      if (opened > 0) parts.push(`hapi ${opened} provë`);
+      if (closedMsgs.length > 0) parts.push(`mbylli ${closedMsgs.length} (${closedMsgs.slice(0, 3).join(", ")})`);
+      await pushAdmins(db, "MMTI — provë (shadow)", parts.join(" · "), "mmti");
     }
 
     return json({ success: true, mode: "shadow", live_enabled: !!state.live_enabled, opened, evaluated });

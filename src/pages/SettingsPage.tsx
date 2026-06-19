@@ -3,7 +3,7 @@ import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, Chevron
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
-import { isPushSupported, isStandalone, getPushState, subscribePush, unsubscribePush, sendTestPush } from '../services/push';
+import { isPushSupported, isStandalone, isIosLike, getPushState, subscribePush, unsubscribePush, sendTestPush } from '../services/push';
 
 type Section = 'profile' | 'security' | 'notifications' | 'subscription';
 
@@ -205,7 +205,20 @@ export default function SettingsPage() {
                   </span>
                 </div>
 
-                {!push.supported ? (
+                {isIosLike() && !isStandalone() ? (
+                  // APPLE (iPhone/iPad): Web Push punon VETËM si app në Home Screen me Safari (iOS/iPadOS 16.4+),
+                  // KURRË në një tab shfletuesi apo në Chrome. Udhëzim i qartë në vend të butonit që dështon.
+                  <div className="mt-3 text-[11px] text-amber-200/90 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2.5 space-y-1.5">
+                    <div className="flex items-start gap-1.5 font-semibold text-amber-300"><Smartphone className="w-3.5 h-3.5 mt-0.5 shrink-0" />{t('Në iPhone/iPad, njoftimet punojnë vetëm si APP në Home Screen (jo në shfletues):')}</div>
+                    <ol className="list-decimal ml-5 space-y-0.5 text-gray-300">
+                      <li>{t('Hape këtë faqe me Safari (jo Chrome).')}</li>
+                      <li>{t('Prek butonin Share (katror me shigjetë lart) → "Add to Home Screen".')}</li>
+                      <li>{t('Hape app-in nga ikona e re në Home Screen.')}</li>
+                      <li>{t('Kthehu këtu te Cilësimet → "Aktivizo njoftimet push" → Lejo.')}</li>
+                    </ol>
+                    <div className="text-gray-500">{t('Kërkon iPadOS/iOS 16.4 ose më të ri.')}</div>
+                  </div>
+                ) : !push.supported ? (
                   <p className="text-[11px] text-amber-300/90 mt-3">{t('Ky shfletues/pajisje nuk i mbështet njoftimet push.')}</p>
                 ) : (
                   <div className="flex flex-wrap items-center gap-2 mt-3">
@@ -229,8 +242,8 @@ export default function SettingsPage() {
                 {pushMsg && (
                   <div className={`mt-2.5 text-[11px] rounded-lg px-2.5 py-1.5 ${pushMsg.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{pushMsg.text}</div>
                 )}
-                {push.supported && !isStandalone() && /iphone|ipad|ipod/i.test(navigator.userAgent) && (
-                  <p className="text-[10px] text-gray-400 mt-2 flex items-start gap-1.5"><Smartphone className="w-3 h-3 mt-0.5 shrink-0" />{t('Në iPhone: shto app-in te "Home Screen" (Share → Add to Home Screen) që push-i të punojë.')}</p>
+                {isIosLike() && isStandalone() && !push.supported && (
+                  <p className="text-[10px] text-gray-400 mt-2 flex items-start gap-1.5"><Smartphone className="w-3 h-3 mt-0.5 shrink-0" />{t('Sigurohu që je në iPadOS/iOS 16.4+ dhe e hape app-in nga ikona e Home Screen.')}</p>
                 )}
               </div>
 
