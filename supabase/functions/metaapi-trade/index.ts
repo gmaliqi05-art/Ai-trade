@@ -24,6 +24,9 @@ interface MetaApiConfig {
   kill_switch: boolean;
   // Mënyra e porosive para-hapjes (kur tregu i mbyllur): 'A' = pending te brokeri; 'B' = radha jonë (default).
   preopen_mode?: string;
+  // Cache i qëndrueshëm i emrave REALË të simboleve te brokeri (p.sh. {"XAUUSD":"XAUUSD+"}).
+  // Mbushet vetëm me emra të VERIFIKUAR te lista e brokerit → imun ndaj dështimeve kalimtare të /symbols.
+  symbol_map?: Record<string, string> | null;
 }
 
 function host(region: string): string {
@@ -81,33 +84,34 @@ async function metaApiGet(cfg: MetaApiConfig, path: string) {
 
 // Disa brokerë (p.sh. Vantage) e quajnë arin me prapashtesë (XAUUSD+, XAUUSD., GOLD…).
 // Gjen emrin REAL të simbolit te lista e brokerit; përndryshe kthen të kërkuarin.
-async function resolveSymbol(cfg: MetaApiConfig, requested: string): Promise<string> {
+// CACHE I QËNDRUESHËM (metaapi_config.symbol_map): bug-u "Unknown symbol (4301)" vinte ngaqë, kur
+// thirrja /symbols dështonte kalimtar (llogaria pa sinkronizuar), zgjidhja binte te emri i papërpunuar
+// (XAUUSD) që brokeri nuk e njeh. Tani: nëse e kemi mësuar njëherë emrin REAL → e përdorim drejtpërdrejt
+// (i shpejtë + imun ndaj dështimeve). Cache-i mbushet VETËM me emra të verifikuar te lista e brokerit.
+async function resolveSymbol(cfg: MetaApiConfig, requested: string, db: ReturnType<typeof createClient>, userId: string): Promise<string> {
+  const req = requested.toUpperCase();
+  const map: Record<string, string> = (cfg.symbol_map && typeof cfg.symbol_map === "object") ? cfg.symbol_map as Record<string, string> : {};
+  if (map[req]) return map[req]; // emër REAL i mësuar më parë → përdore (s'e prek /symbols)
   try {
     const list = await metaApiGet(cfg, `/symbols`) as unknown;
-    if (!Array.isArray(list) || list.length === 0) return requested;
-    const names = list.map(String);
-    const req = requested.toUpperCase();
-    const exact = names.find(s => s.toUpperCase() === req);
-    if (exact) return exact;
-    // Varianti me prapashtesë: XAUUSD+, XAUUSD., XAUUSDm, XAUUSD.r ...
-    const prefixed = names.find(s => s.toUpperCase().startsWith(req));
-    if (prefixed) return prefixed;
-    // Alias-et e arit.
-    if (req.includes("XAU")) {
-      const goldish = names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()));
-      if (goldish) return goldish;
-    }
-    // NAFTË: familja e simbolit te brokeri (USOIL↔XTIUSD/WTI/CL; UKOIL↔XBRUSD/BRENT).
-    // E njëjta logjikë si te engine-scan + auto-trade-runner → tregtimi manual gjen të njëjtin simbol.
-    if (/^(USOIL|UKOIL|WTI|XTI|XBR|BRENT|UKO|USO|CL)/i.test(req)) {
-      const fam = /^(UKOIL|XBR|BRENT|UKO)/i.test(req)
+    if (Array.isArray(list) && list.length > 0) {
+      const names = list.map(String);
+      const oilReq = /^(USOIL|UKOIL|WTI|XTI|XBR|BRENT|UKO|USO|CL)/i.test(req);
+      const oilFam = /^(UKOIL|XBR|BRENT|UKO)/i.test(req)
         ? /^(UKOIL|XBRUSD|XBR|BRENT|UKO)/i
         : /^(USOIL|XTIUSD|XTI|WTI|CL|USO)/i;
-      const oilish = names.find(s => fam.test(s));
-      if (oilish) return oilish;
+      const found = names.find(s => s.toUpperCase() === req)                                   // përputhje e saktë
+        || names.find(s => s.toUpperCase().startsWith(req))                                    // me prapashtesë: XAUUSD+, XAUUSD., XAUUSDm…
+        || (req.includes("XAU") ? (names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()))) : undefined) // alias ari
+        || (oilReq ? names.find(s => oilFam.test(s)) : undefined);                             // familja e naftës
+      if (found) {
+        // Ruaj VETËM emra të VERIFIKUAR (kurrë fallback-un e papërpunuar) → cache i sigurt, i përhershëm.
+        try { await db.from("metaapi_config").update({ symbol_map: { ...map, [req]: found } }).eq("user_id", userId); } catch { /* best-effort */ }
+        return found;
+      }
     }
-    return requested;
-  } catch { return requested; }
+  } catch { /* /symbols dështoi kalimtar → bie te cache/të kërkuarit më poshtë */ }
+  return map[req] || requested; // pa zgjidhje tani → cache (nëse ka) ose i kërkuari si zgjidhje e fundit
 }
 
 // Fillimi i ditës sipas Frankfurt (Europe/Berlin) si instant UTC — që "dita" e humbjes
@@ -251,7 +255,7 @@ Deno.serve(async (req: Request) => {
 
     // PRICE — çmimi REAL live i brokerit (bid/ask) për një simbol (përkon me app-in MT5).
     if (action === "PRICE") {
-      const symbol = await resolveSymbol(config, body.symbol || "XAUUSD");
+      const symbol = await resolveSymbol(config, body.symbol || "XAUUSD", db, user.id);
       try {
         const price = await metaApiGet(config, `/symbols/${encodeURIComponent(symbol)}/current-price`);
         return json({ success: true, mode: config.mode, price });
@@ -276,7 +280,7 @@ Deno.serve(async (req: Request) => {
 
     // CANDLES — qirinj historikë nga MT5 (për grafikun me linja SL/TP).
     if (action === "CANDLES") {
-      const symbol = await resolveSymbol(config, body.symbol || "XAUUSD");
+      const symbol = await resolveSymbol(config, body.symbol || "XAUUSD", db, user.id);
       const timeframe = body.timeframe || "15m";
       const limit = Math.min(Number(body.limit) || 300, 1000);
       try {
@@ -340,8 +344,8 @@ Deno.serve(async (req: Request) => {
     }
 
     let symbol: string = body.symbol || "XAUUSD";
-    // Zgjidh emrin REAL të simbolit te brokeri (rregullon "Unknown symbol 4301").
-    symbol = await resolveSymbol(config, symbol);
+    // Zgjidh emrin REAL të simbolit te brokeri (rregullon "Unknown symbol 4301"), me cache të qëndrueshëm.
+    symbol = await resolveSymbol(config, symbol, db, user.id);
     const signalId: string | null = body.signalId ?? null;
     const stopLoss: number | undefined = body.stopLoss != null ? Number(body.stopLoss) : undefined;
     const takeProfit: number | undefined = body.takeProfit != null ? Number(body.takeProfit) : undefined;
