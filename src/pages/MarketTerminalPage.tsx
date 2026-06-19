@@ -108,6 +108,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [brokerPx, setBrokerPx] = useState<{ bid: number; ask: number } | null>(null); // çmimi LIVE i broker-it për 'selected'
   const [pxDir, setPxDir] = useState<'up' | 'down' | 'flat'>('flat'); // drejtimi i lëvizjes së fundit (ticker)
   const [pxTick, setPxTick] = useState(0); // çelës rirenderimi → flash në çdo ndryshim çmimi
+  const [pxAt, setPxAt] = useState(0);     // koha (ms) e çmimit të fundit LIVE të suksesshëm nga brokeri
+  const [pxClock, setPxClock] = useState(Date.now()); // rrah çdo 1s për të rivlerësuar freskinë e çmimit
   const lastMidRef = useRef<number | null>(null);
   const [slInput, setSlInput] = useState('');
   const [tpInput, setTpInput] = useState('');
@@ -255,7 +257,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   useEffect(() => {
     if (!metaConfigured) { setBrokerPx(null); return; }
     let alive = true;
-    setBrokerPx(null); setPxDir('flat'); lastMidRef.current = null;
+    setBrokerPx(null); setPxDir('flat'); lastMidRef.current = null; setPxAt(0);
     const tick = async () => {
       try {
         const r = await loadSymbolPrice(selected);
@@ -267,9 +269,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           if (prev != null && Math.abs(mid - prev) > 1e-9) setPxDir(mid > prev ? 'up' : 'down');
           lastMidRef.current = mid;
           setBrokerPx({ bid, ask });
+          setPxAt(Date.now());
           setPxTick(k => k + 1);
         }
-      } catch { /* mban të fundit */ }
+      } catch { /* mban të fundit, por freskia bie → shënohet jo-live */ }
+      if (alive) setPxClock(Date.now()); // rivlerëso freskinë edhe kur leximi dështon
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -420,8 +424,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Çmimi LIVE për simbolin: çmimi spot i aktivit (i freskët, përditësohet shpesh) ose, si rezervë,
   // mbyllja e qiririt të fundit. Përdoret për linjën "Tani" dhe si rezervë për P&L.
   const lastClose = candles.length ? candles[candles.length - 1].close : null;
-  // Çmimi mesatar LIVE i broker-it (bid/ask, çdo 2s) për vijën "Tani". Rezervë: mbyllja e qiririt (5s) ose spot-i.
-  const brokerMid = brokerPx ? (brokerPx.bid + brokerPx.ask) / 2 : null;
+  // FRESKIA e çmimit live: brokerPx vlen vetëm nëse u përditësua brenda ~4s. Përndryshe e
+  // konsiderojmë JO-LIVE (mos shfaq fitim/humbje të rreme nga një çmim i ngrirë).
+  const PX_FRESH_MS = 4000;
+  const pxFresh = brokerPx != null && pxAt > 0 && (pxClock - pxAt) < PX_FRESH_MS;
+  // Çmimi mesatar LIVE i broker-it (bid/ask) për vijën "Tani" — VETËM kur është i freskët.
+  const brokerMid = (pxFresh && brokerPx) ? (brokerPx.bid + brokerPx.ask) / 2 : null;
   // SINKRONIZIM REAL-TIME: "ngjit" çmimin LIVE të broker-it te qiriri i fundit, që trupi i grafikut të
   // tregojë GJITHMONË të njëjtin çmim si vija "Tani" dhe si kolona e pozicioneve (pa mospërputhje).
   // Qiriri i fundit ndjek broker-in çdo 1s; kur vjen qiri i ri nga MT5 (5s), ngjitja ri-aplikohet.
@@ -448,26 +456,33 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // P&L LIVE real-time: kalibron "njësi → fitim" nga profit-i i SAKTË i broker-it (monedhë/spread/komision
   // brenda) e pastaj e aplikon te çmimi LIVE (bid për BLEJ, ask për SHIT) → përkon me mbylljen. Pa çmim live
   // ose pozicion shumë i ri → profit-i i broker-it; përndryshe → vlerësim nga livePrice.
+  // Kthen P&L-në VETËM kur çmimi është LIVE (i freskët); përndryshe null → UI tregon "jo-live".
+  // Kështu s'shfaqet kurrë një fitim i rremë nga çmim i ngrirë, dhe numri përkon me mbylljen reale.
   const livePnlOf = (p: OpenPosition): number | null => {
+    if (!pxFresh || !brokerPx) return null;
     const brokerProfit = p.profit != null ? Number(p.profit) : null;
     const open = p.openPrice != null ? Number(p.openPrice) : null;
     const cur = p.currentPrice != null ? Number(p.currentPrice) : null;
     const isBuy = (p.type || '').includes('BUY');
-    if (brokerPx && brokerProfit != null && open != null && cur != null) {
+    if (brokerProfit != null && open != null && cur != null) {
       const dist = (cur - open) * (isBuy ? 1 : -1);
       if (Math.abs(dist) >= 0.05) {
         const closePx = isBuy ? brokerPx.bid : brokerPx.ask;
         return ((closePx - open) * (isBuy ? 1 : -1)) * (brokerProfit / dist);
       }
     }
-    if (brokerProfit != null) return brokerProfit;
-    if (open != null && livePrice != null) return (livePrice - open) * (isBuy ? 1 : -1) * posVpp * (p.volume || 0);
-    return null;
+    // Çmimi live ekziston por pozicioni shumë i ri (dist<0.05) → llogarit direkt nga bid/ask live.
+    if (open != null) {
+      const closePx = isBuy ? brokerPx.bid : brokerPx.ask;
+      return (closePx - open) * (isBuy ? 1 : -1) * posVpp * (p.volume || 0);
+    }
+    return brokerProfit;
   };
   const riskOf = (p: OpenPosition) => (p.openPrice && p.stopLoss) ? Math.abs(p.openPrice - p.stopLoss) * posVpp * (p.volume || 0) : null;
   const rewardOf = (p: OpenPosition) => (p.openPrice && p.takeProfit) ? Math.abs(p.takeProfit - p.openPrice) * posVpp * (p.volume || 0) : null;
-  // P&L-ja totale live (shuma e të gjitha pozicioneve të hapura për këtë simbol).
-  const totalLivePnl = posnsForSymbol.length ? posnsForSymbol.reduce((s, p) => s + (livePnlOf(p) ?? 0), 0) : null;
+  // P&L-ja totale live — VETËM kur çmimi është i freskët; përndryshe null (jo-live).
+  const totalLivePnl = (pxFresh && posnsForSymbol.length)
+    ? posnsForSymbol.reduce((s, p) => s + (livePnlOf(p) ?? 0), 0) : null;
   const multiPos = posnsForSymbol.length > 1;
   // Linjat: Hyrje/SL/TP për ÇDO pozicion të hapur (jo vetëm i pari) + linja "Tani" te çmimi aktual me P&L live.
   const chartLines: PriceLineDef[] = [
@@ -481,7 +496,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         ...(p.takeProfit ? [{ price: p.takeProfit, color: '#22c55e', title: `TP${tag}${reward != null ? ` · +${r2(reward)} ${fcur}` : ''}` }] : []),
       ];
     }),
-    ...((livePrice != null && totalLivePnl != null && posnsForSymbol.length) ? [{ price: livePrice, color: '#fbbf24', title: `${t('Tani')} · ${totalLivePnl >= 0 ? '+' : ''}${r2(totalLivePnl)} ${fcur}` }] : []),
+    ...((livePrice != null && posnsForSymbol.length)
+      ? [{ price: livePrice, color: pxFresh ? '#fbbf24' : '#6b7280',
+          title: (pxFresh && totalLivePnl != null)
+            ? `${t('Tani')} · ${totalLivePnl >= 0 ? '+' : ''}${r2(totalLivePnl)} ${fcur}`
+            : `${t('Tani')} · ${t('çmim jo-live — mos mbyll')}` }]
+      : []),
   ];
 
   // Parambush SL/TP kur ndryshon pozicioni.
@@ -608,7 +628,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-white font-bold text-base sm:text-lg shrink-0">{selected}</span>
           <span key={pxTick} className="mt-flash rounded-md px-1 inline-flex items-center gap-1.5">
-            <span className={`text-xl sm:text-2xl font-black tabular-nums ${pxDir === 'up' ? 'text-green-400' : pxDir === 'down' ? 'text-red-400' : 'text-white'}`}>
+            <span className={`text-xl sm:text-2xl font-black tabular-nums ${!pxFresh ? 'text-gray-500' : pxDir === 'up' ? 'text-green-400' : pxDir === 'down' ? 'text-red-400' : 'text-white'}`}>
               {livePrice != null ? livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
             </span>
             {pxDir === 'up' && <ArrowUp className="w-4 h-4 text-green-400" />}
@@ -626,8 +646,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             <span className="text-gray-600">{metaConfigured ? t('Po pritet çmimi live…') : t('Lidh MT5 për çmim live')}</span>
           )}
           <span className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${brokerPx ? 'bg-green-400 mt-pulse' : 'bg-gray-600'}`} />
-            <span className={brokerPx ? 'text-green-400 font-semibold' : 'text-gray-500'}>{brokerPx ? t('LIVE · 1s') : t('jo live')}</span>
+            <span className={`w-2 h-2 rounded-full ${pxFresh ? 'bg-green-400 mt-pulse' : brokerPx ? 'bg-amber-500 mt-pulse' : 'bg-gray-600'}`} />
+            <span className={pxFresh ? 'text-green-400 font-semibold' : brokerPx ? 'text-amber-400 font-semibold' : 'text-gray-500'}>
+              {pxFresh ? t('LIVE · 1s') : brokerPx ? t('VONESË — jo live, mos mbyll') : t('jo live')}
+            </span>
           </span>
         </div>
       </div>
