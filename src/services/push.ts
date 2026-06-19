@@ -73,12 +73,24 @@ export async function subscribePush(userId: string): Promise<{ ok: boolean; erro
     if (permission !== 'granted') return { ok: false, error: 'denied' };
 
     const reg = await ready();
+    const appKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     let sub = await reg.pushManager.getSubscription();
+    // Nëse ekziston një abonim me çelës TJETËR VAPID (p.sh. nga një version i vjetër) → çabonohu e riabono,
+    // përndryshe serveri s'mund t'i dërgojë (mospërputhje çelësi).
+    if (sub) {
+      const cur = sub.options?.applicationServerKey;
+      const curB = cur ? bufToB64Url(cur as ArrayBuffer) : '';
+      if (curB && curB !== VAPID_PUBLIC_KEY.replace(/=+$/, '')) { await sub.unsubscribe().catch(() => {}); sub = null; }
+    }
     if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
+      try {
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+      } catch (e1) {
+        // iOS/Safari herë-herë e hedh herën e parë (gabim kalimtar i push-service) — prit e provo sërish një herë.
+        await new Promise((r) => setTimeout(r, 1500));
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+        void e1;
+      }
     }
     const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
     const endpoint = json.endpoint || sub.endpoint;
@@ -95,10 +107,13 @@ export async function subscribePush(userId: string): Promise<{ ok: boolean; erro
       device_info: { ua: navigator.userAgent.slice(0, 200) },
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,token' });
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: `DB: ${error.message}` };
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    // Surfaco emrin + mesazhin e gabimit dhe kontekstin (app vs shfletues) për diagnozë të saktë.
+    const err = e as Error;
+    const ctx = isStandalone() ? 'app' : 'shfletues';
+    return { ok: false, error: `${err.name || 'Error'}: ${err.message || 'i panjohur'} [${ctx}]` };
   }
 }
 
