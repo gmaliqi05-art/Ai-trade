@@ -3,7 +3,7 @@
 //  - "positions"  → vetëm pozicionet e hapura (me mbyllje)
 //  - "executions" → vetëm ekzekutimet e fundit
 //  - "both" (default) → të dyja bashkë
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
@@ -26,7 +26,8 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const [pxAt, setPxAt] = useState(0);                 // koha (ms) e çmimit të fundit LIVE të suksesshëm
   const [pxClock, setPxClock] = useState(Date.now());  // rrah çdo 2s për të rivlerësuar freskinë
   const [posErr, setPosErr] = useState(false);         // leximi i parë dështoi → trego gabim + Riprovo
-  const PX_FRESH_MS = 5000;
+  const lastMidRef = useRef<Record<string, number>>({}); // mid i fundit për simbol → zbulon LËVIZJEN
+  const PX_FRESH_MS = 8000; // "i freskët" = çmimi LËVIZ brenda kësaj kohe (frozen=mbyllur → jo-live)
   const pxFresh = pxAt > 0 && (pxClock - pxAt) < PX_FRESH_MS;
   // Lidhja DIREKTE streaming (websocket) — burimi parësor real-time; REST mbetet vetëm rezervë.
   const stream = useMetaStream();
@@ -113,9 +114,16 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
         } catch { return [s, null] as const; }
       }));
       if (!alive) return;
-      const anyOk = res.some(([, v]) => v != null);
+      // "I freskët" VETËM kur ndonjë simbol LËVIZ (mid ndryshon). Çmim i ngrirë = treg i mbyllur → jo-live.
+      let anyMoved = false;
+      for (const [s, v] of res) {
+        if (!v) continue;
+        const mid = (v.bid + v.ask) / 2;
+        if (lastMidRef.current[s] == null || Math.abs(mid - lastMidRef.current[s]) > 1e-9) anyMoved = true;
+        lastMidRef.current[s] = mid;
+      }
       setPxMap((prev) => { const n = { ...prev }; for (const [s, v] of res) if (v) n[s] = v; return n; });
-      if (anyOk) setPxAt(Date.now());
+      if (anyMoved) setPxAt(Date.now());
       setPxClock(Date.now()); // rivlerëso freskinë edhe kur leximi dështon
     };
     tick();
