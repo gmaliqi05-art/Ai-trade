@@ -317,7 +317,16 @@ Deno.serve(async (req: Request) => {
         });
         const txt = await resp.text();
         let rb: unknown = txt; try { rb = JSON.parse(txt); } catch { /* tekst */ }
-        if (!resp.ok) return json({ error: "modify_failed", status: resp.status, details: rb }, 502);
+        if (!resp.ok) {
+          const rbObj = (rb && typeof rb === "object") ? rb as Record<string, unknown> : {};
+          const brokerMsg = String(rbObj.message ?? "");
+          const blob = `${String(rbObj.stringCode ?? "")} ${brokerMsg} ${typeof rb === "string" ? rb : ""}`;
+          const marketClosed = /market[_ ]?closed/i.test(blob);
+          const msg = marketClosed
+            ? "Tregu është i mbyllur — brokeri s'pranon ndryshimin e SL/TP tani. Provo kur tregu të hapet."
+            : (brokerMsg || `Përditësimi i SL/TP dështoi te brokeri (${resp.status}).`);
+          return json({ error: "modify_failed", status: resp.status, message: msg, market_closed: marketClosed, details: rb }, 502);
+        }
         return json({ success: true, result: rb });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
