@@ -13,7 +13,6 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const { t } = useI18n();
   const { user } = useAuth();
   const [positions, setPositions] = useState<OpenPosition[]>([]);
-  const [posStale, setPosStale] = useState(false);
   const [posLoaded, setPosLoaded] = useState(false);
   const [orders, setOrders] = useState<PendingOrder[]>([]);
   const [executions, setExecutions] = useState<TradeExecution[]>([]);
@@ -22,6 +21,11 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   // Çmimi LIVE i broker-it (bid/ask) për simbolet e pozicioneve — për P&L real-time.
   const [pxMap, setPxMap] = useState<Record<string, { bid: number; ask: number }>>({});
+  const [pxAt, setPxAt] = useState(0);                 // koha (ms) e çmimit të fundit LIVE të suksesshëm
+  const [pxClock, setPxClock] = useState(Date.now());  // rrah çdo 2s për të rivlerësuar freskinë
+  const [posErr, setPosErr] = useState(false);         // leximi i parë dështoi → trego gabim + Riprovo
+  const PX_FRESH_MS = 5000;
+  const pxFresh = pxAt > 0 && (pxClock - pxAt) < PX_FRESH_MS;
 
   const showPositions = section === 'positions' || section === 'both';
   const showExecutions = section === 'executions' || section === 'both';
@@ -33,8 +37,8 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     // Përditëso VETËM kur leximi është i suksesshëm. Në gabim/timeout KALIMTAR të MetaApi
     // (p.sh. 502), RUAJ pozicionet e fundit — mos i fshi, që të mos pulsojnë/zhduken nga ekrani.
     // Lista zbrazet vetëm kur MetaApi kthen me sukses 0 pozicione (d.m.th. u mbyllën vërtet).
-    if (!pr.error && Array.isArray(pr.positions)) { setPositions(pr.positions); setPosStale(false); setPosLoaded(true); }
-    else setPosStale(true);
+    if (!pr.error && Array.isArray(pr.positions)) { setPositions(pr.positions); setPosLoaded(true); setPosErr(false); }
+    else setPosErr(true);
     if (!or.error && Array.isArray(or.orders)) setOrders(or.orders);
     setPosLoading(false);
   }, [configured]);
@@ -74,7 +78,10 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
         } catch { return [s, null] as const; }
       }));
       if (!alive) return;
+      const anyOk = res.some(([, v]) => v != null);
       setPxMap((prev) => { const n = { ...prev }; for (const [s, v] of res) if (v) n[s] = v; return n; });
+      if (anyOk) setPxAt(Date.now());
+      setPxClock(Date.now()); // rivlerëso freskinë edhe kur leximi dështon
     };
     tick();
     const id = setInterval(tick, 2000);
@@ -84,12 +91,15 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   // P&L real-time: kalibron "euro për njësi çmimi" nga fitimi i SAKTË i broker-it (që përfshin
   // monedhën/spread/komisionin), pastaj e aplikon te çmimi LIVE (bid për BLEJ, ask për SHIT).
   // Kështu numri përkon me mbylljen reale. Pa çmim live ose pozicion shumë i ri → fitimi i broker-it.
-  const livePnl = (p: OpenPosition): number => {
+  // Kthen P&L-në VETËM kur çmimi live është i freskët; përndryshe null → UI tregon "jo-live"
+  // (s'shfaqet fitim i rremë nga çmim i ngrirë; numri përkon me mbylljen reale).
+  const livePnl = (p: OpenPosition): number | null => {
     const px = pxMap[p.symbol];
+    if (!pxFresh || !px) return null;
     const open = Number(p.openPrice), cur = Number(p.currentPrice);
     const brokerProfit = Number(p.profit ?? 0);
     const isBuy = (p.type || '').includes('BUY');
-    if (px && Number.isFinite(open) && Number.isFinite(cur)) {
+    if (Number.isFinite(open) && Number.isFinite(cur)) {
       const dist = (cur - open) * (isBuy ? 1 : -1);
       if (Math.abs(dist) >= 0.05) {
         const eurPerUnit = brokerProfit / dist;
@@ -139,13 +149,13 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
         <h3 className="text-white font-semibold text-sm flex items-center gap-2">
           {t('Pozicionet e hapura (live nga MT5)')}
           <span className="bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-md text-xs font-semibold">{positions.length}</span>
-          {posStale ? (
-            <span className="flex items-center gap-1 text-[10px] text-amber-400" title={t('Lidhje e ngadaltë — vlerat e fundit të njohura')}>
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />{t('po rifreskohet…')}
-            </span>
-          ) : Object.keys(pxMap).length > 0 && (
+          {pxFresh ? (
             <span className="flex items-center gap-1 text-[10px] text-green-400" title={t('Çmimi live nga MT5 — rifreskohet çdo 2 sekonda; mbyllja bëhet me çmimin real të tregut')}>
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />{t('live · 2s')}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[10px] text-amber-400" title={t('Çmimi NUK është live — mos mbyll në vlerën e shfaqur derisa të kthehet "live"')}>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />{t('jo-live — mos mbyll')}
             </span>
           )}
         </h3>
@@ -162,9 +172,19 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
       )}
 
       {positions.length === 0 ? (
-        <div className="text-[11px] text-gray-600 bg-gray-800/30 rounded-lg px-3 py-3 text-center">
-          {(!posLoaded || posStale) ? t('Po lexohen pozicionet…') : t('Asnjë pozicion i hapur tani.')}
-        </div>
+        (posErr && !posLoaded) ? (
+          <div className="flex flex-col items-center gap-2 text-[11px] bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-3 text-center">
+            <span className="flex items-center gap-1.5 text-red-400"><AlertCircle className="w-4 h-4" />{t('MetaApi i paarritshëm — pozicionet s\'u lexuan.')}</span>
+            <button onClick={refreshPositions} disabled={posLoading}
+              className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-lg font-medium disabled:opacity-50">
+              <RefreshCw className={`w-3.5 h-3.5 ${posLoading ? 'animate-spin' : ''}`} />{t('Riprovo')}
+            </button>
+          </div>
+        ) : (
+          <div className="text-[11px] text-gray-600 bg-gray-800/30 rounded-lg px-3 py-3 text-center">
+            {!posLoaded ? t('Po lexohen pozicionet…') : t('Asnjë pozicion i hapur tani.')}
+          </div>
+        )
       ) : (
         <div className="space-y-1.5">
           {positions.map((p) => {
@@ -180,9 +200,15 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                   {p.openPrice != null && <span className="text-gray-400">@ {p.openPrice}</span>}
                 </span>
                 <span className="flex items-center gap-3">
-                  <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {profit >= 0 ? '+' : ''}{profit.toFixed(2)}
-                  </span>
+                  {profit == null ? (
+                    <span className="flex items-center gap-1 text-gray-500 font-semibold" title={t('Çmimi NUK është live — mos u beso kësaj vlere')}>
+                      <Clock className="w-3 h-3" />{t('jo-live')}
+                    </span>
+                  ) : (
+                    <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {profit >= 0 ? '+' : ''}{profit.toFixed(2)}
+                    </span>
+                  )}
                   <button onClick={() => handleClose(p.id)} disabled={closingId === p.id}
                     className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg font-medium transition-all disabled:opacity-50">
                     {closingId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}{t('Mbyll')}

@@ -50,16 +50,21 @@ function marketDataHost(region: string): string {
   return `https://mt-market-data-client-api-v1.${r}.agiliumtrade.ai`;
 }
 
-async function metaApiGet(cfg: MetaApiConfig, path: string) {
+async function metaApiGet(cfg: MetaApiConfig, path: string, opts?: { timeoutMs?: number; attempts?: number; backoffMs?: number }) {
   // RIPROVË: rrjeti Supabase→MetaApi herë-herë jep "connection refused"/timeout kalimtar, ose
   // MetaApi kthen 502/503 ndërsa sinkronizon. Llogaria mund të jetë e lidhur — provo deri në 3 herë
   // me prapakthim të shkurtër para se të dorëzohemi. (Vetëm GET-e idempotentë; jo urdhrat e trade-it.)
+  // PRICE-i (që thirret çdo 1-2s) e kalon opts me timeout të shkurtër + 1 provë → dështon SHPEJT
+  // që ekrani ta shënojë "jo-live" menjëherë, në vend që të ngrijë me një vlerë të vjetër.
+  const timeoutMs = opts?.timeoutMs ?? 15000;
+  const attempts = opts?.attempts ?? 3;
+  const backoffMs = opts?.backoffMs ?? 800;
   let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}${path}`, {
         headers: { "auth-token": cfg.token },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const text = await resp.text();
       let body: unknown = text;
@@ -77,7 +82,7 @@ async function metaApiGet(cfg: MetaApiConfig, path: string) {
       if (/MetaApi \d{3}:/.test(msg)) throw e; // përgjigje e qartë jo-OK → mos riprovo
       lastErr = e as Error;
     }
-    if (attempt < 2) await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    if (attempt < attempts - 1) await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
   }
   throw lastErr || new Error("MetaApi unreachable");
 }
@@ -257,7 +262,8 @@ Deno.serve(async (req: Request) => {
     if (action === "PRICE") {
       const symbol = await resolveSymbol(config, body.symbol || "XAUUSD", db, user.id);
       try {
-        const price = await metaApiGet(config, `/symbols/${encodeURIComponent(symbol)}/current-price`);
+        // Fail-fast: çmimi thirret çdo 1-2s; 1 provë me timeout 6s → ekrani e kap shpejt "jo-live".
+        const price = await metaApiGet(config, `/symbols/${encodeURIComponent(symbol)}/current-price`, { timeoutMs: 6000, attempts: 1 });
         return json({ success: true, mode: config.mode, price });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
