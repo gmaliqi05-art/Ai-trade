@@ -50,7 +50,10 @@ class MetaStream {
   private connection: any = null;    // eslint-disable-line @typescript-eslint/no-explicit-any
   private terminal: any = null;      // eslint-disable-line @typescript-eslint/no-explicit-any
   private listeners = new Set<Listener>();
-  private subscribed = new Set<string>();
+  private subsReq = new Set<string>();              // simbolet bazë të kërkuara (p.sh. 'XAUUSD')
+  private subBroker = new Map<string, string>();    // bazë → emri REAL te brokeri (p.sh. 'XAUUSD+')
+  private subscribedBrokers = new Set<string>();    // simbolet broker për të cilat kemi thirrur subscribe
+  private specs: string[] = [];                     // lista e simboleve të brokerit nga terminalState
   private pollId: ReturnType<typeof setInterval> | null = null;
   private starting = false;
   private cfgKey = '';
@@ -103,7 +106,7 @@ class MetaStream {
       this.retries = 0;
       this.set({ status: 'live' });
 
-      for (const s of this.subscribed) this.doSubscribe(s); // ri-abono simbolet e kërkuara para sinkronizimit
+      for (const s of this.subsReq) this.tryResolveAndSubscribe(s); // ri-abono simbolet e kërkuara
       this.startPoll();
     } catch (e) {
       this.starting = false;
@@ -127,17 +130,56 @@ class MetaStream {
 
   async subscribeSymbol(symbol: string): Promise<void> {
     if (!symbol) return;
-    this.subscribed.add(symbol);
-    if (this.connection && (this.snap.status === 'live' || this.snap.status === 'reconnecting')) this.doSubscribe(symbol);
+    // Çelësi mbahet SI Ç'KËRKOHET (faqja kërkon 'XAUUSD', paneli kërkon emrin e brokerit të pozicionit)
+    // që të dy ta gjejnë çmimin te stream.prices me të njëjtin çelës që përdorën.
+    this.subsReq.add(symbol);
+    if (this.connection && (this.snap.status === 'live' || this.snap.status === 'reconnecting')) this.tryResolveAndSubscribe(symbol);
   }
 
-  private async doSubscribe(symbol: string): Promise<void> {
-    try {
-      await this.connection.subscribeToMarketData(symbol, [
-        { type: 'quotes' },
-        { type: 'candles', timeframe: '1m' },
-      ]);
-    } catch { /* mund të jetë tashmë i abonuar / simbol i panjohur */ }
+  // Gjen emrin REAL të simbolit te brokeri (XAUUSD → XAUUSD+/GOLD…) nga lista e specifikimeve dhe
+  // abonon ATË. Nëse specs s'janë gati ende, lihet për readTerminal të riprovojë.
+  private tryResolveAndSubscribe(base: string) {
+    if (this.subBroker.has(base)) return;
+    const broker = this.resolveBroker(base);
+    if (!broker) return; // specs jo gati → riprovohet më vonë
+    this.subBroker.set(base, broker);
+    if (!this.subscribedBrokers.has(broker)) {
+      this.subscribedBrokers.add(broker);
+      try {
+        void this.connection.subscribeToMarketData(broker, [
+          { type: 'quotes' },
+          { type: 'candles', timeframe: '1m' },
+        ]);
+      } catch { /* mund të jetë tashmë i abonuar */ }
+    }
+  }
+
+  // Përkthen simbolin bazë në emrin e brokerit duke përdorur specifikimet e llogarisë + alias-e.
+  private resolveBroker(base: string): string | null {
+    if (this.specs.length === 0) {
+      try { this.specs = ((this.terminal?.specifications || []) as Array<{ symbol?: string }>).map(s => String(s.symbol || '')).filter(Boolean); } catch { this.specs = []; }
+    }
+    const specs = this.specs;
+    if (specs.length === 0) return null;
+    const up = base.toUpperCase();
+    let m = specs.find(s => s.toUpperCase() === up);                 // përputhje e saktë
+    if (m) return m;
+    m = specs.find(s => s.toUpperCase().startsWith(up));             // XAUUSD+, XAUUSD., XAUUSDm…
+    if (m) return m;
+    const aliases: Record<string, string[]> = {
+      XAUUSD: ['GOLD', 'XAU/USD', 'XAUUSD'],
+      XAGUSD: ['SILVER', 'XAG/USD'],
+      USOIL: ['WTI', 'CRUDE', 'XTIUSD', 'USOUSD'],
+      UKOIL: ['BRENT', 'XBRUSD', 'UKOUSD'],
+      BTCUSD: ['BITCOIN', 'BTC/USD'],
+      ETHUSD: ['ETHEREUM', 'ETH/USD'],
+    };
+    for (const a of (aliases[up] || [])) {
+      const au = a.toUpperCase();
+      m = specs.find(s => s.toUpperCase() === au || s.toUpperCase().startsWith(au));
+      if (m) return m;
+    }
+    return null;
   }
 
   private startPoll() {
@@ -151,13 +193,15 @@ class MetaStream {
     if (!this.terminal) return;
     const prices: Record<string, StreamPrice> = {};
     let lastTickAt = 0;
-    for (const s of this.subscribed) {
+    for (const base of this.subsReq) {
+      if (!this.subBroker.has(base)) this.tryResolveAndSubscribe(base); // zgjidh emrin sapo specs janë gati
+      const sym = this.subBroker.get(base) || base;
       try {
-        const p = this.terminal.price(s);
+        const p = this.terminal.price(sym);
         const bid = Number(p?.bid), ask = Number(p?.ask);
         if (bid > 0 && ask > 0) {
           const t = p?.time ? new Date(p.time).getTime() : Date.now();
-          prices[s] = { bid, ask, time: t };
+          prices[base] = { bid, ask, time: t }; // çelësi mbetet simboli i kërkuar (bazë)
           if (t > lastTickAt) lastTickAt = t;
         }
       } catch { /* ende pa çmim */ }
@@ -207,7 +251,8 @@ class MetaStream {
     this.retries = 0;
     try { if (this.connection) await this.connection.close(); } catch { /* injoro */ }
     this.api = null; this.account = null; this.connection = null; this.terminal = null;
-    this.subscribed.clear(); this.cfgKey = ''; this.starting = false;
+    this.subsReq.clear(); this.subBroker.clear(); this.subscribedBrokers.clear(); this.specs = [];
+    this.cfgKey = ''; this.starting = false;
     this.set({ status: 'idle', connectedToBroker: false, prices: {}, positions: [], orders: [], account: null, lastTickAt: 0 });
   }
 }
