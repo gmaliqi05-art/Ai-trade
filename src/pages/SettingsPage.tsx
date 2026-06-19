@@ -216,6 +216,7 @@ export default function SettingsPage() {
                       <li>{t('Hape app-in nga ikona e re në Home Screen.')}</li>
                       <li>{t('Kthehu këtu te Cilësimet → "Aktivizo njoftimet push" → Lejo.')}</li>
                     </ol>
+                    <div className="text-amber-300/80 font-medium">{t('📍 Tani je në shfletues — prandaj butoni s\'shfaqet ende. Ai del automatikisht te ky panel kur e hap app-in nga ikona (pa shiritin e adresës lart).')}</div>
                     <div className="text-gray-500">{t('Kërkon iPadOS/iOS 16.4 ose më të ri.')}</div>
                   </div>
                 ) : !push.supported ? (
