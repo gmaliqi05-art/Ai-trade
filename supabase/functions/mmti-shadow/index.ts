@@ -58,7 +58,7 @@ Deno.serve(async (req: Request) => {
   try {
     const { data: cs } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
     const secret = (cs as { value?: string } | null)?.value;
-    if (secret && req.headers.get("x-cron-secret") !== secret) {
+    if (!secret || req.headers.get("x-cron-secret") !== secret) {
       return json({ error: "unauthorized" }, 401);
     }
   } catch { /* fail-safe */ }

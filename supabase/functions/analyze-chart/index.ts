@@ -337,6 +337,14 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // KËRKO përdorues të vlefshëm para thirrjes së paguar të AI-së (mos lejo abuzim/kosto pa kontroll).
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "unauthorized", message: "Kyçu për të analizuar grafikun." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: providers, error: providerError } = await supabase
       .from("ai_providers")
       .select("*")

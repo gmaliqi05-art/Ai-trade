@@ -98,7 +98,8 @@ Deno.serve(async (req: Request) => {
       const cs = req.headers.get("x-cron-secret");
       if (cs) {
         const { data: csRow } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
-        if (cs === (csRow as { value?: string } | null)?.value) internal = true;
+        const sv = (csRow as { value?: string } | null)?.value;
+        if (sv && cs === sv) internal = true; // kërko sekret JO-bosh + përputhje të saktë (fail-closed)
       }
     }
 

@@ -765,7 +765,7 @@ Deno.serve(async (req: Request) => {
   try {
     const { data: _cs } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
     const _secret = (_cs as { value?: string } | null)?.value;
-    if (_secret && req.headers.get("x-cron-secret") !== _secret) {
+    if (!_secret || req.headers.get("x-cron-secret") !== _secret) {
       return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch { /* fail-safe: mos e blloko motorin */ }

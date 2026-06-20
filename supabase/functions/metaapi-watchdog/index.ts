@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
   try {
     const { data: row } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
     const secret = (row as { value?: string } | null)?.value;
-    if (secret && req.headers.get("x-cron-secret") !== secret) {
+    if (!secret || req.headers.get("x-cron-secret") !== secret) {
       return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch { /* injoro */ }
