@@ -3,12 +3,12 @@
 //  - "positions"  → vetëm pozicionet e hapura (me mbyllje)
 //  - "executions" → vetëm ekzekutimet e fundit
 //  - "both" (default) → të dyja bashkë
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Clock, Pencil, ShieldCheck } from 'lucide-react';
+// SL/TP vendosen/lëvizen mbi GRAFIK (prek linjën e hyrjes) — paneli vetëm i SHFAQ vlerat + P&L live.
+import { useEffect, useState, useCallback } from 'react';
+import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
-import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, loadSymbolPrice, modifyPosition, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
-import { metaStream } from '../services/metaStream';
+import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
 import { useMetaStream } from '../hooks/useMetaStream';
 
 export default function OpenPositionsPanel({ configured, section = 'both' }: { configured: boolean; section?: 'positions' | 'executions' | 'both' }) {
@@ -20,25 +20,15 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const [executions, setExecutions] = useState<TradeExecution[]>([]);
   const [posLoading, setPosLoading] = useState(false);
   const [closingId, setClosingId] = useState<string | null>(null);
-  // Redaktimi i SL/TP për një pozicion të hapur (si te MetaTrader — vendos/ndrysho gjatë trade-it).
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editSl, setEditSl] = useState('');
-  const [editTp, setEditTp] = useState('');
-  const [modBusy, setModBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  // Çmimi LIVE i broker-it (bid/ask) për simbolet e pozicioneve — për P&L real-time.
-  const [pxMap, setPxMap] = useState<Record<string, { bid: number; ask: number }>>({});
-  const [pxAt, setPxAt] = useState(0);                 // koha (ms) e çmimit të fundit LIVE të suksesshëm
-  const [pxClock, setPxClock] = useState(Date.now());  // rrah çdo 2s për të rivlerësuar freskinë
-  const [posErr, setPosErr] = useState(false);         // leximi i parë dështoi → trego gabim + Riprovo
-  const lastMidRef = useRef<Record<string, number>>({}); // mid i fundit për simbol → zbulon LËVIZJEN
-  const PX_FRESH_MS = 8000; // "i freskët" = çmimi LËVIZ brenda kësaj kohe (frozen=mbyllur → jo-live)
-  const pxFresh = pxAt > 0 && (pxClock - pxAt) < PX_FRESH_MS;
+  const [posAt, setPosAt] = useState(0);              // koha (ms) e leximit të fundit të suksesshëm të pozicioneve
+  const [posClock, setPosClock] = useState(Date.now()); // rrah çdo 2s për të rivlerësuar freskinë
+  const [posErr, setPosErr] = useState(false);        // leximi i parë dështoi → trego gabim + Riprovo
   // Lidhja DIREKTE streaming (websocket) — burimi parësor real-time; REST mbetet vetëm rezervë.
   const stream = useMetaStream();
   const streamLive = stream.status === 'live';
-  // "I shëndetshëm" = i lidhur DHE jep tick-e të freskëta (< 6s); vetëm atëherë fiket REST-i.
   const streamHealthy = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 6000);
+  const posFresh = posAt > 0 && (posClock - posAt) < 12000; // feed-i i pozicioneve është i freskët
 
   const showPositions = section === 'positions' || section === 'both';
   const showExecutions = section === 'executions' || section === 'both';
@@ -47,10 +37,9 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     if (!configured) return;
     setPosLoading(true);
     const [pr, or] = await Promise.all([loadOpenPositions(), loadPendingOrders()]);
-    // Përditëso VETËM kur leximi është i suksesshëm. Në gabim/timeout KALIMTAR të MetaApi
-    // (p.sh. 502), RUAJ pozicionet e fundit — mos i fshi, që të mos pulsojnë/zhduken nga ekrani.
-    // Lista zbrazet vetëm kur MetaApi kthen me sukses 0 pozicione (d.m.th. u mbyllën vërtet).
-    if (!pr.error && Array.isArray(pr.positions)) { setPositions(pr.positions); setPosLoaded(true); setPosErr(false); }
+    // Përditëso VETËM kur leximi është i suksesshëm. Në gabim/timeout KALIMTAR (p.sh. 502), RUAJ
+    // pozicionet e fundit — mos i fshi. Lista zbrazet vetëm kur MetaApi kthen me sukses 0 pozicione.
+    if (!pr.error && Array.isArray(pr.positions)) { setPositions(pr.positions); setPosLoaded(true); setPosErr(false); setPosAt(Date.now()); }
     else setPosErr(true);
     if (!or.error && Array.isArray(or.orders)) setOrders(or.orders);
     setPosLoading(false);
@@ -60,24 +49,18 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     if (user) setExecutions(await loadExecutions(user.id, 8));
   }, [user]);
 
-  // STREAMING: pozicionet + çmimet real-time nga websocket-i (pa polling) kur jep tick-e të freskëta.
+  // Rrahje çdo 2s për të rivlerësuar freskinë e feed-it (edhe kur s'vjen përditësim).
+  useEffect(() => {
+    const id = setInterval(() => setPosClock(Date.now()), 2000);
+    return () => clearInterval(id);
+  }, []);
+
+  // STREAMING: pozicionet real-time nga websocket-i (pa polling) kur jep tick-e të freskëta.
   useEffect(() => {
     if (!streamHealthy || !showPositions) return;
     setPositions(stream.positions as unknown as OpenPosition[]);
-    setPosLoaded(true); setPosErr(false);
-    const pm: Record<string, { bid: number; ask: number }> = {};
-    for (const [s, p] of Object.entries(stream.prices)) pm[s] = { bid: p.bid, ask: p.ask };
-    if (Object.keys(pm).length) setPxMap(prev => ({ ...prev, ...pm }));
-    if (stream.lastTickAt > 0) setPxAt(stream.lastTickAt);
-    setPxClock(Date.now());
+    setPosLoaded(true); setPosErr(false); setPosAt(Date.now());
   }, [streamHealthy, showPositions, stream.updatedAt]);
-
-  // Abono te streaming-u çdo simbol që ka pozicion → marrim bid/ask real-time për P&L-në e tij.
-  const posSymKey0 = positions.map(p => p.symbol).filter(Boolean).sort().join(',');
-  useEffect(() => {
-    if (!streamLive) return;
-    for (const s of posSymKey0.split(',')) if (s) void metaStream.subscribeSymbol(s);
-  }, [streamLive, posSymKey0]);
 
   // POLL REST (rezervë): aktiv kur streaming-u s'po jep tick-e të freskëta.
   useEffect(() => {
@@ -102,63 +85,9 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     return () => clearInterval(id);
   }, [configured, streamLive, showExecutions, refreshExecutions]);
 
-  // Çmimi LIVE i broker-it (bid/ask) për simbolet e pozicioneve — çdo 2s. Bën P&L-në real-time
-  // (pozicionet nga MT5 lexohen çdo 4s; ky çmim e përditëson P&L mes leximeve që ekrani të mos vonohet).
-  const posSymbolsKey = Array.from(new Set(positions.map((p) => p.symbol).filter(Boolean))).sort().join(',');
-  useEffect(() => {
-    if (!configured || streamHealthy || !showPositions || !posSymbolsKey) return;
-    let alive = true;
-    const syms = posSymbolsKey.split(',');
-    const tick = async () => {
-      const res = await Promise.all(syms.map(async (s) => {
-        try {
-          const r = await loadSymbolPrice(s);
-          const px = (r as { price?: { bid?: number; ask?: number } })?.price;
-          const bid = Number(px?.bid), ask = Number(px?.ask);
-          return [s, bid > 0 && ask > 0 ? { bid, ask } : null] as const;
-        } catch { return [s, null] as const; }
-      }));
-      if (!alive) return;
-      // "I freskët" VETËM kur ndonjë simbol LËVIZ (mid ndryshon). Çmim i ngrirë = treg i mbyllur → jo-live.
-      let anyMoved = false;
-      for (const [s, v] of res) {
-        if (!v) continue;
-        const mid = (v.bid + v.ask) / 2;
-        if (lastMidRef.current[s] == null || Math.abs(mid - lastMidRef.current[s]) > 1e-9) anyMoved = true;
-        lastMidRef.current[s] = mid;
-      }
-      setPxMap((prev) => { const n = { ...prev }; for (const [s, v] of res) if (v) n[s] = v; return n; });
-      if (anyMoved) setPxAt(Date.now());
-      setPxClock(Date.now()); // rivlerëso freskinë edhe kur leximi dështon
-    };
-    tick();
-    const id = setInterval(tick, 2000);
-    return () => { alive = false; clearInterval(id); };
-  }, [configured, streamHealthy, showPositions, posSymbolsKey]);
-
-  // P&L real-time: kalibron "euro për njësi çmimi" nga fitimi i SAKTË i broker-it (që përfshin
-  // monedhën/spread/komisionin), pastaj e aplikon te çmimi LIVE (bid për BLEJ, ask për SHIT).
-  // Kështu numri përkon me mbylljen reale. Pa çmim live ose pozicion shumë i ri → fitimi i broker-it.
-  // Kthen P&L-në VETËM kur çmimi live është i freskët; përndryshe null → UI tregon "jo-live"
-  // (s'shfaqet fitim i rremë nga çmim i ngrirë; numri përkon me mbylljen reale).
-  const livePnl = (p: OpenPosition): number | null => {
-    const px = pxMap[p.symbol];
-    if (!pxFresh) return null;                  // çmimi jo-live → mos shfaq numër (mos mashtro)
-    const brokerProfit0 = Number(p.profit ?? 0);
-    if (!px) return brokerProfit0;              // s'ka bid/ask por çmimi është live → fitimi real-time i broker-it
-    const open = Number(p.openPrice), cur = Number(p.currentPrice);
-    const brokerProfit = Number(p.profit ?? 0);
-    const isBuy = (p.type || '').includes('BUY');
-    if (Number.isFinite(open) && Number.isFinite(cur)) {
-      const dist = (cur - open) * (isBuy ? 1 : -1);
-      if (Math.abs(dist) >= 0.05) {
-        const eurPerUnit = brokerProfit / dist;
-        const closePx = isBuy ? px.bid : px.ask;
-        return ((closePx - open) * (isBuy ? 1 : -1)) * eurPerUnit;
-      }
-    }
-    return brokerProfit;
-  };
+  // P&L LIVE = fitimi i broker-it për pozicionin (i njëjti numër që tregon MT5; përditësohet çdo 2s
+  // ose real-time me streaming). Mbyllja bëhet me çmimin real të tregut.
+  const livePnl = (p: OpenPosition): number => Number(p.profit ?? 0);
 
   const handleClose = async (posId: string) => {
     setClosingId(posId); setMsg(null);
@@ -166,28 +95,6 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     if (r.error) setMsg({ type: 'error', text: r.message || t('Mbyllja dështoi.') });
     else { setMsg({ type: 'success', text: t('Pozicioni u mbyll.') }); await refreshPositions(); await refreshExecutions(); }
     setClosingId(null);
-  };
-
-  // Hap redaktorin e SL/TP për një pozicion (parambush vlerat aktuale).
-  const openEdit = (p: OpenPosition) => {
-    if (editId === p.id) { setEditId(null); return; } // toggle
-    setEditId(p.id);
-    setEditSl(p.stopLoss ? String(p.stopLoss) : '');
-    setEditTp(p.takeProfit ? String(p.takeProfit) : '');
-    setMsg(null);
-  };
-
-  // Ruan SL/TP në MT5 për pozicionin e hapur (vendos i ri ose ndryshon ekzistuesin).
-  const saveSlTp = async (p: OpenPosition) => {
-    const sl = editSl.trim() ? parseFloat(editSl) : undefined;
-    const tp = editTp.trim() ? parseFloat(editTp) : undefined;
-    if (editSl.trim() && (isNaN(sl as number) || (sl as number) <= 0)) { setMsg({ type: 'error', text: t('SL i pavlefshëm.') }); return; }
-    if (editTp.trim() && (isNaN(tp as number) || (tp as number) <= 0)) { setMsg({ type: 'error', text: t('TP i pavlefshëm.') }); return; }
-    setModBusy(true); setMsg(null);
-    const r = await modifyPosition(p.id, sl, tp);
-    if (r.error) setMsg({ type: 'error', text: r.message || t('Përditësimi i SL/TP dështoi.') });
-    else { setMsg({ type: 'success', text: t('SL/TP u ruajtën në MT5.') }); setEditId(null); await refreshPositions(); }
-    setModBusy(false);
   };
 
   const handleCancel = async (orderId: string) => {
@@ -221,13 +128,13 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
         <h3 className="text-white font-semibold text-sm flex items-center gap-2">
           {t('Pozicionet e hapura (live nga MT5)')}
           <span className="bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-md text-xs font-semibold">{positions.length}</span>
-          {pxFresh ? (
-            <span className="flex items-center gap-1 text-[10px] text-green-400" title={t('Çmimi live direkt nga MT5; mbyllja bëhet me çmimin real të tregut')}>
+          {(streamHealthy || posFresh) ? (
+            <span className="flex items-center gap-1 text-[10px] text-green-400" title={t('P&L live nga MT5 — i njëjti numër si te platforma; mbyllja bëhet me çmimin real')}>
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />{streamHealthy ? t('DIREKT ●') : t('live · 2s')}
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[10px] text-amber-400" title={t('Çmimi NUK është live — mos mbyll në vlerën e shfaqur derisa të kthehet "live"')}>
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />{t('jo-live — mos mbyll')}
+            <span className="flex items-center gap-1 text-[10px] text-amber-400" title={t('Feed-i po rifreskohet — vlerat e fundit të njohura')}>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />{t('po rifreskohet…')}
             </span>
           )}
         </h3>
@@ -275,21 +182,10 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                     {p.stopLoss != null && <span className="text-red-300/80">SL {p.stopLoss}</span>}
                     {p.takeProfit != null && <span className="text-green-300/80">TP {p.takeProfit}</span>}
                   </span>
-                  <span className="flex items-center gap-2 shrink-0">
-                    {profit == null ? (
-                      <span className="flex items-center gap-1 text-gray-500 font-semibold" title={t('Çmimi NUK është live — mos u beso kësaj vlere')}>
-                        <Clock className="w-3 h-3" />{t('jo-live')}
-                      </span>
-                    ) : (
-                      <span className={`font-semibold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {profit >= 0 ? '+' : ''}{profit.toFixed(2)}
-                      </span>
-                    )}
-                    <button onClick={() => openEdit(p)}
-                      className={`flex items-center gap-1 border px-2 py-1 rounded-lg font-medium transition-all ${editId === p.id ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-gray-700/50 hover:bg-gray-700 text-gray-200 border-gray-600'}`}
-                      title={t('Vendos ose ndrysho SL & TP')}>
-                      <Pencil className="w-3 h-3" />SL/TP
-                    </button>
+                  <span className="flex items-center gap-3 shrink-0">
+                    <span className={`font-semibold tabular-nums ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {profit >= 0 ? '+' : ''}{profit.toFixed(2)}
+                    </span>
                     <button onClick={() => handleClose(p.id)} disabled={closingId === p.id}
                       className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg font-medium transition-all disabled:opacity-50">
                       {closingId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}{t('Mbyll')}
@@ -297,38 +193,11 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                   </span>
                 </div>
 
-                {/* Paralajmërim: pozicion pa mbrojtje — kliko për t'i vendosur SL/TP gjatë trade-it. */}
-                {noProtection && editId !== p.id && (
-                  <button onClick={() => openEdit(p)} className="w-full text-left px-3 pb-2 -mt-0.5 text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    {!p.stopLoss && !p.takeProfit ? t('Pa SL dhe TP — kliko për t\'i vendosur (mbrojtje nga humbja).') : !p.stopLoss ? t('Pa SL — kliko për ta vendosur.') : t('Pa TP — kliko për ta vendosur.')}
-                  </button>
-                )}
-
-                {/* Redaktori inline i SL/TP (si te MetaTrader). */}
-                {editId === p.id && (
-                  <div className="px-3 pb-3 pt-2 border-t border-gray-700/50 space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="block">
-                        <span className="text-[10px] text-red-300 font-semibold">Stop Loss (SL)</span>
-                        <input type="number" step="0.01" inputMode="decimal" value={editSl} onChange={e => setEditSl(e.target.value)} placeholder={t('pa SL')}
-                          className="mt-0.5 w-full bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:border-red-500/50 outline-none" />
-                      </label>
-                      <label className="block">
-                        <span className="text-[10px] text-green-300 font-semibold">Take Profit (TP)</span>
-                        <input type="number" step="0.01" inputMode="decimal" value={editTp} onChange={e => setEditTp(e.target.value)} placeholder={t('pa TP')}
-                          className="mt-0.5 w-full bg-gray-950 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-xs focus:border-green-500/50 outline-none" />
-                      </label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => saveSlTp(p)} disabled={modBusy}
-                        className="flex items-center gap-1 bg-amber-500 hover:bg-amber-400 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
-                        {modBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}{t('Ruaj SL/TP në MT5')}
-                      </button>
-                      <button onClick={() => setEditId(null)} disabled={modBusy}
-                        className="text-gray-400 hover:text-white px-2 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50">{t('Anulo')}</button>
-                    </div>
-                    <p className="text-[10px] text-gray-500">{t('Lëre bosh një fushë për të mos e vendosur atë. SL/TP modifikohen edhe kur tregu është i mbyllur.')}</p>
+                {/* Paralajmërim (jo buton): pozicion pa mbrojtje — vendos SL/TP te grafiku. */}
+                {noProtection && (
+                  <div className="px-3 pb-2 -mt-0.5 text-[10px] text-amber-400/90 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    {!p.stopLoss && !p.takeProfit ? t('Pa SL dhe TP — vendosi te grafiku (prek linjën e hyrjes).') : !p.stopLoss ? t('Pa SL — vendose te grafiku.') : t('Pa TP — vendose te grafiku.')}
                   </div>
                 )}
               </div>
