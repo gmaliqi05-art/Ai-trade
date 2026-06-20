@@ -377,9 +377,11 @@ Deno.serve(async (req: Request) => {
     const stopLoss: number | undefined = body.stopLoss != null ? Number(body.stopLoss) : undefined;
     const takeProfit: number | undefined = body.takeProfit != null ? Number(body.takeProfit) : undefined;
 
-    // Madhësia e lot-it: e dhëna ose default, e kufizuar nga max_lot.
-    let volume = Number(body.volume ?? config.default_lot) || config.default_lot;
-    if (volume > config.max_lot) volume = config.max_lot;
+    // Madhësia e lot-it: e dhëna ose default, e mbrojtur nga NaN/negativ/0 dhe e kufizuar fort nga max_lot.
+    let volume = Number(body.volume ?? config.default_lot);
+    if (!Number.isFinite(volume) || volume <= 0) volume = config.default_lot; // mbro nga vlera të pavlefshme
+    if (volume > config.max_lot) volume = config.max_lot;                     // tavan i fortë (s'kalohet kurrë)
+    if (volume < 0.01) volume = 0.01;                                         // dysheme minimale e brokerit
     if (volume < 0.01) volume = 0.01;
     volume = Math.round(volume * 100) / 100;
 
