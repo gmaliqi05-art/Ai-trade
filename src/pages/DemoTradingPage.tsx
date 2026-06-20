@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
 import { fetchBinanceCandles, type Timeframe } from '../ai-trader/market/candles';
 import CompletedSignals, { type DoneSignal } from '../components/CompletedSignals';
+import { useI18n } from '../i18n/i18n';
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
@@ -54,6 +55,7 @@ const fmt = (n: number, d = 2) => n.toLocaleString('en-US', { minimumFractionDig
 
 export default function DemoTradingPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [balance, setBalance] = useState<number>(100);
   const [startBalance, setStartBalance] = useState<number>(100);
   const [enabled, setEnabled] = useState<boolean>(false); // robot auto-demo (opt-in, OFF si default)
@@ -196,7 +198,7 @@ export default function DemoTradingPage() {
     if (error || (data as { error?: string })?.error) {
       setMsg({ type: 'error', text: `Hapja dështoi: ${(data as { error?: string })?.error || error?.message || ''}` });
     } else {
-      setMsg({ type: 'success', text: `U hap ${side === 'buy' ? 'BLEJ' : 'SHIT'} ${formSym} @ ${fmt(Number((data as { entry?: number }).entry ?? 0))}` });
+      setMsg({ type: 'success', text: `U hap ${side === 'buy' ? t('BLEJ') : t('SHIT')} ${formSym} @ ${fmt(Number((data as { entry?: number }).entry ?? 0))}` });
       setAppliedSignalId(null);
       await load();
     }
@@ -220,16 +222,16 @@ export default function DemoTradingPage() {
   // Linjat Entry/SL/TP të pozicioneve demo të arit + vija "Tani" te çmimi real-time (si te Live).
   const chartLines = useMemo<PriceLineDef[]>(() => {
     const lines: PriceLineDef[] = [];
-    const gold = open.filter((t) => normSym(t.symbol).includes('XAU') || normSym(t.symbol).includes('GOLD'));
+    const gold = open.filter((row) => normSym(row.symbol).includes('XAU') || normSym(row.symbol).includes('GOLD'));
     if (livePx != null) {
-      const goldPnl = gold.reduce((s, t) => s + unrealizedOf(t), 0);
-      lines.push({ price: livePx, color: '#fbbf24', title: gold.length ? `Tani · ${goldPnl >= 0 ? '+' : ''}€${fmt(goldPnl)}` : 'Tani' });
+      const goldPnl = gold.reduce((s, row) => s + unrealizedOf(row), 0);
+      lines.push({ price: livePx, color: '#fbbf24', title: gold.length ? `${t('Tani')} · ${goldPnl >= 0 ? '+' : ''}€${fmt(goldPnl)}` : t('Tani') });
     }
-    for (const t of gold.slice(0, 4)) {
-      const buy = (t.side || '').toLowerCase() === 'buy';
-      lines.push({ price: Number(t.entry_price), color: buy ? '#3b82f6' : '#f59e0b', title: `Hyrje ${buy ? 'BLEJ' : 'SHIT'}` });
-      if (t.sl != null) lines.push({ price: Number(t.sl), color: '#ef4444', title: 'SL' });
-      if (t.tp != null) lines.push({ price: Number(t.tp), color: '#22c55e', title: 'TP' });
+    for (const row of gold.slice(0, 4)) {
+      const buy = (row.side || '').toLowerCase() === 'buy';
+      lines.push({ price: Number(row.entry_price), color: buy ? '#3b82f6' : '#f59e0b', title: `${t('Hyrje')} ${buy ? t('BLEJ') : t('SHIT')}` });
+      if (row.sl != null) lines.push({ price: Number(row.sl), color: '#ef4444', title: 'SL' });
+      if (row.tp != null) lines.push({ price: Number(row.tp), color: '#22c55e', title: 'TP' });
     }
     return lines;
   }, [open, livePx, unrealizedOf]);
@@ -255,16 +257,16 @@ export default function DemoTradingPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-white flex items-center gap-2">
-              Tregto Demo
-              <span className="text-[10px] font-bold uppercase tracking-wide bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded">Virtual</span>
+              {t('Tregto Demo')}
+              <span className="text-[10px] font-bold uppercase tracking-wide bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded">{t('Virtual')}</span>
             </h1>
-            <p className="text-xs text-gray-400">Hapësira jote personale — tregto manualisht me çmime reale të arit. Ndez "Robot AUTO" nëse do që roboti të tregtojë vetë te demoja jote. Pa para reale.</p>
+            <p className="text-xs text-gray-400">{t('Hapësira jote personale — tregto manualisht me çmime reale të arit. Ndez "Robot AUTO" nëse do që roboti të tregtojë vetë te demoja jote. Pa para reale.')}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={toggleEnabled}
             className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition ${enabled ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
-            <Power className="w-3.5 h-3.5" /> {enabled ? 'Robot AUTO' : 'Vetëm manual'}
+            <Power className="w-3.5 h-3.5" /> {enabled ? t('Robot AUTO') : t('Vetëm manual')}
           </button>
           <button onClick={load} className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white transition">
             <RefreshCw className="w-4 h-4" />
@@ -274,18 +276,18 @@ export default function DemoTradingPage() {
 
       {/* Account cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card label="Balanca demo" value={`€${fmt(balance)}`} icon={<Wallet className="w-4 h-4 text-amber-400" />} />
-        <Card label="Equity" value={`€${fmt(equity)}`} icon={<Activity className="w-4 h-4 text-blue-400" />} />
-        <Card label="Fitim/Humbje (hapur)" value={`${floating >= 0 ? '+' : ''}€${fmt(floating)}`}
+        <Card label={t('Balanca demo')} value={`€${fmt(balance)}`} icon={<Wallet className="w-4 h-4 text-amber-400" />} />
+        <Card label={t('Equity')} value={`€${fmt(equity)}`} icon={<Activity className="w-4 h-4 text-blue-400" />} />
+        <Card label={t('Fitim/Humbje (hapur)')} value={`${floating >= 0 ? '+' : ''}€${fmt(floating)}`}
           tone={floating >= 0 ? 'pos' : 'neg'} icon={floating >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-rose-400" />} />
-        <Card label="Pozicione të hapura" value={`${open.length}`} sub={`nga starti €${fmt(startBalance)}`} icon={<Activity className="w-4 h-4 text-violet-400" />} />
+        <Card label={t('Pozicione të hapura')} value={`${open.length}`} sub={`${t('nga starti')} €${fmt(startBalance)}`} icon={<Activity className="w-4 h-4 text-violet-400" />} />
       </div>
 
       {/* Performance strip */}
       <div className="grid grid-cols-3 gap-3">
-        <Mini label="P&L i realizuar" value={`${realizedPnl >= 0 ? '+' : ''}€${fmt(realizedPnl)}`} tone={realizedPnl >= 0 ? 'pos' : 'neg'} />
-        <Mini label="Trade të mbyllura" value={`${fClosed.length}`} />
-        <Mini label="Win rate" value={`${winRate}%`} tone={winRate >= 50 ? 'pos' : undefined} />
+        <Mini label={t('P&L i realizuar')} value={`${realizedPnl >= 0 ? '+' : ''}€${fmt(realizedPnl)}`} tone={realizedPnl >= 0 ? 'pos' : 'neg'} />
+        <Mini label={t('Trade të mbyllura')} value={`${fClosed.length}`} />
+        <Mini label={t('Win rate')} value={`${winRate}%`} tone={winRate >= 50 ? 'pos' : undefined} />
       </div>
 
       {/* Chart — gold (same real price feed as Live), with demo position lines */}
@@ -293,7 +295,7 @@ export default function DemoTradingPage() {
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold bg-amber-500/15 text-amber-400 px-2 py-1 rounded">XAUUSD</span>
-            <span className="text-[11px] text-gray-500">Ar · çmim real (demo)</span>
+            <span className="text-[11px] text-gray-500">{t('Ar · çmim real (demo)')}</span>
           </div>
           <div className="flex items-center gap-1">
             {TIMEFRAMES.map((x) => (
@@ -303,22 +305,22 @@ export default function DemoTradingPage() {
           </div>
         </div>
         {candles.length === 0
-          ? <div className="h-[320px] flex items-center justify-center text-xs text-gray-500">Po ngarkohet grafiku…</div>
+          ? <div className="h-[320px] flex items-center justify-center text-xs text-gray-500">{t('Po ngarkohet grafiku…')}</div>
           : <Mt5Chart candles={candles} lines={chartLines} height={320} fitKey={`XAUUSD-${tf}`} />}
       </div>
 
       {/* Manual order form (demo) — like Live: click a signal to fill, then BLEJ/SHIT */}
       <div ref={formRef} className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-white font-semibold text-sm">Porosi e re — {formSym} <span className="text-violet-400 text-[11px]">(demo)</span></h3>
-          {curPrice != null && <span className="text-[11px] text-gray-400">Çmimi tani: <span className="text-white">{fmt(curPrice)}</span></span>}
+          <h3 className="text-white font-semibold text-sm">{t('Porosi e re —')} {formSym} <span className="text-violet-400 text-[11px]">(demo)</span></h3>
+          {curPrice != null && <span className="text-[11px] text-gray-400">{t('Çmimi tani:')} <span className="text-white">{fmt(curPrice)}</span></span>}
         </div>
         <div className="flex rounded-lg overflow-hidden border border-gray-700">
           <button onClick={() => setSide('buy')} className={`flex-1 py-2 text-sm font-semibold transition ${side === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>BLEJ</button>
           <button onClick={() => setSide('sell')} className={`flex-1 py-2 text-sm font-semibold transition ${side === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>SHIT</button>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-xs shrink-0 w-8">Lot</label>
+          <label className="text-gray-400 text-xs shrink-0 w-8">{t('Lot')}</label>
           <input type="number" value={lot} onChange={(e) => setLot(e.target.value)} min="0.01" step="0.01"
             className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500" />
         </div>
@@ -330,54 +332,54 @@ export default function DemoTradingPage() {
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="block text-[10px] text-red-400 mb-1">Stop Loss</label>
-            <input type="number" step="0.01" value={formSl} onChange={(e) => setFormSl(e.target.value)} placeholder="opsionale"
+            <input type="number" step="0.01" value={formSl} onChange={(e) => setFormSl(e.target.value)} placeholder={t('opsionale')}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-red-500" />
           </div>
           <div>
             <label className="block text-[10px] text-green-400 mb-1">Take Profit</label>
-            <input type="number" step="0.01" value={formTp} onChange={(e) => setFormTp(e.target.value)} placeholder="opsionale"
+            <input type="number" step="0.01" value={formTp} onChange={(e) => setFormTp(e.target.value)} placeholder={t('opsionale')}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
           </div>
         </div>
         {msg && <div className={`text-[11px] rounded-lg px-2 py-1.5 ${msg.type === 'success' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>{msg.text}</div>}
         <button onClick={execute} disabled={busy}
           className={`w-full py-2.5 rounded-lg text-sm font-bold text-white transition disabled:opacity-50 ${side === 'buy' ? 'bg-green-500 hover:bg-green-400' : 'bg-red-500 hover:bg-red-400'}`}>
-          {busy ? 'Po hapet…' : side === 'buy' ? 'BLEJ (demo)' : 'SHIT (demo)'}
+          {busy ? t('Po hapet…') : side === 'buy' ? t('BLEJ (demo)') : t('SHIT (demo)')}
         </button>
-        <p className="text-[10px] text-gray-600">Hapet virtualisht me çmimin real aktual. Roboti e mbyll te SL/TP, ose mbylle vetë te tabela poshtë.</p>
+        <p className="text-[10px] text-gray-600">{t('Hapet virtualisht me çmimin real aktual. Roboti e mbyll te SL/TP, ose mbylle vetë te tabela poshtë.')}</p>
       </div>
 
       {/* Filtri i raporteve: Të gjitha / Auto / Manual */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] text-gray-500">Filtro raportet:</span>
+        <span className="text-[11px] text-gray-500">{t('Filtro raportet:')}</span>
         {([['all', 'Të gjitha'], ['auto', 'Auto (robot)'], ['manual', 'Manual']] as const).map(([v, l]) => (
           <button key={v} onClick={() => setSrcFilter(v)}
-            className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${srcFilter === v ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>{l}</button>
+            className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${srcFilter === v ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>{t(l)}</button>
         ))}
       </div>
 
       {/* Open positions */}
-      <Section title={`Pozicione të hapura (${fOpen.length})`}>
-        {loading ? <Empty text="Po ngarkohet…" /> : fOpen.length === 0 ? (
-          <Empty text={srcFilter === 'manual' ? "Asnjë pozicion manual i hapur. Hap një trade nga forma poshtë." : srcFilter === 'auto' ? "Asnjë pozicion auto i hapur. Ndez 'Robot AUTO'." : "Asnjë pozicion i hapur. Hap një trade nga forma poshtë, ose ndez 'Robot AUTO'."} />
+      <Section title={`${t('Pozicione të hapura')} (${fOpen.length})`}>
+        {loading ? <Empty text={t('Po ngarkohet…')} /> : fOpen.length === 0 ? (
+          <Empty text={srcFilter === 'manual' ? t('Asnjë pozicion manual i hapur. Hap një trade nga forma poshtë.') : srcFilter === 'auto' ? t("Asnjë pozicion auto i hapur. Ndez 'Robot AUTO'.") : t("Asnjë pozicion i hapur. Hap një trade nga forma poshtë, ose ndez 'Robot AUTO'.")} />
         ) : (
-          <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'SL', 'TP', 'P&L tani', '']}>
-            {fOpen.map((t) => {
-              const pnl = unrealizedOf(t);
-              const buy = (t.side || '').toLowerCase() === 'buy';
-              const k = tradeKind(t);
+          <Table head={[t('Lloji'), t('Simboli'), t('Afati'), t('Burimi'), t('Lot'), t('Hyrja'), 'SL', 'TP', t('P&L tani'), '']}>
+            {fOpen.map((row) => {
+              const pnl = unrealizedOf(row);
+              const buy = (row.side || '').toLowerCase() === 'buy';
+              const k = tradeKind(row);
               return (
-                <tr key={t.id} className="border-t border-gray-800">
-                  <Td><span className={`inline-flex items-center gap-1 font-medium ${buy ? 'text-emerald-400' : 'text-rose-400'}`}>{buy ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}{buy ? 'BLEJ' : 'SHIT'}</span></Td>
-                  <Td>{t.symbol}</Td>
-                  <Td><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${k.cls}`}>{k.horizon === 'short' ? 'Shkurt' : 'Gjatë'}</span></Td>
+                <tr key={row.id} className="border-t border-gray-800">
+                  <Td><span className={`inline-flex items-center gap-1 font-medium ${buy ? 'text-emerald-400' : 'text-rose-400'}`}>{buy ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}{buy ? t('BLEJ') : t('SHIT')}</span></Td>
+                  <Td>{row.symbol}</Td>
+                  <Td><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${k.cls}`}>{k.horizon === 'short' ? t('Shkurt') : t('Gjatë')}</span></Td>
                   <Td><span className="text-[10px] text-gray-400">{k.src}</span></Td>
-                  <Td>{fmt(Number(t.volume), 2)}</Td>
-                  <Td>{fmt(Number(t.entry_price))}</Td>
-                  <Td>{t.sl != null ? fmt(Number(t.sl)) : '—'}</Td>
-                  <Td>{t.tp != null ? fmt(Number(t.tp)) : '—'}</Td>
+                  <Td>{fmt(Number(row.volume), 2)}</Td>
+                  <Td>{fmt(Number(row.entry_price))}</Td>
+                  <Td>{row.sl != null ? fmt(Number(row.sl)) : '—'}</Td>
+                  <Td>{row.tp != null ? fmt(Number(row.tp)) : '—'}</Td>
                   <Td><span className={pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{pnl >= 0 ? '+' : ''}€{fmt(pnl)}</span></Td>
-                  <Td><button onClick={() => closeTrade(t.id)} disabled={busy} className="text-[11px] px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition disabled:opacity-40">Mbyll</button></Td>
+                  <Td><button onClick={() => closeTrade(row.id)} disabled={busy} className="text-[11px] px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition disabled:opacity-40">{t('Mbyll')}</button></Td>
                 </tr>
               );
             })}
@@ -386,25 +388,25 @@ export default function DemoTradingPage() {
       </Section>
 
       {/* History */}
-      <Section title={`Historiku (${fClosed.length})`}>
-        {fClosed.length === 0 ? <Empty text={srcFilter === 'all' ? "Ende s'ka trade të mbyllura." : `Asnjë trade ${srcFilter === 'manual' ? 'manual' : 'auto'} i mbyllur.`} /> : (
-          <Table head={['Lloji', 'Simboli', 'Afati', 'Burimi', 'Lot', 'Hyrja', 'Dalja', 'Arsyeja', 'P&L', 'Mbyllur']}>
-            {fClosed.slice(0, 50).map((t) => {
-              const buy = (t.side || '').toLowerCase() === 'buy';
-              const pnl = Number(t.profit) || 0;
-              const k = tradeKind(t);
+      <Section title={`${t('Historiku')} (${fClosed.length})`}>
+        {fClosed.length === 0 ? <Empty text={srcFilter === 'all' ? t("Ende s'ka trade të mbyllura.") : t('Asnjë trade {kind} i mbyllur.', { kind: srcFilter === 'manual' ? 'manual' : 'auto' })} /> : (
+          <Table head={[t('Lloji'), t('Simboli'), t('Afati'), t('Burimi'), t('Lot'), t('Hyrja'), t('Dalja'), t('Arsyeja'), 'P&L', t('Mbyllur')]}>
+            {fClosed.slice(0, 50).map((row) => {
+              const buy = (row.side || '').toLowerCase() === 'buy';
+              const pnl = Number(row.profit) || 0;
+              const k = tradeKind(row);
               return (
-                <tr key={t.id} className="border-t border-gray-800">
-                  <Td><span className={buy ? 'text-emerald-400' : 'text-rose-400'}>{buy ? 'BLEJ' : 'SHIT'}</span></Td>
-                  <Td>{t.symbol}</Td>
-                  <Td><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${k.cls}`}>{k.horizon === 'short' ? 'Shkurt' : 'Gjatë'}</span></Td>
+                <tr key={row.id} className="border-t border-gray-800">
+                  <Td><span className={buy ? 'text-emerald-400' : 'text-rose-400'}>{buy ? t('BLEJ') : t('SHIT')}</span></Td>
+                  <Td>{row.symbol}</Td>
+                  <Td><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${k.cls}`}>{k.horizon === 'short' ? t('Shkurt') : t('Gjatë')}</span></Td>
                   <Td><span className="text-[10px] text-gray-400">{k.src}</span></Td>
-                  <Td>{fmt(Number(t.volume), 2)}</Td>
-                  <Td>{fmt(Number(t.entry_price))}</Td>
-                  <Td>{t.exit_price != null ? fmt(Number(t.exit_price)) : '—'}</Td>
-                  <Td><span className={`text-[11px] uppercase ${t.exit_reason === 'tp' ? 'text-emerald-400' : t.exit_reason === 'sl' ? 'text-rose-400' : 'text-gray-400'}`}>{t.exit_reason || '—'}</span></Td>
+                  <Td>{fmt(Number(row.volume), 2)}</Td>
+                  <Td>{fmt(Number(row.entry_price))}</Td>
+                  <Td>{row.exit_price != null ? fmt(Number(row.exit_price)) : '—'}</Td>
+                  <Td><span className={`text-[11px] uppercase ${row.exit_reason === 'tp' ? 'text-emerald-400' : row.exit_reason === 'sl' ? 'text-rose-400' : 'text-gray-400'}`}>{row.exit_reason || '—'}</span></Td>
                   <Td><span className={pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{pnl >= 0 ? '+' : ''}€{fmt(pnl)}</span></Td>
-                  <Td><span className="text-gray-500">{t.closed_at ? new Date(t.closed_at).toLocaleString() : '—'}</span></Td>
+                  <Td><span className="text-gray-500">{row.closed_at ? new Date(row.closed_at).toLocaleString() : '—'}</span></Td>
                 </tr>
               );
             })}
@@ -414,9 +416,9 @@ export default function DemoTradingPage() {
 
       {/* Sinjalet aktive — TË NJËJTAT që përdor roboti (njësoj si terminali Live) */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-        <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><Zap className="w-4 h-4 text-amber-400" />Sinjalet aktive</h3>
+        <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet aktive')}</h3>
         {signals.length === 0 ? (
-          <p className="text-gray-600 text-xs text-center py-3">Asnjë sinjal aktiv tani.</p>
+          <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal aktiv tani.')}</p>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {signals.map((s) => {
@@ -428,19 +430,19 @@ export default function DemoTradingPage() {
                   <div className="flex items-center justify-between mb-1">
                     <span className="flex items-center gap-2">
                       <span className="text-white text-sm font-bold">{s.symbol}</span>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? 'BLEJ' : 'SHIT'}</span>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${short ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{short ? 'Afat-shkurt' : 'Afat-gjatë'}</span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${short ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{short ? t('Afat-shkurt') : t('Afat-gjatë')}</span>
                     </span>
                     <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
                   </div>
                   <div className="flex gap-3 text-[11px] text-gray-400 flex-wrap">
-                    {s.entry_price != null && <span>Hyrje: <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
-                    {s.target_price != null && <span>Objektiv: <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
-                    {s.stop_loss != null && <span>Stop: <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
+                    {s.entry_price != null && <span>{t('Hyrje:')} <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
+                    {s.target_price != null && <span>{t('Objektiv:')} <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
+                    {s.stop_loss != null && <span>{t('Stop:')} <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
                   </div>
                   <div className="text-[10px] text-gray-600 mt-1 flex items-center justify-between">
                     <span>🕒 {fmtTime(s.created_at)}</span>
-                    <span className="text-amber-400">Kliko për të tregtuar →</span>
+                    <span className="text-amber-400">{t('Kliko për të tregtuar →')}</span>
                   </div>
                 </button>
               );

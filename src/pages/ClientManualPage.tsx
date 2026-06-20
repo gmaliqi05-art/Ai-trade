@@ -184,7 +184,7 @@ export default function ClientManualPage({ onNavigate }: { onNavigate?: (p: Clie
           <li>{t('Krijo një')} <b>API Token</b> {t('dhe kopjoje të gjithë (është shumë i gjatë).')}</li>
         </ul>
         <Screen title="app.metaapi.cloud/token">
-          <MockField label={t('API Token (kopjoje të plotë)')} value="eyJhbGciOiJSUzI1NiІ9.eyJfaWQ...një kod shumë i gjatë..." mono copy />
+          <MockField label={t('API Token (kopjoje të plotë)')} value={t('eyJhbGciOiJSUzI1NiІ9.eyJfaWQ...një kod shumë i gjatë...')} mono copy />
         </Screen>
         <Callout tone="red" icon={ShieldCheck}>
           <div>{t('Token-i është si çelës — mos ia jep askujt dhe mos e publiko. Platforma e ruan të sigurt.')}</div>
