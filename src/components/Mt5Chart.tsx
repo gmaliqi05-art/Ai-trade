@@ -193,19 +193,30 @@ export default function Mt5Chart({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Përditëso të dhënat e qirinjve.
+  // Përditëso qirinjtë. PËR LIVE përdorim series.update() (vetëm qiriri i fundit) — kjo NUK e prek
+  // zoom/pan-in. setData() (që rivendos pamjen) thirret VETËM kur ndryshon struktura: simboli/periudha
+  // (fitKey), dritarja rrëshqet (koha e parë ndryshon) ose shtohen >1 qirinj njëherësh.
+  const dataMetaRef = useRef<{ n: number; first: number; last: number }>({ n: 0, first: 0, last: 0 });
   useEffect(() => {
-    if (!seriesRef.current || candles.length === 0) return;
-    seriesRef.current.setData(
-      candles.map(c => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })),
-    );
-    // Ri-përshtat VETËM kur ndryshon simboli/periudha (fitKey). Përndryshe ruaj zoom/pan-in manual.
-    const key = fitKey ?? '__static__';
-    if (lastFitRef.current !== key) {
-      const n = candles.length;
-      chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 100), to: n + 3 });
-      lastFitRef.current = key;
+    const s = seriesRef.current;
+    if (!s || candles.length === 0) return;
+    const n = candles.length;
+    const first = candles[0].time, last = candles[n - 1].time;
+    const fitK = fitKey ?? '__static__';
+    const m = dataMetaRef.current;
+    const structural = lastFitRef.current !== fitK || first !== m.first || n < m.n || (n - m.n) > 1;
+    if (structural) {
+      s.setData(candles.map(c => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })));
+      if (lastFitRef.current !== fitK) {
+        const k = candles.length;
+        chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, k - 100), to: k + 3 });
+        lastFitRef.current = fitK;
+      }
+    } else {
+      const c = candles[n - 1];
+      s.update({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close });
     }
+    dataMetaRef.current = { n, first, last };
   }, [candles, fitKey]);
 
   // Përditëso linjat Hyrje/SL/TP + etiketat e majta.
@@ -244,7 +255,8 @@ export default function Mt5Chart({
       {/* Overlay i etiketave të majta — nuk kap klikime, rri sipër grafikut. */}
       <div ref={overlayRef} className="absolute inset-0 z-10" style={{ pointerEvents: 'none' }} />
 
-      {/* Pilula e HYRJES për çdo pozicion — prek për të aktivizuar/çaktivizuar editimin e SL/TP. */}
+      {/* Linja e HYRJES e prekshme për çdo pozicion (gjithë gjerësia) — prek për të hapur/mbyllur
+          editimin e SL/TP. Pilula djathtas tregon gjendjen. Prekja kudo te linja e aktivizon. */}
       {positions.map(p => {
         const on = p.positionId === activeId;
         return (
@@ -252,11 +264,11 @@ export default function Mt5Chart({
             ref={el => { if (el) entryEls.current[p.positionId] = el; else delete entryEls.current[p.positionId]; }}
             onPointerDown={e => e.stopPropagation()}
             onClick={() => onActiveChange?.(on ? null : p.positionId)}
-            className="absolute left-1 z-30 select-none"
-            style={{ display: 'none', transform: 'translateY(-50%)', touchAction: 'none', cursor: 'pointer', pointerEvents: 'auto' }}
-            title={on ? 'Mbyll editimin e SL/TP' : 'Prek për të vendosur/lëvizur SL & TP'}>
-            <span className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded shadow-md border ${on ? 'bg-blue-500 text-white border-blue-300' : 'bg-blue-500/90 text-white border-blue-400/40'}`}>
-              {on ? '✓' : '✎'} {p.isBuy ? 'BUY' : 'SELL'} · SL/TP
+            className="absolute left-0 right-0 z-30 flex items-center justify-end select-none"
+            style={{ height: '26px', display: 'none', transform: 'translateY(-50%)', touchAction: 'none', cursor: 'pointer', pointerEvents: 'auto' }}
+            title={on ? 'Mbyll editimin e SL/TP' : 'Prek linjën e hyrjes për të vendosur/lëvizur SL & TP'}>
+            <span className={`mr-[60px] flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full shadow-md border ${on ? 'bg-blue-600 text-white border-blue-300 ring-2 ring-blue-300/50' : 'bg-blue-500 text-white border-blue-300/60'}`}>
+              {on ? '✓ Mbyll' : '✎ SL/TP'}
             </span>
           </div>
         );
@@ -269,16 +281,16 @@ export default function Mt5Chart({
             className="absolute left-0 right-0 z-20 flex items-center select-none"
             style={{ height: '24px', display: 'none', transform: 'translateY(-50%)', touchAction: 'none', cursor: 'ns-resize', pointerEvents: 'auto' }}>
             <div className="w-full" style={{ height: '2px', background: '#ef4444' }} />
-            <div className="absolute right-1 flex items-center gap-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-md">
-              SL <span data-px>—</span>
+            <div className="absolute right-[56px] flex items-center gap-1 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md ring-1 ring-red-300/50">
+              ⇅ SL <span data-px>—</span>
             </div>
           </div>
           <div ref={tpElRef} onPointerDown={startDrag('tp')}
             className="absolute left-0 right-0 z-20 flex items-center select-none"
             style={{ height: '24px', display: 'none', transform: 'translateY(-50%)', touchAction: 'none', cursor: 'ns-resize', pointerEvents: 'auto' }}>
             <div className="w-full" style={{ height: '2px', background: '#22c55e' }} />
-            <div className="absolute right-1 flex items-center gap-1 bg-green-500 text-gray-900 text-[10px] font-bold px-1.5 py-0.5 rounded shadow-md">
-              TP <span data-px>—</span>
+            <div className="absolute right-[56px] flex items-center gap-1 bg-green-500 text-gray-900 text-[10px] font-bold px-2 py-1 rounded-full shadow-md ring-1 ring-green-300/50">
+              ⇅ TP <span data-px>—</span>
             </div>
           </div>
         </>
