@@ -750,6 +750,25 @@ Deno.serve(async (req: Request) => {
   const summary: Array<Record<string, unknown>> = [];
   const sinceIso = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
+  // LOCK kundër mbivendosjes (K2): merr lock-un atomik. Nëse e mban një ekzekutim tjetër (< 90s) → dil.
+  // Kjo parandalon POROSITË E DYFISHTA nga dy ekzekutime cron që mbivendosen. Fail-OPEN nëse infra e
+  // lock-ut mungon/gabon (mos e ndal kurrë robotin për shkak të lock-ut), fail-CLOSED te kontesa reale.
+  let lockHeld = false;
+  try {
+    const staleIso = new Date(Date.now() - 90_000).toISOString();
+    const { data: lockRows, error: lockErr } = await db.from("runner_lock")
+      .update({ locked_at: new Date().toISOString() })
+      .eq("id", 1)
+      .or(`locked_at.is.null,locked_at.lt.${staleIso}`)
+      .select("id");
+    if (!lockErr) {
+      lockHeld = Array.isArray(lockRows) && lockRows.length > 0;
+      if (!lockHeld) {
+        return new Response(JSON.stringify({ skipped: "runner_busy" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    } // nëse lockErr (p.sh. tabela mungon) → vazhdo pa lock (fail-open, mos e ndal robotin)
+  } catch { /* fail-open */ }
+
   try {
     // Filtri i lajmeve (një herë për ekzekutim): a jemi rreth një lajmi USD me ndikim të lartë?
     const newsBlock = await inNewsBlackout();
@@ -810,8 +829,9 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       // NDALUES DITOR: ndalon kur humbja NETO (ekuiteti) OSE humbja BRUTO kalon kufirin.
-      const maxDailyRisk = Number(cfg.max_daily_loss) || 0;
-      const dailyStop = maxDailyRisk > 0 && (dayPnl <= -maxDailyRisk || grossLoss >= maxDailyRisk);
+      // L1 (audit): max_daily_loss i munguar/0/NaN → default i SIGURT (100), JO "pa kufi".
+      const maxDailyRisk = Number(cfg.max_daily_loss) > 0 ? Number(cfg.max_daily_loss) : 100;
+      const dailyStop = (dayPnl <= -maxDailyRisk || grossLoss >= maxDailyRisk);
       // DUKSHMËRI: kur roboti ndalet nga limiti ditor, shëno NJË rresht + push (një herë në ditë), që
       // përdoruesi ta dijë pse s'po hapen trade (më parë heshtte → dukej sikur s'punon).
       if (dailyStop) {
@@ -961,7 +981,7 @@ Deno.serve(async (req: Request) => {
       // ============ HYRJET SCALP (afat-shkurt: momentum 1m/5m, SL/TP të ngushtë) ============
       if (scalpOn) {
         const scalpMax = Math.max(1, Number(cfg.scalp_max_trades ?? 2));
-        const maxRisk = Number(cfg.max_daily_loss) || 0;
+        const maxRisk = Number(cfg.max_daily_loss) > 0 ? Number(cfg.max_daily_loss) : 100; // L1: pa limit të vlefshëm → default i sigurt
         for (const rawSym of allowed) {
           if (openTrades >= cfg.max_open_trades || scalpOpen >= scalpMax) break;
           if (dailyStop) break; // limit humbjeje ditore (neto te ekuiteti OSE bruto e trade-ve humbëse)
@@ -1133,7 +1153,7 @@ Deno.serve(async (req: Request) => {
         // POSITION SIZING (fixed-fractional): rreziku per-trade = % e kapitalit (default 1%),
         // i kapur te kufiri ditor; lot-i del nga distanca REALE e SL.
         let volume = lotForConfidence(cfg, Number(sig.confidence) || 0);
-        const maxRisk = Number(cfg.max_daily_loss) || 0;
+        const maxRisk = Number(cfg.max_daily_loss) > 0 ? Number(cfg.max_daily_loss) : 100; // L1: pa limit të vlefshëm → default i sigurt
         const riskPct = Number(cfg.risk_per_trade_pct) || 1;
         const equityRisk = equity > 0 ? equity * (riskPct / 100) : 0;
         // perTradeRisk = min(kapital×rrezik%, kufiri ditor) — që një trade s'e kalon buxhetin ditor.
@@ -1226,10 +1246,11 @@ Deno.serve(async (req: Request) => {
     // Vetëm përdoruesit pa broker-trailing (ata me broker-trailing i ndjek MetaApi vetë, tick-by-tick).
     const trailCfgs = (configs ?? []).map((r) => r as Cfg).filter((c) => c.account_id && c.token && c.trail_enabled !== false && c.broker_trailing !== true);
     if (trailCfgs.length > 0) {
-      // ~8 kontrolle brenda minutës (çdo ~7s) → SL ndjek lëvizjen pothuajse në kohë reale.
-      // (Më shpejt do rrezikonte limitet e MetaApi/brokerit.) Ndalon ~52s për të mos kaluar minutën.
-      const deadline = Date.now() + 52_000;
-      for (let i = 0; i < 8 && Date.now() < deadline; i++) {
+      // ~3 kontrolle brenda minutës (çdo ~7s) → SL ndjek lëvizjen mjaft shpejt, POR ekzekutimi mbaron
+      // shumë nën 60s (≤~21s këtu + përpunimi) → s'mbivendoset me cron-in tjetër e s'ngec lock-un.
+      // (Më parë 52s → ekzekutime që kalonin minutën → shkaku kryesor i porosive të dyfishta.)
+      const deadline = Date.now() + 21_000;
+      for (let i = 0; i < 3 && Date.now() < deadline; i++) {
         await new Promise((r) => setTimeout(r, 7000));
         for (const c of trailCfgs) {
           try { const m = await trailPositions(c); if (m > 0) summary.push({ user: c.user_id, fast_trail: m, pass: i + 1 }); } catch { /* */ }
@@ -1244,5 +1265,8 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } finally {
+    // Liro lock-un (gjithmonë, edhe në gabim) që ekzekutimi tjetër të vazhdojë.
+    if (lockHeld) { try { await db.from("runner_lock").update({ locked_at: null }).eq("id", 1); } catch { /* */ } }
   }
 });
