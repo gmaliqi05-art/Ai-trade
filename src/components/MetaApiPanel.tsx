@@ -374,6 +374,31 @@ export default function MetaApiPanel() {
           </div>
         </div>
 
+        {/* Karta SCALP-LIVE — robot scalping në kohë reale (cikël brenda minutës) */}
+        <div className={`rounded-xl border p-3.5 transition-colors ${cfg.scalp_live_enabled ? 'bg-rose-500/10 border-rose-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-white flex items-center gap-2"><Zap className="w-4 h-4 text-rose-400" />{t('Scalp LIVE (kohë reale)')}</span>
+            <button onClick={() => setAndSave('scalp_live_enabled', !cfg.scalp_live_enabled)}
+              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.scalp_live_enabled ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+              {cfg.scalp_live_enabled ? t('AKTIV') : t('JOAKTIV')}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Roboti e ndjek çmimin <span class="text-gray-300">live (~çdo 2.5 sekonda)</span>: hyn shpejt në momentum, mbron fitimin shpejt, dhe del në kthesë me një hapësirë të vogël (lejon një ri-test). <span class="text-rose-300">Pa TP/SL fiks</span> — vetëm një SL "katastrofe" i gjerë te brokeri si parashutë. Modalitet i veçantë, krah për krah me strategjitë lart.') }} />
+
+          {/* Nën-parametrat e scalp-live */}
+          <div className={`mt-3 space-y-2.5 transition-opacity ${cfg.scalp_live_enabled ? '' : 'opacity-40 pointer-events-none'}`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <NumField label={t('Lot (fiks)')} hint={t('Madhësia e vogël e pozicionit për scalp-live (p.sh. 0.01).')} value={cfg.scalp_live_lot} step="0.01" min="0.01" onChange={v => set('scalp_live_lot', v)} onBlur={save} />
+              <NumField label={t('Maks. njëkohësisht')} hint={t('Sa pozicione scalp-live lejohen në të njëjtën kohë.')} value={cfg.scalp_live_max_trades} step="1" min="1" onChange={v => set('scalp_live_max_trades', v)} onBlur={save} />
+              <NumField label={t('Marzha e fitimit ($ lëvizje)')} hint={t('Sapo ari shkon kaq $ në favor, aktivizohet mbrojtja e fitimit (grab). P.sh. 0.50.')} value={cfg.scalp_live_grab_usd} step="0.05" min="0.05" onChange={v => set('scalp_live_grab_usd', v)} onBlur={save} />
+              <NumField label={t('Kthim i lejuar nga maja ($)')} hint={t('Sa fitim lejohet të kthehet nga maja para se të mbyllet (trailing i ngushtë). P.sh. 0.25.')} value={cfg.scalp_live_giveback_usd} step="0.05" min="0.02" onChange={v => set('scalp_live_giveback_usd', v)} onBlur={save} />
+              <NumField label={t('Prerje e hershme ($ kundër)')} hint={t('Hapësira e ri-testit: del nëse ari shkon kaq $ kundër (p.sh. 0.60), para SL-së katastrofe.')} value={cfg.scalp_live_cut_usd} step="0.05" min="0.05" onChange={v => set('scalp_live_cut_usd', v)} onBlur={save} />
+              <NumField label={t('SL katastrofe ($ — parashutë)')} hint={t('SL i gjerë te brokeri si rrjetë sigurie nëse roboti/rrjeti bie (p.sh. 1.50). Mos e bëj shumë të vogël.')} value={cfg.scalp_live_catastrophe_usd} step="0.1" min="0.3" onChange={v => set('scalp_live_catastrophe_usd', v)} onBlur={save} />
+            </div>
+            <p className="text-[10px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('<span class="text-rose-400 font-semibold">⚠️ Agresiv:</span> hyrje/dalje shumë të shpejta. Rekomandohet ta provosh fillimisht në <span class="text-gray-300">demo</span> dhe me lot 0.01 në live. Funksionon vetëm për arin (XAUUSD) gjatë orarit të tregut.') }} />
+          </div>
+        </div>
+
         {/* Karta FILTRA TË AVANCUAR (Tier-1) — opt-in, default JOAKTIV */}
         <div className={`rounded-xl border p-3.5 transition-colors ${cfg.advanced_filters ? 'bg-purple-500/10 border-purple-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
           <div className="flex items-center justify-between gap-3">

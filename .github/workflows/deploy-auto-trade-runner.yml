@@ -34,6 +34,11 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+      - name: Deploy scalp-live (verify_jwt=false — cron me x-cron-secret)
+        run: supabase functions deploy scalp-live --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       - name: Deploy web-push-send (verify_jwt=false — internal service-role + user JWT)
         run: supabase functions deploy web-push-send --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
         env:
