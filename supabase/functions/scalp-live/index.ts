@@ -1,13 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// scalp-live — robot scalping në "kohë reale". Cron-i e nis çdo minutë, por funksioni bën një
-// CIKËL ~50s brenda minutës duke ndjekur tick-un live (~çdo 2.5s):
-//  • Hyrje e shpejtë në momentum (1m/5m, e njëjta logjikë e provuar e scalp-it).
+// scalp-live — roboti "FastT" në KOHË REALE. Cron-i e nis çdo minutë, por funksioni bën një
+// CIKËL ~50s brenda minutës duke ndjekur TICK-un live (~çdo 1.5s):
+//  • Hyrje real-time mbi tick-un: kap lëvizjen ndërsa po shkon (BUY në ngritje, SELL në rënie),
+//    PARA se të marrë kahjen e kundërt — pa pritur mbylljen e qiririt.
 //  • Mbrojtje e shpejtë e fitimit: sapo lëvizja kalon "grab", del kur kthehet pak nga maja (giveback).
 //  • Prerje e hershme në kthesë me një HAPËSIRË të vogël (lejon një ri-test para se të dalë).
 //  • SL "katastrofe" i gjerë te brokeri = rrjetë sigurie nëse funksioni/rrjeti bie (pozicioni s'mbetet i zhveshur).
-// Modalitet i RI, krah për krah me auto-trade-runner (s'e prek formulën fituese). Pa Claude në rrugën e shpejtë.
+// Koncept KOMPLET I PAVARUR — s'e prek motorin/formulën fituese të auto-trade-runner. Pa Claude.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -202,6 +203,46 @@ async function fetchMt5Candles(cfg: Cfg, symbol: string, tf: string, limit = 120
   return null;
 }
 
+// Çmimi LIVE (tick) i një simboli — bid/ask direkt nga brokeri. Kjo është rruga "kohë reale":
+// FastT vendos mbi çmimin që po lëviz TANI, jo mbi qirinjtë e mbyllur.
+async function fetchTick(cfg: Cfg, symbol: string): Promise<number | null> {
+  try {
+    const resp = await fetch(
+      `${host(cfg.region)}/users/current/accounts/${cfg.account_id}/symbols/${encodeURIComponent(symbol)}/current-price?keepSubscription=true`,
+      { headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(6000) },
+    );
+    if (!resp.ok) return null;
+    const j = await resp.json();
+    const bid = Number((j as Record<string, unknown>)?.bid), ask = Number((j as Record<string, unknown>)?.ask);
+    if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) return (bid + ask) / 2;
+    const last = Number((j as Record<string, unknown>)?.last);
+    return Number.isFinite(last) && last > 0 ? last : null;
+  } catch { return null; }
+}
+
+// Sinjali TICK i FastT — i pavarur dhe në kohë reale. Shikon mostrat e fundit të çmchmit live
+// (~çdo 1.5s) brenda një dritareje të shkurtër: nëse çmimi është zhvendosur ≥ `minMove` në një
+// drejtim DHE vazhdon në atë drejtim (mostra e fundit ende lart/poshtë), hyn MENJËHERË — pra
+// kap lëvizjen ndërsa po shkon, jo pasi ka marrë kahjen e kundërt.
+interface Tick { t: number; p: number; }
+function tickSignal(buf: Tick[], minMove: number, windowMs = 7000): { action: "BUY" | "SELL"; reason: string } | null {
+  const n = buf.length;
+  if (n < 4 || !(minMove > 0)) return null;
+  const now = buf[n - 1], prev = buf[n - 2];
+  // Mostra referencë: më e vjetra brenda dritares (p.sh. 7s) — matëse e push-it të fundit.
+  const start = now.t - windowMs;
+  let ref = buf[0];
+  for (let i = 0; i < n; i++) { if (buf[i].t >= start) { ref = buf[i]; break; } }
+  if (now.t - ref.t < 2500) return null; // duhen të paktën ~2.5s histori për të gjykuar
+  const move = now.p - ref.p;
+  const secs = ((now.t - ref.t) / 1000).toFixed(0);
+  // BUY: push lart ≥ minMove DHE çmimi ende po ngjitet (mostra e fundit ≥ e parafundit).
+  if (move >= minMove && now.p >= prev.p) return { action: "BUY", reason: `tick live në ngritje +${move.toFixed(2)}/${secs}s` };
+  // SELL: pasqyrë.
+  if (-move >= minMove && now.p <= prev.p) return { action: "SELL", reason: `tick live në rënie ${move.toFixed(2)}/${secs}s` };
+  return null;
+}
+
 async function maGet(cfg: Cfg, path: string) {
   let lastErr: Error | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -294,6 +335,10 @@ interface UserState { cfg: Cfg; equity: number; dailyStop: boolean; maxRisk: num
 const peakMap = new Map<string, number>();
 // Koha e hyrjes së fundit scalp-live per (user:symbol) — cooldown anti-grumbullim brenda ciklit.
 const lastEntry = new Map<string, number>();
+// Buffer-i i tick-ave live per (user:symbol) — historia e shkurtër e çmimit për sinjalin real-time.
+const tickBuf = new Map<string, Tick[]>();
+// Dyshemeja e zhurmës per simbol (sa $ konsiderohet "lëvizje reale"), e rifreskuar nga qirinjtë 1m.
+const moveFloor = new Map<string, { t: number; v: number }>();
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -414,8 +459,7 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // ===== HYRJET (FastT ndjek qirinjtë live: provo ~çdo 5s) =====
-        if (iter % 2 !== 0) continue;
+        // ===== HYRJET (FastT ndjek TICK-un live çdo iteracion ~1.5s) =====
         if (st.dailyStop) continue;
         if (!isMarketOpen()) continue;
         const openMine = mine.length;
@@ -428,24 +472,41 @@ Deno.serve(async (req: Request) => {
           const sym = await resolveSymbol(cfg, rawSym, db);
           // Një pozicion FastT për simbol.
           if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase())) continue;
-          // Cooldown 45s për (user:symbol) brenda ciklit (anti-rihapje menjëherë pas daljes).
           const ck = `${cfg.user_id}:${sym.toUpperCase()}`;
-          if (Date.now() - (lastEntry.get(ck) ?? 0) < 45_000) continue;
-          // Cooldown i qëndrueshëm: mos hap nëse u hap një FastT për këtë simbol < 60s (mes ekzekutimeve).
-          const { data: lastSc } = await db.from("trade_executions").select("created_at")
-            .eq("user_id", cfg.user_id).eq("symbol", sym).eq("status", "executed")
-            .ilike("reason", "FastT auto%").order("created_at", { ascending: false }).limit(1);
-          const lastT = lastSc && lastSc[0] ? new Date((lastSc[0] as { created_at: string }).created_at).getTime() : 0;
-          if (lastT > 0 && Date.now() - lastT < 60 * 1000) continue;
 
-          // FastT është i pavarur: i mjaftojnë vetëm qirinjtë 1m live.
-          const c1 = await fetchMt5Candles(cfg, sym, "1m", 60);
-          if (!c1) continue;
-          const sgl = fastSignal(c1);
+          // (1) Lexo TICK-un live dhe shtoje në buffer (kjo bëhet GJITHMONË, edhe gjatë cooldown-it,
+          //     që historia e çmimit të mbetet e vazhdueshme për sinjalin real-time).
+          const px = await fetchTick(cfg, sym);
+          if (px == null) continue;
+          const buf = tickBuf.get(ck) ?? [];
+          const nowMs = Date.now();
+          buf.push({ t: nowMs, p: px });
+          while (buf.length > 0 && nowMs - buf[0].t > 20_000) buf.shift(); // mbaj ~20s histori
+          tickBuf.set(ck, buf);
+
+          // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë në të njëjtën zhurmë).
+          if (nowMs - (lastEntry.get(ck) ?? 0) < 25_000) continue;
+
+          // (2) Dyshemeja e zhurmës: sa $ konsiderohet "lëvizje reale" — nga rrezja mesatare 1m,
+          //     rifreskuar çdo ~50s (e lirë). Kapur në minimum të arsyeshëm mbi spread.
+          let floor = moveFloor.get(ck);
+          if (!floor || nowMs - floor.t > 50_000) {
+            const c1f = await fetchMt5Candles(cfg, sym, "1m", 10);
+            let v = 0.40; // parazgjedhje e sigurt për arin
+            if (c1f && c1f.length >= 5) {
+              let rng = 0; for (let i = c1f.length - 5; i < c1f.length; i++) rng += (c1f[i].high - c1f[i].low);
+              v = Math.max(0.20, 0.35 * (rng / 5));
+            }
+            floor = { t: nowMs, v };
+            moveFloor.set(ck, floor);
+          }
+
+          // (3) Sinjali real-time nga tick-at.
+          const sgl = tickSignal(buf, floor.v);
           if (!sgl) continue;
 
           const isBuyS = sgl.action === "BUY";
-          const entryPx = c1[c1.length - 1].close;
+          const entryPx = px;
           const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50)); // distanca e SL-së katastrofe
           const stopLoss = Math.round((isBuyS ? entryPx - cat : entryPx + cat) * 100) / 100;
           const volume = st.lot;
@@ -470,7 +531,7 @@ Deno.serve(async (req: Request) => {
       }
       iter++;
       if (Date.now() >= deadline) break;
-      await new Promise((r) => setTimeout(r, 2500));
+      await new Promise((r) => setTimeout(r, 1500));
     }
 
     return new Response(JSON.stringify({ success: true, iterations: iter, processed: summary }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

@@ -146,8 +146,9 @@ export default function ReportsPage() {
   const sigWr = sigDecided ? Math.round((sigTp / sigDecided) * 100) : 0;
 
   // Përmbledhje + grupim sipas BURIMIT (auto / sinjal / manual / direkt MT5).
-  const SOURCE_ORDER: TradeSource[] = ['auto', 'signal', 'manual', 'mt5'];
+  const SOURCE_ORDER: TradeSource[] = ['fastt', 'auto', 'signal', 'manual', 'mt5'];
   const sourceMeta: Record<TradeSource, { label: string; icon: typeof Bot; color: string }> = {
+    fastt: { label: t('FastT'), icon: Zap, color: 'text-rose-400' },
     auto: { label: t('Auto (Roboti)'), icon: Bot, color: 'text-amber-400' },
     signal: { label: t('Nga sinjali'), icon: Zap, color: 'text-blue-400' },
     manual: { label: t('Manual'), icon: Hand, color: 'text-green-400' },

@@ -177,6 +177,9 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                     {isBuy ? <TrendingUp className="w-3.5 h-3.5 text-green-400 shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400 shrink-0" />}
                     <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
                     <span className="text-white">{p.symbol}</span>
+                    {/FastT/i.test(`${p.comment ?? ''} ${p.clientId ?? ''}`) && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400">FastT</span>
+                    )}
                     <span className="text-gray-300">{p.volume} {t('lot')}</span>
                     {p.openPrice != null && <span className="text-gray-400">@ {p.openPrice}</span>}
                     {p.stopLoss != null && <span className="text-red-300/80">SL {p.stopLoss}</span>}

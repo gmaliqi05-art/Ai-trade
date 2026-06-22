@@ -390,6 +390,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   // Etiketa e burimit të trade-it (Auto / Signal / Manual / MT5).
   const srcMeta: Record<TradeSource, { label: string; cls: string }> = {
+    fastt: { label: t('FastT'), cls: 'bg-rose-500/20 text-rose-400' },
     auto: { label: t('Auto'), cls: 'bg-amber-500/20 text-amber-400' },
     signal: { label: t('Signal'), cls: 'bg-blue-500/20 text-blue-400' },
     manual: { label: t('Manual'), cls: 'bg-green-500/20 text-green-400' },
