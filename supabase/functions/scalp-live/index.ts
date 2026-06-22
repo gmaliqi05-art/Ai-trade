@@ -340,17 +340,31 @@ function entrySignal(c: Candle[], price: number, tickBias: number): { action: "B
   return null;
 }
 
-// DALJE mbi STRUKTURË: mbaje sa çmimi rri në anën e duhur të EMA9; dil në thyerje (kthesë reale).
-function structureExit(c: Candle[], price: number, isBuy: boolean, moved: number, peak: number): string | null {
-  const { e9, atrv: a0 } = analyzeTrend(c);
-  const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.3;
+// MENAXHIMI I DALJES — i sigurt edhe pa qirinj:
+//  (0) NDALIM I FORTË (parashutë, pavarësisht qirinjve): asnjëherë humbje e madhe.
+//  (1) KTHESË REALE: çmimi thyen EMA9 me një buffer (filtër kundër "kthesës-mashtrim").
+//  (2) MBROJTJE FITIMI/BREAKEVEN: pasi bëhet fitues (maja≥1.0), trailing që s'lejon
+//      kthim në humbje — e mban të paktën breakeven dhe ndjek trendin lart.
+function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number): string | null {
+  // (0) Parashutë e fortë — vepron edhe kur qirinjtë mungojnë (zgjidh rastin e humbjes -5.54).
+  if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
+
+  let e9 = NaN, atrv = 0.3;
+  if (c && c.length >= 25) { const t = analyzeTrend(c); e9 = t.e9; if (Number.isFinite(t.atrv) && t.atrv > 0) atrv = t.atrv; }
   const buffer = Math.max(0.05, 0.15 * atrv);
-  if (Number.isFinite(e9)) {
-    if (isBuy && price <= e9 - buffer) return `kthesë: çmimi ra nën EMA9 (${moved.toFixed(2)})`;
-    if (!isBuy && price >= e9 + buffer) return `kthesë: çmimi mbi EMA9 (${moved.toFixed(2)})`;
+  const onRightSide = Number.isFinite(e9) ? (isBuy ? price > e9 - buffer : price < e9 + buffer) : true;
+
+  // (1) KTHESË REALE mbi strukturë: çmimi theu EMA9 (përtej buffer-it = jo thjesht mashtrim).
+  if (Number.isFinite(e9) && !onRightSide) {
+    return `kthesë reale: ${isBuy ? "çmimi nën EMA9" : "çmimi mbi EMA9"} (${moved.toFixed(2)})`;
   }
-  // Siguro fitimin e madh pas një vrapimi (dytësore — struktura është parësore).
-  if (peak >= 1.5 && moved <= peak - 0.6) return `fitim i siguruar (+${moved.toFixed(2)} nga maja +${peak.toFixed(2)})`;
+
+  // (2) TRAILING i mbrojtjes: sapo maja ≥ 1.0, vendos një dysheme që ngjitet me trendin dhe
+  //     NUK e lë kurrë të kthehet në humbje (të paktën ~breakeven). Kjo mbron "kthimin te hyrja".
+  if (peak >= 1.0) {
+    const floor = Math.max(0.05, peak - 0.7);
+    if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  }
   return null;
 }
 
@@ -487,10 +501,21 @@ Deno.serve(async (req: Request) => {
     while (Date.now() < deadline) {
       for (const st of states) {
         const cfg = st.cfg;
-        let positions: Position[] = [];
-        try { positions = (await maGet(cfg, "/positions") as Position[]) ?? []; } catch { continue; }
-        if (!Array.isArray(positions)) positions = [];
+        let positions: Position[] | null = null;
+        try { const r = await maGet(cfg, "/positions"); if (Array.isArray(r)) positions = r as Position[]; } catch { positions = null; }
+        // SIGURI: nëse s'e konfirmuam dot listën e pozicioneve (gabim API), MOS supozo "i lirë" —
+        // kapërce këtë iteracion (kjo parandalonte hapjen e një pozicioni mbi një ekzistues = HEDGE).
+        if (positions === null) continue;
         const mine = positions.filter(isScalpLivePosition);
+
+        // PASTRIM HEDGE: BUY+SELL njëkohësisht në të njëjtin simbol është defekt — mbylli të dyja.
+        const dirBySym = new Map<string, Set<string>>();
+        for (const p of mine) {
+          const k = (p.symbol || "XAUUSD").toUpperCase();
+          if (!dirBySym.has(k)) dirBySym.set(k, new Set());
+          dirBySym.get(k)!.add(String(p.type || "").includes("BUY") ? "B" : "S");
+        }
+        const hedgedSyms = new Set([...dirBySym].filter(([, s]) => s.size > 1).map(([k]) => k));
 
         // ===== MENAXHIMI LIVE I POZICIONEVE (arsyetim mbi strukturën 1m, çdo iteracion ~1.5s) =====
         for (const p of mine) {
@@ -502,12 +527,17 @@ Deno.serve(async (req: Request) => {
           const peak = Math.max(prevPeak, moved);
           peakMap.set(p.id, peak);
 
-          // DALJE mbi STRUKTURË: mbaje sa kohë trendi 1m është i paprekur (çmimi në anën e duhur të
-          // EMA9); dil VETËM në kthesë reale (thyerje e EMA9) — JO për një kthim të vogël mbrapa.
-          const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
-          const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
           let close: string | null = null;
-          if (pCndl && pCndl.length >= 25) close = structureExit(pCndl, cur, isBuy, moved, peak);
+          if (hedgedSyms.has((p.symbol || "XAUUSD").toUpperCase())) {
+            close = "pastrim hedge (BUY+SELL njëkohësisht — mbyllje sigurie)";
+          } else {
+            // Parashutë e fortë (pa varësi nga qirinjtë) + kthesë mbi EMA9 + trailing mbrojtje fitimi.
+            const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
+            const hardStop = Math.max(0.8, Math.min(cat, 1.4));
+            const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
+            const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
+            close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop);
+          }
 
           if (close) {
             try {
