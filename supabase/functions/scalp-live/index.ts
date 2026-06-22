@@ -349,32 +349,41 @@ function entrySignal(c: Candle[], price: number, tickBias: number): { action: "B
   return null;
 }
 
-// MENAXHIMI I DALJES — LË FITIMIN TË VRAPOJË derisa qirinjtë të kthehen:
-//  (0) NDALIM I FORTË (parashutë, pavarësisht qirinjve): asnjëherë humbje e madhe.
-//  (1) KTHESË REALE: çmimi thyen EMA9 me një buffer (= qirinjtë po kthehen) → del me gjithë vrapimin.
-//  (2) TRAILING që VRAPON: jep pas më shumë kur fitimi rritet (lejon +7/+10 në trend të fortë),
-//      por s'e lë kurrë një fitues të kthehet në humbje (të paktën ~breakeven).
+// MENAXHIMI I DALJES — REAGON TE QIRINJTË, jo te EMA9 e ngadaltë:
+//  (0) NDALIM I FORTË (parashutë): asnjëherë humbje e madhe.
+//  (R) REAGIM TE QIRINJTË (parësor): sa qirinjtë bëjnë fund/majë në favor → MBAJE (vrapo +7/+10);
+//      sapo çmimi thyen fundin (BUY)/majën (SELL) e 2 qirinjve të fundit → MERR FITIMIN aty ku ndalon qiriri.
+//  (P) MBRO FITIMIN: sapo bëhet fitues (maja≥0.5), mos e lër kurrë të kthehet në humbje.
+//  (1) EMA9: prerje për humbësit / prishje e plotë trendi.
 function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number): string | null {
   // (0) Parashutë e fortë — vepron edhe kur qirinjtë mungojnë (zgjidh rastin e humbjes -5.54).
   if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
 
   let e9 = NaN, atrv = 0.3;
   if (c && c.length >= 25) { const t = analyzeTrend(c); e9 = t.e9; if (Number.isFinite(t.atrv) && t.atrv > 0) atrv = t.atrv; }
-  const buffer = Math.max(0.05, 0.15 * atrv);
-  const onRightSide = Number.isFinite(e9) ? (isBuy ? price > e9 - buffer : price < e9 + buffer) : true;
 
-  // (1) KTHESË REALE mbi strukturë: çmimi theu EMA9 (përtej buffer-it = qirinjtë u kthyen) → del.
-  //     Derisa çmimi rri në anën e duhur të EMA9, MBAJE — kështu fitimi vrapon +7/+10 në trend.
-  if (Number.isFinite(e9) && !onRightSide) {
-    return `kthesë reale: ${isBuy ? "çmimi nën EMA9" : "çmimi mbi EMA9"} (${moved.toFixed(2)})`;
+  // (R) REAGIM TE QIRINJTË kur je në FITIM: derisa çmimi rri mbi fundin (BUY)/nën majën (SELL) e
+  //     qirinjve të fundit → trendi vazhdon → MBAJE (fitimi vrapon). Sapo e thyen → qirinjtë u
+  //     kthyen → MERR FITIMIN menjëherë, pa pritur EMA9-n e ngadaltë. Pikërisht koncepti yt.
+  if (moved > 0.10 && c && c.length >= 2) {
+    const lo = Math.min(c[c.length - 1].low, c[c.length - 2].low);
+    const hi = Math.max(c[c.length - 1].high, c[c.length - 2].high);
+    if (isBuy && price < lo) return `kthesë qirinjsh — fitim i marrë (+${moved.toFixed(2)})`;
+    if (!isBuy && price > hi) return `kthesë qirinjsh — fitim i marrë (+${moved.toFixed(2)})`;
   }
 
-  // (2) TRAILING që VRAPON: dysheme që ngjitet me majën; jep pas më shumë kur fitimi është i madh
-  //     (lejon vrapim), por kurrë s'e lë të kthehet në humbje (≥ ~breakeven).
-  if (peak >= 1.0) {
-    const give = Math.max(0.7, 0.25 * peak); // p.sh. maja +10 → jep pas 2.5 → del ~+7.5
-    const floor = Math.max(0.05, peak - give);
+  // (P) MBRO FITIMIN: dysheme që ngjitet me majën; jep pas ~30% (lejon vrapim) por s'e lë një
+  //     fitues të kthehet në humbje. Aktivizohet që nga maja +0.5 (mbron edhe fitimet e vogla).
+  if (peak >= 0.5) {
+    const floor = Math.max(0.05, peak - Math.max(0.30, 0.30 * peak)); // maja +10 → del ~+7
     if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  }
+
+  // (1) EMA9: prerje për humbësit / prishje e plotë e trendit (kur s'ka qenë kurrë fitues).
+  const buffer = Math.max(0.05, 0.15 * atrv);
+  const onRightSide = Number.isFinite(e9) ? (isBuy ? price > e9 - buffer : price < e9 + buffer) : true;
+  if (Number.isFinite(e9) && !onRightSide) {
+    return `kthesë reale: ${isBuy ? "çmimi nën EMA9" : "çmimi mbi EMA9"} (${moved.toFixed(2)})`;
   }
   return null;
 }
