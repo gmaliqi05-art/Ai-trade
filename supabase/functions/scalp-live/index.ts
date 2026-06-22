@@ -304,6 +304,76 @@ async function resolveSymbol(cfg: Cfg, requested: string, db?: DB): Promise<stri
   return persisted || requested;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TRURI ARSYETUES i FastT (i njëjti koncept si worker-i streaming): ndjek pamjen 1m
+// LIVE si njeri. HYN vetëm në drejtim të trendit 1m pas një pullback-u te EMA9;
+// MBAN pozicionin sa trendi është i paprekur dhe DEL vetëm në kthesë reale (thyerje EMA9).
+// ─────────────────────────────────────────────────────────────────────────────
+function analyzeTrend(c: Candle[]): { dir: "up" | "down" | "flat"; e9: number; atrv: number } {
+  const closes = c.map((x) => x.close);
+  if (closes.length < 25) return { dir: "flat", e9: NaN, atrv: NaN };
+  const e9a = ema(closes, 9), e21a = ema(closes, 21);
+  const i = closes.length - 1;
+  const e9 = e9a[i], e21 = e21a[i];
+  const slope = e9 - e9a[i - 3];
+  const atrv = atr(c.map((x) => x.high), c.map((x) => x.low), closes, 14)[i];
+  let dir: "up" | "down" | "flat" = "flat";
+  if (e9 > e21 && slope > 0) dir = "up";
+  else if (e9 < e21 && slope < 0) dir = "down";
+  return { dir, e9, atrv };
+}
+
+// HYRJE: trend 1m + pullback te EMA9 + rifillim (tickBias konfirmon drejtimin live).
+function entrySignal(c: Candle[], price: number, tickBias: number): { action: "BUY" | "SELL"; reason: string } | null {
+  const { dir, e9, atrv: a0 } = analyzeTrend(c);
+  if (dir === "flat" || !Number.isFinite(e9)) return null;
+  const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.3;
+  if (Math.abs(price - e9) > 1.2 * atrv) return null; // mbi-shtrirje → mos hyr vonë
+  const look = c.slice(-4);
+  if (dir === "up") {
+    const pulled = look.some((x) => x.low <= e9 + 0.05 * atrv);
+    if (pulled && price > e9 && tickBias > 0) return { action: "BUY", reason: "trend 1m↑ + pullback te EMA9 + rifillim live" };
+  } else {
+    const pulled = look.some((x) => x.high >= e9 - 0.05 * atrv);
+    if (pulled && price < e9 && tickBias < 0) return { action: "SELL", reason: "trend 1m↓ + pullback te EMA9 + rifillim live" };
+  }
+  return null;
+}
+
+// DALJE mbi STRUKTURË: mbaje sa çmimi rri në anën e duhur të EMA9; dil në thyerje (kthesë reale).
+function structureExit(c: Candle[], price: number, isBuy: boolean, moved: number, peak: number): string | null {
+  const { e9, atrv: a0 } = analyzeTrend(c);
+  const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.3;
+  const buffer = Math.max(0.05, 0.15 * atrv);
+  if (Number.isFinite(e9)) {
+    if (isBuy && price <= e9 - buffer) return `kthesë: çmimi ra nën EMA9 (${moved.toFixed(2)})`;
+    if (!isBuy && price >= e9 + buffer) return `kthesë: çmimi mbi EMA9 (${moved.toFixed(2)})`;
+  }
+  // Siguro fitimin e madh pas një vrapimi (dytësore — struktura është parësore).
+  if (peak >= 1.5 && moved <= peak - 0.6) return `fitim i siguruar (+${moved.toFixed(2)} nga maja +${peak.toFixed(2)})`;
+  return null;
+}
+
+// Drejtimi i çmimit TANI nga buffer-i i tick-ave (> 0 ngjitet, < 0 bie).
+function tickBiasOf(buf: Tick[]): number {
+  if (buf.length < 2) return 0;
+  const now = buf[buf.length - 1];
+  const start = now.t - 4000;
+  let ref = buf[0];
+  for (const x of buf) { if (x.t >= start) { ref = x; break; } }
+  return now.p - ref.p;
+}
+
+// Qirinjtë 1m me cache ~12s (që të mos rëndojmë API-n çdo iteracion).
+async function getCandlesCached(cfg: Cfg, sym: string, ck: string): Promise<Candle[] | null> {
+  const now = Date.now();
+  const c = candleCache.get(ck);
+  if (c && now - c.t < 12_000) return c.candles;
+  const fresh = await fetchMt5Candles(cfg, sym, "1m", 60);
+  if (fresh && fresh.length > 0) { candleCache.set(ck, { t: now, candles: fresh }); return fresh; }
+  return c?.candles ?? null;
+}
+
 function brokerResult(body: unknown): { ok: boolean; code: number; msg: string; orderId: string | null } {
   const o = (body ?? {}) as Record<string, unknown>;
   const code = Number(o.numericCode);
@@ -339,6 +409,8 @@ const lastEntry = new Map<string, number>();
 const tickBuf = new Map<string, Tick[]>();
 // Dyshemeja e zhurmës per simbol (sa $ konsiderohet "lëvizje reale"), e rifreskuar nga qirinjtë 1m.
 const moveFloor = new Map<string, { t: number; v: number }>();
+// Cache i qirinjve 1m per simbol (rifreskuar çdo ~12s) — për "arsyetimin" mbi trendin/EMA9 live.
+const candleCache = new Map<string, { t: number; candles: Candle[] }>();
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -420,24 +492,22 @@ Deno.serve(async (req: Request) => {
         if (!Array.isArray(positions)) positions = [];
         const mine = positions.filter(isScalpLivePosition);
 
-        // ===== MENAXHIMI LIVE I POZICIONEVE (çdo iteracion ~2.5s) =====
+        // ===== MENAXHIMI LIVE I POZICIONEVE (arsyetim mbi strukturën 1m, çdo iteracion ~1.5s) =====
         for (const p of mine) {
           const isBuy = String(p.type || "").includes("BUY");
           const entry = Number(p.openPrice), cur = Number(p.currentPrice);
           if (!Number.isFinite(entry) || !Number.isFinite(cur)) continue;
           const moved = isBuy ? cur - entry : entry - cur; // lëvizja në FAVOR (njësi çmimi)
-          const grab = Math.max(0.05, Number(cfg.scalp_live_grab_usd ?? 0.50));
-          const giveback = Math.max(0.02, Number(cfg.scalp_live_giveback_usd ?? 0.25));
-          const cut = Math.max(0.05, Number(cfg.scalp_live_cut_usd ?? 0.60));
           const prevPeak = peakMap.get(p.id) ?? moved;
           const peak = Math.max(prevPeak, moved);
           peakMap.set(p.id, peak);
 
+          // DALJE mbi STRUKTURË: mbaje sa kohë trendi 1m është i paprekur (çmimi në anën e duhur të
+          // EMA9); dil VETËM në kthesë reale (thyerje e EMA9) — JO për një kthim të vogël mbrapa.
+          const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
+          const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
           let close: string | null = null;
-          // (1) MBROJTJE FITIMI: pasi lëvizja kalon "grab", del nëse kthehet nga maja > giveback (grab profitin shpejt).
-          if (peak >= grab && moved <= peak - giveback) close = `fitim i siguruar (+${moved.toFixed(2)} nga maja +${peak.toFixed(2)})`;
-          // (2) PRERJE E HERSHME: kthim kundër > cut (hapësira e ri-testit) → dil para SL-së katastrofe.
-          else if (moved <= -cut) close = `prerje e hershme në kthesë (${moved.toFixed(2)})`;
+          if (pCndl && pCndl.length >= 25) close = structureExit(pCndl, cur, isBuy, moved, peak);
 
           if (close) {
             try {
@@ -474,35 +544,22 @@ Deno.serve(async (req: Request) => {
           if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase())) continue;
           const ck = `${cfg.user_id}:${sym.toUpperCase()}`;
 
-          // (1) Lexo TICK-un live dhe shtoje në buffer (kjo bëhet GJITHMONË, edhe gjatë cooldown-it,
-          //     që historia e çmimit të mbetet e vazhdueshme për sinjalin real-time).
+          // (1) Lexo TICK-un live dhe shtoje në buffer (për të konfirmuar drejtimin live në hyrje).
           const px = await fetchTick(cfg, sym);
           if (px == null) continue;
           const buf = tickBuf.get(ck) ?? [];
           const nowMs = Date.now();
           buf.push({ t: nowMs, p: px });
-          while (buf.length > 0 && nowMs - buf[0].t > 20_000) buf.shift(); // mbaj ~20s histori
+          while (buf.length > 0 && nowMs - buf[0].t > 20_000) buf.shift();
           tickBuf.set(ck, buf);
 
-          // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë në të njëjtën zhurmë).
-          if (nowMs - (lastEntry.get(ck) ?? 0) < 25_000) continue;
+          // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë).
+          if (nowMs - (lastEntry.get(ck) ?? 0) < 20_000) continue;
 
-          // (2) Dyshemeja e zhurmës: sa $ konsiderohet "lëvizje reale" — nga rrezja mesatare 1m,
-          //     rifreskuar çdo ~50s (e lirë). Kapur në minimum të arsyeshëm mbi spread.
-          let floor = moveFloor.get(ck);
-          if (!floor || nowMs - floor.t > 50_000) {
-            const c1f = await fetchMt5Candles(cfg, sym, "1m", 10);
-            let v = 0.40; // parazgjedhje e sigurt për arin
-            if (c1f && c1f.length >= 5) {
-              let rng = 0; for (let i = c1f.length - 5; i < c1f.length; i++) rng += (c1f[i].high - c1f[i].low);
-              v = Math.max(0.20, 0.35 * (rng / 5));
-            }
-            floor = { t: nowMs, v };
-            moveFloor.set(ck, floor);
-          }
-
-          // (3) Sinjali real-time nga tick-at.
-          const sgl = tickSignal(buf, floor.v);
+          // (2) ARSYETIM mbi pamjen 1m: hyr VETËM me trendin, pas pullback-u te EMA9, me rifillim live.
+          const cndl = await getCandlesCached(cfg, sym, ck);
+          if (!cndl || cndl.length < 25) continue;
+          const sgl = entrySignal(cndl, px, tickBiasOf(buf));
           if (!sgl) continue;
 
           const isBuyS = sgl.action === "BUY";

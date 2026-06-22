@@ -1,0 +1,19 @@
+{
+  "name": "fastt-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "FastT — worker always-on me streaming MetaApi (WebSocket) për tregtim në kohë reale të vërtetë (sub-sekonde). Ndjek trendin 1m live dhe arsyeton si njeri: hyn me trendin në pullback, mban sa trendi është i paprekur, del vetëm në kthesë reale.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.4.5",
+    "metaapi.cloud-sdk": "^29.3.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
