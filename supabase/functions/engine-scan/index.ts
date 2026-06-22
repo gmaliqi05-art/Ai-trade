@@ -428,8 +428,10 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     const erReg = efficiencyRatio(c1h.map((c) => c.close), 10);
     if (erReg < ER_RANGE_MIN) return rejGold(`chop_er(${erReg.toFixed(2)})`); // lëvizje jo-efikase (range/chop)
   }
-  // Penalltitë e mbetura të cilësisë (s'e ndalin sinjalin — vetëm ulin besueshmërinë).
-  let qPen = 0;
+  // RIKTHIM TE FORMULA FITUESE (14 qershor): çdo filtër cilësie më poshtë është VETO (kapërcen
+  // trade-n), JO penallti. Zbutja e 15 qershorit (veto→penallti) lejoi hyrje me cilësi të dobët →
+  // humbje. qPen mbahet 0 (s'ka më penallti); konfidenca llogaritet si te origjinali.
+  const qPen = 0;
 
   const reasons: string[] = [
     `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
@@ -455,7 +457,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
       const atrAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
       if (atrAvg > 0) {
         const ratio = atrNow / atrAvg;
-        if (ratio < 0.5) qPen += 0.08;  // treg i ngrirë → besueshmëri më e ulët
+        if (ratio < 0.5) return rejGold(`vol_frozen(${ratio.toFixed(2)})`);  // treg i ngrirë — VETO (origjinali fitues)
         if (ratio > 3.5) return rejGold(`vol_spike(${ratio.toFixed(2)})`);  // spike lajmesh — VETO (siguri)
         reasons.push(`Volatilitet normal (ATR ${((atrNow / price) * 100).toFixed(2)}%)`);
       }
@@ -470,14 +472,12 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     const e50d = ema(dc, 50)[dc.length - 1];
     if (Number.isFinite(e50d)) {
       const d1Up = price > e50d;
-      const d1Aligned = (isBuy && d1Up) || (!isBuy && !d1Up);
-      const d1Gap = e50d > 0 ? Math.abs(price - e50d) / e50d : 0;
-      // PA VETO (zgjedhja e përdoruesit): lejo edhe kundër trendit ditor, por me PENALLTI besueshmërie
-      // që rritet me distancën nga EMA50 ditore — sinjalet kundër-trend SHFAQEN (display ≥30%), por bien
-      // nën pragun e auto-tregtimit (≥70%) përveçse kur setup-i është vërtet i fortë.
-      const d1Pen = 0.08 + Math.min(0.15, d1Gap * 4);
-      d1Boost = d1Aligned ? 0.05 : -d1Pen;
-      reasons.push(d1Aligned ? `Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})` : `Kundër trendit ditor (−${Math.round(d1Pen * 100)}% besueshmëri)`);
+      // VETO (formula fituese): tregto VETËM në harmoni me trendin ditor. Zbutja e 15 qershorit
+      // (penallti në vend të veto-s) lejoi hyrje kundër trendit ditor → pikërisht "shet në fund, tregu kthehet lart".
+      if (isBuy && !d1Up) return rejGold("d1_down_vs_buy");   // BLEJ kundër trendit ditor rënës
+      if (!isBuy && d1Up) return rejGold("d1_up_vs_sell");    // SHIT kundër trendit ditor rritës
+      d1Boost = 0.05;
+      reasons.push(`Në harmoni me trendin ditor (${d1Up ? "rritës" : "rënës"})`);
     }
   }
 
@@ -488,8 +488,8 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const nearestAbove = price <= round10 ? round10 : round10 + 10;
   const nearestBelow = price >= round10 ? round10 : round10 - 10;
   const TOO_CLOSE = 0.0012; // ~0.12% (≈ $4 te $3300)
-  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) qPen += 0.06; // përballë rezistencës
-  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) qPen += 0.06; // përballë mbështetjes
+  if (isBuy && nearestAbove % 50 === 0 && (nearestAbove - price) / price < TOO_CLOSE) return rejGold(`near_resistance($${nearestAbove})`); // VETO: përballë rezistencës $50/$100
+  if (!isBuy && nearestBelow % 50 === 0 && (price - nearestBelow) / price < TOO_CLOSE) return rejGold(`near_support($${nearestBelow})`); // VETO: përballë mbështetjes $50/$100
   reasons.push(`Nivele kyçe: mbështetje ~$${nearestBelow}, rezistencë ~$${nearestAbove}`);
 
   // (5) CONFLUENCE SCORING (Tier-2) — numëron faktorët e pavarur mbështetës. Sa më
@@ -497,7 +497,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const c1hCloses = c1h.map((c) => c.close);
   const rsi1h = rsi(c1hCloses, 14)[c1hCloses.length - 1];
   // EKSPERTËT: RSI ekstrem → hyrje kundër një kthimi të mundshëm; refuzo.
-  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) qPen += 0.10; // RSI ekstrem → rrezik kthimi
+  if (Number.isFinite(rsi1h) && (isBuy ? rsi1h > RSI_EXTREME_HIGH : rsi1h < RSI_EXTREME_LOW)) return rejGold(`rsi_extreme(${rsi1h.toFixed(0)})`); // VETO: RSI ekstrem → rrezik kthimi
   const macdH = macd(c1hCloses).histogram[c1hCloses.length - 1];
   const adxStrong = s1h.adx >= 25;
   const rsiRoom = Number.isFinite(rsi1h) && (isBuy ? rsi1h < 68 : rsi1h > 32); // hapësirë para mbiblerjes/mbishitjes
@@ -506,15 +506,14 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   if (rsiRoom) reasons.push(`RSI me hapësirë (${Math.round(rsi1h)})`);
   if (macdAligned) reasons.push("MACD në harmoni");
 
-  // (6) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX.
+  // (6) EFFICIENCY RATIO (Kaufman) — regjim i pavarur ndaj ADX (veto ER<0.30 u aplikua më lart).
   const er = efficiencyRatio(c1hCloses, 10);
-  if (er < 0.20) qPen += 0.10 + Math.min(0.15, (0.20 - er) * 1.5); // choppy → penallti (sa më jo-efikas, aq më shumë)
   const erGood = er >= 0.35;
   if (erGood) reasons.push(`Efficiency Ratio ${er.toFixed(2)} (lëvizje efikase)`);
 
   // (7) SUPERTREND (ATR) — konfirmim drejtimi; veto kur është qartë kundër.
   const stDir = supertrendDir(c1h.map((c) => c.high), c1h.map((c) => c.low), c1hCloses, 10, 3);
-  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) qPen += 0.10; // Supertrend kundër → konfirmim i dobët
+  if (stDir !== 0 && ((isBuy && stDir < 0) || (!isBuy && stDir > 0))) return rejGold("supertrend_against"); // VETO: Supertrend qartë kundër
   const stOk = (isBuy && stDir > 0) || (!isBuy && stDir < 0);
   if (stOk) reasons.push("Supertrend në harmoni");
 
