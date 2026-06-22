@@ -1,0 +1,32 @@
+name: Deploy engine-scan
+
+# Auto-deploy i motorit të sinjaleve (engine-scan).
+# Nxitet automatikisht kur ndryshon kodi i funksionit në `main`,
+# që logjika e re të mos mbetet prapa deploy-it (siç ndodhi më parë).
+# Mund të nxitet edhe manualisht (workflow_dispatch).
+# Kërkon sekretin e repos: SUPABASE_ACCESS_TOKEN.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/engine-scan/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Deploy engine-scan (verify_jwt=false — cron me x-cron-secret)
+        run: supabase functions deploy engine-scan --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
