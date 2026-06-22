@@ -258,6 +258,12 @@ const ADX_MIN = 18;
 const ADX_MAX = 50;           // refuzo hyrjet kur trendi është i rraskapitur (ADX > 50)
 const RSI_EXTREME_LOW = 25;   // refuzo SHIT kur RSI < 25 (oversold ekstrem → rrezik bounce)
 const RSI_EXTREME_HIGH = 75;  // refuzo BLEJ kur RSI > 75 (overbought ekstrem → rrezik pullback)
+// RREGULLIM (SELL-only në range): trend-following kërkon TREND REAL. Pas një rënieje, EMA200(1h)
+// e ngadaltë qëndron sipër çmimit me ditë → filtri i kahut mbetej "down-only" dhe motori shiste
+// çdo kërcim brenda një range-i anësor (gjurma reale: 184 SELL : 38 BUY, ADX 14–17, besueshmëri 71–77%).
+// VETO i fortë: pa trend (ADX i ulët) OSE treg choppy (Efficiency Ratio i ulët) → S'KA sinjal.
+const ADX_TREND_MIN = 20;     // poshtë kësaj = pa trend (range/chop) → mos tregto fare
+const ER_RANGE_MIN = 0.30;    // Efficiency Ratio(1h,10) poshtë kësaj = lëvizje jo-efikase (chop) → mos tregto
 // advanced = aplikon filtrat Tier-1 (Efficiency Ratio + Supertrend + Funding). Default false:
 // logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor + confluence).
 async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = false): Promise<EngineResult | null> {
@@ -413,11 +419,17 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   const isBuy = dir === "BUY";
   if (isBuy && !(price > s1h.ema200)) return rejGold("price_below_ema200_for_buy");
   if (!isBuy && !(price < s1h.ema200)) return rejGold("price_above_ema200_for_sell");
-  // Penalltitë e cilësisë (s'e ndalin sinjalin — zgjedhja jote "shfaqi" — por ulin besueshmërinë → nën 70%
-  // përveçse kur gjithçka tjetër është e fortë). Veto i fortë mbetet vetëm për "s'ka setup fare".
+  // VETO REGJIMI (rregullim SELL-only): trend-following kërkon TREND. Pa këtë, EMA200 e ngadaltë
+  // e mbante kahun "down-only" mbi një range anësore dhe motori shiste çdo kërcim. Tani: ADX<20
+  // (pa trend) ose ER<0.30 (treg choppy) → refuzo, njësoj si motori standard (generateStrong).
+  if (s1h.adx < ADX_TREND_MIN) return rejGold(`adx_no_trend(${s1h.adx.toFixed(1)})`);
+  if (s1h.adx > ADX_MAX) return rejGold(`adx_exhausted(${s1h.adx.toFixed(1)})`); // trend i rraskapitur → rrezik kthimi
+  {
+    const erReg = efficiencyRatio(c1h.map((c) => c.close), 10);
+    if (erReg < ER_RANGE_MIN) return rejGold(`chop_er(${erReg.toFixed(2)})`); // lëvizje jo-efikase (range/chop)
+  }
+  // Penalltitë e mbetura të cilësisë (s'e ndalin sinjalin — vetëm ulin besueshmërinë).
   let qPen = 0;
-  if (s1h.adx < ADX_MIN) qPen += 0.10; // trend i dobët
-  if (s1h.adx > ADX_MAX) qPen += 0.12; // trend i rraskapitur → rrezik kthimi
 
   const reasons: string[] = [
     `Multi-TF: 1h+4h pajtohen (${isBuy ? "BLEJ" : "SHIT"})`,
