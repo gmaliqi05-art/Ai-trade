@@ -15,10 +15,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-// Etiketa që dallon pozicionet e këtij roboti (te `comment`/`clientId`). NUK përmban "SCALP"
-// me qëllim — që auto-trade-runner (isScalpPosition → /SCALP/i) të mos e mbyllë në kthesën e tij
-// 1-minutëshe; këtë pozicion e menaxhon EKSKLUZIVISHT scalp-live (me hapësirën e ri-testit).
-const SCALP_LIVE_TAG = "SLV";
+// Etiketa/emri që dallon pozicionet e këtij roboti (te `comment`/`clientId`) — shfaqet te MT5
+// si emri i trade-it: "FastT". NUK përmban "SCALP" me qëllim — që auto-trade-runner
+// (isScalpPosition → /SCALP/i) të mos e mbyllë në kthesën e tij 1-minutëshe; këtë pozicion e
+// menaxhon EKSKLUZIVISHT scalp-live (me hapësirën e ri-testit).
+const SCALP_LIVE_TAG = "FastT";
 
 interface Cfg {
   user_id: string; account_id: string; token: string; region: string; mode: string;

@@ -61,11 +61,11 @@ const SCALP_TAG = "SCALP";
 function isScalpPosition(p: Position): boolean {
   return /SCALP/i.test(String(p.comment ?? "")) || /SCALP/i.test(String(p.clientId ?? ""));
 }
-// Pozicionet e robotit "scalp-live" (etiketa "SLV") menaxhohen EKSKLUZIVISHT nga funksioni scalp-live
-// (me hapësirën e ri-testit). Auto-trade-runner NUK i prek (as trailing as mbyllje) që të mos e
-// ngushtojë SL-në apo t'i mbyllë para kohe — vetëm SL-ja katastrofe te brokeri mbetet si parashutë.
+// Pozicionet e robotit "scalp-live" (etiketa/emri "FastT") menaxhohen EKSKLUZIVISHT nga funksioni
+// scalp-live (me hapësirën e ri-testit). Auto-trade-runner NUK i prek (as trailing as mbyllje) që të
+// mos e ngushtojë SL-në apo t'i mbyllë para kohe — vetëm SL-ja katastrofe te brokeri mbetet si parashutë.
 function isScalpLivePosition(p: Position): boolean {
-  return /SLV/i.test(String(p.comment ?? "")) || /SLV/i.test(String(p.clientId ?? ""));
+  return /FastT/i.test(String(p.comment ?? "")) || /FastT/i.test(String(p.clientId ?? ""));
 }
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
