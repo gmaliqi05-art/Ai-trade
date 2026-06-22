@@ -309,9 +309,9 @@ async function resolveSymbol(cfg: Cfg, requested: string, db?: DB): Promise<stri
 // LIVE si njeri. HYN vetëm në drejtim të trendit 1m pas një pullback-u te EMA9;
 // MBAN pozicionin sa trendi është i paprekur dhe DEL vetëm në kthesë reale (thyerje EMA9).
 // ─────────────────────────────────────────────────────────────────────────────
-function analyzeTrend(c: Candle[]): { dir: "up" | "down" | "flat"; e9: number; atrv: number } {
+function analyzeTrend(c: Candle[]): { dir: "up" | "down" | "flat"; e9: number; e21: number; atrv: number } {
   const closes = c.map((x) => x.close);
-  if (closes.length < 25) return { dir: "flat", e9: NaN, atrv: NaN };
+  if (closes.length < 25) return { dir: "flat", e9: NaN, e21: NaN, atrv: NaN };
   const e9a = ema(closes, 9), e21a = ema(closes, 21);
   const i = closes.length - 1;
   const e9 = e9a[i], e21 = e21a[i];
@@ -320,14 +320,23 @@ function analyzeTrend(c: Candle[]): { dir: "up" | "down" | "flat"; e9: number; a
   let dir: "up" | "down" | "flat" = "flat";
   if (e9 > e21 && slope > 0) dir = "up";
   else if (e9 < e21 && slope < 0) dir = "down";
-  return { dir, e9, atrv };
+  return { dir, e9, e21, atrv };
 }
 
 // HYRJE: trend 1m + pullback te EMA9 + rifillim (tickBias konfirmon drejtimin live).
+// FILTRA KUNDËR ZONAVE TË NGATËRRUARA (aty u krijuan humbjet): ADX mbi prag (regjim trendi,
+// jo treg anësor) + ndarje e mjaftueshme EMA9/EMA21 (jo të ngjitura/flat).
 function entrySignal(c: Candle[], price: number, tickBias: number): { action: "BUY" | "SELL"; reason: string } | null {
-  const { dir, e9, atrv: a0 } = analyzeTrend(c);
+  const { dir, e9, e21, atrv: a0 } = analyzeTrend(c);
   if (dir === "flat" || !Number.isFinite(e9)) return null;
   const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.3;
+
+  // FILTRI A — ADX: vetëm kur tregu po trendon vërtet (ADX≥18); në zonë anësore (ADX i ulët) NUK hyn.
+  const adxv = adx(c.map((x) => x.high), c.map((x) => x.low), c.map((x) => x.close), 14).slice(-1)[0];
+  if (!Number.isFinite(adxv) || adxv < 18) return null;
+  // FILTRI B — ndarja EMA9/EMA21 duhet domethënëse (jo të ngatërruara/flat).
+  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.12 * atrv) return null;
+
   if (Math.abs(price - e9) > 1.2 * atrv) return null; // mbi-shtrirje → mos hyr vonë
   const look = c.slice(-4);
   if (dir === "up") {
