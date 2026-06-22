@@ -342,12 +342,16 @@ function entrySignal(c: Candle[], price: number, tickBias: number): { action: "B
 
 // MENAXHIMI I DALJES — i sigurt edhe pa qirinj:
 //  (0) NDALIM I FORTË (parashutë, pavarësisht qirinjve): asnjëherë humbje e madhe.
+//  (T) OBJEKTIV FITIMI: sapo fitimi kalon objektivin (p.sh. +2) → mbyll dhe vazhdo me një të ri.
 //  (1) KTHESË REALE: çmimi thyen EMA9 me një buffer (filtër kundër "kthesës-mashtrim").
 //  (2) MBROJTJE FITIMI/BREAKEVEN: pasi bëhet fitues (maja≥1.0), trailing që s'lejon
 //      kthim në humbje — e mban të paktën breakeven dhe ndjek trendin lart.
-function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number): string | null {
+function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number, target: number): string | null {
   // (0) Parashutë e fortë — vepron edhe kur qirinjtë mungojnë (zgjidh rastin e humbjes -5.54).
   if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
+
+  // (T) OBJEKTIV FITIMI — mbyll fitimin sapo kalon objektivin, pa pritur kthesën; pastaj hyn te i riu.
+  if (target > 0 && moved >= target) return `objektiv fitimi (+${moved.toFixed(2)})`;
 
   let e9 = NaN, atrv = 0.3;
   if (c && c.length >= 25) { const t = analyzeTrend(c); e9 = t.e9; if (Number.isFinite(t.atrv) && t.atrv > 0) atrv = t.atrv; }
@@ -534,9 +538,10 @@ Deno.serve(async (req: Request) => {
             // Parashutë e fortë (pa varësi nga qirinjtë) + kthesë mbi EMA9 + trailing mbrojtje fitimi.
             const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
             const hardStop = Math.max(0.8, Math.min(cat, 1.4));
+            const target = Math.max(0.5, Number(cfg.scalp_live_grab_usd) || 2.0); // objektiv fitimi (rregullueshëm)
             const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
             const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
-            close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop);
+            close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, target);
           }
 
           if (close) {
