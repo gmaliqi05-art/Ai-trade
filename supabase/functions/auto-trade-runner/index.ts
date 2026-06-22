@@ -61,6 +61,12 @@ const SCALP_TAG = "SCALP";
 function isScalpPosition(p: Position): boolean {
   return /SCALP/i.test(String(p.comment ?? "")) || /SCALP/i.test(String(p.clientId ?? ""));
 }
+// Pozicionet e robotit "scalp-live" (etiketa "SLV") menaxhohen EKSKLUZIVISHT nga funksioni scalp-live
+// (me hapësirën e ri-testit). Auto-trade-runner NUK i prek (as trailing as mbyllje) që të mos e
+// ngushtojë SL-në apo t'i mbyllë para kohe — vetëm SL-ja katastrofe te brokeri mbetet si parashutë.
+function isScalpLivePosition(p: Position): boolean {
+  return /SLV/i.test(String(p.comment ?? "")) || /SLV/i.test(String(p.clientId ?? ""));
+}
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
 
@@ -547,6 +553,7 @@ async function trailPositions(cfg: Cfg): Promise<number> {
   const lockFrac = Math.min(0.95, Math.max(0.05, Number(cfg.trail_lock_pct ?? 50) / 100));
   let moves = 0;
   for (const p of positions) {
+    if (isScalpLivePosition(p)) continue; // i menaxhon scalp-live (mos prek SL-në e tij)
     const isBuy = String(p.type || "").includes("BUY");
     const entry = Number(p.openPrice), cur = Number(p.currentPrice);
     const sl = p.stopLoss != null ? Number(p.stopLoss) : null;
@@ -878,6 +885,7 @@ Deno.serve(async (req: Request) => {
 
       // MENAXHIMI I POZICIONEVE TË HAPURA
       for (const p of positions) {
+        if (isScalpLivePosition(p)) continue; // scalp-live e menaxhon vetë (mos prek SL-në/mos mbyll)
         const isBuy = String(p.type || "").includes("BUY");
         const entry = Number(p.openPrice), cur = Number(p.currentPrice);
         const sl = p.stopLoss != null ? Number(p.stopLoss) : null;
