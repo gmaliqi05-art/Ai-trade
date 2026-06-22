@@ -150,39 +150,35 @@ function efficiencyRatio(closes: number[], n = 10): number {
   return vol > 0 ? change / vol : 0;
 }
 
-// Sinjali i hyrjes scalp (i njëjti filtër regjimi i provuar: trend 5m + breakout 1m, anti-chop).
-function scalpSignal(c1m: Candle[], c5m: Candle[]): { action: "BUY" | "SELL"; reason: string } | null {
-  if (c1m.length < 35 || c5m.length < 30) return null;
-  const cl1 = c1m.map((c) => c.close), cl5 = c5m.map((c) => c.close);
-  const i1 = cl1.length - 1, i5 = cl5.length - 1;
-  const e9_5 = ema(cl5, 9)[i5], e21_5 = ema(cl5, 21)[i5];
-  if (!Number.isFinite(e9_5) || !Number.isFinite(e21_5)) return null;
-  const dir5 = e9_5 > e21_5 ? "up" : e9_5 < e21_5 ? "down" : "flat";
-  if (dir5 === "flat") return null;
-  const e9_1 = ema(cl1, 9)[i1], e21_1 = ema(cl1, 21)[i1];
-  const r1 = rsi(cl1, 14)[i1];
-  const mh1 = macdHist(cl1)[i1];
-  const price = cl1[i1];
-  const last = c1m[i1];
-  if (!Number.isFinite(e9_1) || !Number.isFinite(e21_1) || !Number.isFinite(r1) || !Number.isFinite(mh1)) return null;
-  // Filtri i regjimit (anti-whipsaw): trend real (ADX 5m ≥ 22) + lëvizje efikase (ER 5m ≥ 0.35).
-  const hi5r = c5m.map((c) => c.high), lo5r = c5m.map((c) => c.low);
-  const adx5 = adx(hi5r, lo5r, cl5, 14)[i5];
-  const er5 = efficiencyRatio(cl5, 10);
-  if (!Number.isFinite(adx5) || adx5 < 22) return null;
-  if (er5 < 0.35) return null;
-  // Over-extension veto: mos hyr kur çmimi është >1.5×ATR(1m) larg EMA9(1m).
-  const atr1g = atr(c1m.map((c) => c.high), c1m.map((c) => c.low), cl1, 14)[i1];
-  if (Number.isFinite(atr1g) && atr1g > 0 && Math.abs(price - e9_1) > 1.5 * atr1g) return null;
-  // BUY: trend 5m↑, 1m EMA9>EMA21, çmimi mbi EMA9, qiri ngjitës, RSI<75, MACD hist>0, breakout 3-qirinjsh.
-  if (dir5 === "up" && e9_1 > e21_1 && price > e9_1 && last.close > last.open && r1 < 75 && mh1 > 0) {
-    const recentHigh = Math.max(c1m[i1 - 1].high, c1m[i1 - 2].high, c1m[i1 - 3].high);
-    if (price >= recentHigh) return { action: "BUY", reason: "momentum 1m↑ në trend 5m↑ (breakout)" };
+// ───────────────────────────────────────────────────────────────────────────
+// Sinjali i hyrjes FastT — KONCEPT KOMPLET I PAVARUR.
+// Nuk varet ASPAK nga motori ekzistues (pa ADX/ER/MACD/RSI/trend 5m). FastT thjesht
+// NDJEK QIRINJTË LIVE 1m: kap NGRITJET → BUY, RËNIET → SELL, drejtpërdrejt nga momentum-i
+// i qirinjve. Mban vetëm një "dysheme zhurme" të vogël të llogaritur nga vetë qirinjtë,
+// që të mos hyjë në treg krejtësisht të sheshtë. Çdo gjë tjetër e menaxhon dalja e shpejtë.
+// ───────────────────────────────────────────────────────────────────────────
+function fastSignal(c1m: Candle[]): { action: "BUY" | "SELL"; reason: string } | null {
+  const n = c1m.length;
+  if (n < 6) return null;
+  const last = c1m[n - 1], p1 = c1m[n - 2], p2 = c1m[n - 3];
+  // Dysheme zhurme nga vetë qirinjtë: gjysma e rrezes mesatare të 5 qirinjve të fundit.
+  let rng = 0; for (let i = n - 5; i < n; i++) rng += (c1m[i].high - c1m[i].low);
+  const avgRange = rng / 5;
+  if (!(avgRange > 0)) return null;
+  const minMove = 0.5 * avgRange;
+  // Push-i neto i 3 qirinjve të fundit (nga hapja e qiririt #-3 te mbyllja e fundit).
+  const mom = last.close - p2.open;
+  // Maja/fundi i 2 qirinjve paraardhës — që qiri i fundit të jetë THYERJE drejtimi.
+  const prevHigh = Math.max(p1.high, p2.high);
+  const prevLow = Math.min(p1.low, p2.low);
+
+  // BUY: qiri i fundit NGJITËS, thyen majën e 2 qirinjve të mëparshëm, dhe push-i lart ≥ dysheme.
+  if (last.close > last.open && last.close >= prevHigh && mom >= minMove) {
+    return { action: "BUY", reason: "qirinj live në ngritje (momentum ↑)" };
   }
-  // SELL: pasqyrë.
-  if (dir5 === "down" && e9_1 < e21_1 && price < e9_1 && last.close < last.open && r1 > 25 && mh1 < 0) {
-    const recentLow = Math.min(c1m[i1 - 1].low, c1m[i1 - 2].low, c1m[i1 - 3].low);
-    if (price <= recentLow) return { action: "SELL", reason: "momentum 1m↓ në trend 5m↓ (breakdown)" };
+  // SELL: pasqyrë — qiri RËNËS, thyen fundin, push-i poshtë ≥ dysheme.
+  if (last.close < last.open && last.close <= prevLow && -mom >= minMove) {
+    return { action: "SELL", reason: "qirinj live në rënie (momentum ↓)" };
   }
   return null;
 }
@@ -408,18 +404,18 @@ Deno.serve(async (req: Request) => {
                   await db.from("trade_executions").insert({
                     user_id: cfg.user_id, symbol: p.symbol || "XAUUSD", action: isBuy ? "BUY" : "SELL",
                     volume: p.volume ?? st.lot, entry_price: entry, mode: cfg.mode, status: "info",
-                    reason: `Scalp-LIVE mbylli: ${close}`, metaapi_order_id: p.id, raw_response: null,
+                    reason: `FastT mbylli: ${close}`, metaapi_order_id: p.id, raw_response: null,
                   });
                 } catch { /* */ }
-                await pushNotify({ user_id: cfg.user_id, title: "Scalp-LIVE mbylli një trade", body: `${p.symbol || "XAUUSD"} ${isBuy ? "BLEJ" : "SHIT"} • ${close}`, url: "/", tag: "slv-close" });
+                await pushNotify({ user_id: cfg.user_id, title: "FastT mbylli një trade", body: `${p.symbol || "XAUUSD"} ${isBuy ? "BLEJ" : "SHIT"} • ${close}`, url: "/", tag: "slv-close" });
                 summary.push({ user: cfg.user_id, slv_exit: p.id, reason: close });
               }
             } catch { /* */ }
           }
         }
 
-        // ===== HYRJET (më rrallë: ~çdo 12.5s) =====
-        if (iter % 5 !== 0) continue;
+        // ===== HYRJET (FastT ndjek qirinjtë live: provo ~çdo 5s) =====
+        if (iter % 2 !== 0) continue;
         if (st.dailyStop) continue;
         if (!isMarketOpen()) continue;
         const openMine = mine.length;
@@ -430,21 +426,22 @@ Deno.serve(async (req: Request) => {
           // Vetëm ari në orarin e tij; crypto/naftë lejohen kur tregu i hapur.
           if (!isCrypto(rawSym) && !isOil(rawSym) && !goldSessionOpen()) continue;
           const sym = await resolveSymbol(cfg, rawSym, db);
-          // Një pozicion scalp-live për simbol.
+          // Një pozicion FastT për simbol.
           if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase())) continue;
-          // Cooldown 90s për (user:symbol) brenda ciklit.
+          // Cooldown 45s për (user:symbol) brenda ciklit (anti-rihapje menjëherë pas daljes).
           const ck = `${cfg.user_id}:${sym.toUpperCase()}`;
-          if (Date.now() - (lastEntry.get(ck) ?? 0) < 90_000) continue;
-          // Cooldown i qëndrueshëm: mos hap nëse u hap një scalp-live për këtë simbol < 2 min (mes ekzekutimeve).
+          if (Date.now() - (lastEntry.get(ck) ?? 0) < 45_000) continue;
+          // Cooldown i qëndrueshëm: mos hap nëse u hap një FastT për këtë simbol < 60s (mes ekzekutimeve).
           const { data: lastSc } = await db.from("trade_executions").select("created_at")
             .eq("user_id", cfg.user_id).eq("symbol", sym).eq("status", "executed")
-            .ilike("reason", "Scalp-LIVE auto%").order("created_at", { ascending: false }).limit(1);
+            .ilike("reason", "FastT auto%").order("created_at", { ascending: false }).limit(1);
           const lastT = lastSc && lastSc[0] ? new Date((lastSc[0] as { created_at: string }).created_at).getTime() : 0;
-          if (lastT > 0 && Date.now() - lastT < 2 * 60 * 1000) continue;
+          if (lastT > 0 && Date.now() - lastT < 60 * 1000) continue;
 
-          const [c1, c5] = await Promise.all([fetchMt5Candles(cfg, sym, "1m", 120), fetchMt5Candles(cfg, sym, "5m", 120)]);
-          if (!c1 || !c5) continue;
-          const sgl = scalpSignal(c1, c5);
+          // FastT është i pavarur: i mjaftojnë vetëm qirinjtë 1m live.
+          const c1 = await fetchMt5Candles(cfg, sym, "1m", 60);
+          if (!c1) continue;
+          const sgl = fastSignal(c1);
           if (!sgl) continue;
 
           const isBuyS = sgl.action === "BUY";
@@ -457,18 +454,18 @@ Deno.serve(async (req: Request) => {
             db.from("trade_executions").insert({ user_id: cfg.user_id, symbol: sym, action: sgl.action, volume,
               entry_price: entryPx, stop_loss: stopLoss, mode: cfg.mode, status, reason: reason.slice(0, 200), metaapi_order_id: orderId, raw_response: raw ?? null });
 
-          if (!(stopLoss > 0)) { await slog("rejected", "Scalp-LIVE pa SL katastrofe — refuzuar (siguri)", null, null); continue; }
+          if (!(stopLoss > 0)) { await slog("rejected", "FastT pa SL katastrofe — refuzuar (siguri)", null, null); continue; }
           lastEntry.set(ck, Date.now());
           const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, comment: SCALP_LIVE_TAG };
           try {
             const r = await maTrade(cfg, body);
-            if (!r.ok) { await slog("error", `Scalp-LIVE trade ${r.status}`, null, r.body); continue; }
+            if (!r.ok) { await slog("error", `FastT trade ${r.status}`, null, r.body); continue; }
             const br = brokerResult(r.body);
-            if (!br.ok) { await slog("rejected", `Scalp-LIVE brokeri: ${br.msg || "refuzuar"} (${br.code})`, null, r.body); summary.push({ user: cfg.user_id, slv_reject: sym, code: br.code }); continue; }
-            await slog("executed", `Scalp-LIVE auto (${cfg.mode}): ${sgl.reason}`, br.orderId, r.body);
-            await pushNotify({ user_id: cfg.user_id, title: "Scalp-LIVE hapi një trade", body: `${isBuyS ? "BLEJ" : "SHIT"} ${sym} • ${volume} lot (live, ${cfg.mode})`, url: "/", tag: "slv-open" });
+            if (!br.ok) { await slog("rejected", `FastT brokeri: ${br.msg || "refuzuar"} (${br.code})`, null, r.body); summary.push({ user: cfg.user_id, slv_reject: sym, code: br.code }); continue; }
+            await slog("executed", `FastT auto (${cfg.mode}): ${sgl.reason}`, br.orderId, r.body);
+            await pushNotify({ user_id: cfg.user_id, title: "FastT hapi një trade", body: `${isBuyS ? "BLEJ" : "SHIT"} ${sym} • ${volume} lot (live, ${cfg.mode})`, url: "/", tag: "slv-open" });
             summary.push({ user: cfg.user_id, slv_open: sym, order: br.orderId });
-          } catch (e) { await slog("error", `Scalp-LIVE: ${(e as Error).message}`, null, null); }
+          } catch (e) { await slog("error", `FastT: ${(e as Error).message}`, null, null); }
         }
       }
       iter++;
