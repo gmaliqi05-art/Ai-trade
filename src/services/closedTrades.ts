@@ -3,7 +3,7 @@
 // I përbashkët për Raportet dhe MetaTrader 5 Live.
 import type { HistoryDeal } from './metaapi';
 
-export type TradeSource = 'auto' | 'signal' | 'manual' | 'mt5';
+export type TradeSource = 'fastt' | 'auto' | 'signal' | 'manual' | 'mt5';
 
 export interface ClosedTrade {
   id: string;
@@ -37,6 +37,7 @@ export function exitKind(t: ClosedTrade): 'tp' | 'sl' | 'other' {
 // Klasifikon burimin nga arsyeja + signal_id e regjistruar te trade_executions.
 export function classifySource(reason: string | null, signalId: string | null): TradeSource {
   const r = (reason || '').toLowerCase();
+  if (r.startsWith('fastt')) return 'fastt';
   if (r.startsWith('scalp auto') || r.startsWith('auto (') || r.startsWith('auto(')) return 'auto';
   if (signalId) return 'signal';
   return 'manual';
@@ -45,7 +46,7 @@ export function classifySource(reason: string | null, signalId: string | null): 
 // Afati i trade-it nga arsyeja: scalp → afat-shkurt; auto/sinjal swing → afat-gjate; manual → s'dihet.
 export function classifyHorizon(reason: string | null): 'short' | 'long' | undefined {
   const r = (reason || '').toLowerCase();
-  if (r.startsWith('scalp')) return 'short';
+  if (r.startsWith('fastt') || r.startsWith('scalp')) return 'short';
   if (r.startsWith('auto (') || r.startsWith('auto(')) return 'long';
   return undefined;
 }
