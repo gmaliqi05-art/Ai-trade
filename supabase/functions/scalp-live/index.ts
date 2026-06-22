@@ -349,33 +349,31 @@ function entrySignal(c: Candle[], price: number, tickBias: number): { action: "B
   return null;
 }
 
-// MENAXHIMI I DALJES — i sigurt edhe pa qirinj:
+// MENAXHIMI I DALJES — LË FITIMIN TË VRAPOJË derisa qirinjtë të kthehen:
 //  (0) NDALIM I FORTË (parashutë, pavarësisht qirinjve): asnjëherë humbje e madhe.
-//  (T) OBJEKTIV FITIMI: sapo fitimi kalon objektivin (p.sh. +2) → mbyll dhe vazhdo me një të ri.
-//  (1) KTHESË REALE: çmimi thyen EMA9 me një buffer (filtër kundër "kthesës-mashtrim").
-//  (2) MBROJTJE FITIMI/BREAKEVEN: pasi bëhet fitues (maja≥1.0), trailing që s'lejon
-//      kthim në humbje — e mban të paktën breakeven dhe ndjek trendin lart.
-function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number, target: number): string | null {
+//  (1) KTHESË REALE: çmimi thyen EMA9 me një buffer (= qirinjtë po kthehen) → del me gjithë vrapimin.
+//  (2) TRAILING që VRAPON: jep pas më shumë kur fitimi rritet (lejon +7/+10 në trend të fortë),
+//      por s'e lë kurrë një fitues të kthehet në humbje (të paktën ~breakeven).
+function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number): string | null {
   // (0) Parashutë e fortë — vepron edhe kur qirinjtë mungojnë (zgjidh rastin e humbjes -5.54).
   if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
-
-  // (T) OBJEKTIV FITIMI — mbyll fitimin sapo kalon objektivin, pa pritur kthesën; pastaj hyn te i riu.
-  if (target > 0 && moved >= target) return `objektiv fitimi (+${moved.toFixed(2)})`;
 
   let e9 = NaN, atrv = 0.3;
   if (c && c.length >= 25) { const t = analyzeTrend(c); e9 = t.e9; if (Number.isFinite(t.atrv) && t.atrv > 0) atrv = t.atrv; }
   const buffer = Math.max(0.05, 0.15 * atrv);
   const onRightSide = Number.isFinite(e9) ? (isBuy ? price > e9 - buffer : price < e9 + buffer) : true;
 
-  // (1) KTHESË REALE mbi strukturë: çmimi theu EMA9 (përtej buffer-it = jo thjesht mashtrim).
+  // (1) KTHESË REALE mbi strukturë: çmimi theu EMA9 (përtej buffer-it = qirinjtë u kthyen) → del.
+  //     Derisa çmimi rri në anën e duhur të EMA9, MBAJE — kështu fitimi vrapon +7/+10 në trend.
   if (Number.isFinite(e9) && !onRightSide) {
     return `kthesë reale: ${isBuy ? "çmimi nën EMA9" : "çmimi mbi EMA9"} (${moved.toFixed(2)})`;
   }
 
-  // (2) TRAILING i mbrojtjes: sapo maja ≥ 1.0, vendos një dysheme që ngjitet me trendin dhe
-  //     NUK e lë kurrë të kthehet në humbje (të paktën ~breakeven). Kjo mbron "kthimin te hyrja".
+  // (2) TRAILING që VRAPON: dysheme që ngjitet me majën; jep pas më shumë kur fitimi është i madh
+  //     (lejon vrapim), por kurrë s'e lë të kthehet në humbje (≥ ~breakeven).
   if (peak >= 1.0) {
-    const floor = Math.max(0.05, peak - 0.7);
+    const give = Math.max(0.7, 0.25 * peak); // p.sh. maja +10 → jep pas 2.5 → del ~+7.5
+    const floor = Math.max(0.05, peak - give);
     if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   }
   return null;
@@ -547,10 +545,9 @@ Deno.serve(async (req: Request) => {
             // Parashutë e fortë (pa varësi nga qirinjtë) + kthesë mbi EMA9 + trailing mbrojtje fitimi.
             const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
             const hardStop = Math.max(0.8, Math.min(cat, 1.4));
-            const target = Math.max(0.5, Number(cfg.scalp_live_grab_usd) || 2.0); // objektiv fitimi (rregullueshëm)
             const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
             const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
-            close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, target);
+            close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop);
           }
 
           if (close) {
