@@ -13,6 +13,7 @@
 // KUJDES: kërkon host ALWAYS-ON (Railway/Fly/Render/VPS) — JO Supabase/Vercel.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dotenv/config';
+import http from 'node:http';
 import MetaApi from 'metaapi.cloud-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { entryDecision, exitDecision } from './strategy.js';
@@ -37,7 +38,9 @@ const PARAMS = {
 const CATASTROPHE = Number(process.env.FASTT_CATASTROPHE_USD || 2.0); // SL i gjerë te brokeri (parashutë)
 const DEFAULT_LOT = Number(process.env.FASTT_LOT || 0.01);
 const TICK_MS = Number(process.env.FASTT_TICK_MS || 250);     // sa shpesh arsyeton (kohë reale)
-const ENTRY_COOLDOWN_MS = Number(process.env.FASTT_COOLDOWN_MS || 20000);
+const ENTRY_COOLDOWN_MS = Number(process.env.FASTT_COOLDOWN_MS || 45000);
+const PORT = Number(process.env.PORT || 8080);               // health-check (host-et e duan një port)
+const STALE_MS = Number(process.env.FASTT_STALE_MS || 90000); // pa tick > kaq → rinis (vetë-rikuperim)
 
 if (!TOKEN || !ACCOUNT_ID || !SUPABASE_URL || !SUPABASE_SERVICE_KEY || !USER_ID) {
   console.error('Mungojnë env: METAAPI_TOKEN, METAAPI_ACCOUNT_ID, FASTT_USER_ID, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
@@ -55,6 +58,28 @@ let cfg = { enabled: true, killSwitch: false, maxDailyLoss: 1000, dayStartEquity
 let lastEntryAt = 0;
 const peakMap = new Map();     // positionId -> maja e favorit ($)
 let busy = false;              // mbrojtje nga ekzekutime të mbivendosura
+let lastTickAt = Date.now();   // koha e tick-ut të fundit live — për health-check + watchdog
+let lastError = '';            // gabimi i fundit (shfaqet te /health)
+
+// Server health-check: host-et (Railway/Render/Fly) e përdorin për të ditur se procesi është gjallë.
+// Hapja: GET / ose /health → 200 nëse tick-at janë të freskët, 503 nëse kanë ngecur.
+function startHealthServer() {
+  http.createServer((req, res) => {
+    const ageMs = Date.now() - lastTickAt;
+    const healthy = ageMs < STALE_MS;
+    res.writeHead(healthy ? 200 : 503, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ status: healthy ? 'ok' : 'stale', lastTickAgeMs: ageMs, symbol: SYMBOL, lastError }));
+  }).listen(PORT, () => console.log(`Health-check në portin ${PORT} (GET /health)`));
+
+  // Watchdog: nëse rrjedha e tick-ave ngec (lidhja ra pa u rrëzuar procesi) → dil që host-i të rinisë.
+  setInterval(() => {
+    const ageMs = Date.now() - lastTickAt;
+    if (ageMs > STALE_MS) {
+      console.error(`Watchdog: pa tick prej ${Math.round(ageMs / 1000)}s → po rinisem për t'u rilidhur.`);
+      process.exit(1); // host-i (restart=always) e ngre përsëri → rilidhje e pastër
+    }
+  }, Math.max(5000, Math.floor(STALE_MS / 3)));
+}
 
 function minuteStart(ms) { return Math.floor(ms / 60000) * 60000; }
 
@@ -123,6 +148,8 @@ async function logExec(row) {
 }
 
 async function main() {
+  startHealthServer();           // health-check + watchdog (host-et e duan)
+  lastTickAt = Date.now();       // mos lejo watchdog-un të rinisë gjatë warmup/sinkronizimit
   await warmupCandles();
   await refreshConfig();
   setInterval(refreshConfig, 20000);
@@ -137,6 +164,7 @@ async function main() {
   await connection.waitSynchronized({ timeoutInSeconds: 90 });
   await connection.subscribeToMarketData(SYMBOL, [{ type: 'quotes' }]);
   const ts = connection.terminalState;
+  lastTickAt = Date.now(); // sapo u sinkronizua — nis numërimin e freskisë nga këtu
   console.log(`✅ FastT worker LIVE — streaming ${SYMBOL} @ ${REGION}. Arsyeton çdo ${TICK_MS}ms.`);
 
   setInterval(async () => {
@@ -147,6 +175,7 @@ async function main() {
       if (!q || !(q.bid > 0) || !(q.ask > 0)) return;
       const price = (q.bid + q.ask) / 2;
       ingestTick(price, Date.now());
+      lastTickAt = Date.now(); // shenjë gjallërie për health-check + watchdog
 
       const candles = forming ? [...closedCandles, forming] : closedCandles;
       if (candles.length < 25) return;

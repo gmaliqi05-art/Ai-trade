@@ -9,6 +9,19 @@ primary_region = "fra"   # zgjidh rajonin më afër (fra=Frankfurt, iad=US-East)
 [build]
   dockerfile = "Dockerfile"
 
+# Health-check në portin 8080 — Fly e mban makinën gjallë dhe e rinis nëse bie.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false   # MOS e fik — worker always-on
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/health"
+
 # Një makinë gjithmonë e ndezur (worker s'duhet të flejë).
 [[vm]]
   size = "shared-cpu-1x"
@@ -16,3 +29,4 @@ primary_region = "fra"   # zgjidh rajonin më afër (fra=Frankfurt, iad=US-East)
 
 [env]
   METAAPI_REGION = "new-york"
+  PORT = "8080"

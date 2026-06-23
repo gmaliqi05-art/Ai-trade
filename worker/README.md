@@ -12,6 +12,8 @@ function-i (~1–1.5s). Truri është **i njëjti tick-driven** si edge function
 - **SL "katastrofe"** i gjerë te brokeri si rrjetë sigurie.
 - Regjistron te Supabase me emrin **FastT** (UI/Raportet e tregojnë me badge). Respekton
   `scalp_live_enabled` / `kill_switch` / `max_daily_loss` nga `metaapi_config`.
+- **Vetë-rikuperim:** server health-check te `GET /health` (porti 8080) + watchdog që rinis
+  vetë nëse rrjedha e tick-ave ngec — kështu host-i e mban gjithmonë gjallë.
 
 ---
 

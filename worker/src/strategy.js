@@ -34,8 +34,8 @@ export function regimeOk(candles) {
   if (dir === 'flat' || !Number.isFinite(e9)) return false;
   const atrv = Number.isFinite(atr) && atr > 0 ? atr : 0.3;
   const adxv = adxLast(candles.map((c) => c.high), candles.map((c) => c.low), candles.map((c) => c.close), 14);
-  if (!Number.isFinite(adxv) || adxv < 18) return false;                       // ADX i ulët = chop
-  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.12 * atrv) return false; // EMA të ngjitura = flat
+  if (!Number.isFinite(adxv) || adxv < 23) return false;                       // ADX i ulët = chop (23: vetëm trend real)
+  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.18 * atrv) return false; // EMA të ngjitura = flat
   return true;
 }
 
@@ -63,7 +63,7 @@ export function tickStart(ticks, atrv, candles) {
   let path = 0, prev = null;
   for (const x of ticks) { if (x.t >= now.t - 6600) { if (prev) path += Math.abs(x.p - prev.p); prev = x; } }
   const net = Math.abs(pNow - p6);
-  if (path <= 0 || net / path < 0.55) return null;
+  if (path <= 0 || net / path < 0.62) return null;
   // (3) FRESKI: lëvizja sapo nisi (jo e shtrirë mbi 1.6·ATR) + impulsi i përqendruar te ~2s e fundit.
   if (net > 1.6 * atrv) return null;
   if (Math.abs(pushNow) < 0.5 * net) return null;
@@ -95,7 +95,7 @@ export function entryDecision({ candles, ticks }, _p) {
 export function reversalExit(ticks, isBuy, moved, peak, atrv, ageMs) {
   if (ticks.length < 3) return null;
   const noise = Math.max(0.04, 0.10 * atrv);
-  const swingBack = Math.max(0.08, 0.18 * atrv);
+  const swingBack = Math.max(0.10, 0.22 * atrv);
   const cur = ticks[ticks.length - 1].p;
   const favExtreme = isBuy ? Math.max(...ticks.map((t) => t.p)) : Math.min(...ticks.map((t) => t.p));
   const retrace = isBuy ? (favExtreme - cur) : (cur - favExtreme);
@@ -104,7 +104,7 @@ export function reversalExit(ticks, isBuy, moved, peak, atrv, ageMs) {
   for (const x of ticks) { if (x.t >= tgt) { older = x; break; } }
   const vel = isBuy ? (cur - older.p) : (older.p - cur);
   if (!(retrace >= swingBack && vel < -noise)) return null;
-  if (peak >= 0.25 && moved > 0) return `kthesë live — fitim i kapur te ndalesa (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  if (peak >= 0.35 && moved > 0) return `kthesë live — fitim i kapur te ndalesa (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   if (moved <= 0) {
     if (ageMs < 12000) return null; // hapësirë ~12s pas hapjes — mos u tremb nga zhurma fillestare
     return `kthesë live kundër nesh — prerje e hershme (${moved.toFixed(2)})`;
