@@ -186,6 +186,7 @@ async function main() {
       const q = ts.price(SYMBOL);
       if (!q || !(q.bid > 0) || !(q.ask > 0)) return;
       const price = (q.bid + q.ask) / 2;
+      const spread = Math.max(0, q.ask - q.bid); // kostoja reale e tregtimit (ari "+" shpesh 0.2–0.4)
       ingestTick(price, Date.now());
       lastTickAt = Date.now(); // shenjë gjallërie për health-check + watchdog
 
@@ -201,7 +202,8 @@ async function main() {
       for (const pos of positions) {
         const isBuy = String(pos.type).includes('BUY');
         const entry = Number(pos.openPrice);
-        const moved = isBuy ? price - entry : entry - price;
+        const exitPx = isBuy ? q.bid : q.ask;          // çmimi REAL ku do mbyllje TANI (spread i përfshirë)
+        const moved = isBuy ? exitPx - entry : entry - exitPx;
         const prevPeak = peakMap.get(pos.id) ?? moved;
         const peak = Math.max(prevPeak, moved);
         peakMap.set(pos.id, peak);
@@ -210,7 +212,7 @@ async function main() {
         const recTicks = ticks.filter((t) => nowMs - t.t <= 10000); // ~10s për daljen real-time
         const openMs = pos.time ? new Date(pos.time).getTime() : NaN;
         const ageMs = Number.isFinite(openMs) ? (nowMs - openMs) : Infinity;
-        const reason = exitDecision({ candles, price, ticks: recTicks, position: pos, peak, ageMs }, { catastrophe: CATASTROPHE });
+        const reason = exitDecision({ candles, price: exitPx, ticks: recTicks, position: pos, peak, ageMs, spread }, { catastrophe: CATASTROPHE });
         if (reason) {
           try {
             await connection.closePosition(pos.id);
@@ -236,7 +238,7 @@ async function main() {
         return; // u arrit humbja maksimale ditore
       }
 
-      const sig = entryDecision({ candles, ticks }, PARAMS);
+      const sig = entryDecision({ candles, ticks, spread }, PARAMS);
       if (!sig) return;
 
       const isBuy = sig.action === 'BUY';

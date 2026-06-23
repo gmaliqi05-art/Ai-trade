@@ -82,17 +82,21 @@ export function tickStart(ticks, atrv, candles) {
  * Vendim HYRJEJE. `candles` = qirinjtë 1m (+ qiriri live). `ticks` = histori tick ~ 15-20s.
  * Kthen { action, reason } ose null.
  */
-export function entryDecision({ candles, ticks }, _p) {
+export function entryDecision({ candles, ticks, spread = 0 }, _p) {
   if (!regimeOk(candles)) return null;
   const { atr } = analyzeTrend(candles);
   const atrv = Number.isFinite(atr) && atr > 0 ? atr : 0.3;
+  // FILTËR KOSTOJE: objektivi realist (~0.6·ATR) duhet ta kalojë QARTË spread-in.
+  // Përndryshe çdo hyrje ka ekspektativë negative (paguan më shumë kosto se sa kap fitim).
+  const expectedTarget = 0.6 * atrv;
+  if (spread > 0 && expectedTarget < 2 * spread) return null; // spread shumë i gjerë → rri jashtë
   const dir = tickStart(ticks, atrv, candles);
   if (!dir) return null;
-  return { action: dir, reason: `tick-start ${dir} (fresh + efikasitet + mikro-thyerje)` };
+  return { action: dir, reason: `tick-start ${dir} (fresh + efikasitet + mikro-thyerje, spread ${spread.toFixed(2)})` };
 }
 
 /** DALJE REAL-TIME në kthesë (tick): del në çastin që çmimi tenton kahjen e kundërt. */
-export function reversalExit(ticks, isBuy, moved, peak, atrv, ageMs) {
+export function reversalExit(ticks, isBuy, moved, peak, atrv, ageMs, cost = 0) {
   if (ticks.length < 3) return null;
   const noise = Math.max(0.04, 0.10 * atrv);
   const swingBack = Math.max(0.10, 0.22 * atrv);
@@ -104,8 +108,12 @@ export function reversalExit(ticks, isBuy, moved, peak, atrv, ageMs) {
   for (const x of ticks) { if (x.t >= tgt) { older = x; break; } }
   const vel = isBuy ? (cur - older.p) : (older.p - cur);
   if (!(retrace >= swingBack && vel < -noise)) return null;
-  if (peak >= 0.35 && moved > 0) return `kthesë live — fitim i kapur te ndalesa (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
-  if (moved <= 0) {
+  // Kap fitimin VETËM kur maja ka kaluar koston (përndryshe "fitimi" është iluzion nga mid-i).
+  if (peak >= Math.max(0.35, cost + 0.20) && moved > cost) {
+    return `kthesë live — fitim i kapur te ndalesa (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  }
+  // Prerje e hershme VETËM te lëvizje vërtet kundër nesh (përtej spread-it), jo te vetë spread-i.
+  if (moved <= -(cost + Math.max(0.08, 0.12 * atrv))) {
     if (ageMs < 12000) return null; // hapësirë ~12s pas hapjes — mos u tremb nga zhurma fillestare
     return `kthesë live kundër nesh — prerje e hershme (${moved.toFixed(2)})`;
   }
@@ -116,21 +124,23 @@ export function reversalExit(ticks, isBuy, moved, peak, atrv, ageMs) {
  * Vendim DALJEJE i plotë: parashutë → dalje real-time → qirinj/floor/EMA/ngecje (rezervë).
  * `ticks` = histori tick e kufizuar te ~10s (vendoset nga thirrësi). `ageMs` = mosha e pozicionit.
  */
-export function exitDecision({ candles, price, ticks, position, peak, ageMs }, p) {
+export function exitDecision({ candles, price, ticks, position, peak, ageMs, spread = 0 }, p) {
   const isBuy = String(position.type).includes('BUY');
   const entry = Number(position.openPrice);
+  // `price` është çmimi REAL i daljes (bid për BUY, ask për SELL) — thirrësi e jep ashtu.
   const moved = isBuy ? price - entry : entry - price;
   const { e9, atr } = analyzeTrend(candles);
   const atrv = Number.isFinite(atr) && atr > 0 ? atr : 0.3;
+  const cost = Math.max(0, spread);                         // kostoja që duhet kaluar para fitimit real
   const hardStop = Math.max(0.5, Math.min(p.catastrophe ?? 1.5, 0.7));
 
   // (0) Parashutë e fortë — asnjëherë humbje e madhe.
   if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
   // (a) DALJE REAL-TIME në kthesë (tick) — e para, më e shpejtë se qiriri 1m.
-  const rev = reversalExit(ticks, isBuy, moved, peak, atrv, ageMs);
+  const rev = reversalExit(ticks, isBuy, moved, peak, atrv, ageMs, cost);
   if (rev) return rev;
-  // (R) KTHESË QIRINJSH në fitim.
-  if (moved > 0.10 && candles.length >= 2) {
+  // (R) KTHESË QIRINJSH në fitim (vetëm pasi fitimi real ka kaluar koston).
+  if (moved > Math.max(0.10, cost) && candles.length >= 2) {
     const lo = Math.min(candles[candles.length - 1].low, candles[candles.length - 2].low);
     const hi = Math.max(candles[candles.length - 1].high, candles[candles.length - 2].high);
     if (isBuy && price < lo) return `kthesë qirinjsh — fitim i marrë (+${moved.toFixed(2)})`;
