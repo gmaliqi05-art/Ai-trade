@@ -19,7 +19,7 @@ import {
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
-import { groupDeals, attachSource, exitKind, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, exitKind, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -203,18 +203,23 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     if (configured) {
       const [acc, hist, pos] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions()]);
       if (!acc.error && acc.account) setAccount(acc.account);
+      // Trade-t e FastT-it ndërtohen DIREKT nga logu i robotit (trade_executions) — shfaqen GJITHMONË,
+      // edhe nëse historiku i MT5 dështon (502). Trade-t e tjera (manual/auto) merren nga historiku i MT5.
+      const sinceIso = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
+      const { data: execsAll } = await supabase
+        .from('trade_executions')
+        .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
+        .eq('user_id', user.id)
+        .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(1000);
+      const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
+      const fastt = fasttFromExecutions(rows);
+      let mt5NonFastt: ClosedTrade[] = [];
       if (!hist.error && Array.isArray(hist.deals)) {
-        // Grupon deal-et në trade me DREJTIMIN REAL (jo nga deal-i mbyllës) + lidh burimin.
         const grouped = groupDeals(hist.deals as HistoryDeal[]);
-        const sinceIso = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
-        const { data: execs } = await supabase
-          .from('trade_executions')
-          .select('action, symbol, signal_id, reason, created_at, stop_loss, take_profit')
-          .eq('user_id', user.id).eq('status', 'executed')
-          .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(500);
-        attachSource(grouped, (execs as ExecRow[]) || []);
-        setHistory(grouped);
+        attachSource(grouped, rows.filter(r => r.status === 'executed') as ExecRow[]);
+        mt5NonFastt = grouped.filter(t => t.source !== 'fastt'); // FastT-in e marrim nga logu (më i freskët)
       }
+      setHistory([...fastt, ...mt5NonFastt].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
       if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
     }
     setLastUpdated(new Date());
