@@ -97,6 +97,18 @@ function londonOrNyOpen(d = new Date()) {
   return sess('Europe/London', 8, 17) || sess('America/New_York', 8, 17);
 }
 
+// A është i hapur tregu i ARIT tani? (tregtim 24h — përfshirë sesionin aziatik). Përjashton vetëm
+// fundjavën (E premte 21:00 UTC → E diel 22:00 UTC) dhe pauzën ditore të mirëmbajtjes (21:00–22:00 UTC).
+function goldMarketOpen(d = new Date()) {
+  const day = d.getUTCDay();                    // 0=Diel … 6=Shtunë
+  const h = d.getUTCHours(), mins = h * 60 + d.getUTCMinutes();
+  if (day === 6) return false;                  // E shtunë: mbyllur
+  if (day === 0 && h < 22) return false;        // E diel para 22:00 UTC: mbyllur
+  if (day === 5 && h >= 21) return false;       // E premte pas 21:00 UTC: mbyllur
+  if (mins >= 21 * 60 && mins < 22 * 60) return false; // pauza ditore 21:00–22:00 UTC (s'ka likuiditet)
+  return true;
+}
+
 // Ndërto/azhurno qiririn 1m që po formohet nga çdo tick live.
 function ingestTick(price, tMs) {
   ticks.push({ t: tMs, p: price });
@@ -245,8 +257,9 @@ async function main() {
       if (!cfg.enabled || cfg.killSwitch) return;
       if (positions.length > 0) return;
       if (Date.now() - lastEntryAt < ENTRY_COOLDOWN_MS) return;
-      // FILTËR SESIONI: hap vetëm kur Londra OSE Nju-Jorku është i hapur (sesionet me likuiditet, DST-safe).
-      if (!londonOrNyOpen()) return;
+      // FILTËR SESIONI: tregtim 24h sa është ari i hapur (përfshirë sesionin aziatik) — përjashton
+      // vetëm fundjavën + pauzën ditore. (Më parë: vetëm Londër/NY; tani 24h sipas kërkesës.)
+      if (!goldMarketOpen()) return;
 
       // Ndalim ditor i humbjes nga equity live.
       const info = ts.accountInformation;
