@@ -546,24 +546,35 @@ Deno.serve(async (req: Request) => {
           const entry = Number(p.openPrice), cur = Number(p.currentPrice);
           if (!Number.isFinite(entry) || !Number.isFinite(cur)) continue;
           const moved = isBuy ? cur - entry : entry - cur; // lëvizja në FAVOR (njësi çmimi)
-          const prevPeak = peakMap.get(p.id) ?? moved;
-          const peak = Math.max(prevPeak, moved);
-          peakMap.set(p.id, peak);
-          // Mosha e pozicionit (nga koha e hapjes te brokeri) — për daljen kur scalp-i ngec.
+          // Mosha e pozicionit (nga koha e hapjes te brokeri).
           const openMs = Date.parse(String((p as { time?: string }).time ?? ""));
           const ageMin = Number.isFinite(openMs) ? (Date.now() - openMs) / 60000 : NaN;
+          // Qirinjtë 1m (nevojiten edhe për majën e qëndrueshme edhe për daljen).
+          const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
+          const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
+          // MAJA REALE që nga hapja — e RINDËRTUAR nga qirinjtë (MFE), e qëndrueshme ndaj rinisjeve
+          // të funksionit çdo minutë. Zgjidh rastin: fitimi +8 ndërtohet për disa minuta, maja në
+          // memorie humbet te rinisja → mbrojtja e fitimit do ta dinte GJITHMONË majën e vërtetë.
+          let candlePeak = moved;
+          if (pCndl && pCndl.length && Number.isFinite(openMs)) {
+            const since = pCndl.filter((k) => k.time >= openMs - 60000);
+            if (since.length) {
+              const mfe = isBuy ? Math.max(...since.map((k) => k.high)) - entry
+                                : entry - Math.min(...since.map((k) => k.low));
+              if (Number.isFinite(mfe)) candlePeak = Math.max(candlePeak, mfe);
+            }
+          }
+          const prevPeak = peakMap.get(p.id) ?? moved;
+          const peak = Math.max(prevPeak, moved, candlePeak);
+          peakMap.set(p.id, peak);
 
           let close: string | null = null;
           if (hedgedSyms.has((p.symbol || "XAUUSD").toUpperCase())) {
             close = "pastrim hedge (BUY+SELL njëkohësisht — mbyllje sigurie)";
           } else {
-            // Parashutë e fortë (pa varësi nga qirinjtë) + kthesë mbi EMA9 + trailing mbrojtje fitimi.
             const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
-            // PRE HUMBËSIT SHPEJT: ndalim i fortë i ngushtë (~0.7) — humbje minimale kur trade
-            // shkon kundër. (Të dhënat: fituesit më të këqij ranë vetëm −0.53, pra 0.7 s'pret fitues.)
+            // PRE HUMBËSIT SHPEJT: ndalim i fortë i ngushtë (~0.7) — humbje minimale kur shkon kundër.
             const hardStop = Math.max(0.5, Math.min(cat, 0.7));
-            const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
-            const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
             close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, ageMin);
           }
 
