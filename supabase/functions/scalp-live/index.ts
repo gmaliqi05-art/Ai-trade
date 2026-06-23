@@ -353,7 +353,7 @@ function entrySignal(c: Candle[], price: number, tickBias: number): { action: "B
 //  (0) NDALIM I FORTË (parashutë): asnjëherë humbje e madhe.
 //  (R) REAGIM TE QIRINJTË (parësor): sa qirinjtë bëjnë fund/majë në favor → MBAJE (vrapo +7/+10);
 //      sapo çmimi thyen fundin (BUY)/majën (SELL) e 2 qirinjve të fundit → MERR FITIMIN aty ku ndalon qiriri.
-//  (P) MBRO FITIMIN: sapo bëhet fitues (maja≥0.5), mos e lër kurrë të kthehet në humbje.
+//  (P) MBRO FITIMIN: sapo bëhet fitues edhe pak (maja≥0.25), kap fitimin kur ndalon — mos e lër të kthehet në humbje.
 //  (1) EMA9: prerje për humbësit / prishje e plotë trendi.
 function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number): string | null {
   // (0) Parashutë e fortë — vepron edhe kur qirinjtë mungojnë (zgjidh rastin e humbjes -5.54).
@@ -372,10 +372,12 @@ function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: nu
     if (!isBuy && price > hi) return `kthesë qirinjsh — fitim i marrë (+${moved.toFixed(2)})`;
   }
 
-  // (P) MBRO FITIMIN: dysheme që ngjitet me majën; jep pas ~30% (lejon vrapim) por s'e lë një
-  //     fitues të kthehet në humbje. Aktivizohet që nga maja +0.5 (mbron edhe fitimet e vogla).
-  if (peak >= 0.5) {
-    const floor = Math.max(0.05, peak - Math.max(0.30, 0.30 * peak)); // maja +10 → del ~+7
+  // (P) MBRO FITIMIN — KAP EDHE FITIMET E VOGLA: sapo pozicioni ka qenë në fitim (maja ≥ +0.25)
+  //     dhe ndalon/kthehet pak nga maja → MERR fitimin që ka, MOS e lër të kthehet në humbje.
+  //     Dyshemeja ngjitet me majën dhe jep pas pak te fitimet e vogla (lock i shpejtë), por më
+  //     shumë te fitimet e mëdha (lejon vrapim): maja +0.5→lock +0.30, +1→+0.78, +3.2→+2.5, +10→+7.8.
+  if (peak >= 0.25) {
+    const floor = Math.max(0.03, peak - Math.max(0.20, 0.22 * peak));
     if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   }
 
