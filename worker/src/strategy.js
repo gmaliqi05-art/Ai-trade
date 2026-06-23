@@ -86,10 +86,9 @@ export function entryDecision({ candles, ticks, spread = 0 }, _p) {
   if (!regimeOk(candles)) return null;
   const { atr } = analyzeTrend(candles);
   const atrv = Number.isFinite(atr) && atr > 0 ? atr : 0.3;
-  // FILTËR KOSTOJE: objektivi realist (~0.6·ATR) duhet ta kalojë QARTË spread-in.
-  // Përndryshe çdo hyrje ka ekspektativë negative (paguan më shumë kosto se sa kap fitim).
-  const expectedTarget = 0.6 * atrv;
-  if (spread > 0 && expectedTarget < 2 * spread) return null; // spread shumë i gjerë → rri jashtë
+  // FILTËR KOSTOJE (i butë për fazën e të dhënave): bllokon vetëm kur spread-i është absurd
+  // kundrejt lëvizjes tipike 1m. Pragu i saktë do rikalibrohet nga spread-et REALE që logohen më poshtë.
+  if (spread > 0 && spread > 1.2 * atrv) return null;
   const dir = tickStart(ticks, atrv, candles);
   if (!dir) return null;
   return { action: dir, reason: `tick-start ${dir} (fresh + efikasitet + mikro-thyerje, spread ${spread.toFixed(2)})` };
