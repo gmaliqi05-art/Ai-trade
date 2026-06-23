@@ -25,6 +25,53 @@ export interface ClosedTrade {
 
 export interface ExecRow { action: string; symbol: string; signal_id: string | null; reason: string | null; created_at: string; stop_loss?: number | null; take_profit?: number | null; }
 
+// Rresht i plotë i ekzekutimit (hyrje + mbyllje) për të ndërtuar trade-t e FastT-it nga vetë logu.
+export interface FasttExecRow {
+  status: string; action: string; symbol: string;
+  volume?: number | null; entry_price?: number | null; stop_loss?: number | null;
+  reason: string | null; created_at: string; metaapi_order_id?: string | null;
+}
+
+// Nxjerr P&L-në (numrin e parë me presje dhjetore) nga arsyeja e mbylljes,
+// p.sh. "… (-0.35)" → -0.35, "… fitim i kapur (+0.25, maja +0.33)" → +0.25.
+function parseFasttNet(reason: string | null): number | null {
+  const m = (reason || '').match(/[+-]?\d+\.\d+/);
+  return m ? parseFloat(m[0]) : null;
+}
+
+// Ndërton trade-t e mbyllura të FastT-it DIREKT nga trade_executions (burimi autoritar i robotit):
+// çiftëzon çdo hyrje ('executed', "FastT auto…") me mbylljen pasuese ('info', "FastT mbylli…") të
+// të njëjtit simbol+drejtim. Kështu trade-t e FastT-it shfaqen GJITHMONË, pavarësisht historikut të MT5.
+export function fasttFromExecutions(rows: FasttExecRow[]): ClosedTrade[] {
+  const asc = [...rows].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+  const open: FasttExecRow[] = [];
+  const out: ClosedTrade[] = [];
+  for (const r of asc) {
+    const reason = r.reason || '';
+    if (r.status === 'executed' && /^fastt auto/i.test(reason)) {
+      open.push(r);
+    } else if (r.status === 'info' && /^fastt mbylli/i.test(reason)) {
+      const idx = open.findIndex(o => (o.symbol || '').toUpperCase() === (r.symbol || '').toUpperCase() && o.action === r.action);
+      const entry = idx >= 0 ? open.splice(idx, 1)[0] : null;
+      const net = parseFasttNet(reason) ?? 0;
+      const isBuy = (entry?.action || r.action || '').toUpperCase().includes('BUY');
+      const ep = entry?.entry_price != null ? Number(entry.entry_price) : (r.entry_price != null ? Number(r.entry_price) : undefined);
+      const exit = ep != null ? (isBuy ? ep + net : ep - net) : undefined;
+      out.push({
+        id: r.metaapi_order_id || `${entry?.created_at || ''}-${r.created_at}`,
+        symbol: r.symbol || entry?.symbol || '—',
+        direction: isBuy ? 'BUY' : 'SELL',
+        openTime: entry?.created_at, closeTime: r.created_at,
+        volume: entry?.volume != null ? Number(entry.volume) : 0,
+        entryPrice: ep, exitPrice: exit,
+        plannedSL: entry?.stop_loss != null ? Number(entry.stop_loss) : undefined,
+        net, source: 'fastt', horizon: 'short',
+      });
+    }
+  }
+  return out.sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || ''));
+}
+
 // Si u mbyll trade-i: prek TP-në e planifikuar, SL-në, apo doli ndryshe (manual/trailing)?
 export function exitKind(t: ClosedTrade): 'tp' | 'sl' | 'other' {
   if (t.exitPrice == null) return 'other';

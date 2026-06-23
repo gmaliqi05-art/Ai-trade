@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar, Bot, Zap, Hand, Server } from 'lucide-react';
 import { loadTradeHistory, checkMetaApiConnection, type HistoryDeal, type AccountInfo } from '../services/metaapi';
-import { groupDeals, attachSource, type ClosedTrade, type TradeSource, type ExecRow } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow } from '../services/closedTrades';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n, dtLocale } from '../i18n/i18n';
@@ -93,26 +93,37 @@ export default function ReportsPage() {
         : period === 'day' ? Math.max(2, Math.ceil((Date.now() - new Date(customDate + 'T00:00:00').getTime()) / 86400000) + 2)
         : period;
       const [chk, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(fetchDays)]);
-      if (chk.error || hist.error) {
-        if ((chk.error || hist.error) === 'metaapi_not_configured') { setNotConnected(true); setTrades([]); return; }
-        setError(chk.message || hist.message || t('S\'u lexuan dot të dhënat e tregtimit.')); return;
-      }
+      if ((chk.error || hist.error) === 'metaapi_not_configured') { setNotConnected(true); setTrades([]); return; }
       const acc = (chk.account || {}) as AccountInfo;
       setBalance(Number(acc.balance) || 0);
       setCurrency(acc.currency || '');
-      const grouped = groupDeals((hist.deals || []) as HistoryDeal[]);
-      // Lidh çdo trade me burimin (auto/sinjal/manual) nga trade_executions.
+      // Trade-t e FastT-it ndërtohen DIREKT nga logu i robotit (trade_executions) — shfaqen GJITHMONË,
+      // edhe nëse historiku i MT5 dështon (502). Trade-t e tjera (manual/auto) merren nga historiku i MT5.
+      let fastt: ClosedTrade[] = [];
+      let mt5NonFastt: ClosedTrade[] = [];
       if (user) {
         const sinceMs = (period === 'today' ? Date.now() - 2 * 86400000 : Date.now() - (fetchDays as number) * 86400000) - 6 * 3600 * 1000;
-        const { data: execs } = await supabase
+        const { data: execsAll } = await supabase
           .from('trade_executions')
-          .select('action, symbol, signal_id, reason, created_at, stop_loss, take_profit')
-          .eq('user_id', user.id).eq('status', 'executed')
+          .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
+          .eq('user_id', user.id)
           .gte('created_at', new Date(sinceMs).toISOString())
-          .order('created_at', { ascending: false }).limit(500);
-        attachSource(grouped, (execs as ExecRow[]) || []);
+          .order('created_at', { ascending: false }).limit(1000);
+        const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
+        fastt = fasttFromExecutions(rows);
+        if (!hist.error && Array.isArray(hist.deals)) {
+          const grouped = groupDeals((hist.deals || []) as HistoryDeal[]);
+          attachSource(grouped, rows.filter(r => r.status === 'executed') as ExecRow[]);
+          mt5NonFastt = grouped.filter(t => t.source !== 'fastt');
+        }
+      } else if (!hist.error && Array.isArray(hist.deals)) {
+        mt5NonFastt = groupDeals((hist.deals || []) as HistoryDeal[]);
       }
-      setTrades(grouped);
+      // Nëse historiku i MT5 dështoi DHE s'kemi as trade FastT nga logu → shfaq gabimin.
+      if (hist.error && fastt.length === 0) {
+        setError(chk.message || hist.message || t('S\'u lexuan dot të dhënat e tregtimit.')); setTrades([]); return;
+      }
+      setTrades([...fastt, ...mt5NonFastt].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
     } catch (e) {
       setError((e as Error).message || t('Gabim gjatë leximit.'));
     } finally {
