@@ -444,6 +444,9 @@ const peakMap = new Map<string, number>();
 const lastEntry = new Map<string, number>();
 // Buffer-i i tick-ave live per (user:symbol) — historia e shkurtër e çmimit për sinjalin real-time.
 const tickBuf = new Map<string, Tick[]>();
+// Humbje radhazi per (user:symbol) + koha deri kur hyrjet janë në pauzë (anti-gjakderdhje në chop).
+const lossStreak = new Map<string, number>();
+const pauseUntil = new Map<string, number>();
 // Dyshemeja e zhurmës per simbol (sa $ konsiderohet "lëvizje reale"), e rifreskuar nga qirinjtë 1m.
 const moveFloor = new Map<string, { t: number; v: number }>();
 // Cache i qirinjve 1m per simbol (rifreskuar çdo ~12s) — për "arsyetimin" mbi trendin/EMA9 live.
@@ -586,6 +589,14 @@ Deno.serve(async (req: Request) => {
               const br = brokerResult(r.body);
               if (r.ok && (br.ok || br.orderId || !Number.isFinite(br.code))) {
                 peakMap.delete(p.id);
+                // PAUZË ANTI-CHOP: numëro humbjet radhazi; pas 2 humbjesh → pauzë ~2 min (e
+                // anashkalueshme nga lëvizje e fortë te hyrja). Çdo fitore e rivendos numëruesin.
+                const lk = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
+                if (moved < 0) {
+                  const s = (lossStreak.get(lk) ?? 0) + 1;
+                  if (s >= 2) { pauseUntil.set(lk, Date.now() + 120_000); lossStreak.set(lk, 0); }
+                  else lossStreak.set(lk, s);
+                } else lossStreak.set(lk, 0);
                 try {
                   await db.from("trade_executions").insert({
                     user_id: cfg.user_id, symbol: p.symbol || "XAUUSD", action: isBuy ? "BUY" : "SELL",
@@ -637,11 +648,17 @@ Deno.serve(async (req: Request) => {
           const minMove = Math.max(0.28, 0.30 * atrv); // sa $ lëvizje = "impuls real" (nga volatiliteti)
           const sgl = tickSignal(buf, minMove, 6000);
           if (!sgl) continue;
+          // PAUZË pas 2 humbjesh (~2 min) — POR nëse lëvizja është e FORTË (impuls ≥ 1.8× pragu),
+          // hyn pa pritur (siç kërkove: robot live, mos i humb lëvizjet e mira).
+          if (nowMs < (pauseUntil.get(ck) ?? 0) && !tickSignal(buf, minMove * 1.8, 6000)) continue;
 
           const isBuyS = sgl.action === "BUY";
           const entryPx = px;
-          const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50)); // distanca e SL-së katastrofe
-          const stopLoss = Math.round((isBuyS ? entryPx - cat : entryPx + cat) * 100) / 100;
+          const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
+          // SL i NGUSHTË te brokeri (~0.8): kap humbjen edhe gjatë boshllëkut të rinisjes (max ~0.8),
+          // jo te 1.5. Hard-stop i brendshëm 0.7 vepron i pari kur funksioni punon → humbje ~0.7.
+          const slDist = Math.max(0.5, Math.min(cat, 0.8));
+          const stopLoss = Math.round((isBuyS ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           const volume = st.lot;
 
           const slog = (status: string, reason: string, orderId: string | null, raw: unknown) =>
