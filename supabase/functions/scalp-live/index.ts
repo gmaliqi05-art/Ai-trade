@@ -650,9 +650,9 @@ Deno.serve(async (req: Request) => {
           const minMove = Math.max(0.28, 0.30 * atrv); // sa $ lëvizje = "impuls real" (nga volatiliteti)
           const sgl = tickSignal(buf, minMove, 6000);
           if (!sgl) continue;
-          // PAUZË pas 2 humbjesh (~2 min) — POR nëse lëvizja është e FORTË (impuls ≥ 1.8× pragu),
-          // hyn pa pritur (siç kërkove: robot live, mos i humb lëvizjet e mira).
-          if (nowMs < (pauseUntil.get(ck) ?? 0) && !tickSignal(buf, minMove * 1.8, 6000)) continue;
+          // PAUZË pas 2 humbjesh (~2 min) — anashkalohet VETËM nga një impuls ELITE (≥ 3× pragu),
+          // që pauza të MBAJË në chop dhe të hyjë vetëm për lëvizje vërtet të forta.
+          if (nowMs < (pauseUntil.get(ck) ?? 0) && !tickSignal(buf, minMove * 3.0, 6000)) continue;
 
           const isBuyS = sgl.action === "BUY";
           const entryPx = px;
