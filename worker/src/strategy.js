@@ -52,8 +52,11 @@ export function entryDecision({ candles, ticks, spread = 0 }, _p) {
   const dir = pushNow > 0 ? 1 : pushNow < 0 ? -1 : 0;
   if (dir === 0) return null;
 
-  // (1) SHPEJTËSIA: push-i i ~2s të fundit kalon dyshemenë e zhurmës (nga vol LIVE).
-  if (Math.abs(pushNow) < Math.max(0.06, 0.35 * unit)) return null;
+  // PORTA E REJA (FastT v2.1, nga analiza e sesionit): bandë vol-i + min-edge ndaj spread-it.
+  if (!(v >= 0.20 && v <= 0.55)) return null;                       // G2/G3: skaji i ulët=zhurmë, i larti=breakout i fryrë → kthehet
+  if (spread > 0 && Math.abs(pushNow) < 1.5 * spread) return null;  // G4: lëvizja e pritur duhet të paguajë koston (spread)
+  // (1) SHPEJTËSIA/EFIKASITETI: push-i i ~2s kalon dyshemenë (G1: r≥0.45 ⇔ |push|≥0.45·unit).
+  if (Math.abs(pushNow) < Math.max(0.06, 0.45 * unit)) return null;
   // (2) PËRSHPEJTIM: lëvizja po shpejtohet, ose po thyhet nga qetësia (jo push që shuhet).
   const accel = (Math.sign(pushPrev) !== dir) || (Math.abs(pushNow) >= 1.1 * Math.abs(pushPrev));
   if (!accel) return null;
@@ -89,8 +92,13 @@ export function exitDecision({ candles, price, ticks, position, peak, ageMs, spr
   const v = liveVol(ticks, 8000);
   const unit = v > 0 ? v : 0.20;
 
-  // (0) SL i fortë — humbje e vogël e garantuar.
+  // (0) SL i fortë — rrjet i fundit (katastrofë).
   if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
+  // (0b) NDALIM ADAPTIV: pre humbësin normal te ~kosto+0.08 (shumë para hard-stop-it), pas një
+  //      hapësire moshe (më e shkurtër kur vol i lartë). Kufizon humbjet në ~-0.20..-0.28 (ishin -0.49).
+  const ageGate = unit >= 0.45 ? 4000 : 8000;
+  const adaptStop = -(cost + 0.08);
+  if (moved <= adaptStop && ageMs >= ageGate) return `ndalim adaptiv (${moved.toFixed(2)})`;
 
   // (a) KTHESË TICK-U: çmimi tërhiqet nga maja DHE shpejtësia kthehet kundër nesh.
   if (ticks && ticks.length >= 3) {
@@ -99,18 +107,24 @@ export function exitDecision({ candles, price, ticks, position, peak, ageMs, spr
     const retrace = isBuy ? (favExtreme - cur) : (cur - favExtreme);
     const older = priceAt(ticks, 3000);
     const vel = isBuy ? (cur - older) : (older - cur);
-    const swingBack = Math.max(0.08, 0.30 * unit);
+    const swingBack = (peak >= cost + 0.15) ? Math.max(0.06, 0.18 * unit) : Math.max(0.08, 0.30 * unit);
     const noise = Math.max(0.04, 0.15 * unit);
     if (retrace >= swingBack && vel < -noise) {
-      if (peak >= cost + 0.10 && moved > cost) return `kthesë tick — fitim i kapur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
-      if (moved <= -(cost + Math.max(0.06, 0.15 * unit)) && ageMs >= 8000) return `kthesë tick kundër — prerje (${moved.toFixed(2)})`;
+      if (peak >= cost + 0.08 && moved > cost) return `kthesë tick — fitim i kapur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+      if (moved <= -(cost + Math.max(0.06, 0.15 * unit)) && ageMs >= ageGate) return `kthesë tick kundër — prerje (${moved.toFixed(2)})`;
     }
   }
 
-  // (b) MBRO FITIMIN: pasi fitimi real kalon koston, jep pas pak nga maja (lë fituesit të vrapojnë).
-  if (peak >= cost + 0.12) {
-    const floor = Math.max(cost + 0.02, peak - Math.max(0.12, 0.30 * peak));
-    if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  // (b) MBRO FITIMIN: floor i ngushtë + RATCHET lock + trigger vel-flip (event-driven <750ms).
+  //     Para: jepte pas 83% të majës (maja 0.36→0.07). Tani jep pas ~18% + kap kthesën para floor-it pasiv.
+  if (peak >= cost + 0.08) {
+    const giveK = Math.max(0.07, 0.18 * peak);
+    let floor = Math.max(cost + 0.02, peak - giveK);
+    if (peak >= cost + 0.20) floor = Math.max(floor, peak - 0.10);     // RATCHET: pas fitimi solid s'jep më shumë se 0.10
+    const o750 = priceAt(ticks, 750);
+    const v2 = isBuy ? (price - o750) : (o750 - price);                 // kthesë brenda <750ms (event-driven)
+    if (moved <= floor || (peak >= cost + 0.10 && v2 < -Math.max(0.04, 0.15 * unit)))
+      return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   }
 
   // (c) THYERJE QIRIRI (i papërpunuar) në fitim — kthesë strukture.

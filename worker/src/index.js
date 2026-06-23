@@ -37,7 +37,7 @@ const PARAMS = {
 };
 const CATASTROPHE = Number(process.env.FASTT_CATASTROPHE_USD || 2.0); // SL i gjerë te brokeri (parashutë)
 const DEFAULT_LOT = Number(process.env.FASTT_LOT || 0.01);
-const TICK_MS = Number(process.env.FASTT_TICK_MS || 250);     // sa shpesh arsyeton (kohë reale)
+const TICK_MS = Number(process.env.FASTT_TICK_MS || 100);     // sa shpesh arsyeton (kohë reale, reagim maksimal ~100ms)
 const ENTRY_COOLDOWN_MS = Number(process.env.FASTT_COOLDOWN_MS || 45000);
 const PORT = Number(process.env.PORT || 8080);               // health-check (host-et e duan një port)
 const STALE_MS = Number(process.env.FASTT_STALE_MS || 90000); // pa tick > kaq → rinis (vetë-rikuperim)
@@ -57,6 +57,8 @@ const ticks = [];              // tick-a të fundit: { t, p } për tickBias
 let cfg = { enabled: true, killSwitch: false, maxDailyLoss: 1000, dayStartEquity: 0, lot: DEFAULT_LOT, catastrophe: CATASTROPHE };
 let lastEntryAt = 0;
 const peakMap = new Map();     // positionId -> maja e favorit ($)
+const maeMap = new Map();      // positionId -> MAE: lëvizja më e KUNDËRT ($) — për akordim të adaptStop-it
+const peakAgeMap = new Map();  // positionId -> ageMs kur u prek maja (koha-deri-maja)
 let busy = false;              // mbrojtje nga ekzekutime të mbivendosura
 let lastTickAt = Date.now();   // koha e tick-ut të fundit live — për health-check + watchdog
 let lastError = '';            // gabimi i fundit (shfaqet te /health)
@@ -213,22 +215,28 @@ async function main() {
         const entry = Number(pos.openPrice);
         const exitPx = isBuy ? q.bid : q.ask;          // çmimi REAL ku do mbyllje TANI (spread i përfshirë)
         const moved = isBuy ? exitPx - entry : entry - exitPx;
-        const prevPeak = peakMap.get(pos.id) ?? moved;
-        const peak = Math.max(prevPeak, moved);
-        peakMap.set(pos.id, peak);
-
         const nowMs = Date.now();
-        const recTicks = ticks.filter((t) => nowMs - t.t <= 10000); // ~10s për daljen real-time
         const openMs = pos.time ? new Date(pos.time).getTime() : NaN;
         const ageMs = Number.isFinite(openMs) ? (nowMs - openMs) : Infinity;
+        const prevPeak = peakMap.get(pos.id) ?? moved;
+        const peak = Math.max(prevPeak, moved);
+        if (moved >= prevPeak) peakAgeMap.set(pos.id, ageMs);     // koha-deri-maja (përditësohet kur thyhet maja)
+        peakMap.set(pos.id, peak);
+        const mae = Math.min(maeMap.get(pos.id) ?? moved, moved); // MAE: lëvizja më e kundërt gjatë trade-it
+        maeMap.set(pos.id, mae);
+
+        const recTicks = ticks.filter((t) => nowMs - t.t <= 10000); // ~10s për daljen real-time
         const reason = exitDecision({ candles, price: exitPx, ticks: recTicks, position: pos, peak, ageMs, spread }, { catastrophe: cfg.catastrophe });
         if (reason) {
           try {
+            const t2peak = peakAgeMap.get(pos.id) ?? ageMs;
             await connection.closePosition(pos.id);
-            peakMap.delete(pos.id);
-            console.log(`MBYLL ${isBuy ? 'BUY' : 'SELL'} ${SYMBOL}: ${reason}`);
+            peakMap.delete(pos.id); maeMap.delete(pos.id); peakAgeMap.delete(pos.id);
+            // Logim i pasur për akordim të ardhshëm: MAE, koha-deri-maja, kohëzgjatja (nuk prek parsimin e P&L/maja).
+            const tag = ` [MAE ${mae.toFixed(2)} | t2peak ${(t2peak / 1000).toFixed(0)}s | dur ${(ageMs / 1000).toFixed(0)}s]`;
+            console.log(`MBYLL ${isBuy ? 'BUY' : 'SELL'} ${SYMBOL}: ${reason}${tag}`);
             await logExec({ symbol: SYMBOL, action: isBuy ? 'BUY' : 'SELL', volume: pos.volume,
-              entry_price: entry, status: 'info', reason: `FastT mbylli: ${reason}`, metaapi_order_id: pos.id });
+              entry_price: entry, status: 'info', reason: `FastT mbylli: ${reason}${tag}`, metaapi_order_id: pos.id });
           } catch (e) { console.warn('close error', e.message); }
         }
       }
