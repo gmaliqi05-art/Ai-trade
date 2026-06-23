@@ -156,8 +156,12 @@ async function refreshConfig() {
 }
 
 async function logExec(row) {
-  try { await db.from('trade_executions').insert({ user_id: USER_ID, mode: 'live', ...row }); }
-  catch (e) { console.warn('log error', e.message); }
+  try {
+    // KUJDES: supabase-js NUK bën throw për gabime DB/RLS — i kthen te `error`. Prandaj logimi
+    // dështonte në HESHTJE (trade-t s'shfaqeshin te raporti). Tani e kontrollojmë dhe e bëjmë të dukshëm.
+    const { error } = await db.from('trade_executions').insert({ user_id: USER_ID, mode: 'live', ...row });
+    if (error) console.error('LOG EXEC DËSHTOI:', error.message, '| user_id:', USER_ID, '| reason:', row.reason);
+  } catch (e) { console.error('log error (rrjet):', e.message); }
 }
 
 async function main() {
@@ -191,13 +195,10 @@ async function main() {
       ingestTick(price, Date.now());
       lastTickAt = Date.now(); // shenjë gjallërie për health-check + watchdog
 
-      // ⛔ WORKER FASTT I ÇAKTIVIZUAR (mbahet vetëm gjallë për health-check, NUK tregton).
-      // Roboti i vërtetë FastT është edge function-i `scalp-live` (Supabase, çdo minutë, real-time).
-      // Ky worker shkaktonte DYFISHIM tregtimi: dy robotë "FastT" në të njëjtën llogari MT5 mbyllnin
-      // pozicionet e njëri-tjetrit → gabime "Position not found" dhe rezultate kaotike. Plus logimi i tij
-      // te Supabase dështonte në heshtje. Menaxhimin e çdo pozicioni "FastT" e merr përsipër scalp-live.
-      return;
-      // eslint-disable-next-line no-unreachable
+      // ✅ WORKER FASTT = roboti i VETËM (250ms, reagim maksimal real-time). scalp-live u çaktivizua
+      // (cron jobid 15 off) që të mos ketë dy robotë "FastT" në të njëjtën llogari. Ky worker është
+      // i shpejti (rrjedhë tick-ash live), me logjikën pa indikatorë: hyrje live-tick + kap fitimin
+      // në milisekonda kur qirinjtë ndalojnë/kthehen.
       const candles = forming ? [...closedCandles, forming] : closedCandles;
       if (candles.length < 25) return;
 
