@@ -557,7 +557,9 @@ Deno.serve(async (req: Request) => {
           // memorie humbet te rinisja → mbrojtja e fitimit do ta dinte GJITHMONË majën e vërtetë.
           let candlePeak = moved;
           if (pCndl && pCndl.length && Number.isFinite(openMs)) {
-            const since = pCndl.filter((k) => k.time >= openMs - 60000);
+            // VETËM qirinjtë që nisën PAS hapjes (jo më −60s) — që maja të mos përfshijë fitim
+            // që ndodhi PARA se trade-i të ekzistonte (përndryshe e mbyll menjëherë me majë të rreme).
+            const since = pCndl.filter((k) => k.time >= openMs);
             if (since.length) {
               const mfe = isBuy ? Math.max(...since.map((k) => k.high)) - entry
                                 : entry - Math.min(...since.map((k) => k.low));
