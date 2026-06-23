@@ -575,14 +575,13 @@ Deno.serve(async (req: Request) => {
           const peak = Math.max(prevPeak, moved, candlePeak);
           peakMap.set(p.id, peak);
 
-          let close: string | null = null;
-          if (hedgedSyms.has((p.symbol || "XAUUSD").toUpperCase())) {
+          // Ndalimi i fortë + dalja vlejnë GJITHMONË (edhe në hedge) — asnjë anë s'duhet të vrapojë.
+          const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
+          const hardStop = Math.max(0.5, Math.min(cat, 0.7)); // PRE HUMBËSIT SHPEJT (~0.7)
+          let close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, ageMin);
+          // HEDGE (BUY+SELL njëkohësisht) = defekt → mbyll edhe nëse dalja normale s'tha asgjë.
+          if (!close && hedgedSyms.has((p.symbol || "XAUUSD").toUpperCase())) {
             close = "pastrim hedge (BUY+SELL njëkohësisht — mbyllje sigurie)";
-          } else {
-            const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
-            // PRE HUMBËSIT SHPEJT: ndalim i fortë i ngushtë (~0.7) — humbje minimale kur shkon kundër.
-            const hardStop = Math.max(0.5, Math.min(cat, 0.7));
-            close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, ageMin);
           }
 
           if (close) {
@@ -655,6 +654,10 @@ Deno.serve(async (req: Request) => {
           if (nowMs < (pauseUntil.get(ck) ?? 0) && !tickSignal(buf, minMove * 3.0, 6000)) continue;
 
           const isBuyS = sgl.action === "BUY";
+          // ANTI-HEDGE: MOS hap drejtim të kundërt nëse ka pozicion FastT të kundërt te ky simbol.
+          // (Lejohen disa pozicione NË TË NJËJTIN drejtim — pyramiding; bllokohet vetëm kundërdrejtimi.)
+          if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase()
+              && (String(q.type || "").includes("BUY") !== isBuyS))) continue;
           const entryPx = px;
           const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
           // SL i NGUSHTË te brokeri (~0.8): kap humbjen edhe gjatë boshllëkut të rinisjes (max ~0.8),
