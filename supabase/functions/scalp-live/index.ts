@@ -338,6 +338,16 @@ function entrySignal(c: Candle[], price: number, tickBias: number): { action: "B
   if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.12 * atrv) return null;
 
   if (Math.abs(price - e9) > 1.2 * atrv) return null; // mbi-shtrirje → mos hyr vonë
+
+  // DREJTIMI REAL TANI — jo "busulla e vonuar" e EMA-ve 1m: BLLOKO hyrjen KUNDËR lëvizjes së freskët.
+  // (Gabimi i gjetur: roboti blinte gjatë një rënieje $7 sepse EMA9/EMA21 ende thoshin "↑". Tani:
+  //  nëse çmimi po BIE fort në 3 qirinjtë e fundit → MOS BLI; nëse po NGJITET fort → MOS SHIT.
+  //  Kjo ndal "blerjen e majës / shitjen e fundit" gjatë kthesave.)
+  const cl = c.map((x) => x.close);
+  const recent3 = cl[cl.length - 1] - cl[cl.length - 4]; // lëvizja REALE e 3 qirinjve të fundit
+  if (dir === "up" && recent3 < -0.10 * atrv) return null;   // po bie → mos hyr BUY kundër rënies
+  if (dir === "down" && recent3 > 0.10 * atrv) return null;   // po ngjitet → mos hyr SELL kundër ngritjes
+
   const look = c.slice(-4);
   if (dir === "up") {
     const pulled = look.some((x) => x.low <= e9 + 0.05 * atrv);
