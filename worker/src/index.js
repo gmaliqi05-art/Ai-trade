@@ -214,6 +214,9 @@ async function main() {
       if (!cfg.enabled || cfg.killSwitch) return;
       if (positions.length > 0) return;
       if (Date.now() - lastEntryAt < ENTRY_COOLDOWN_MS) return;
+      // FILTËR SESIONI: hyr vetëm në Londër (07:00–11:00 UTC) + NY (13:30–16:30 UTC); blloko chop para-NY.
+      const hmU = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+      if (!((hmU >= 420 && hmU < 660) || (hmU >= 810 && hmU < 990))) return;
 
       // Ndalim ditor i humbjes nga equity live.
       const info = ts.accountInformation;
