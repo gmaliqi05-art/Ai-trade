@@ -324,11 +324,19 @@ function analyzeTrend(c: Candle[]): { dir: "up" | "down" | "flat"; e9: number; e
 }
 
 // HYRJE: trend 1m + pullback te EMA9 + rifillim (tickBias konfirmon drejtimin live).
-// (Pa filtra ADX/ndarje EMA — versioni fitues i +39; ata bllokonin hyrjet në treg të qetë.)
+// FILTRA KUNDËR ZONAVE TË NGATËRRUARA (aty u krijuan humbjet): ADX mbi prag (regjim trendi,
+// jo treg anësor) + ndarje e mjaftueshme EMA9/EMA21 (jo të ngjitura/flat).
 function entrySignal(c: Candle[], price: number, tickBias: number): { action: "BUY" | "SELL"; reason: string } | null {
-  const { dir, e9, atrv: a0 } = analyzeTrend(c);
+  const { dir, e9, e21, atrv: a0 } = analyzeTrend(c);
   if (dir === "flat" || !Number.isFinite(e9)) return null;
   const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.3;
+
+  // FILTRI A — ADX: vetëm kur tregu po trendon vërtet (ADX≥18); në zonë anësore (ADX i ulët) NUK hyn.
+  const adxv = adx(c.map((x) => x.high), c.map((x) => x.low), c.map((x) => x.close), 14).slice(-1)[0];
+  if (!Number.isFinite(adxv) || adxv < 18) return null;
+  // FILTRI B — ndarja EMA9/EMA21 duhet domethënëse (jo të ngatërruara/flat).
+  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.12 * atrv) return null;
+
   if (Math.abs(price - e9) > 1.2 * atrv) return null; // mbi-shtrirje → mos hyr vonë
   const look = c.slice(-4);
   if (dir === "up") {
@@ -371,7 +379,7 @@ function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: nu
   //     Dyshemeja ngjitet me majën dhe jep pas pak te fitimet e vogla (lock i shpejtë), por më
   //     shumë te fitimet e mëdha (lejon vrapim): maja +0.5→lock +0.30, +1→+0.78, +3.2→+2.5, +10→+7.8.
   if (peak >= 0.25) {
-    const floor = Math.max(0.03, peak - Math.max(0.15, 0.15 * peak)); // kap ~85% të majës (jep pak pas)
+    const floor = Math.max(0.03, peak - Math.max(0.20, 0.22 * peak)); // jep pas ~22% të majës → lë fituesit të VRAPOJNË
     if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   }
 
@@ -444,9 +452,6 @@ const peakMap = new Map<string, number>();
 const lastEntry = new Map<string, number>();
 // Buffer-i i tick-ave live per (user:symbol) — historia e shkurtër e çmimit për sinjalin real-time.
 const tickBuf = new Map<string, Tick[]>();
-// Humbje radhazi per (user:symbol) + koha deri kur hyrjet janë në pauzë (anti-gjakderdhje në chop).
-const lossStreak = new Map<string, number>();
-const pauseUntil = new Map<string, number>();
 // Dyshemeja e zhurmës per simbol (sa $ konsiderohet "lëvizje reale"), e rifreskuar nga qirinjtë 1m.
 const moveFloor = new Map<string, { t: number; v: number }>();
 // Cache i qirinjve 1m per simbol (rifreskuar çdo ~12s) — për "arsyetimin" mbi trendin/EMA9 live.
@@ -590,14 +595,6 @@ Deno.serve(async (req: Request) => {
               const br = brokerResult(r.body);
               if (r.ok && (br.ok || br.orderId || !Number.isFinite(br.code))) {
                 peakMap.delete(p.id);
-                // PAUZË ANTI-CHOP: numëro humbjet radhazi; pas 2 humbjesh → pauzë ~2 min (e
-                // anashkalueshme nga lëvizje e fortë te hyrja). Çdo fitore e rivendos numëruesin.
-                const lk = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
-                if (moved < 0) {
-                  const s = (lossStreak.get(lk) ?? 0) + 1;
-                  if (s >= 2) { pauseUntil.set(lk, Date.now() + 120_000); lossStreak.set(lk, 0); }
-                  else lossStreak.set(lk, s);
-                } else lossStreak.set(lk, 0);
                 try {
                   await db.from("trade_executions").insert({
                     user_id: cfg.user_id, symbol: p.symbol || "XAUUSD", action: isBuy ? "BUY" : "SELL",
@@ -639,40 +636,21 @@ Deno.serve(async (req: Request) => {
           // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë).
           if (nowMs - (lastEntry.get(ck) ?? 0) < 20_000) continue;
 
-          // (2) HYRJE MOMENTUM REAL-TIME: kap leg-un KUR FILLON — hyn kur çmimi po lëviz me forcë
-          //     TANI (impuls ≥ pragu nga volatiliteti, ende duke vazhduar), jo te EMA+pullback që
-          //     vonon dhe hyn në fund të lëvizjes. Pragu i impulsit del nga vetë qirinjtë (ATR).
+          // (2) ARSYETIM mbi pamjen 1m: hyr VETËM me trendin, pas pullback-u te EMA9, me rifillim live
+          //     (versioni FITUES — hyrje selektive vetëm në trend real, jo ndjekje spike-sh në chop).
           const cndl = await getCandlesCached(cfg, sym, ck);
           if (!cndl || cndl.length < 25) continue;
-          const { atrv: a0, e9: e9Entry } = analyzeTrend(cndl);
-          const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.4;
-          const minMove = Math.max(0.28, 0.30 * atrv); // sa $ lëvizje = "impuls real" (nga volatiliteti)
-          const sgl = tickSignal(buf, minMove, 6000);
+          const sgl = entrySignal(cndl, px, tickBiasOf(buf));
           if (!sgl) continue;
-          // PAUZË pas 2 humbjesh (~2 min) — anashkalohet VETËM nga një impuls ELITE (≥ 3× pragu),
-          // që pauza të MBAJË në chop dhe të hyjë vetëm për lëvizje vërtet të forta.
-          if (nowMs < (pauseUntil.get(ck) ?? 0) && !tickSignal(buf, minMove * 3.0, 6000)) continue;
 
           const isBuyS = sgl.action === "BUY";
           // ANTI-HEDGE: MOS hap drejtim të kundërt nëse ka pozicion FastT të kundërt te ky simbol.
           // (Lejohen disa pozicione NË TË NJËJTIN drejtim — pyramiding; bllokohet vetëm kundërdrejtimi.)
           if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase()
               && (String(q.type || "").includes("BUY") !== isBuyS))) continue;
-          // HYRJE ME HAPËSIRË PËR TË VRAPUAR — kap FILLIMIN e lëvizjes, jo fundin:
-          //   hyr vetëm kur çmimi NUK është ende i shtrirë larg EMA9 (lëvizja sapo nisi nga baza,
-          //   ka hapësirë lart/poshtë). Nëse çmimi është tashmë i shtrirë (maja/fundi i rraskapitur)
-          //   → KAPËRCE: kjo ndal "blerjen e majës / shitjen e fundit" që kthehet menjëherë në -0.72.
-          const extCap = Math.max(0.30, 0.9 * atrv);
-          if (Number.isFinite(e9Entry)) {
-            if (isBuyS && px > e9Entry + extCap) continue;   // tashmë lart e shtrirë → maja → mos ndiq
-            if (!isBuyS && px < e9Entry - extCap) continue;   // tashmë poshtë e shtrirë → fundi → mos ndiq
-          }
           const entryPx = px;
-          const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
-          // SL i NGUSHTË te brokeri (~0.8): kap humbjen edhe gjatë boshllëkut të rinisjes (max ~0.8),
-          // jo te 1.5. Hard-stop i brendshëm 0.7 vepron i pari kur funksioni punon → humbje ~0.7.
-          const slDist = Math.max(0.5, Math.min(cat, 0.8));
-          const stopLoss = Math.round((isBuyS ? entryPx - slDist : entryPx + slDist) * 100) / 100;
+          const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50)); // distanca e SL-së katastrofe
+          const stopLoss = Math.round((isBuyS ? entryPx - cat : entryPx + cat) * 100) / 100;
           const volume = st.lot;
 
           const slog = (status: string, reason: string, orderId: string | null, raw: unknown) =>
