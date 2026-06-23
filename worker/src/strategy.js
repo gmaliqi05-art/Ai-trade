@@ -1,162 +1,127 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Truri i FastT — TICK-DRIVEN REAL-TIME (i njëjti koncept si edge function-i, por në
-// streaming 250ms). Drejtimi vjen nga TICK-u LIVE, jo nga EMA-ja e vonuar.
+// Truri i FastT — VEPRIM ÇMIMI 100% REAL-TIME. ZERO indikatorë të jashtëm.
+// PA EMA, PA ATR, PA ADX. Vendoset VETËM nga tick-at live + qirinjtë e papërpunuar.
 //
-//  • HYRJE (tickStart): regjim trendi (ADX + ndarje EMA, anti-chop) + drejtim nga tick-u
-//    live me shpejtësi + përshpejtim + efikasitet net/path (anti-chop) + freski + thyerje
-//    mikro-strukture. Kap FILLIMIN e lëvizjes, jo majën; s'hyn kundër lëvizjes.
-//  • DALJE (reversalExit + rezervat): del në çastin që çmimi tenton kthesën (retrace +
-//    shpejtësia kthehet), kap fitimin te ndalesa, pret humbjen shpejt, lë fituesit të vrapojnë.
-//  • SL "katastrofe" i gjerë te brokeri si rrjetë sigurie.
+//  • Volatiliteti për shkallëzim merret nga VARGU i tick-ave të fundit (~8-10s), LIVE —
+//    jo nga indikatorë që pasqyrojnë 14-21 minuta të shkuara.
+//  • HYRJE: kap impulsin që po FILLON tani (drejtim + shpejtësi + përshpejtim +
+//    efikasitet lëvizjeje + thyerje e majës/fundit të 2 qirinjve të fundit).
+//  • DALJE: kthesë tick-u, mbrojtje fitimi nga maja, thyerje qiriri, ose SL i fortë.
+//
+// Asnjë import nga indicators.js — gjithçka llogaritet drejtpërdrejt nga çmimi live.
 // ─────────────────────────────────────────────────────────────────────────────
-import { ema, atrLast, adxLast } from './indicators.js';
 
-/** Drejtimi i mikro-trendit 1m: EMA9 vs EMA21 + pjerrësia e EMA9. */
-export function analyzeTrend(candles) {
-  const closes = candles.map((c) => c.close);
-  if (closes.length < 25) return { dir: 'flat', e9: NaN, e21: NaN, slope: 0, atr: NaN };
-  const e9arr = ema(closes, 9);
-  const e21arr = ema(closes, 21);
-  const i = closes.length - 1;
-  const e9 = e9arr[i];
-  const e21 = e21arr[i];
-  const slope = e9 - e9arr[i - 3];
-  const atr = atrLast(candles.map((c) => c.high), candles.map((c) => c.low), closes, 14);
-  let dir = 'flat';
-  if (e9 > e21 && slope > 0) dir = 'up';
-  else if (e9 < e21 && slope < 0) dir = 'down';
-  return { dir, e9, e21, slope, atr };
+/** Volatilitet REAL-TIME nga tick-at: gama (max−min) e ~ms të fundit. Zëvendëson ATR-në. */
+function liveVol(ticks, ms) {
+  if (!ticks || ticks.length < 2) return 0;
+  const now = ticks[ticks.length - 1].t;
+  let hi = -Infinity, lo = Infinity, k = 0;
+  for (const x of ticks) {
+    if (x.t >= now - ms) { if (x.p > hi) hi = x.p; if (x.p < lo) lo = x.p; k++; }
+  }
+  if (k < 2 || !Number.isFinite(hi) || !Number.isFinite(lo)) return 0;
+  return hi - lo;
 }
 
-/** Filtri i REGJIMIT: trend real (ADX≥18 + ndarje EMA9/EMA21), JO treg anësor/chop. */
-export function regimeOk(candles) {
-  const { dir, e9, e21, atr } = analyzeTrend(candles);
-  if (dir === 'flat' || !Number.isFinite(e9)) return false;
-  const atrv = Number.isFinite(atr) && atr > 0 ? atr : 0.3;
-  const adxv = adxLast(candles.map((c) => c.high), candles.map((c) => c.low), candles.map((c) => c.close), 14);
-  if (!Number.isFinite(adxv) || adxv < 23) return false;                       // ADX i ulët = chop (23: vetëm trend real)
-  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.18 * atrv) return false; // EMA të ngjitura = flat
-  return true;
-}
-
-/** DREJTIM REAL-TIME nga tick-u LIVE — kthen 'BUY'/'SELL' vetëm kur lëvizja po FILLON vërtet TANI. */
-export function tickStart(ticks, atrv, candles) {
-  const n = ticks.length;
-  if (n < 5 || !(atrv > 0)) return null;
-  const now = ticks[n - 1];
-  const priceAt = (ageMs) => {
-    const target = now.t - ageMs;
-    let pick = ticks[0];
-    for (const x of ticks) { if (x.t >= target) { pick = x; break; } }
-    return pick.p;
-  };
-  const pNow = now.p, p2 = priceAt(2200), p4 = priceAt(4400), p6 = priceAt(6600);
-  const pushNow = pNow - p2, pushPrev = p2 - p4;
-  const dir = pushNow > 0 ? 1 : pushNow < 0 ? -1 : 0;
-  if (dir === 0) return null;
-  // (1) SHPEJTËSIA: push-i i ~2s të fundit duhet të kalojë dyshemenë e zhurmës.
-  if (Math.abs(pushNow) < Math.max(0.06, 0.18 * atrv)) return null;
-  // (1b) PËRSHPEJTIM: lëvizja po shpejtohet (ose po thyhet nga qetësia) — jo push që po shuhet.
-  const accelerating = (Math.sign(pushPrev) !== dir) || (Math.abs(pushNow) >= 1.15 * Math.abs(pushPrev));
-  if (!accelerating) return null;
-  // (2) ANTI-CHOP: efikasiteti net/path i ~6s të fundit (1 = vijë e drejtë, ~0 = lëkundje).
-  let path = 0, prev = null;
-  for (const x of ticks) { if (x.t >= now.t - 6600) { if (prev) path += Math.abs(x.p - prev.p); prev = x; } }
-  const net = Math.abs(pNow - p6);
-  if (path <= 0 || net / path < 0.62) return null;
-  // (3) FRESKI: lëvizja sapo nisi (jo e shtrirë mbi 1.6·ATR) + impulsi i përqendruar te ~2s e fundit.
-  if (net > 1.6 * atrv) return null;
-  if (Math.abs(pushNow) < 0.5 * net) return null;
-  // (4) KONFIRMIM MIKRO-STRUKTURE: çmimi thyen majën/fundin e 2 qirinjve të mbyllur në atë drejtim.
-  const m = candles.length;
-  if (m < 3) return null;
-  const microHigh = Math.max(candles[m - 2].high, candles[m - 3].high);
-  const microLow = Math.min(candles[m - 2].low, candles[m - 3].low);
-  const tol = 0.05 * atrv;
-  if (dir > 0 && pNow < microHigh - tol) return null;
-  if (dir < 0 && pNow > microLow + tol) return null;
-  return dir > 0 ? 'BUY' : 'SELL';
+/** Çmimi ~ageMs më parë nga tick-at live. */
+function priceAt(ticks, ageMs) {
+  const now = ticks[ticks.length - 1];
+  const target = now.t - ageMs;
+  let pick = ticks[0];
+  for (const x of ticks) { if (x.t >= target) { pick = x; break; } }
+  return pick.p;
 }
 
 /**
- * Vendim HYRJEJE. `candles` = qirinjtë 1m (+ qiriri live). `ticks` = histori tick ~ 15-20s.
+ * Vendim HYRJEJE — VETËM nga tick-at live + qirinjtë e papërpunuar.
+ * `candles` = qirinjtë 1m (+ qiriri live). `ticks` = histori tick ~15-20s.
  * Kthen { action, reason } ose null.
  */
 export function entryDecision({ candles, ticks, spread = 0 }, _p) {
-  // PA ADX/regjim (indikatorë të vonuar): vendimi merret VETËM nga ndjekja real-time e qirinjve.
-  // Mbrojtja nga chop-i është brenda tickStart-it (efikasitet lëvizjeje + freski + thyerje mikro-strukture),
-  // e bazuar te veprimi i çmimit live — jo te indikatorë të jashtëm që vonojnë e bllokojnë.
-  const { atr } = analyzeTrend(candles);
-  const atrv = Number.isFinite(atr) && atr > 0 ? atr : 0.3;
-  if (spread > 0 && spread > 1.2 * atrv) return null; // vetëm kosto absurde rri jashtë
-  const dir = tickStart(ticks, atrv, candles);
-  if (!dir) return null;
-  return { action: dir, reason: `tick-start ${dir} (real-time qirinj: fresh + efikasitet + mikro-thyerje, spread ${spread.toFixed(2)})` };
-}
+  const n = ticks?.length || 0;
+  if (n < 5) return null;
+  const v = liveVol(ticks, 10000);               // volatilitet live nga tick-at (jo ATR)
+  const unit = v > 0 ? v : 0.20;                 // dysheme e vogël për arin nëse tregu i fjetur
+  // Kosto: rri jashtë vetëm kur spread-i ha thuajse gjithë lëvizjen e fundit.
+  if (spread > 0 && spread > 0.9 * unit) return null;
 
-/** DALJE REAL-TIME në kthesë (tick): del në çastin që çmimi tenton kahjen e kundërt. */
-export function reversalExit(ticks, isBuy, moved, peak, atrv, ageMs, cost = 0) {
-  if (ticks.length < 3) return null;
-  const noise = Math.max(0.04, 0.10 * atrv);
-  const swingBack = Math.max(0.10, 0.22 * atrv);
-  const cur = ticks[ticks.length - 1].p;
-  const favExtreme = isBuy ? Math.max(...ticks.map((t) => t.p)) : Math.min(...ticks.map((t) => t.p));
-  const retrace = isBuy ? (favExtreme - cur) : (cur - favExtreme);
-  const tgt = ticks[ticks.length - 1].t - 4000;
-  let older = ticks[0];
-  for (const x of ticks) { if (x.t >= tgt) { older = x; break; } }
-  const vel = isBuy ? (cur - older.p) : (older.p - cur);
-  if (!(retrace >= swingBack && vel < -noise)) return null;
-  // Kap fitimin VETËM kur maja ka kaluar koston (përndryshe "fitimi" është iluzion nga mid-i).
-  if (peak >= Math.max(0.35, cost + 0.20) && moved > cost) {
-    return `kthesë live — fitim i kapur te ndalesa (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  const now = ticks[n - 1];
+  const pNow = now.p;
+  const p2 = priceAt(ticks, 2200), p4 = priceAt(ticks, 4400), p6 = priceAt(ticks, 6600);
+  const pushNow = pNow - p2, pushPrev = p2 - p4;
+  const dir = pushNow > 0 ? 1 : pushNow < 0 ? -1 : 0;
+  if (dir === 0) return null;
+
+  // (1) SHPEJTËSIA: push-i i ~2s të fundit kalon dyshemenë e zhurmës (nga vol LIVE).
+  if (Math.abs(pushNow) < Math.max(0.06, 0.35 * unit)) return null;
+  // (2) PËRSHPEJTIM: lëvizja po shpejtohet, ose po thyhet nga qetësia (jo push që shuhet).
+  const accel = (Math.sign(pushPrev) !== dir) || (Math.abs(pushNow) >= 1.1 * Math.abs(pushPrev));
+  if (!accel) return null;
+  // (3) ANTI-CHOP (pa indikator): efikasiteti net/path i ~6s të fundit afër vijës së drejtë.
+  let path = 0, prev = null;
+  for (const x of ticks) { if (x.t >= now.t - 6600) { if (prev) path += Math.abs(x.p - prev.p); prev = x; } }
+  const net = Math.abs(pNow - p6);
+  if (path <= 0 || net / path < 0.6) return null;
+  // (4) THYERJE QIRIRI (i papërpunuar): çmimi thyen majën/fundin e 2 qirinjve të fundit.
+  const m = candles?.length || 0;
+  if (m >= 3) {
+    const hi = Math.max(candles[m - 2].high, candles[m - 3].high);
+    const lo = Math.min(candles[m - 2].low, candles[m - 3].low);
+    const tol = 0.05 * unit;
+    if (dir > 0 && pNow < hi - tol) return null;
+    if (dir < 0 && pNow > lo + tol) return null;
   }
-  // Prerje e hershme VETËM te lëvizje vërtet kundër nesh (përtej spread-it), jo te vetë spread-i.
-  if (moved <= -(cost + Math.max(0.08, 0.12 * atrv))) {
-    if (ageMs < 12000) return null; // hapësirë ~12s pas hapjes — mos u tremb nga zhurma fillestare
-    return `kthesë live kundër nesh — prerje e hershme (${moved.toFixed(2)})`;
-  }
-  return null;
+  const action = dir > 0 ? 'BUY' : 'SELL';
+  return { action, reason: `live-tick ${action} (vol ${unit.toFixed(2)}, push ${pushNow.toFixed(2)}, spread ${spread.toFixed(2)})` };
 }
 
 /**
- * Vendim DALJEJE i plotë: parashutë → dalje real-time → qirinj/floor/EMA/ngecje (rezervë).
- * `ticks` = histori tick e kufizuar te ~10s (vendoset nga thirrësi). `ageMs` = mosha e pozicionit.
+ * Vendim DALJEJE — VETËM tick-a live + qirinj të papërpunuar + SL i fortë.
+ * `price` = çmimi REAL i daljes (bid për BUY, ask për SELL) — e jep thirrësi.
+ * `ticks` = histori tick ~10s. `peak` = maja e favorit ($). `ageMs` = mosha e pozicionit.
  */
 export function exitDecision({ candles, price, ticks, position, peak, ageMs, spread = 0 }, p) {
   const isBuy = String(position.type).includes('BUY');
   const entry = Number(position.openPrice);
-  // `price` është çmimi REAL i daljes (bid për BUY, ask për SELL) — thirrësi e jep ashtu.
-  const moved = isBuy ? price - entry : entry - price;
-  const { e9, atr } = analyzeTrend(candles);
-  const atrv = Number.isFinite(atr) && atr > 0 ? atr : 0.3;
-  const cost = Math.max(0, spread);                         // kostoja që duhet kaluar para fitimit real
-  const hardStop = Math.max(0.5, Math.min(p.catastrophe ?? 1.5, 0.7));
+  const moved = isBuy ? price - entry : entry - price;     // P&L real
+  const cost = Math.max(0, spread);
+  const hardStop = Math.max(0.4, Math.min(p.catastrophe ?? 0.6, 0.7));
+  const v = liveVol(ticks, 8000);
+  const unit = v > 0 ? v : 0.20;
 
-  // (0) Parashutë e fortë — asnjëherë humbje e madhe.
+  // (0) SL i fortë — humbje e vogël e garantuar.
   if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
-  // (a) DALJE REAL-TIME në kthesë (tick) — e para, më e shpejtë se qiriri 1m.
-  const rev = reversalExit(ticks, isBuy, moved, peak, atrv, ageMs, cost);
-  if (rev) return rev;
-  // (R) KTHESË QIRINJSH në fitim (vetëm pasi fitimi real ka kaluar koston).
-  if (moved > Math.max(0.10, cost) && candles.length >= 2) {
-    const lo = Math.min(candles[candles.length - 1].low, candles[candles.length - 2].low);
-    const hi = Math.max(candles[candles.length - 1].high, candles[candles.length - 2].high);
-    if (isBuy && price < lo) return `kthesë qirinjsh — fitim i marrë (+${moved.toFixed(2)})`;
-    if (!isBuy && price > hi) return `kthesë qirinjsh — fitim i marrë (+${moved.toFixed(2)})`;
+
+  // (a) KTHESË TICK-U: çmimi tërhiqet nga maja DHE shpejtësia kthehet kundër nesh.
+  if (ticks && ticks.length >= 3) {
+    const cur = ticks[ticks.length - 1].p;
+    const favExtreme = isBuy ? Math.max(...ticks.map((t) => t.p)) : Math.min(...ticks.map((t) => t.p));
+    const retrace = isBuy ? (favExtreme - cur) : (cur - favExtreme);
+    const older = priceAt(ticks, 3000);
+    const vel = isBuy ? (cur - older) : (older - cur);
+    const swingBack = Math.max(0.08, 0.30 * unit);
+    const noise = Math.max(0.04, 0.15 * unit);
+    if (retrace >= swingBack && vel < -noise) {
+      if (peak >= cost + 0.10 && moved > cost) return `kthesë tick — fitim i kapur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+      if (moved <= -(cost + Math.max(0.06, 0.15 * unit)) && ageMs >= 8000) return `kthesë tick kundër — prerje (${moved.toFixed(2)})`;
+    }
   }
-  // (P) MBRO FITIMIN — jep pas ~22% të majës (lë fituesit të vrapojnë).
-  if (peak >= 0.25) {
-    const floor = Math.max(0.03, peak - Math.max(0.20, 0.22 * peak));
+
+  // (b) MBRO FITIMIN: pasi fitimi real kalon koston, jep pas pak nga maja (lë fituesit të vrapojnë).
+  if (peak >= cost + 0.12) {
+    const floor = Math.max(cost + 0.02, peak - Math.max(0.12, 0.30 * peak));
     if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   }
-  // (1) EMA9 — prerje për humbësit / prishje e plotë trendi.
-  const buffer = Math.max(0.05, 0.15 * atrv);
-  if (Number.isFinite(e9)) {
-    const onRight = isBuy ? price > e9 - buffer : price < e9 + buffer;
-    if (!onRight) return `kthesë reale: ${isBuy ? 'çmimi nën EMA9' : 'çmimi mbi EMA9'} (${moved.toFixed(2)})`;
+
+  // (c) THYERJE QIRIRI (i papërpunuar) në fitim — kthesë strukture.
+  if (moved > Math.max(0.10, cost) && candles && candles.length >= 2) {
+    const lo = Math.min(candles[candles.length - 1].low, candles[candles.length - 2].low);
+    const hi = Math.max(candles[candles.length - 1].high, candles[candles.length - 2].high);
+    if (isBuy && price < lo) return `thyerje qiriri — fitim i marrë (+${moved.toFixed(2)})`;
+    if (!isBuy && price > hi) return `thyerje qiriri — fitim i marrë (+${moved.toFixed(2)})`;
   }
-  // (S) NGECJE — nëse rri > 4 min pa u bërë fitues i fortë, liro vendin.
-  if (Number.isFinite(ageMs) && ageMs > 240000 && peak < 1.0) return `scalp ngeci — mbyll (${moved.toFixed(2)})`;
+
+  // (d) NGECJE: rri gjatë pa u bërë fitues → liro vendin.
+  if (Number.isFinite(ageMs) && ageMs > 180000 && peak < 0.5) return `ngeci — mbyll (${moved.toFixed(2)})`;
   return null; // MBAJE
 }
