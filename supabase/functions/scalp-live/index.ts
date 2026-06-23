@@ -371,7 +371,7 @@ function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: nu
   //     Dyshemeja ngjitet me majën dhe jep pas pak te fitimet e vogla (lock i shpejtë), por më
   //     shumë te fitimet e mëdha (lejon vrapim): maja +0.5→lock +0.30, +1→+0.78, +3.2→+2.5, +10→+7.8.
   if (peak >= 0.25) {
-    const floor = Math.max(0.03, peak - Math.max(0.20, 0.22 * peak));
+    const floor = Math.max(0.03, peak - Math.max(0.15, 0.15 * peak)); // kap ~85% të majës (jep pak pas)
     if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   }
 
@@ -564,8 +564,10 @@ Deno.serve(async (req: Request) => {
             // që ndodhi PARA se trade-i të ekzistonte (përndryshe e mbyll menjëherë me majë të rreme).
             const since = pCndl.filter((k) => k.time >= openMs);
             if (since.length) {
-              const mfe = isBuy ? Math.max(...since.map((k) => k.high)) - entry
-                                : entry - Math.min(...since.map((k) => k.low));
+              // Përdor MBYLLJET e qirinjve (jo fitilet high/low) — fitilet janë maja kalimtare që
+              // pozicioni s'i kap dot dhe e fryjnë majën false → mbyllje nën majën reale.
+              const mfe = isBuy ? Math.max(...since.map((k) => k.close)) - entry
+                                : entry - Math.min(...since.map((k) => k.close));
               if (Number.isFinite(mfe)) candlePeak = Math.max(candlePeak, mfe);
             }
           }
@@ -648,9 +650,9 @@ Deno.serve(async (req: Request) => {
           const minMove = Math.max(0.28, 0.30 * atrv); // sa $ lëvizje = "impuls real" (nga volatiliteti)
           const sgl = tickSignal(buf, minMove, 6000);
           if (!sgl) continue;
-          // PAUZË pas 2 humbjesh (~2 min) — anashkalohet VETËM nga një impuls ELITE (≥ 3× pragu),
-          // që pauza të MBAJË në chop dhe të hyjë vetëm për lëvizje vërtet të forta.
-          if (nowMs < (pauseUntil.get(ck) ?? 0) && !tickSignal(buf, minMove * 3.0, 6000)) continue;
+          // PAUZË pas 2 humbjesh (~2 min) — POR nëse lëvizja është e FORTË (impuls ≥ 1.8× pragu),
+          // hyn pa pritur (siç kërkove: robot live, mos i humb lëvizjet e mira).
+          if (nowMs < (pauseUntil.get(ck) ?? 0) && !tickSignal(buf, minMove * 1.8, 6000)) continue;
 
           const isBuyS = sgl.action === "BUY";
           const entryPx = px;
