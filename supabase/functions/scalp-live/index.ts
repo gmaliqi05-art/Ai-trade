@@ -359,6 +359,86 @@ function entrySignal(c: Candle[], price: number, tickBias: number): { action: "B
   return null;
 }
 
+// ─── TRU REAL-TIME (tick-driven): drejtimi vjen nga tick-u LIVE, jo nga EMA-ja e vonuar ──────
+
+// Filtri i REGJIMIT: a është tregu i përshtatshëm për hyrje? (trend real me ADX + ndarje EMA9/EMA21,
+// JO treg anësor/flat ku chop-i bën spike sa andej-këtej). Drejtimin NUK e jep ky — e jep tick-u.
+function regimeOk(c: Candle[]): boolean {
+  const { dir, e9, e21, atrv: a0 } = analyzeTrend(c);
+  if (dir === "flat" || !Number.isFinite(e9)) return false;
+  const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.3;
+  const adxv = adx(c.map((x) => x.high), c.map((x) => x.low), c.map((x) => x.close), 14).slice(-1)[0];
+  if (!Number.isFinite(adxv) || adxv < 18) return false;                        // ADX i ulët = chop → mos hyr
+  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.12 * atrv) return false;  // EMA të ngjitura = flat
+  return true;
+}
+
+// DREJTIM REAL-TIME nga tick-u LIVE: kthen "BUY"/"SELL" VETËM kur çmimi po FILLON një lëvizje të
+// vërtetë TANI — shpejtësi + përshpejtim + efikasitet (net/path, anti-chop) + freski (sapo nisi, jo
+// i shtrirë) + thyerje e mikro-strukturës. E mesmja midis momentum-it të zhurmshëm dhe EMA-s së ngadaltë.
+function tickStart(buf: Tick[], atrv: number, candles: Candle[]): "BUY" | "SELL" | null {
+  const n = buf.length;
+  if (n < 5 || !(atrv > 0)) return null;
+  const now = buf[n - 1];
+  const priceAt = (ageMs: number): number => {
+    const target = now.t - ageMs;
+    let pick = buf[0];
+    for (const x of buf) { if (x.t >= target) { pick = x; break; } }
+    return pick.p;
+  };
+  const pNow = now.p, p2 = priceAt(2200), p4 = priceAt(4400), p6 = priceAt(6600);
+  const pushNow = pNow - p2, pushPrev = p2 - p4;
+  const dir = pushNow > 0 ? 1 : pushNow < 0 ? -1 : 0;
+  if (dir === 0) return null;
+  // (1) SHPEJTËSIA: push-i i ~2s të fundit duhet të kalojë dyshemenë e zhurmës (spread + tik-a).
+  if (Math.abs(pushNow) < Math.max(0.06, 0.18 * atrv)) return null;
+  // (1b) PËRSHPEJTIM: lëvizja po SHPEJTOHET (ose po thyhet nga qetësia/kthesa) — jo push që po shuhet.
+  const accelerating = (Math.sign(pushPrev) !== dir) || (Math.abs(pushNow) >= 1.15 * Math.abs(pushPrev));
+  if (!accelerating) return null;
+  // (2) ANTI-CHOP: efikasiteti net/path i ~6s të fundit (1 = vijë e drejtë, ~0 = lëkundje e kotë).
+  let path = 0; let prev: Tick | null = null;
+  for (const x of buf) { if (x.t >= now.t - 6600) { if (prev) path += Math.abs(x.p - prev.p); prev = x; } }
+  const net = Math.abs(pNow - p6);
+  if (path <= 0 || net / path < 0.55) return null;
+  // (3) FRESKI: lëvizja sapo nisi (jo e shtrirë mbi 1.6·ATR) dhe impulsi i përqendruar te ~2s e fundit.
+  if (net > 1.6 * atrv) return null;
+  if (Math.abs(pushNow) < 0.5 * net) return null;
+  // (4) KONFIRMIM MIKRO-STRUKTURE: çmimi thyen majën/fundin e 2 qirinjve të mbyllur në atë drejtim.
+  const m = candles.length;
+  if (m < 3) return null;
+  const microHigh = Math.max(candles[m - 2].high, candles[m - 3].high);
+  const microLow = Math.min(candles[m - 2].low, candles[m - 3].low);
+  const tol = 0.05 * atrv;
+  if (dir > 0 && pNow < microHigh - tol) return null;
+  if (dir < 0 && pNow > microLow + tol) return null;
+  return dir > 0 ? "BUY" : "SELL";
+}
+
+// DALJE REAL-TIME në KTHESË: del në çastin që çmimi tenton drejtimin e kundërt — kap fitimin te
+// ndalesa dhe pret humbjen shpejt, POR LË FITUESIT TË VRAPOJNË (s'del sa bën maja të reja në favor).
+function reversalExit(ticks: Tick[], isBuy: boolean, moved: number, peak: number, atrv: number, ageMs: number): string | null {
+  if (ticks.length < 3) return null;
+  const noise = Math.max(0.04, 0.10 * atrv);
+  const swingBack = Math.max(0.08, 0.18 * atrv);
+  const cur = ticks[ticks.length - 1].p;
+  // Maja/fundi i favorshëm i ~10s të fundit (lokal): sa larg u kthye çmimi prej tij.
+  const favExtreme = isBuy ? Math.max(...ticks.map((t) => t.p)) : Math.min(...ticks.map((t) => t.p));
+  const retrace = isBuy ? (favExtreme - cur) : (cur - favExtreme);
+  // Shpejtësia e ~4s të fundit (e normalizuar: pozitive = ende në favor, negative = u kthye kundër).
+  const tgt = ticks[ticks.length - 1].t - 4000;
+  let older = ticks[0];
+  for (const x of ticks) { if (x.t >= tgt) { older = x; break; } }
+  const vel = isBuy ? (cur - older.p) : (older.p - cur);
+  // KTHESË reale = u kthye ≥ swingBack nga maja DHE shpejtësia u kthye kundër (jo thjesht lëkundje).
+  if (!(retrace >= swingBack && vel < -noise)) return null;
+  if (peak >= 0.25 && moved > 0) return `kthesë live — fitim i kapur te ndalesa (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  if (moved <= 0) {
+    if (ageMs < 12_000) return null; // hapësirë ~12s pas hapjes — mos u tremb nga zhurma fillestare
+    return `kthesë live kundër nesh — prerje e hershme (${moved.toFixed(2)})`;
+  }
+  return null;
+}
+
 // MENAXHIMI I DALJES — REAGON TE QIRINJTË, jo te EMA9 e ngadaltë:
 //  (0) NDALIM I FORTË (parashutë): asnjëherë humbje e madhe.
 //  (R) REAGIM TE QIRINJTË (parësor): sa qirinjtë bëjnë fund/majë në favor → MBAJE (vrapo +7/+10);
@@ -458,6 +538,8 @@ interface UserState { cfg: Cfg; equity: number; dailyStop: boolean; maxRisk: num
 // Maja e fitimit (lëvizja maksimale në favor) për çdo pozicion — për trailing-un me giveback.
 // E mban gjatë gjithë ciklit ~50s; pozicionet scalp-live janë jetëshkurtra.
 const peakMap = new Map<string, number>();
+// Histori tick-u per pozicion (id) — për daljen REAL-TIME në kthesë (reversalExit).
+const revMap = new Map<string, Tick[]>();
 // Koha e hyrjes së fundit scalp-live per (user:symbol) — cooldown anti-grumbullim brenda ciklit.
 const lastEntry = new Map<string, number>();
 // Buffer-i i tick-ave live per (user:symbol) — historia e shkurtër e çmimit për sinjalin real-time.
@@ -590,10 +672,22 @@ Deno.serve(async (req: Request) => {
           const peak = Math.max(prevPeak, moved, candlePeak);
           peakMap.set(p.id, peak);
 
+          // Histori tick për KËTË pozicion → dalje real-time në kthesë (më e shpejtë se qiriri 1m).
+          const tNow = Date.now();
+          const rev = revMap.get(p.id) ?? [];
+          rev.push({ t: tNow, p: cur });
+          while (rev.length > 0 && tNow - rev[0].t > 10_000) rev.shift();
+          revMap.set(p.id, rev);
+          const ageMs = Number.isFinite(openMs) ? (tNow - openMs) : Infinity;
+          const trendP = pCndl && pCndl.length >= 25 ? analyzeTrend(pCndl) : null;
+          const atrvP = trendP && Number.isFinite(trendP.atrv) && trendP.atrv > 0 ? trendP.atrv : 0.3;
+
           // Ndalimi i fortë + dalja vlejnë GJITHMONË (edhe në hedge) — asnjë anë s'duhet të vrapojë.
           const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
           const hardStop = Math.max(0.5, Math.min(cat, 0.7)); // PRE HUMBËSIT SHPEJT (~0.7)
-          let close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, ageMin);
+          // (a) DALJE REAL-TIME në kthesë (tick) e para → (b) parashutë/qirinj (manageExit) si rezervë.
+          let close = reversalExit(rev, isBuy, moved, peak, atrvP, ageMs);
+          if (!close) close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, ageMin);
           // HEDGE (BUY+SELL njëkohësisht) = defekt → mbyll edhe nëse dalja normale s'tha asgjë.
           if (!close && hedgedSyms.has((p.symbol || "XAUUSD").toUpperCase())) {
             close = "pastrim hedge (BUY+SELL njëkohësisht — mbyllje sigurie)";
@@ -605,6 +699,7 @@ Deno.serve(async (req: Request) => {
               const br = brokerResult(r.body);
               if (r.ok && (br.ok || br.orderId || !Number.isFinite(br.code))) {
                 peakMap.delete(p.id);
+                revMap.delete(p.id);
                 try {
                   await db.from("trade_executions").insert({
                     user_id: cfg.user_id, symbol: p.symbol || "XAUUSD", action: isBuy ? "BUY" : "SELL",
@@ -646,12 +741,17 @@ Deno.serve(async (req: Request) => {
           // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë).
           if (nowMs - (lastEntry.get(ck) ?? 0) < 20_000) continue;
 
-          // (2) ARSYETIM mbi pamjen 1m: hyr VETËM me trendin, pas pullback-u te EMA9, me rifillim live
-          //     (versioni FITUES — hyrje selektive vetëm në trend real, jo ndjekje spike-sh në chop).
+          // (2) HYRJE REAL-TIME: regjim trendi (ADX/EMA, jo chop) + DREJTIM nga tick-u LIVE (tickStart).
+          //     Kap FILLIMIN e lëvizjes me drejtimin e vërtetë TANI — jo me EMA-n e vonuar që hynte
+          //     në fund/kundër lëvizjes. Anti-chop nga efikasiteti net/path brenda tickStart.
           const cndl = await getCandlesCached(cfg, sym, ck);
           if (!cndl || cndl.length < 25) continue;
-          const sgl = entrySignal(cndl, px, tickBiasOf(buf));
-          if (!sgl) continue;
+          if (!regimeOk(cndl)) continue;                          // vetëm në trend real (jo treg anësor)
+          const { atrv: aE } = analyzeTrend(cndl);
+          const atrvE = Number.isFinite(aE) && aE > 0 ? aE : 0.3;
+          const tickDir = tickStart(buf, atrvE, cndl);            // drejtimi FRESH nga tick-u live
+          if (!tickDir) continue;
+          const sgl = { action: tickDir, reason: `tick-start ${tickDir} (fresh + efikasitet + mikro-thyerje)` };
 
           const isBuyS = sgl.action === "BUY";
           // ANTI-HEDGE: MOS hap drejtim të kundërt nëse ka pozicion FastT të kundërt te ky simbol.
