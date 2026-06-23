@@ -644,7 +644,7 @@ Deno.serve(async (req: Request) => {
           //     vonon dhe hyn në fund të lëvizjes. Pragu i impulsit del nga vetë qirinjtë (ATR).
           const cndl = await getCandlesCached(cfg, sym, ck);
           if (!cndl || cndl.length < 25) continue;
-          const { atrv: a0 } = analyzeTrend(cndl);
+          const { atrv: a0, e9: e9Entry } = analyzeTrend(cndl);
           const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.4;
           const minMove = Math.max(0.28, 0.30 * atrv); // sa $ lëvizje = "impuls real" (nga volatiliteti)
           const sgl = tickSignal(buf, minMove, 6000);
@@ -658,6 +658,15 @@ Deno.serve(async (req: Request) => {
           // (Lejohen disa pozicione NË TË NJËJTIN drejtim — pyramiding; bllokohet vetëm kundërdrejtimi.)
           if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase()
               && (String(q.type || "").includes("BUY") !== isBuyS))) continue;
+          // HYRJE ME HAPËSIRË PËR TË VRAPUAR — kap FILLIMIN e lëvizjes, jo fundin:
+          //   hyr vetëm kur çmimi NUK është ende i shtrirë larg EMA9 (lëvizja sapo nisi nga baza,
+          //   ka hapësirë lart/poshtë). Nëse çmimi është tashmë i shtrirë (maja/fundi i rraskapitur)
+          //   → KAPËRCE: kjo ndal "blerjen e majës / shitjen e fundit" që kthehet menjëherë në -0.72.
+          const extCap = Math.max(0.30, 0.9 * atrv);
+          if (Number.isFinite(e9Entry)) {
+            if (isBuyS && px > e9Entry + extCap) continue;   // tashmë lart e shtrirë → maja → mos ndiq
+            if (!isBuyS && px < e9Entry - extCap) continue;   // tashmë poshtë e shtrirë → fundi → mos ndiq
+          }
           const entryPx = px;
           const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
           // SL i NGUSHTË te brokeri (~0.8): kap humbjen edhe gjatë boshllëkut të rinisjes (max ~0.8),
