@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dotenv/config';
 import http from 'node:http';
-import MetaApi from 'metaapi.cloud-sdk';
+import MetaApi from 'metaapi.cloud-sdk/esm-node';
 import { createClient } from '@supabase/supabase-js';
 import { entryDecision, exitDecision } from './strategy.js';
 
