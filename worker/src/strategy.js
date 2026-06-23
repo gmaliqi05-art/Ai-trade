@@ -83,15 +83,15 @@ export function tickStart(ticks, atrv, candles) {
  * Kthen { action, reason } ose null.
  */
 export function entryDecision({ candles, ticks, spread = 0 }, _p) {
-  if (!regimeOk(candles)) return null;
+  // PA ADX/regjim (indikatorë të vonuar): vendimi merret VETËM nga ndjekja real-time e qirinjve.
+  // Mbrojtja nga chop-i është brenda tickStart-it (efikasitet lëvizjeje + freski + thyerje mikro-strukture),
+  // e bazuar te veprimi i çmimit live — jo te indikatorë të jashtëm që vonojnë e bllokojnë.
   const { atr } = analyzeTrend(candles);
   const atrv = Number.isFinite(atr) && atr > 0 ? atr : 0.3;
-  // FILTËR KOSTOJE (i butë për fazën e të dhënave): bllokon vetëm kur spread-i është absurd
-  // kundrejt lëvizjes tipike 1m. Pragu i saktë do rikalibrohet nga spread-et REALE që logohen më poshtë.
-  if (spread > 0 && spread > 1.2 * atrv) return null;
+  if (spread > 0 && spread > 1.2 * atrv) return null; // vetëm kosto absurde rri jashtë
   const dir = tickStart(ticks, atrv, candles);
   if (!dir) return null;
-  return { action: dir, reason: `tick-start ${dir} (fresh + efikasitet + mikro-thyerje, spread ${spread.toFixed(2)})` };
+  return { action: dir, reason: `tick-start ${dir} (real-time qirinj: fresh + efikasitet + mikro-thyerje, spread ${spread.toFixed(2)})` };
 }
 
 /** DALJE REAL-TIME në kthesë (tick): del në çastin që çmimi tenton kahjen e kundërt. */
