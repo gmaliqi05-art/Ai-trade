@@ -355,7 +355,9 @@ function entrySignal(c: Candle[], price: number, tickBias: number): { action: "B
 //      sapo çmimi thyen fundin (BUY)/majën (SELL) e 2 qirinjve të fundit → MERR FITIMIN aty ku ndalon qiriri.
 //  (P) MBRO FITIMIN: sapo bëhet fitues edhe pak (maja≥0.25), kap fitimin kur ndalon — mos e lër të kthehet në humbje.
 //  (1) EMA9: prerje për humbësit / prishje e plotë trendi.
-function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number): string | null {
+//  (S) NGECJE: scalp-i s'rri hapur pafund — nëse rri gjatë pa u bërë fitues i fortë, mbyll
+//      (merr fitimin që ka / dil ~breakeven) dhe liro vendin për një trade të ri.
+function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: number, peak: number, hardStop: number, ageMin: number): string | null {
   // (0) Parashutë e fortë — vepron edhe kur qirinjtë mungojnë (zgjidh rastin e humbjes -5.54).
   if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
 
@@ -386,6 +388,13 @@ function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: nu
   const onRightSide = Number.isFinite(e9) ? (isBuy ? price > e9 - buffer : price < e9 + buffer) : true;
   if (Number.isFinite(e9) && !onRightSide) {
     return `kthesë reale: ${isBuy ? "çmimi nën EMA9" : "çmimi mbi EMA9"} (${moved.toFixed(2)})`;
+  }
+
+  // (S) NGECJE: nëse pozicioni ka qëndruar hapur > 4 min dhe NUK është fitues i fortë (maja < 1.0),
+  //     qirinjtë kanë ndaluar — mbylle (merr fitimin/breakeven) dhe liro vendin. Fituesit e fortë
+  //     (maja ≥ 1.0) vazhdojnë të vrapojnë me trailing-un, s'preken këtu.
+  if (Number.isFinite(ageMin) && ageMin > 4 && peak < 1.0) {
+    return `scalp ngeci ${ageMin.toFixed(0)} min — mbyll (${moved.toFixed(2)})`;
   }
   return null;
 }
@@ -548,6 +557,9 @@ Deno.serve(async (req: Request) => {
           const prevPeak = peakMap.get(p.id) ?? moved;
           const peak = Math.max(prevPeak, moved);
           peakMap.set(p.id, peak);
+          // Mosha e pozicionit (nga koha e hapjes te brokeri) — për daljen kur scalp-i ngec.
+          const openMs = Date.parse(String((p as { time?: string }).time ?? ""));
+          const ageMin = Number.isFinite(openMs) ? (Date.now() - openMs) / 60000 : NaN;
 
           let close: string | null = null;
           if (hedgedSyms.has((p.symbol || "XAUUSD").toUpperCase())) {
@@ -558,7 +570,7 @@ Deno.serve(async (req: Request) => {
             const hardStop = Math.max(0.8, Math.min(cat, 1.4));
             const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
             const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
-            close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop);
+            close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, ageMin);
           }
 
           if (close) {
