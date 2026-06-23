@@ -54,7 +54,7 @@ const marketDataHost = `https://mt-market-data-client-api-v1.${REGION.trim()}.ag
 let closedCandles = [];        // qirinjtë 1m të mbyllur (warmup + të ndërtuar live)
 let forming = null;            // qiriri 1m që po formohet: { time, open, high, low, close }
 const ticks = [];              // tick-a të fundit: { t, p } për tickBias
-let cfg = { enabled: true, killSwitch: false, maxDailyLoss: 1000, dayStartEquity: 0, lot: DEFAULT_LOT };
+let cfg = { enabled: true, killSwitch: false, maxDailyLoss: 1000, dayStartEquity: 0, lot: DEFAULT_LOT, catastrophe: CATASTROPHE };
 let lastEntryAt = 0;
 const peakMap = new Map();     // positionId -> maja e favorit ($)
 let busy = false;              // mbrojtje nga ekzekutime të mbivendosura
@@ -150,6 +150,7 @@ async function refreshConfig() {
       cfg.maxDailyLoss = Number(data.max_daily_loss) > 0 ? Number(data.max_daily_loss) : 1000;
       cfg.dayStartEquity = Number(data.day_start_equity) || 0;
       cfg.lot = Number(data.scalp_live_lot) > 0 ? Number(data.scalp_live_lot) : DEFAULT_LOT;
+      cfg.catastrophe = Number(data.scalp_live_catastrophe_usd) > 0 ? Number(data.scalp_live_catastrophe_usd) : CATASTROPHE;
     }
   } catch (e) { console.warn('config refresh error', e.message); }
 }
@@ -212,7 +213,7 @@ async function main() {
         const recTicks = ticks.filter((t) => nowMs - t.t <= 10000); // ~10s për daljen real-time
         const openMs = pos.time ? new Date(pos.time).getTime() : NaN;
         const ageMs = Number.isFinite(openMs) ? (nowMs - openMs) : Infinity;
-        const reason = exitDecision({ candles, price: exitPx, ticks: recTicks, position: pos, peak, ageMs, spread }, { catastrophe: CATASTROPHE });
+        const reason = exitDecision({ candles, price: exitPx, ticks: recTicks, position: pos, peak, ageMs, spread }, { catastrophe: cfg.catastrophe });
         if (reason) {
           try {
             await connection.closePosition(pos.id);
@@ -242,7 +243,7 @@ async function main() {
       if (!sig) return;
 
       const isBuy = sig.action === 'BUY';
-      const sl = Math.round((isBuy ? price - CATASTROPHE : price + CATASTROPHE) * 100) / 100;
+      const sl = Math.round((isBuy ? price - cfg.catastrophe : price + cfg.catastrophe) * 100) / 100;
       const lot = Math.max(0.01, Math.round(cfg.lot * 100) / 100);
       lastEntryAt = Date.now();
       try {
