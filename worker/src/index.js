@@ -38,7 +38,7 @@ const PARAMS = {
 const CATASTROPHE = Number(process.env.FASTT_CATASTROPHE_USD || 2.0); // SL i gjerë te brokeri (parashutë)
 const DEFAULT_LOT = Number(process.env.FASTT_LOT || 0.01);
 const TICK_MS = Number(process.env.FASTT_TICK_MS || 250);     // sa shpesh arsyeton (kohë reale)
-const ENTRY_COOLDOWN_MS = Number(process.env.FASTT_COOLDOWN_MS || 20000);
+const ENTRY_COOLDOWN_MS = Number(process.env.FASTT_COOLDOWN_MS || 45000);
 const PORT = Number(process.env.PORT || 8080);               // health-check (host-et e duan një port)
 const STALE_MS = Number(process.env.FASTT_STALE_MS || 90000); // pa tick > kaq → rinis (vetë-rikuperim)
 

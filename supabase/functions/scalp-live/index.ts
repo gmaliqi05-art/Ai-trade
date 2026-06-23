@@ -368,8 +368,8 @@ function regimeOk(c: Candle[]): boolean {
   if (dir === "flat" || !Number.isFinite(e9)) return false;
   const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.3;
   const adxv = adx(c.map((x) => x.high), c.map((x) => x.low), c.map((x) => x.close), 14).slice(-1)[0];
-  if (!Number.isFinite(adxv) || adxv < 18) return false;                        // ADX i ulët = chop → mos hyr
-  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.12 * atrv) return false;  // EMA të ngjitura = flat
+  if (!Number.isFinite(adxv) || adxv < 23) return false;                        // ADX i ulët = chop → mos hyr (23: vetëm trend real)
+  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.18 * atrv) return false;  // EMA të ngjitura = flat
   return true;
 }
 
@@ -399,7 +399,7 @@ function tickStart(buf: Tick[], atrv: number, candles: Candle[]): "BUY" | "SELL"
   let path = 0; let prev: Tick | null = null;
   for (const x of buf) { if (x.t >= now.t - 6600) { if (prev) path += Math.abs(x.p - prev.p); prev = x; } }
   const net = Math.abs(pNow - p6);
-  if (path <= 0 || net / path < 0.55) return null;
+  if (path <= 0 || net / path < 0.62) return null;
   // (3) FRESKI: lëvizja sapo nisi (jo e shtrirë mbi 1.6·ATR) dhe impulsi i përqendruar te ~2s e fundit.
   if (net > 1.6 * atrv) return null;
   if (Math.abs(pushNow) < 0.5 * net) return null;
@@ -419,7 +419,7 @@ function tickStart(buf: Tick[], atrv: number, candles: Candle[]): "BUY" | "SELL"
 function reversalExit(ticks: Tick[], isBuy: boolean, moved: number, peak: number, atrv: number, ageMs: number): string | null {
   if (ticks.length < 3) return null;
   const noise = Math.max(0.04, 0.10 * atrv);
-  const swingBack = Math.max(0.08, 0.18 * atrv);
+  const swingBack = Math.max(0.10, 0.22 * atrv);
   const cur = ticks[ticks.length - 1].p;
   // Maja/fundi i favorshëm i ~10s të fundit (lokal): sa larg u kthye çmimi prej tij.
   const favExtreme = isBuy ? Math.max(...ticks.map((t) => t.p)) : Math.min(...ticks.map((t) => t.p));
@@ -431,7 +431,7 @@ function reversalExit(ticks: Tick[], isBuy: boolean, moved: number, peak: number
   const vel = isBuy ? (cur - older.p) : (older.p - cur);
   // KTHESË reale = u kthye ≥ swingBack nga maja DHE shpejtësia u kthye kundër (jo thjesht lëkundje).
   if (!(retrace >= swingBack && vel < -noise)) return null;
-  if (peak >= 0.25 && moved > 0) return `kthesë live — fitim i kapur te ndalesa (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  if (peak >= 0.35 && moved > 0) return `kthesë live — fitim i kapur te ndalesa (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   if (moved <= 0) {
     if (ageMs < 12_000) return null; // hapësirë ~12s pas hapjes — mos u tremb nga zhurma fillestare
     return `kthesë live kundër nesh — prerje e hershme (${moved.toFixed(2)})`;
@@ -739,7 +739,7 @@ Deno.serve(async (req: Request) => {
           tickBuf.set(ck, buf);
 
           // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë).
-          if (nowMs - (lastEntry.get(ck) ?? 0) < 20_000) continue;
+          if (nowMs - (lastEntry.get(ck) ?? 0) < 45_000) continue;
 
           // (2) HYRJE REAL-TIME: regjim trendi (ADX/EMA, jo chop) + DREJTIM nga tick-u LIVE (tickStart).
           //     Kap FILLIMIN e lëvizjes me drejtimin e vërtetë TANI — jo me EMA-n e vonuar që hynte
