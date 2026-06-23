@@ -61,7 +61,7 @@ function minuteStart(ms) { return Math.floor(ms / 60000) * 60000; }
 // Ndërto/azhurno qiririn 1m që po formohet nga çdo tick live.
 function ingestTick(price, tMs) {
   ticks.push({ t: tMs, p: price });
-  while (ticks.length && tMs - ticks[0].t > 15000) ticks.shift(); // mbaj ~15s tick-a
+  while (ticks.length && tMs - ticks[0].t > 20000) ticks.shift(); // mbaj ~20s tick-a (për tickStart + reversalExit)
 
   const m = minuteStart(tMs);
   if (!forming || forming.time !== m) {
@@ -165,7 +165,11 @@ async function main() {
         const peak = Math.max(prevPeak, moved);
         peakMap.set(pos.id, peak);
 
-        const reason = exitDecision({ candles, price, position: pos, peak }, PARAMS);
+        const nowMs = Date.now();
+        const recTicks = ticks.filter((t) => nowMs - t.t <= 10000); // ~10s për daljen real-time
+        const openMs = pos.time ? new Date(pos.time).getTime() : NaN;
+        const ageMs = Number.isFinite(openMs) ? (nowMs - openMs) : Infinity;
+        const reason = exitDecision({ candles, price, ticks: recTicks, position: pos, peak, ageMs }, { catastrophe: CATASTROPHE });
         if (reason) {
           try {
             await connection.closePosition(pos.id);
@@ -189,7 +193,7 @@ async function main() {
         return; // u arrit humbja maksimale ditore
       }
 
-      const sig = entryDecision({ candles, price, tickBias: tickBias() }, PARAMS);
+      const sig = entryDecision({ candles, ticks }, PARAMS);
       if (!sig) return;
 
       const isBuy = sig.action === 'BUY';

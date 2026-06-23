@@ -1,0 +1,18 @@
+# Konfigurim Fly.io për FastT worker (always-on, pa port HTTP — është worker, jo web server).
+# Deploy:  cd worker && fly launch --no-deploy   (pranoje këtë fly.toml)
+#          fly secrets set METAAPI_TOKEN=... METAAPI_ACCOUNT_ID=... FASTT_USER_ID=... \
+#                          SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... FASTT_SYMBOL=XAUUSD+
+#          fly deploy
+app = "fastt-worker"
+primary_region = "fra"   # zgjidh rajonin më afër (fra=Frankfurt, iad=US-East)
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Një makinë gjithmonë e ndezur (worker s'duhet të flejë).
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[env]
+  METAAPI_REGION = "new-york"
