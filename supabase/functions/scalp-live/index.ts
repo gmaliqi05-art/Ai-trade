@@ -559,7 +559,9 @@ Deno.serve(async (req: Request) => {
           } else {
             // Parashutë e fortë (pa varësi nga qirinjtë) + kthesë mbi EMA9 + trailing mbrojtje fitimi.
             const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
-            const hardStop = Math.max(0.8, Math.min(cat, 1.4));
+            // PRE HUMBËSIT SHPEJT: ndalim i fortë i ngushtë (~0.7) — humbje minimale kur trade
+            // shkon kundër. (Të dhënat: fituesit më të këqij ranë vetëm −0.53, pra 0.7 s'pret fitues.)
+            const hardStop = Math.max(0.5, Math.min(cat, 0.7));
             const pck = `${cfg.user_id}:${(p.symbol || "XAUUSD").toUpperCase()}`;
             const pCndl = await getCandlesCached(cfg, p.symbol || "XAUUSD", pck);
             close = manageExit(pCndl, cur, isBuy, moved, peak, hardStop, ageMin);
@@ -596,8 +598,8 @@ Deno.serve(async (req: Request) => {
           // Vetëm ari në orarin e tij; crypto/naftë lejohen kur tregu i hapur.
           if (!isCrypto(rawSym) && !isOil(rawSym) && !goldSessionOpen()) continue;
           const sym = await resolveSymbol(cfg, rawSym, db);
-          // Një pozicion FastT për simbol.
-          if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase())) continue;
+          // HYRJE TË SHUMTA në lëvizje të mira: lejohen disa pozicione FastT te i njëjti simbol
+          // (deri te `max_trades`), me cooldown ~20s mes tyre. Kufiri total ruhet nga `st.max` lart.
           const ck = `${cfg.user_id}:${sym.toUpperCase()}`;
 
           // (1) Lexo TICK-un live dhe shtoje në buffer (për të konfirmuar drejtimin live në hyrje).
