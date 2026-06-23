@@ -738,12 +738,12 @@ Deno.serve(async (req: Request) => {
           while (buf.length > 0 && nowMs - buf[0].t > 20_000) buf.shift();
           tickBuf.set(ck, buf);
 
-          // FILTËR SESIONI: hyr VETËM në orët me likuiditet real — hapja e Londrës (07:00–11:00 UTC)
-          //   dhe hapja e Nju-Jorkut (13:30–16:30 UTC). Blloko gropën chop para-NY (11:00–13:30 UTC),
-          //   ku u përqendruan të gjitha humbjet. Menaxhimi i daljes mbetet GJITHMONË aktiv (jashtë këtij gate-i).
-          const hmU = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
-          const inSession = (hmU >= 7 * 60 && hmU < 11 * 60) || (hmU >= 13 * 60 + 30 && hmU < 16 * 60 + 30);
-          if (!inSession) continue;
+          // FILTËR ORARI: tregto Hënë–Premte, 07:00–23:00 me orën e Shqipërisë/Kosovës (Europe/Tirane,
+          //   përshtatet vetë me orën verore/dimërore). Jashtë këtij orari MOS hap trade të reja.
+          //   Menaxhimi i daljes mbetet GJITHMONË aktiv (jashtë këtij gate-i).
+          const locT = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Tirane" }));
+          const lh = locT.getHours(), ld = locT.getDay(); // ld: 0=Diel … 6=Shtunë
+          if (!(ld >= 1 && ld <= 5 && lh >= 7 && lh < 23)) continue;
 
           // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë).
           if (nowMs - (lastEntry.get(ck) ?? 0) < 45_000) continue;
