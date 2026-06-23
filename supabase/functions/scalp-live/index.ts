@@ -405,7 +405,7 @@ function tickBiasOf(buf: Tick[]): number {
 async function getCandlesCached(cfg: Cfg, sym: string, ck: string): Promise<Candle[] | null> {
   const now = Date.now();
   const c = candleCache.get(ck);
-  if (c && now - c.t < 12_000) return c.candles;
+  if (c && now - c.t < 6_000) return c.candles; // freski më e madhe (6s) për ndjekje më reale
   const fresh = await fetchMt5Candles(cfg, sym, "1m", 60);
   if (fresh && fresh.length > 0) { candleCache.set(ck, { t: now, candles: fresh }); return fresh; }
   return c?.candles ?? null;
@@ -625,10 +625,15 @@ Deno.serve(async (req: Request) => {
           // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë).
           if (nowMs - (lastEntry.get(ck) ?? 0) < 20_000) continue;
 
-          // (2) ARSYETIM mbi pamjen 1m: hyr VETËM me trendin, pas pullback-u te EMA9, me rifillim live.
+          // (2) HYRJE MOMENTUM REAL-TIME: kap leg-un KUR FILLON — hyn kur çmimi po lëviz me forcë
+          //     TANI (impuls ≥ pragu nga volatiliteti, ende duke vazhduar), jo te EMA+pullback që
+          //     vonon dhe hyn në fund të lëvizjes. Pragu i impulsit del nga vetë qirinjtë (ATR).
           const cndl = await getCandlesCached(cfg, sym, ck);
           if (!cndl || cndl.length < 25) continue;
-          const sgl = entrySignal(cndl, px, tickBiasOf(buf));
+          const { atrv: a0 } = analyzeTrend(cndl);
+          const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.4;
+          const minMove = Math.max(0.28, 0.30 * atrv); // sa $ lëvizje = "impuls real" (nga volatiliteti)
+          const sgl = tickSignal(buf, minMove, 6000);
           if (!sgl) continue;
 
           const isBuyS = sgl.action === "BUY";
