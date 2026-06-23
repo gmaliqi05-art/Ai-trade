@@ -52,11 +52,11 @@ export function entryDecision({ candles, ticks, spread = 0 }, _p) {
   const dir = pushNow > 0 ? 1 : pushNow < 0 ? -1 : 0;
   if (dir === 0) return null;
 
-  // PORTA E REJA (FastT v2.1, nga analiza e sesionit): bandë vol-i + min-edge ndaj spread-it.
-  if (!(v >= 0.20 && v <= 0.55)) return null;                       // G2/G3: skaji i ulët=zhurmë, i larti=breakout i fryrë → kthehet
-  if (spread > 0 && Math.abs(pushNow) < 1.5 * spread) return null;  // G4: lëvizja e pritur duhet të paguajë koston (spread)
-  // (1) SHPEJTËSIA/EFIKASITETI: push-i i ~2s kalon dyshemenë (G1: r≥0.45 ⇔ |push|≥0.45·unit).
-  if (Math.abs(pushNow) < Math.max(0.06, 0.45 * unit)) return null;
+  // (1) SHPEJTËSIA: push-i i ~2s të fundit kalon dyshemenë e zhurmës (nga vol LIVE).
+  // SHËNIM: banda vol 0.20-0.55 e v2.1 u HOQ — bllokonte hyrjet gjatë lëvizjeve volatile (ku janë
+  // fituesit e mëdhenj, p.sh. +1.40 me vol 1.43). Hyrja kthehet te logjika e provuar aktive; përmirësimet
+  // e DALJES (ndalim adaptiv, floor i ngushtë, vel-flip) + reagimi 100ms + logimi MAE MBETEN.
+  if (Math.abs(pushNow) < Math.max(0.06, 0.35 * unit)) return null;
   // (2) PËRSHPEJTIM: lëvizja po shpejtohet, ose po thyhet nga qetësia (jo push që shuhet).
   const accel = (Math.sign(pushPrev) !== dir) || (Math.abs(pushNow) >= 1.1 * Math.abs(pushPrev));
   if (!accel) return null;
