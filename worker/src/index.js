@@ -83,6 +83,18 @@ function startHealthServer() {
 
 function minuteStart(ms) { return Math.floor(ms / 60000) * 60000; }
 
+// A është hapur tregu i LONDRËS ose i NJU-JORKUT tani? Ora lokale e tregjeve (DST-safe), Hën–Pre.
+function londonOrNyOpen(d = new Date()) {
+  const sess = (tz, openH, closeH) => {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: '2-digit', hour12: false }).formatToParts(d);
+    const wd = p.find((x) => x.type === 'weekday')?.value || '';
+    const h = parseInt(p.find((x) => x.type === 'hour')?.value || '0', 10) % 24;
+    if (wd === 'Sat' || wd === 'Sun') return false;
+    return h >= openH && h < closeH;
+  };
+  return sess('Europe/London', 8, 17) || sess('America/New_York', 8, 17);
+}
+
 // Ndërto/azhurno qiririn 1m që po formohet nga çdo tick live.
 function ingestTick(price, tMs) {
   ticks.push({ t: tMs, p: price });
@@ -214,10 +226,8 @@ async function main() {
       if (!cfg.enabled || cfg.killSwitch) return;
       if (positions.length > 0) return;
       if (Date.now() - lastEntryAt < ENTRY_COOLDOWN_MS) return;
-      // FILTËR ORARI: Hënë–Premte, 07:00–23:00 me orën e Shqipërisë/Kosovës (Europe/Tirane, DST-safe).
-      const locT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Tirane' }));
-      const lh = locT.getHours(), ld = locT.getDay(); // ld: 0=Diel … 6=Shtunë
-      if (!(ld >= 1 && ld <= 5 && lh >= 7 && lh < 23)) return;
+      // FILTËR SESIONI: hap vetëm kur Londra OSE Nju-Jorku është i hapur (sesionet me likuiditet, DST-safe).
+      if (!londonOrNyOpen()) return;
 
       // Ndalim ditor i humbjes nga equity live.
       const info = ts.accountInformation;

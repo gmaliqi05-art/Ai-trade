@@ -61,6 +61,19 @@ function goldSessionOpen(d = new Date()): boolean {
   if (wd === "Sun") return h >= 23;
   return h >= 6 && h < 23;
 }
+// A është hapur tregu i LONDRËS ose i NJU-JORKUT tani? (sesionet me likuiditet real). Përcaktohet
+// nga ora LOKALE e atyre tregjeve (Europe/London, America/New_York) → përshtatet vetë me orën verore/
+// dimërore, pavarësisht ku ndodhet përdoruesi. Londër 08:00–17:00, NY 08:00–17:00 (Hën–Pre).
+function londonOrNyOpen(d = new Date()): boolean {
+  const sess = (tz: string, openH: number, closeH: number): boolean => {
+    const p = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "2-digit", hour12: false }).formatToParts(d);
+    const wd = p.find((x) => x.type === "weekday")?.value || "";
+    const h = parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24;
+    if (wd === "Sat" || wd === "Sun") return false;
+    return h >= openH && h < closeH;
+  };
+  return sess("Europe/London", 8, 17) || sess("America/New_York", 8, 17);
+}
 function isCrypto(symbol: string): boolean { return /^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test((symbol || "").toUpperCase()); }
 function isOil(symbol: string): boolean { return /^(USOIL|UKOIL|WTI|XTI|XBR|BRENT|UKO|USO|CL)/i.test((symbol || "").toUpperCase()); }
 function valuePerPrice(symbol: string): number {
@@ -738,12 +751,10 @@ Deno.serve(async (req: Request) => {
           while (buf.length > 0 && nowMs - buf[0].t > 20_000) buf.shift();
           tickBuf.set(ck, buf);
 
-          // FILTËR ORARI: tregto Hënë–Premte, 07:00–23:00 me orën e Shqipërisë/Kosovës (Europe/Tirane,
-          //   përshtatet vetë me orën verore/dimërore). Jashtë këtij orari MOS hap trade të reja.
+          // FILTËR SESIONI: hap trade VETËM kur tregu i Londrës OSE i Nju-Jorkut është i hapur (sesionet
+          //   me likuiditet real). Jashtë tyre (sesioni aziatik/nata, fundjava) MOS hap trade të reja.
           //   Menaxhimi i daljes mbetet GJITHMONË aktiv (jashtë këtij gate-i).
-          const locT = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Tirane" }));
-          const lh = locT.getHours(), ld = locT.getDay(); // ld: 0=Diel … 6=Shtunë
-          if (!(ld >= 1 && ld <= 5 && lh >= 7 && lh < 23)) continue;
+          if (!londonOrNyOpen()) continue;
 
           // Cooldown i shkurtër pas daljes (anti-rihapje menjëherë).
           if (nowMs - (lastEntry.get(ck) ?? 0) < 45_000) continue;
