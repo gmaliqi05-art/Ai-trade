@@ -191,6 +191,13 @@ async function main() {
       ingestTick(price, Date.now());
       lastTickAt = Date.now(); // shenjë gjallërie për health-check + watchdog
 
+      // ⛔ WORKER FASTT I ÇAKTIVIZUAR (mbahet vetëm gjallë për health-check, NUK tregton).
+      // Roboti i vërtetë FastT është edge function-i `scalp-live` (Supabase, çdo minutë, real-time).
+      // Ky worker shkaktonte DYFISHIM tregtimi: dy robotë "FastT" në të njëjtën llogari MT5 mbyllnin
+      // pozicionet e njëri-tjetrit → gabime "Position not found" dhe rezultate kaotike. Plus logimi i tij
+      // te Supabase dështonte në heshtje. Menaxhimin e çdo pozicioni "FastT" e merr përsipër scalp-live.
+      return;
+      // eslint-disable-next-line no-unreachable
       const candles = forming ? [...closedCandles, forming] : closedCandles;
       if (candles.length < 25) return;
 

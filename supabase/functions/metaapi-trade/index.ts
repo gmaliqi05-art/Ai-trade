@@ -82,7 +82,7 @@ async function metaApiGet(cfg: MetaApiConfig, path: string, opts?: { timeoutMs?:
       if (/MetaApi \d{3}:/.test(msg)) throw e; // përgjigje e qartë jo-OK → mos riprovo
       lastErr = e as Error;
     }
-    if (attempt < attempts - 1) await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+    if (attempt < attempts - 1) await new Promise((r) => setTimeout(r, backoffMs * Math.pow(2, attempt)));
   }
   throw lastErr || new Error("MetaApi unreachable");
 }
@@ -277,7 +277,9 @@ Deno.serve(async (req: Request) => {
         const end = new Date();
         const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
         const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(end.toISOString())}`;
-        const deals = await metaApiGet(config, path);
+        // HISTORIA mund të jetë e madhe (qindra deal-e) → timeout më i gjatë + më shumë prova me prapakthim
+        // eksponencial. 15s ishte shumë i shkurtër → 502 (20% e thirrjeve) → tabela e raportit ngrinte.
+        const deals = await metaApiGet(config, path, { timeoutMs: 25000, attempts: 4, backoffMs: 1500 });
         return json({ success: true, mode: config.mode, deals });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
