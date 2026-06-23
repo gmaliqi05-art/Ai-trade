@@ -324,19 +324,11 @@ function analyzeTrend(c: Candle[]): { dir: "up" | "down" | "flat"; e9: number; e
 }
 
 // HYRJE: trend 1m + pullback te EMA9 + rifillim (tickBias konfirmon drejtimin live).
-// FILTRA KUNDËR ZONAVE TË NGATËRRUARA (aty u krijuan humbjet): ADX mbi prag (regjim trendi,
-// jo treg anësor) + ndarje e mjaftueshme EMA9/EMA21 (jo të ngjitura/flat).
+// (Pa filtra ADX/ndarje EMA — versioni fitues i +39; ata bllokonin hyrjet në treg të qetë.)
 function entrySignal(c: Candle[], price: number, tickBias: number): { action: "BUY" | "SELL"; reason: string } | null {
-  const { dir, e9, e21, atrv: a0 } = analyzeTrend(c);
+  const { dir, e9, atrv: a0 } = analyzeTrend(c);
   if (dir === "flat" || !Number.isFinite(e9)) return null;
   const atrv = Number.isFinite(a0) && a0 > 0 ? a0 : 0.3;
-
-  // FILTRI A — ADX: vetëm kur tregu po trendon vërtet (ADX≥18); në zonë anësore (ADX i ulët) NUK hyn.
-  const adxv = adx(c.map((x) => x.high), c.map((x) => x.low), c.map((x) => x.close), 14).slice(-1)[0];
-  if (!Number.isFinite(adxv) || adxv < 18) return null;
-  // FILTRI B — ndarja EMA9/EMA21 duhet domethënëse (jo të ngatërruara/flat).
-  if (!Number.isFinite(e21) || Math.abs(e9 - e21) < 0.12 * atrv) return null;
-
   if (Math.abs(price - e9) > 1.2 * atrv) return null; // mbi-shtrirje → mos hyr vonë
   const look = c.slice(-4);
   if (dir === "up") {
