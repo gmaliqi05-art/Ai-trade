@@ -375,6 +375,18 @@ function manageExit(c: Candle[] | null, price: number, isBuy: boolean, moved: nu
     if (moved <= floor) return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   }
 
+  // (L) PRERJE E SHPEJTË E HUMBJES — PASQYRË e marrjes së fitimit te qirinjtë (reagim i shpejtë):
+  //     nëse pozicioni S'KA qenë kurrë fitues (maja < 0.15) dhe çmimi THYEN KUNDËR nesh fundin
+  //     (BUY)/majën (SELL) e 2 qirinjve të fundit → pullback-u DËSHTOI, qirinjtë u kthyen kundër →
+  //     DIL menjëherë (~ -0.25/-0.45), pa pritur ndalimin e fortë -0.7. Humbja sa më e VOGËL.
+  if (peak < 0.15 && moved <= -0.20 && c && c.length >= 2) {
+    const lo = Math.min(c[c.length - 1].low, c[c.length - 2].low);
+    const hi = Math.max(c[c.length - 1].high, c[c.length - 2].high);
+    const buf = Math.max(0.04, 0.08 * atrv);
+    if (isBuy && price < lo - buf) return `prerje e shpejtë: qirinjtë u kthyen kundër (${moved.toFixed(2)})`;
+    if (!isBuy && price > hi + buf) return `prerje e shpejtë: qirinjtë u kthyen kundër (${moved.toFixed(2)})`;
+  }
+
   // (1) EMA9: prerje për humbësit / prishje e plotë e trendit (kur s'ka qenë kurrë fitues).
   const buffer = Math.max(0.05, 0.15 * atrv);
   const onRightSide = Number.isFinite(e9) ? (isBuy ? price > e9 - buffer : price < e9 + buffer) : true;
