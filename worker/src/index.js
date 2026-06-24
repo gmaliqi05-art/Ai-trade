@@ -36,6 +36,10 @@ const PARAMS = {
   giveback: Number(process.env.FASTT_GIVEBACK || 0.5),        // $ i lejuar të kthehet nga maja
 };
 const CATASTROPHE = Number(process.env.FASTT_CATASTROPHE_USD || 2.0); // SL i gjerë te brokeri (parashutë)
+// SL i NGUSHTË e i FORTË te brokeri (price-distance). Nga analiza e 305 trade-ve (verifikuar train/test):
+// hyrjet nuk ndahen dot fitues/humbës; leva e vetme është madhësia e humbjes. Një SL i fortë ~0.22 te brokeri
+// e kap slippage-in e lakut 100ms (humbja realizon -0.36 vs -0.21) DHE outlier-at gap (-0.77) → neto ~4-7x.
+const BROKER_SL = Number(process.env.FASTT_BROKER_SL_USD || 0.22);
 const DEFAULT_LOT = Number(process.env.FASTT_LOT || 0.01);
 const TICK_MS = Number(process.env.FASTT_TICK_MS || 100);     // sa shpesh arsyeton (kohë reale, reagim maksimal ~100ms)
 const ENTRY_COOLDOWN_MS = Number(process.env.FASTT_COOLDOWN_MS || 45000);
@@ -272,7 +276,8 @@ async function main() {
       if (!sig) return;
 
       const isBuy = sig.action === 'BUY';
-      const sl = Math.round((isBuy ? price - cfg.catastrophe : price + cfg.catastrophe) * 100) / 100;
+      // SL te brokeri = i NGUSHTË (BROKER_SL ~0.22), jo catastrophe i gjerë → kufizon humbjet fort, pa slippage.
+      const sl = Math.round((isBuy ? price - BROKER_SL : price + BROKER_SL) * 100) / 100;
       const lot = Math.max(0.01, Math.round(cfg.lot * 100) / 100);
       lastEntryAt = Date.now();
       try {
