@@ -60,6 +60,9 @@ export default function DemoTradingPage() {
   const [balance, setBalance] = useState<number>(100);
   const [startBalance, setStartBalance] = useState<number>(100);
   const [enabled, setEnabled] = useState<boolean>(false); // robot auto-demo (opt-in, OFF si default)
+  const [liveOn, setLiveOn] = useState<boolean>(false);   // tregto LIVE me llogarinë reale (metaapi_config.auto_trade)
+  // Lidhja live e robotit të sinjaleve aktivizohet VETËM për këtë llogari (testim me para reale).
+  const canLive = (user?.email || '').toLowerCase() === 'g.maliqi05@gmail.com';
   const [trades, setTrades] = useState<DemoTrade[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [livePx, setLivePx] = useState<number | null>(null); // çmimi real-time i arit (Binance, ~2s)
@@ -100,6 +103,10 @@ export default function DemoTradingPage() {
       setBalance(Number(prof.demo_balance ?? 100));
       setStartBalance(Number(prof.demo_start_balance ?? 100));
       setEnabled(!!prof.demo_auto);
+    }
+    if (canLive) {
+      const { data: mc } = await supabase.from('metaapi_config').select('auto_trade').eq('user_id', user.id).maybeSingle();
+      setLiveOn(!!mc?.auto_trade);
     }
     if (tr) setTrades(tr as DemoTrade[]);
     if (sig) setSignals(sig as Signal[]);
@@ -262,6 +269,17 @@ export default function DemoTradingPage() {
     await supabase.from('profiles').update({ demo_auto: next }).eq('id', user.id);
   }
 
+  // Ndez/fik tregtimin LIVE me llogarinë reale (i njëjti robot sinjalesh). Vetëm për llogarinë e lejuar.
+  async function toggleLive() {
+    if (!user || !canLive) return;
+    const next = !liveOn;
+    if (next && !window.confirm(t('Ndez tregtimin LIVE me llogarinë reale? Roboti i sinjaleve do hapë trade me PARA TË VËRTETA.'))) return;
+    setLiveOn(next);
+    const { error } = await supabase.from('metaapi_config').update({ auto_trade: next }).eq('user_id', user.id);
+    if (error) { setLiveOn(!next); setMsg({ type: 'error', text: t('Nuk u ruajt — provo sërish.') }); return; }
+    setMsg({ type: 'success', text: next ? t('LIVE u ndez — roboti tregton me llogarinë reale.') : t('LIVE u fik — kthehet vetëm demo.') });
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -283,6 +301,12 @@ export default function DemoTradingPage() {
             className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition ${enabled ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
             <Power className="w-3.5 h-3.5" /> {enabled ? t('Robot AUTO') : t('Vetëm manual')}
           </button>
+          {canLive && (
+            <button onClick={toggleLive} title={t('I njëjti robot sinjalesh tregton me llogarinë reale')}
+              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${liveOn ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+              <Power className="w-3.5 h-3.5" /> {liveOn ? t('LIVE: Llogaria REALE ON') : t('Signal → Live (OFF)')}
+            </button>
+          )}
           <button onClick={load} className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white transition">
             <RefreshCw className="w-4 h-4" />
           </button>
