@@ -68,12 +68,15 @@ export function entryDecision({ candles, ticks, spread = 0 }, _p) {
   for (const x of ticks) { if (x.t >= now.t - 6600) { if (prev) path += Math.abs(x.p - prev.p); prev = x; } }
   const net = Math.abs(pNow - p6);
   if (path <= 0 || net / path < 0.6) return null;
-  // (4) THYERJE QIRIRI (i papërpunuar): çmimi thyen majën/fundin e 2 qirinjve të fundit.
+  // (4) HYRJE NË FILLIM TË LËVIZJES (jo në fund): hy sapo impulsi po e SULMON majën/fundin e
+  //     qiriut të fundit të mbyllur — pa pritur thyerjen e plotë të 2 qirinjve (që është vonë, në
+  //     fund të lëvizjes). `tol` i gjerë (0.20*unit) => hyn ndërsa çmimi ende ~0.20*unit nën nivel,
+  //     i mbështetur nga shpejtësia+përshpejtimi+efikasiteti që sapo u verifikuan (impulsi i vërtetë).
   const m = candles?.length || 0;
-  if (m >= 3) {
-    const hi = Math.max(candles[m - 2].high, candles[m - 3].high);
-    const lo = Math.min(candles[m - 2].low, candles[m - 3].low);
-    const tol = 0.05 * unit;
+  if (m >= 2) {
+    const tol = ((_p && _p.entryTol > 0) ? _p.entryTol : 0.20) * unit;
+    const hi = candles[m - 2].high;   // vetëm qiriri i fundit i mbyllur => kap fillimin, jo ekstensionin
+    const lo = candles[m - 2].low;
     if (dir > 0 && pNow < hi - tol) return null;
     if (dir < 0 && pNow > lo + tol) return null;
   }
@@ -94,40 +97,49 @@ export function exitDecision({ candles, price, ticks, position, peak, ageMs, spr
   const hardStop = Math.max(0.4, Math.min(p.catastrophe ?? 0.6, 0.7));
   const v = liveVol(ticks, 8000);
   const unit = v > 0 ? v : 0.20;
+  const autoTake = (p && p.autoTake > 0) ? p.autoTake : 1.70;  // fitim që merret automatikisht (€≈pikë)
+
+  // shpejtësia e fundit (kundër nesh nëse < 0) — për të dalluar "shkon mbrapsht" nga "u ndal"
+  const velOver = (ms) => { const o = priceAt(ticks, ms); return isBuy ? (price - o) : (o - price); };
 
   // (0) SL i fortë — rrjet i fundit (katastrofë).
   if (moved <= -hardStop) return `ndalim i fortë (${moved.toFixed(2)})`;
-  // (0b) NDALIM ADAPTIV: pre humbësin normal te ~kosto+0.08 (shumë para hard-stop-it), pas një
-  //      hapësire moshe (më e shkurtër kur vol i lartë). Kufizon humbjet në ~-0.20..-0.28 (ishin -0.49).
-  const ageGate = unit >= 0.45 ? 4000 : 8000;
-  const adaptStop = -(cost + 0.08);
-  if (moved <= adaptStop && ageMs >= ageGate) return `ndalim adaptiv (${moved.toFixed(2)})`;
 
-  // (a) KTHESË TICK-U: çmimi tërhiqet nga maja DHE shpejtësia kthehet kundër nesh.
+  // (0b) NDALIM NË VEND: sapo shkon mbrapsht përtej stop-it, prite MENJËHERË — pa pritur 4-8s.
+  //      (Të dhënat: ageGate-i e linte humbjen të thellohej -0.21 -> -0.365.) Vetëm një min-age i
+  //      vogël shmang tick-un e hyrjes/spread-it, dhe kërkojmë që shpejtësia të jetë ende kundër nesh
+  //      (nëse po rikuperon fort e mbajmë edhe një tick).
+  const minAge = 700;
+  const adaptStop = -(cost + 0.08);
+  if (moved <= adaptStop && ageMs >= minAge && velOver(600) <= 0)
+    return `ndalim në vend (${moved.toFixed(2)})`;
+
+  // (a) MBRO/BLLOKO FITIMIN te MAJA REALE — PRIORITET (çek PARA degës 10s-window që jepte 66% mbrapsht).
+  //     Sa më e madhe maja, aq më i ngushtë lock-u. Vel-flip event-driven <750ms = kthesë e shpejtë =>
+  //     mbyll në vend te maja. Mbi `autoTake` (1.7): bllokim shumë i ngushtë, POR vazhdon ndjekjen lart.
+  if (peak >= cost + 0.08) {
+    let giveK = Math.min(0.20, Math.max(0.06, 0.12 * peak));
+    let floor = Math.max(cost + 0.02, peak - giveK);
+    if (peak >= cost + 0.15) floor = Math.max(floor, peak - 0.10);   // RATCHET më herët: s'jep > 0.10
+    if (peak >= autoTake)    floor = Math.max(floor, peak - 0.12);   // >1.7: banko fitimin, ndiq lart
+    const v2 = velOver(750);                                         // kthesë brenda <750ms (event-driven)
+    const flip = peak >= cost + 0.10 && v2 < -Math.max(0.03, 0.12 * unit);
+    if (moved <= floor || flip)
+      return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
+  }
+
+  // (b) KTHESË TICK-U (rrjet dytësor): tërheqje nga maja 10s + shpejtësi kundër — kap prerjen e humbësit.
   if (ticks && ticks.length >= 3) {
     const cur = ticks[ticks.length - 1].p;
     const favExtreme = isBuy ? Math.max(...ticks.map((t) => t.p)) : Math.min(...ticks.map((t) => t.p));
     const retrace = isBuy ? (favExtreme - cur) : (cur - favExtreme);
-    const older = priceAt(ticks, 3000);
-    const vel = isBuy ? (cur - older) : (older - cur);
+    const vel = velOver(3000);
     const swingBack = (peak >= cost + 0.15) ? Math.max(0.06, 0.18 * unit) : Math.max(0.08, 0.30 * unit);
     const noise = Math.max(0.04, 0.15 * unit);
     if (retrace >= swingBack && vel < -noise) {
       if (peak >= cost + 0.08 && moved > cost) return `kthesë tick — fitim i kapur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
-      if (moved <= -(cost + Math.max(0.06, 0.15 * unit)) && ageMs >= ageGate) return `kthesë tick kundër — prerje (${moved.toFixed(2)})`;
+      if (moved <= -(cost + Math.max(0.06, 0.15 * unit)) && ageMs >= minAge) return `kthesë tick kundër — prerje (${moved.toFixed(2)})`;
     }
-  }
-
-  // (b) MBRO FITIMIN: floor i ngushtë + RATCHET lock + trigger vel-flip (event-driven <750ms).
-  //     Para: jepte pas 83% të majës (maja 0.36→0.07). Tani jep pas ~18% + kap kthesën para floor-it pasiv.
-  if (peak >= cost + 0.08) {
-    const giveK = Math.max(0.07, 0.18 * peak);
-    let floor = Math.max(cost + 0.02, peak - giveK);
-    if (peak >= cost + 0.20) floor = Math.max(floor, peak - 0.10);     // RATCHET: pas fitimi solid s'jep më shumë se 0.10
-    const o750 = priceAt(ticks, 750);
-    const v2 = isBuy ? (price - o750) : (o750 - price);                 // kthesë brenda <750ms (event-driven)
-    if (moved <= floor || (peak >= cost + 0.10 && v2 < -Math.max(0.04, 0.15 * unit)))
-      return `fitim i mbrojtur (+${moved.toFixed(2)}, maja +${peak.toFixed(2)})`;
   }
 
   // (c) THYERJE QIRIRI (i papërpunuar) në fitim — kthesë strukture.

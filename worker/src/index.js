@@ -35,6 +35,8 @@ const PARAMS = {
   lockProfit: Number(process.env.FASTT_LOCK_PROFIT || 1.2),   // $ favor para se të aktivizohet siguria
   giveback: Number(process.env.FASTT_GIVEBACK || 0.5),        // $ i lejuar të kthehet nga maja
   maxSpread: Number(process.env.FASTT_MAX_SPREAD || 0.30),    // tavan absolut spread-i në hyrje (anti-blowout)
+  entryTol: Number(process.env.FASTT_ENTRY_TOL || 0.20),      // sa *unit nën nivel lejohet hyrja (fillimi i lëvizjes)
+  autoTake: Number(process.env.FASTT_AUTO_TAKE || 1.70),      // fitim që bllokohet automatikisht (ndjek lart)
 };
 const CATASTROPHE = Number(process.env.FASTT_CATASTROPHE_USD || 2.0); // SL i gjerë te brokeri (parashutë)
 // SL i NGUSHTË e i FORTË te brokeri (price-distance). Nga analiza e 305 trade-ve (verifikuar train/test):
@@ -246,7 +248,7 @@ async function main() {
         maeMap.set(pos.id, mae);
 
         const recTicks = ticks.filter((t) => nowMs - t.t <= 10000); // ~10s për daljen real-time
-        const reason = exitDecision({ candles, price: exitPx, ticks: recTicks, position: pos, peak, ageMs, spread }, { catastrophe: cfg.catastrophe });
+        const reason = exitDecision({ candles, price: exitPx, ticks: recTicks, position: pos, peak, ageMs, spread }, { catastrophe: cfg.catastrophe, autoTake: PARAMS.autoTake });
         if (reason) {
           try {
             const t2peak = peakAgeMap.get(pos.id) ?? ageMs;
