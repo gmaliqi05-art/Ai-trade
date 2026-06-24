@@ -146,6 +146,40 @@ async function fetchBinance(interval: string, limit: number): Promise<Candle[] |
   } catch { return null; }
 }
 
+// ---------- Çmim + qirinj REALË nga MT5 (MetaApi) — pasqyrë e saktë si live (jo PAXG) ----------
+function maHost(region: string): string { return `https://mt-client-api-v1.${(region || "new-york").trim()}.agiliumtrade.ai`; }
+function maMarketHost(region: string): string { return `https://mt-market-data-client-api-v1.${(region || "new-york").trim()}.agiliumtrade.ai`; }
+// Zgjedh një llogari referencë (preferon 'live') për çmimin REAL të brokerit — i njëjti për të gjithë (çmimi i arit s'ndryshon mes llogarive të të njëjtit broker).
+function pickRefCfg(rows: Record<string, unknown>[]): Record<string, unknown> | null {
+  const valid = rows.filter((c) => c.account_id && c.token);
+  return valid.find((c) => String(c.mode) === "live") ?? valid[0] ?? null;
+}
+function goldSymbolFor(cfg: Record<string, unknown> | null): string {
+  const map = (cfg?.symbol_map && typeof cfg.symbol_map === "object") ? cfg.symbol_map as Record<string, string> : {};
+  return map["XAUUSD"] || map["XAU"] || "XAUUSD";
+}
+async function maRealPrice(cfg: Record<string, unknown>, symbol: string): Promise<number | null> {
+  try {
+    const r = await fetch(`${maHost(String(cfg.region))}/users/current/accounts/${cfg.account_id}/symbols/${encodeURIComponent(symbol)}/current-price?keepSubscription=true`,
+      { headers: { "auth-token": String(cfg.token) }, signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null;
+    const j = await r.json() as { bid?: number; ask?: number };
+    const bid = Number(j?.bid), ask = Number(j?.ask);
+    if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) return (bid + ask) / 2;
+    return null;
+  } catch { return null; }
+}
+async function maCandles(cfg: Record<string, unknown>, symbol: string, tf: string, limit: number): Promise<Candle[] | null> {
+  try {
+    const r = await fetch(`${maMarketHost(String(cfg.region))}/users/current/accounts/${cfg.account_id}/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${tf}/candles?limit=${limit}`,
+      { headers: { "auth-token": String(cfg.token) }, signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return null;
+    const arr = await r.json() as Record<string, unknown>[];
+    if (!Array.isArray(arr) || !arr.length) return null;
+    return arr.map((k) => ({ time: new Date((k.time ?? k.brokerTime) as string).getTime(), open: +(k.open as number), high: +(k.high as number), low: +(k.low as number), close: +(k.close as number) }));
+  } catch { return null; }
+}
+
 // ---------- Madhësimi i pozicionit (njëlloj si live) ----------
 function lotForConfidence(cfg: Record<string, unknown>, conf: number): number {
   let lot = Number(cfg.default_lot) || 0.01;
@@ -226,6 +260,15 @@ Deno.serve(async (req: Request) => {
     const priceBy = new Map<string, number>();
     for (const a of (assetRows ?? []) as { symbol: string; current_price: number | null }[]) {
       if (a.current_price != null) priceBy.set(normSym(a.symbol), Number(a.current_price));
+    }
+    // BURIM REAL (MetaApi): mbivendos çmimin e arit me atë REAL të brokerit (MT5) — pasqyrë e saktë si live.
+    // Fallback: nëse MetaApi s'është gati, mbetet çmimi PAXG nga assets. Metodologjia s'preket.
+    const refCfg = pickRefCfg((cfgRows ?? []) as Record<string, unknown>[]);
+    const realGoldSym = goldSymbolFor(refCfg);
+    let realGold: number | null = null;
+    if (refCfg) {
+      realGold = await maRealPrice(refCfg, realGoldSym);
+      if (realGold != null) { priceBy.set("XAUUSD", realGold); priceBy.set("XAU", realGold); priceBy.set(normSym(realGoldSym), realGold); }
     }
 
     // 3) Trade-t e hapura — vlerësohen TË GJITHA (edhe ato manuale, që të mbyllen te SL/TP).
@@ -320,11 +363,20 @@ Deno.serve(async (req: Request) => {
           if (seen.has(`${u.id}|${s.id}`)) continue;
           const veto = expertVeto(s.features);   // FILTËR EKSPERTËSH (DEMO) — kalo hyrjet e dobëta
           if (veto) { vetoed++; continue; }
-          const entry = Number(s.entry_price), sl = Number(s.stop_loss);
+          let entry = Number(s.entry_price), sl = Number(s.stop_loss);
           const slDist = Math.abs(entry - sl);
           if (!(slDist > 0)) continue;
           const isBuy = (s.type || "").toLowerCase() === "buy";
-          const tp = s.target_price != null ? Number(s.target_price) : (isBuy ? entry + slDist * 2 : entry - slDist * 2);
+          let tp = s.target_price != null ? Number(s.target_price) : (isBuy ? entry + slDist * 2 : entry - slDist * 2);
+          const tpDist = Math.abs(tp - entry);
+          // ANCHOR te çmimi REAL i brokerit, duke RUAJTUR distancat e sinjalit (SL/TP) — metodologjia s'preket,
+          // por hyrja/dalja vlerësohen në shkallën reale të MT5 (jo PAXG) → pasqyrë e saktë.
+          const realS = priceBy.get(normSym(s.symbol));
+          if (realS != null && (normSym(s.symbol).includes("XAU") || normSym(s.symbol).includes("GOLD"))) {
+            entry = realS;
+            sl = isBuy ? entry - slDist : entry + slDist;
+            tp = isBuy ? entry + tpDist : entry - tpDist;
+          }
           const volume = sizeVolume(cfg, bal.get(u.id) ?? 100, Number(s.confidence ?? 70), slDist, s.symbol);
           toInsert.push({ user_id: u.id, signal_id: s.id, symbol: s.symbol, side: isBuy ? "buy" : "sell", volume, entry_price: entry, sl, tp, status: "open", source: "signal" });
           seen.add(`${u.id}|${s.id}`); cnt++; opened++;
@@ -338,9 +390,12 @@ Deno.serve(async (req: Request) => {
     let scalp: { action: "BUY" | "SELL"; reason: string } | null = null;
     let scalpEntry = 0;
     if (goldSessionOpen()) {
-      const [c1m, c5m] = await Promise.all([fetchBinance("1m", 120), fetchBinance("5m", 120)]);
+      // Qirinj REALË nga MT5 (MetaApi); fallback te PAXG nëse MT5 s'është gati. Logjika e scalp-it s'preket.
+      let c1m: Candle[] | null = null, c5m: Candle[] | null = null;
+      if (refCfg) [c1m, c5m] = await Promise.all([maCandles(refCfg, realGoldSym, "1m", 120), maCandles(refCfg, realGoldSym, "5m", 120)]);
+      if (!c1m || !c5m || c1m.length < 35 || c5m.length < 30) [c1m, c5m] = await Promise.all([fetchBinance("1m", 120), fetchBinance("5m", 120)]);
       if (c1m && c5m && c1m.length >= 35 && c5m.length >= 30) {
-        scalpEntry = c1m[c1m.length - 1].close;
+        scalpEntry = realGold != null ? realGold : c1m[c1m.length - 1].close;  // hyrje te çmimi REAL nëse e kemi
         // Provo "loose" (lëvizje të vogla) e pastaj strict — që demo të jetë aktive si scalp-i live.
         scalp = scalpSignal(c1m, c5m, true) ?? scalpSignal(c1m, c5m, false);
       }
