@@ -1207,7 +1207,10 @@ Deno.serve(async (req: Request) => {
         if (isBuy && dxy === "strong") { await log("rejected", "Dollari i fortë (kundër BLEJ ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
         if (!isBuy && dxy === "weak") { await log("rejected", "Dollari i dobët (kundër SHIT ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
         // PORTFOLIO HEAT — rreziku total i hapur + ky trade s'duhet të kalojë MAX_HEAT_PCT të kapitalit.
-        if (equity > 0 && perTradeRisk > 0 && (openHeat + perTradeRisk) > equity * (MAX_HEAT_PCT / 100)) {
+        // PËRJASHTIM (si te scalp): lotin MINIMAL 0.01 e lejojmë sa kohë rreziku total mbetet brenda
+        // kufirit DITOR (max_daily_loss) — mbrojtja reale për llogari të vogël, jo bllokim total i hyrjes.
+        const heatWithinDaily = maxRisk <= 0 || (openHeat + perTradeRisk) <= maxRisk;
+        if (equity > 0 && perTradeRisk > 0 && (openHeat + perTradeRisk) > equity * (MAX_HEAT_PCT / 100) && !(volume <= 0.01 && heatWithinDaily)) {
           await log("rejected", `Portfolio heat: rreziku total i hapur do kalonte ${MAX_HEAT_PCT}% të kapitalit`, null, null);
           summary.push({ user: cfg.user_id, signal: sig.id, status: "portfolio_heat" }); continue;
         }
