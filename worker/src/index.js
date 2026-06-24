@@ -34,6 +34,7 @@ const PARAMS = {
   exitBufferAtr: Number(process.env.FASTT_EXIT_BUFFER_ATR || 0.15), // sa nën/mbi EMA9 = kthesë
   lockProfit: Number(process.env.FASTT_LOCK_PROFIT || 1.2),   // $ favor para se të aktivizohet siguria
   giveback: Number(process.env.FASTT_GIVEBACK || 0.5),        // $ i lejuar të kthehet nga maja
+  maxSpread: Number(process.env.FASTT_MAX_SPREAD || 0.30),    // tavan absolut spread-i në hyrje (anti-blowout)
 };
 const CATASTROPHE = Number(process.env.FASTT_CATASTROPHE_USD || 2.0); // SL i gjerë te brokeri (parashutë)
 // SL i NGUSHTË e i FORTË te brokeri (price-distance). Nga analiza e 305 trade-ve (verifikuar train/test):
@@ -62,6 +63,7 @@ let cfg = { enabled: true, killSwitch: false, maxDailyLoss: 1000, dayStartEquity
 let lastEntryAt = 0;
 const peakMap = new Map();     // positionId -> maja e favorit ($)
 const maeMap = new Map();      // positionId -> MAE: lëvizja më e KUNDËRT ($) — për akordim të adaptStop-it
+const maeAgeMap = new Map();   // positionId -> ageMs kur u prek MAE (koha-deri-MAE) — për analizë rendi MAE/MFE
 const peakAgeMap = new Map();  // positionId -> ageMs kur u prek maja (koha-deri-maja)
 let busy = false;              // mbrojtje nga ekzekutime të mbivendosura
 let lastTickAt = Date.now();   // koha e tick-ut të fundit live — për health-check + watchdog
@@ -238,7 +240,9 @@ async function main() {
         const peak = Math.max(prevPeak, moved);
         if (moved >= prevPeak) peakAgeMap.set(pos.id, ageMs);     // koha-deri-maja (përditësohet kur thyhet maja)
         peakMap.set(pos.id, peak);
-        const mae = Math.min(maeMap.get(pos.id) ?? moved, moved); // MAE: lëvizja më e kundërt gjatë trade-it
+        const prevMae = maeMap.get(pos.id) ?? moved;
+        const mae = Math.min(prevMae, moved);                     // MAE: lëvizja më e kundërt gjatë trade-it
+        if (moved <= prevMae) maeAgeMap.set(pos.id, ageMs);       // koha-deri-MAE (përditësohet kur thellohet MAE)
         maeMap.set(pos.id, mae);
 
         const recTicks = ticks.filter((t) => nowMs - t.t <= 10000); // ~10s për daljen real-time
@@ -246,10 +250,12 @@ async function main() {
         if (reason) {
           try {
             const t2peak = peakAgeMap.get(pos.id) ?? ageMs;
+            const t2mae = maeAgeMap.get(pos.id) ?? ageMs;
             await connection.closePosition(pos.id);
-            peakMap.delete(pos.id); maeMap.delete(pos.id); peakAgeMap.delete(pos.id);
-            // Logim i pasur për akordim të ardhshëm: MAE, koha-deri-maja, kohëzgjatja (nuk prek parsimin e P&L/maja).
-            const tag = ` [MAE ${mae.toFixed(2)} | t2peak ${(t2peak / 1000).toFixed(0)}s | dur ${(ageMs / 1000).toFixed(0)}s]`;
+            peakMap.delete(pos.id); maeMap.delete(pos.id); maeAgeMap.delete(pos.id); peakAgeMap.delete(pos.id);
+            // Logim i pasur për akordim të ardhshëm: MAE+koha-deri-MAE, maja+koha-deri-maja, kohëzgjatje, spread.
+            // t2mae<t2peak => humbja erdhi para majës (SL i ngushtë do e priste); e kundërta => fitues që dredhoi.
+            const tag = ` [MAE ${mae.toFixed(2)} @${(t2mae / 1000).toFixed(0)}s | t2peak ${(t2peak / 1000).toFixed(0)}s | dur ${(ageMs / 1000).toFixed(0)}s | spr ${spread.toFixed(2)}]`;
             console.log(`MBYLL ${isBuy ? 'BUY' : 'SELL'} ${SYMBOL}: ${reason}${tag}`);
             await logExec({ symbol: SYMBOL, action: isBuy ? 'BUY' : 'SELL', volume: pos.volume,
               entry_price: entry, status: 'info', reason: `FastT mbylli: ${reason}${tag}`, metaapi_order_id: pos.id });

@@ -42,8 +42,11 @@ export function entryDecision({ candles, ticks, spread = 0 }, _p) {
   if (n < 5) return null;
   const v = liveVol(ticks, 10000);               // volatilitet live nga tick-at (jo ATR)
   const unit = v > 0 ? v : 0.20;                 // dysheme e vogël për arin nëse tregu i fjetur
-  // Kosto: rri jashtë vetëm kur spread-i ha thuajse gjithë lëvizjen e fundit.
-  if (spread > 0 && spread > 0.9 * unit) return null;
+  // Kosto: rri jashtë vetëm kur spread-i ha thuajse gjithë lëvizjen e fundit (relativ),
+  // OSE kur spread-i kalon një tavan absolut (anti-blowout: mos fillo thellë nën ujë në
+  // tregje volatile ku 0.9*unit lejon spread shumë të gjerë). Default 0.30, env FASTT_MAX_SPREAD.
+  const maxSpread = (_p && _p.maxSpread > 0) ? _p.maxSpread : 0.30;
+  if (spread > 0 && (spread > 0.9 * unit || spread > maxSpread)) return null;
 
   const now = ticks[n - 1];
   const pNow = now.p;
