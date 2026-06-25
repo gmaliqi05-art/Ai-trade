@@ -23,6 +23,7 @@ interface Cfg {
   strategy_swing?: boolean;  // default true
   strategy_scalp?: boolean;  // default false
   signals_allow_short?: boolean; // default false: LONG-only; true = lejo edhe SHORT
+  signals_strict?: boolean;      // default false: sjellje IDENTIKE me demon (pa filtra shtesë); true = filtra R:R/DXY/Claude
   scalp_sl_usd?: number;     // distanca e SL në çmim ($) për ar, default 2
   scalp_tp_usd?: number;     // distanca e TP në çmim ($) për ar, default 4
   scalp_sl_pct?: number;     // SL i scalp-it për CRYPTO si % e çmimit, default 0.3
@@ -1202,11 +1203,12 @@ Deno.serve(async (req: Request) => {
         if (dailyStop) { await log("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDailyRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
         // EKSPERIMENTAL: cool-off pas serie humbjesh — ndal edhe sinjalet swing.
         if (expBlockOpens) { summary.push({ user: cfg.user_id, signal: sig.id, status: "cooloff" }); continue; }
+        // FILTRA SHTESË (vetëm në modalitet STRIKT; default OFF = sjellja IDENTIKE me demon).
         // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
-        if (netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
+        if (cfg.signals_strict === true && netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
         // KONFIRMIM DOLLARI (DXY via EURUSD) — refuzo kur dollari shkon qartë kundër arit.
-        if (isBuy && dxy === "strong") { await log("rejected", "Dollari i fortë (kundër BLEJ ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
-        if (!isBuy && dxy === "weak") { await log("rejected", "Dollari i dobët (kundër SHIT ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
+        if (cfg.signals_strict === true && isBuy && dxy === "strong") { await log("rejected", "Dollari i fortë (kundër BLEJ ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
+        if (cfg.signals_strict === true && !isBuy && dxy === "weak") { await log("rejected", "Dollari i dobët (kundër SHIT ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
         // PORTFOLIO HEAT — rreziku total i hapur + ky trade s'duhet të kalojë MAX_HEAT_PCT të kapitalit.
         // PËRJASHTIM (si te scalp): lotin MINIMAL 0.01 e lejojmë sa kohë rreziku total mbetet brenda
         // kufirit DITOR (max_daily_loss) — mbrojtja reale për llogari të vogël, jo bllokim total i hyrjes.
@@ -1222,9 +1224,11 @@ Deno.serve(async (req: Request) => {
         // EKSPERIMENTAL: spread-guard — mos hap kur spread-i i arit është i gjerë (orë të holla/lajme).
         if (expOn && spreadTooWide(tradeSym, await getSpread(tradeSym))) { summary.push({ user: cfg.user_id, signal: sig.id, status: "spread_too_wide" }); continue; }
 
-        // CLAUDE SI PORTË — me kontekstin e grafikut MT5.
-        const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);
-        if (!gate.agree) { await log("rejected", `Claude s'pajtohet: ${gate.reason}`.slice(0, 200), null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "claude_rejected" }); continue; }
+        // CLAUDE SI PORTË — vetëm në modalitet STRIKT; default OFF = sjellja IDENTIKE me demon.
+        if (cfg.signals_strict === true) {
+          const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);
+          if (!gate.agree) { await log("rejected", `Claude s'pajtohet: ${gate.reason}`.slice(0, 200), null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "claude_rejected" }); continue; }
+        }
 
         const tradeBody: Record<string, unknown> = {
           actionType: isBuy ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL",
