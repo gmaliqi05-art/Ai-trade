@@ -22,6 +22,7 @@ interface Cfg {
   // Dy strategjitë: afat-gjatë (swing, sinjale 15m/1h/4h) dhe afat-shkurt (scalp, momentum 1m/5m).
   strategy_swing?: boolean;  // default true
   strategy_scalp?: boolean;  // default false
+  signals_allow_short?: boolean; // default false: LONG-only; true = lejo edhe SHORT
   scalp_sl_usd?: number;     // distanca e SL në çmim ($) për ar, default 2
   scalp_tp_usd?: number;     // distanca e TP në çmim ($) për ar, default 4
   scalp_sl_pct?: number;     // SL i scalp-it për CRYPTO si % e çmimit, default 0.3
@@ -1105,7 +1106,7 @@ Deno.serve(async (req: Request) => {
         .order("created_at", { ascending: false }).limit(5);
 
       const candidates = (signals ?? []).filter((s: Signal) =>
-        (s.type === "buy" || s.type === "sell") &&
+        (s.type === "buy" || (s.type === "sell" && cfg.signals_allow_short === true)) && // LONG-only default; SHORT vetëm nëse përdoruesi e aktivizon
         Number(s.confidence) >= cfg.min_confidence &&
         allowed.has((s.symbol || "").toUpperCase()),
       ) as Signal[];

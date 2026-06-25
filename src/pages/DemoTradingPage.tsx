@@ -61,8 +61,9 @@ export default function DemoTradingPage() {
   const [startBalance, setStartBalance] = useState<number>(100);
   const [enabled, setEnabled] = useState<boolean>(false); // robot auto-demo (opt-in, OFF si default)
   const [liveOn, setLiveOn] = useState<boolean>(false);   // tregto LIVE me llogarinë reale (metaapi_config.auto_trade)
-  // Lidhja live e robotit të sinjaleve aktivizohet VETËM për këtë llogari (testim me para reale).
-  const canLive = (user?.email || '').toLowerCase() === 'g.maliqi05@gmail.com';
+  const [shortsOn, setShortsOn] = useState<boolean>(false); // lejo SHORT (default OFF = vetëm LONG)
+  // Lidhja live e robotit të sinjaleve — për të gjithë përdoruesit (platform-wide).
+  const canLive = !!user;
   const [liveDeals, setLiveDeals] = useState<HistoryDeal[]>([]);  // trade-t e mbyllura LIVE (nga MetaApi)
   const [trades, setTrades] = useState<DemoTrade[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
@@ -106,8 +107,9 @@ export default function DemoTradingPage() {
       setEnabled(!!prof.demo_auto);
     }
     if (canLive) {
-      const { data: mc } = await supabase.from('metaapi_config').select('auto_trade').eq('user_id', user.id).maybeSingle();
+      const { data: mc } = await supabase.from('metaapi_config').select('auto_trade, signals_allow_short').eq('user_id', user.id).maybeSingle();
       setLiveOn(!!mc?.auto_trade);
+      setShortsOn(!!mc?.signals_allow_short);
       // Historiku LIVE (deals e mbyllura me profit real) nga MetaApi — best-effort, mos e rrëzo faqen.
       try {
         const hist = await loadTradeHistory(7) as { deals?: HistoryDeal[] };
@@ -276,15 +278,29 @@ export default function DemoTradingPage() {
     await supabase.from('profiles').update({ demo_auto: next }).eq('id', user.id);
   }
 
-  // Ndez/fik tregtimin LIVE me llogarinë reale (i njëjti robot sinjalesh). Vetëm për llogarinë e lejuar.
+  // Ndez/fik tregtimin LIVE me llogarinë reale. Kur NDIZET: fik automatikisht TË GJITHË robotët e
+  // tjerë (scalp + FastT) — tregton VETËM roboti i sinjaleve (swing).
   async function toggleLive() {
     if (!user || !canLive) return;
     const next = !liveOn;
-    if (next && !window.confirm(t('Ndez tregtimin LIVE me llogarinë reale? Roboti i sinjaleve do hapë trade me PARA TË VËRTETA.'))) return;
+    if (next && !window.confirm(t('Ndez tregtimin LIVE me llogarinë reale? Roboti i sinjaleve do hapë trade me PARA TË VËRTETA. Të gjithë robotët e tjerë do fiken.'))) return;
     setLiveOn(next);
-    const { error } = await supabase.from('metaapi_config').update({ auto_trade: next }).eq('user_id', user.id);
+    const patch = next
+      ? { auto_trade: true, strategy_swing: true, strategy_scalp: false, scalp_live_enabled: false, kill_switch: false }
+      : { auto_trade: false };
+    const { error } = await supabase.from('metaapi_config').update(patch).eq('user_id', user.id);
     if (error) { setLiveOn(!next); setMsg({ type: 'error', text: t('Nuk u ruajt — provo sërish.') }); return; }
-    setMsg({ type: 'success', text: next ? t('LIVE u ndez — roboti tregton me llogarinë reale.') : t('LIVE u fik — kthehet vetëm demo.') });
+    setMsg({ type: 'success', text: next ? t('LIVE u ndez — vetëm roboti i sinjaleve tregton me llogarinë reale (të tjerët u fikën).') : t('LIVE u fik — kthehet vetëm demo.') });
+  }
+
+  // Ndez/fik tregtimet SHORT (default OFF = vetëm LONG). Përdoruesi i aktivizon vetë short-et.
+  async function toggleShorts() {
+    if (!user || !canLive) return;
+    const next = !shortsOn;
+    setShortsOn(next);
+    const { error } = await supabase.from('metaapi_config').update({ signals_allow_short: next }).eq('user_id', user.id);
+    if (error) { setShortsOn(!next); setMsg({ type: 'error', text: t('Nuk u ruajt — provo sërish.') }); return; }
+    setMsg({ type: 'success', text: next ? t('SHORT u lejua — roboti tregton edhe LONG edhe SHORT.') : t('SHORT u fik — vetëm LONG.') });
   }
 
   return (
@@ -309,9 +325,15 @@ export default function DemoTradingPage() {
             <Power className="w-3.5 h-3.5" /> {enabled ? t('Robot AUTO') : t('Vetëm manual')}
           </button>
           {canLive && (
-            <button onClick={toggleLive} title={t('I njëjti robot sinjalesh tregton me llogarinë reale')}
+            <button onClick={toggleLive} title={t('I njëjti robot sinjalesh tregton me llogarinë reale; ndez = fik robotët e tjerë')}
               className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${liveOn ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
               <Power className="w-3.5 h-3.5" /> {liveOn ? t('LIVE: Llogaria REALE ON') : t('Signal → Live (OFF)')}
+            </button>
+          )}
+          {canLive && liveOn && (
+            <button onClick={toggleShorts} title={t('Default vetëm LONG; ndize për të lejuar edhe SHORT')}
+              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${shortsOn ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+              {shortsOn ? t('LONG + SHORT') : t('Vetëm LONG')}
             </button>
           )}
           <button onClick={load} className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white transition">
