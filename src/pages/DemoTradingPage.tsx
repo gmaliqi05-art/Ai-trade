@@ -258,12 +258,28 @@ export default function DemoTradingPage() {
       const goldPnl = gold.reduce((s, row) => s + unrealizedOf(row), 0);
       lines.push({ price: livePx, color: '#fbbf24', title: gold.length ? `${t('Tani')} · ${goldPnl >= 0 ? '+' : ''}€${fmt(goldPnl)}` : t('Tani') });
     }
-    for (const row of gold.slice(0, 4)) {
+    const multi = gold.length > 1;
+    gold.slice(0, 4).forEach((row, i) => {
       const buy = (row.side || '').toLowerCase() === 'buy';
-      lines.push({ price: Number(row.entry_price), color: buy ? '#3b82f6' : '#f59e0b', title: `${t('Hyrje')} ${buy ? t('BLEJ') : t('SHIT')}` });
-      if (row.sl != null) lines.push({ price: Number(row.sl), color: '#ef4444', title: 'SL' });
-      if (row.tp != null) lines.push({ price: Number(row.tp), color: '#22c55e', title: 'TP' });
-    }
+      const entry = Number(row.entry_price);
+      const vpp = valuePerPrice(row.symbol), vol = Number(row.volume);
+      const pnl = unrealizedOf(row);
+      const term = tradeKind(row).horizon === 'long' ? t('Afatgjatë') : t('Afatshkurtër');
+      const tag = multi ? ` #${i + 1}` : '';
+      // HYRJA: drejtimi + afati + P&L tani (si te terminali Live)
+      lines.push({ price: entry, color: buy ? '#3b82f6' : '#f59e0b',
+        title: `${t('Hyrje')}${tag} ${buy ? t('BLEJ') : t('SHIT')} · ${term} · ${pnl >= 0 ? '+' : ''}€${fmt(pnl)}` });
+      // SL: rreziku në € (sa humb nëse preket)
+      if (row.sl != null) {
+        const risk = Math.abs(entry - Number(row.sl)) * vol * vpp;
+        lines.push({ price: Number(row.sl), color: '#ef4444', title: `SL${tag} · -€${fmt(risk)}` });
+      }
+      // TP: shpërblimi në € (sa fiton nëse preket)
+      if (row.tp != null) {
+        const reward = Math.abs(Number(row.tp) - entry) * vol * vpp;
+        lines.push({ price: Number(row.tp), color: '#22c55e', title: `TP${tag} · +€${fmt(reward)}` });
+      }
+    });
     return lines;
   }, [open, livePx, unrealizedOf]);
 
