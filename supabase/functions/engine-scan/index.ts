@@ -13,18 +13,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-// Njoftim Web Push (best-effort) — thërret web-push-send me service-role. S'duhet të ndalë motorin.
-async function pushNotify(payload: Record<string, unknown>): Promise<void> {
-  try {
-    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch { /* njoftimi s'duhet të ndalë motorin */ }
-}
-
 // ---------- Indikatorë (port nga src/ai-trader/core/indicators.ts) ----------
 function ema(values: number[], period: number): number[] {
   const out = new Array(values.length).fill(NaN);
@@ -869,13 +857,6 @@ Deno.serve(async (req: Request) => {
           analysis: `Motori: ${sig.reasons.slice(0, 8).join("; ")}`,
           source: "engine", status: "active", features: sig.features ?? null,
           expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-        });
-        // Push: sinjal i ri (≥ pragu i besueshmërisë) me detaje — Hyrje/TP/SL.
-        await pushNotify({
-          user_id: u.user_id,
-          title: `📡 Sinjal i ri: ${sig.action} ${symbol} (${confPct}%)`,
-          body: `Hyrje ${sig.entry.toFixed(2)} · TP ${sig.takeProfit.toFixed(2)} · SL ${sig.stopLoss.toFixed(2)} · RR 1:2`,
-          url: "/signals", tag: "new-signal",
         });
         out.push({ symbol, user: u.user_id, action: sig.action, confidence: confPct, created: true });
       }
