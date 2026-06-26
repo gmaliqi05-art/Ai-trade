@@ -190,7 +190,10 @@ export default function DemoTradingPage() {
   }, [livePx, prices]);
 
   const open = useMemo(() => trades.filter((t) => t.status === 'open'), [trades]);
-  const closed = useMemo(() => trades.filter((t) => t.status === 'closed'), [trades]);
+  // Renditja sipas KOHËS SË MBYLLJES (më të rejat sipër) — që trade-t e mbyllura së fundi (edhe
+  // nëse u hapën ditë më parë, p.sh. një long-term) të dalin lart, jo të "varrosen" poshtë.
+  const closed = useMemo(() => trades.filter((t) => t.status === 'closed')
+    .sort((a, b) => String(b.closed_at || b.opened_at).localeCompare(String(a.closed_at || a.opened_at))), [trades]);
   // Filtri Auto/Manual për tabelat (raportet).
   const matchSrc = useCallback((t: DemoTrade) => srcFilter === 'all' || (srcFilter === 'auto' ? isAuto(t) : !isAuto(t)), [srcFilter]);
   const fOpen = useMemo(() => open.filter(matchSrc), [open, matchSrc]);
