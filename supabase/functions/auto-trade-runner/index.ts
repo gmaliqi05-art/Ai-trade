@@ -1107,7 +1107,7 @@ Deno.serve(async (req: Request) => {
         .order("created_at", { ascending: false }).limit(5);
 
       const candidates = (signals ?? []).filter((s: Signal) =>
-        (s.type === "buy" || (s.type === "sell" && cfg.signals_allow_short === true)) && // LONG-only default; SHORT vetëm nëse përdoruesi e aktivizon
+        (s.type === "buy" || s.type === "sell") && // long-term: merr TË DY drejtimet saktësisht si sinjali (BUY→buy, SELL→sell)
         Number(s.confidence) >= cfg.min_confidence &&
         allowed.has((s.symbol || "").toUpperCase()),
       ) as Signal[];
