@@ -12,6 +12,18 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 //
 // Cron: çdo 2 min. Portë sigurie x-cron-secret (fail-safe: lejo nëse s'ka sekret).
 
+// Njoftim Web Push (best-effort) — thërret web-push-send me service-role. S'duhet të ndalë robotin.
+async function pushNotify(payload: Record<string, unknown>): Promise<void> {
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch { /* njoftimi s'duhet të ndalë robotin */ }
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -389,6 +401,10 @@ Deno.serve(async (req: Request) => {
           }
           const volume = sizeVolume(cfg, bal.get(u.id) ?? 100, Number(s.confidence ?? 70), slDist, s.symbol);
           toInsert.push({ user_id: u.id, signal_id: s.id, symbol: s.symbol, side: isBuy ? "buy" : "sell", volume, entry_price: entry, sl, tp, status: "open", source: "signal" });
+          // Push (DEMO) — hyrje nga sinjali, me detaje + shenjën DEMO.
+          await pushNotify({ user_id: u.id, title: `🧪 DEMO: ${isBuy ? "BLEJ" : "SHIT"} ${s.symbol}`,
+            body: `${volume} lot • Hyrje ${entry.toFixed(2)} · TP ${tp.toFixed(2)} · SL ${sl.toFixed(2)} (demo)`,
+            url: "/demo", tag: "demo-trade-open" });
           seen.add(`${u.id}|${s.id}`); cnt++; opened++;
         }
         openCountBy.set(u.id, cnt);

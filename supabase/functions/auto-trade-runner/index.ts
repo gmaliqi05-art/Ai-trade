@@ -1248,7 +1248,9 @@ Deno.serve(async (req: Request) => {
           }
           await log("executed", `auto (${cfg.mode}, ${dataSrc})`, br.orderId, r.body);
           openTrades += 1;
-          await pushNotify({ user_id: cfg.user_id, title: "Roboti hapi një trade", body: `${isBuy ? "BLEJ" : "SHIT"} ${tradeSym} • ${volume} lot (${cfg.mode})`, url: "/", tag: "trade-open" });
+          await pushNotify({ user_id: cfg.user_id, title: `🤖 Roboti hapi trade: ${isBuy ? "BLEJ" : "SHIT"} ${tradeSym}`,
+            body: `${volume} lot • Hyrje ${r2(entryPx ?? 0)} · TP ${takeProfit != null ? r2(takeProfit) : "—"} · SL ${stopLoss != null ? r2(stopLoss) : "—"} (${cfg.mode})`,
+            url: "/", tag: "trade-open" });
           summary.push({ user: cfg.user_id, signal: sig.id, status: "executed", order: br.orderId, src: dataSrc });
         } catch (e) {
           await log("error", (e as Error).message, null, null);

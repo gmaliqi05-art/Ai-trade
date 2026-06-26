@@ -539,6 +539,31 @@ export default function DemoTradingPage() {
         )}
       </div>
 
+      {/* Tabela e detajuar e sinjaleve ≥70% që tregton roboti */}
+      <Section title={t('Sinjalet e Robotit (≥70%) — që hyn në trade')}>
+        {signals.filter((s) => Number(s.confidence) >= 70).length === 0 ? (
+          <Empty text={t('Asnjë sinjal ≥70% tani — tregu pa trend të qartë. Rikthehen kur ari niset.')} />
+        ) : (
+          <Table head={[t('Drejtimi'), t('Besueshmëria'), t('Hyrja'), 'TP', 'SL', 'RR', t('Periudha'), t('Koha')]}>
+            {signals.filter((s) => Number(s.confidence) >= 70).map((s) => {
+              const buy = (s.type || '').toLowerCase() === 'buy';
+              return (
+                <tr key={s.id} className="border-t border-gray-800">
+                  <Td><span className={buy ? 'text-emerald-400' : 'text-rose-400'}>{buy ? t('BLEJ') : t('SHIT')}</span></Td>
+                  <Td className="text-amber-400 font-semibold">{Math.round(Number(s.confidence))}%</Td>
+                  <Td>{s.entry_price != null ? Number(s.entry_price).toLocaleString() : '—'}</Td>
+                  <Td className="text-emerald-400">{s.target_price != null ? Number(s.target_price).toLocaleString() : '—'}</Td>
+                  <Td className="text-rose-400">{s.stop_loss != null ? Number(s.stop_loss).toLocaleString() : '—'}</Td>
+                  <Td className="text-gray-400">1:2</Td>
+                  <Td className="text-gray-400">{s.timeframe || '1h'}</Td>
+                  <Td className="text-gray-500">{fmtTime(s.created_at)}</Td>
+                </tr>
+              );
+            })}
+          </Table>
+        )}
+      </Section>
+
       {/* Sinjalet e përfunduara (i njëjti komponent si Live) */}
       <CompletedSignals signals={doneSignals} variant="compact" />
 
