@@ -284,6 +284,16 @@ Deno.serve(async (req: Request) => {
     const { data: autoProfs } = await db.from("profiles").select("id, demo_balance").eq("demo_auto", true);
     const autoUsers = (autoProfs ?? []) as { id: string; demo_balance: number | null }[];
 
+    // Tregtimet e SHKURTA (scalp) në demo hapen VETËM për userat që e kanë NDEZUR butonin
+    // (metaapi_config.strategy_scalp=true). Default OFF → si te live. Tregtimet e gjata (sinjale) s'preken.
+    const scalpEnabled = new Set<string>();
+    if (autoUsers.length) {
+      const { data: scfg } = await db.from("metaapi_config").select("user_id, strategy_scalp")
+        .in("user_id", autoUsers.map((u) => u.id));
+      for (const c of (scfg ?? []) as { user_id: string; strategy_scalp: boolean | null }[])
+        if (c.strategy_scalp === true) scalpEnabled.add(c.user_id);
+    }
+
     // 5) Balanca per-user: për këdo me trade të hapura + userat me robot auto.
     const idsNeeded = new Set<string>(autoUsers.map((u) => u.id));
     for (const t of openRows) idsNeeded.add(t.user_id);
@@ -412,6 +422,7 @@ Deno.serve(async (req: Request) => {
       const isBuy = scalp.action === "BUY";
       const toInsert: Record<string, unknown>[] = [];
       for (const u of autoUsers) {
+        if (!scalpEnabled.has(u.id)) continue; // tregtimet e shkurta OFF → mos hap scalp
         if (onCooldown.has(u.id)) continue;
         const cfg = cfgFor(u.id);
         const maxOpen = Number(cfg.max_open_trades) || 5;
