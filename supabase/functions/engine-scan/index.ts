@@ -13,6 +13,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+// Flag i PËRKOHSHËM: lejo sinjal kur 4h=HOLD (zbutje konfluence). Lexohet nga app_config; default OFF.
+let RELAX_4H = false;
+
 // ---------- Indikatorë (port nga src/ai-trader/core/indicators.ts) ----------
 function ema(values: number[], period: number): number[] {
   const out = new Array(values.length).fill(NaN);
@@ -280,7 +283,7 @@ async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = f
 
   const dir = s1h.action;
   if (dir === "HOLD") return null;
-  if (s4h.action !== dir) return null;
+  if (s4h.action !== dir && !(RELAX_4H && s4h.action === "HOLD")) return null;
   const price = s1h.price;
   const isBuy = dir === "BUY";
   if (isBuy && !(price > s1h.ema200)) return null;
@@ -414,7 +417,7 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   // Baza: e njëjta logjikë si generateStrong (multi-TF + EMA200 + ADX).
   const dir = s1h.action;
   if (dir === "HOLD") return rejGold("1h_HOLD");
-  if (s4h.action !== dir) return rejGold(`4h_disagree(1h=${dir},4h=${s4h.action})`); // 1h+4h pajtohen
+  if (s4h.action !== dir && !(RELAX_4H && s4h.action === "HOLD")) return rejGold(`4h_disagree(1h=${dir},4h=${s4h.action})`); // 1h+4h pajtohen (RELAX_4H: lejo 4h=HOLD)
   const price = s1h.price;
   const isBuy = dir === "BUY";
   if (isBuy && !(price > s1h.ema200)) return rejGold("price_below_ema200_for_buy");
@@ -780,6 +783,12 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch { /* fail-safe: mos e blloko motorin */ }
+
+  // Flag i PËRKOHSHËM (zbutje 4h=HOLD) — lexohet nga app_config; default OFF. Revert = SQL.
+  try {
+    const { data: _r4 } = await db.from("app_config").select("value").eq("key", "signals_relax_4h").maybeSingle();
+    RELAX_4H = (_r4 as { value?: string } | null)?.value === "true";
+  } catch { RELAX_4H = false; }
 
   // Porta e fundjavës — mos gjenero sinjale kur tregu është i mbyllur (fundjavë).
   if (!isMarketOpen()) {
