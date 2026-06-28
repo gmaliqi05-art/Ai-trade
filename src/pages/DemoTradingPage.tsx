@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
 import { fetchBinanceCandles, type Timeframe } from '../ai-trader/market/candles';
-import { loadCandles as loadMt5Candles, loadSymbolPrice, loadTradeHistory, type HistoryDeal } from '../services/metaapi';
+import { loadCandles as loadMt5Candles, loadSymbolPrice } from '../services/metaapi';
 import CompletedSignals, { type DoneSignal } from '../components/CompletedSignals';
 import SignalScanLog from '../components/SignalScanLog';
 import { useI18n } from '../i18n/i18n';
@@ -65,7 +65,6 @@ export default function DemoTradingPage() {
   const [scalpOn, setScalpOn] = useState<boolean>(false); // tregtime të SHKURTA (scalp); default OFF
   // Lidhja live e robotit të sinjaleve — për të gjithë përdoruesit (platform-wide).
   const canLive = !!user;
-  const [liveDeals, setLiveDeals] = useState<HistoryDeal[]>([]);  // trade-t e mbyllura LIVE (nga MetaApi)
   const [trades, setTrades] = useState<DemoTrade[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [livePx, setLivePx] = useState<number | null>(null); // çmimi real-time i arit (Binance, ~2s)
@@ -111,12 +110,6 @@ export default function DemoTradingPage() {
       const { data: mc } = await supabase.from('metaapi_config').select('auto_trade, strategy_scalp').eq('user_id', user.id).maybeSingle();
       setLiveOn(!!mc?.auto_trade);
       setScalpOn(!!mc?.strategy_scalp);
-      // Historiku LIVE (deals e mbyllura me profit real) nga MetaApi — best-effort, mos e rrëzo faqen.
-      try {
-        const hist = await loadTradeHistory(7) as { deals?: HistoryDeal[] };
-        const outs = (hist?.deals ?? []).filter((d) => (d.entryType || '').includes('OUT') || d.profit != null);
-        setLiveDeals(outs);
-      } catch { /* lidhja live mund të jetë jashtë; demoja punon pa të */ }
     }
     if (tr) setTrades(tr as DemoTrade[]);
     if (sig) setSignals(sig as Signal[]);
@@ -570,41 +563,6 @@ export default function DemoTradingPage() {
 
       {/* Sinjalet e përfunduara (i njëjti komponent si Live) */}
       <CompletedSignals signals={doneSignals} variant="compact" />
-
-      {/* RAPORTI LIVE — vetëm për llogarinë e lejuar; trade-t reale të mbyllura nga MetaApi */}
-      {canLive && (
-        <Section title={t('Raporti LIVE — llogaria reale (7 ditët e fundit)')}>
-          {liveDeals.length === 0 ? (
-            <Empty text={t('Asnjë trade live i mbyllur ende (ose lidhja MetaApi është jashtë).')} />
-          ) : (
-            <>
-              <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-800">
-                {t('Profit total i realizuar:')}{' '}
-                {(() => {
-                  const lr = liveDeals.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
-                  return <span className={lr >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>{lr >= 0 ? '+' : ''}{lr.toFixed(2)} €</span>;
-                })()}{' '}· {liveDeals.length} {t('trade')}
-              </div>
-              <Table head={[t('Koha'), t('Simboli'), t('Krahu'), t('Vëllimi'), t('Çmim'), t('Profit (€)')]}>
-                {liveDeals.map((d) => {
-                  const sell = (d.type || '').includes('SELL');
-                  const p = (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0);
-                  return (
-                    <tr key={d.id} className="border-t border-gray-800">
-                      <Td className="text-gray-400">{d.time ? fmtTime(d.time) : '—'}</Td>
-                      <Td>{d.symbol || '—'}</Td>
-                      <Td><span className={sell ? 'text-rose-400' : 'text-emerald-400'}>{sell ? t('SHIT') : t('BLEJ')}</span></Td>
-                      <Td>{d.volume ?? '—'}</Td>
-                      <Td>{d.price != null ? Number(d.price).toLocaleString() : '—'}</Td>
-                      <Td className={p >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{p >= 0 ? '+' : ''}{p.toFixed(2)}</Td>
-                    </tr>
-                  );
-                })}
-              </Table>
-            </>
-          )}
-        </Section>
-      )}
 
       <p className="text-[11px] text-gray-500 text-center">
         Përditësuar: {new Date(now).toLocaleTimeString()} · Modul demo i pavarur — punon edhe kur lidhja live (MetaApi) është jashtë shërbimit.
