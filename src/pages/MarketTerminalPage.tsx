@@ -10,6 +10,7 @@ import { ClientPage } from '../App';
 import Mt5Chart, { type ChartCandle, type PriceLineDef, type EditableSlTp } from '../components/Mt5Chart';
 import OpenPositionsPanel from '../components/OpenPositionsPanel';
 import CompletedSignals from '../components/CompletedSignals';
+import SignalScanLog from '../components/SignalScanLog';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
   loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice,
@@ -1049,6 +1050,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
       {/* 4) Sinjalet e vjetra (të përfunduara) */}
       <CompletedSignals signals={doneSignals} variant="compact" />
+
+      {/* 5) Historiku diagnostik i skanimeve — pse hyn/s'hyn sinjali (s'prek logjikën) */}
+      <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
     </div>
   );
 }
