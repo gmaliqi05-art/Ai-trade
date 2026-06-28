@@ -877,6 +877,25 @@ Deno.serve(async (req: Request) => {
         { onConflict: "key" },
       );
     } catch { /* */ }
+
+    // HISTORI DIAGNOSTIKE (VETËM shtesë — S'PREK gjeneratorin/indikatorët/filtrat).
+    // Shkruan një rresht për këtë skanim: pse hyri ose s'hyri sinjali (nga `_diag`).
+    // Shfaqet te tabela "Historiku i Skanimeve" në Tregto Live & Tregto Demo.
+    try {
+      const createdAny = out.some((o) => (o as { created?: boolean }).created === true);
+      await db.from("signal_scan_log").insert({
+        symbol: GOLD_SYMBOL,
+        reject_reason: (_diag.gold_reject as string | undefined) ?? null,
+        gold_action: (_diag.gold_action as string | undefined) ?? null,
+        gold_conf: (_diag.gold_conf as number | undefined) ?? null,
+        src_1h: (_diag[`${GOLD_SYMBOL}:1h`] as string | undefined) ?? null,
+        src_4h: (_diag[`${GOLD_SYMBOL}:4h`] as string | undefined) ?? null,
+        created_signal: createdAny,
+      });
+      // Mbaje tabelën të vogël: fshi rreshtat më të vjetër se 3 ditë.
+      await db.from("signal_scan_log").delete().lt("scanned_at", new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
+    } catch { /* diagnostika s'duhet ta ndalë motorin */ }
+
     return json({ success: true, processed: out });
   } catch (err) {
     return json({ error: (err as Error).message }, 500);

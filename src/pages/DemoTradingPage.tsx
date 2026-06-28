@@ -6,6 +6,7 @@ import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5
 import { fetchBinanceCandles, type Timeframe } from '../ai-trader/market/candles';
 import { loadCandles as loadMt5Candles, loadSymbolPrice, loadTradeHistory, type HistoryDeal } from '../services/metaapi';
 import CompletedSignals, { type DoneSignal } from '../components/CompletedSignals';
+import SignalScanLog from '../components/SignalScanLog';
 import { useI18n } from '../i18n/i18n';
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
@@ -563,6 +564,9 @@ export default function DemoTradingPage() {
           </Table>
         )}
       </Section>
+
+      {/* Historiku diagnostik i skanimeve — pse hyn/s'hyn sinjali (s'prek logjikën) */}
+      <SignalScanLog title={t('Historiku i Skanimeve (Demo) — pse hyn ose s\'hyn sinjali')} />
 
       {/* Sinjalet e përfunduara (i njëjti komponent si Live) */}
       <CompletedSignals signals={doneSignals} variant="compact" />
