@@ -38,11 +38,13 @@ type DemoTrade = {
 // Burimi i një demo-trade: manual (user) ose auto (robot: scalp/sinjal).
 const srcOf = (t: DemoTrade) => t.source || (t.signal_id != null ? 'signal' : 'scalp');
 const isAuto = (t: DemoTrade) => srcOf(t) !== 'manual';
-// Afati & etiketa e burimit (si te live).
+// Afati & etiketa e burimit (si te live). AFATI ndjek NATYRËN e tregtimit, jo kush e hapi:
+// çdo tregtim nga sinjal është AFATGJATË (edhe kur hapet manualisht me klik mbi sinjal);
+// vetëm scalp-i dhe manualet pa sinjal janë afatshkurtër — njësoj si te terminali Live.
 const tradeKind = (t: DemoTrade) => {
   const s = srcOf(t);
+  if (t.signal_id != null) return { horizon: 'long' as const, src: s === 'manual' ? 'Sinjal (manual)' : 'Sinjal', cls: 'bg-blue-500/20 text-blue-400' };
   if (s === 'manual') return { horizon: 'short' as const, src: 'Manual', cls: 'bg-emerald-500/20 text-emerald-400' };
-  if (s === 'signal') return { horizon: 'long' as const, src: 'Sinjal', cls: 'bg-blue-500/20 text-blue-400' };
   return { horizon: 'short' as const, src: 'Scalp', cls: 'bg-amber-500/20 text-amber-400' };
 };
 
