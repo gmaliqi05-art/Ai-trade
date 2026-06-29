@@ -98,6 +98,28 @@ export function classifyHorizon(reason: string | null): 'short' | 'long' | undef
   return undefined;
 }
 
+// Klasifikon afatin e një POZICIONI TË HAPUR. Brokeri shpesh NUK e ruan komentin ('FastT'/'SCALP'),
+// prandaj provojmë me radhë: (1) komentin, (2) id-në (orderId i hapjes == positionId), (3) çmim+kah
+// më të afërt te logu i ekzekutimeve. Kthen 'short' (FastT/scalp) ose 'long' (sinjal/auto), ose undefined.
+export interface PosLike { id?: string; type?: string; comment?: string; clientId?: string; openPrice?: number }
+export interface HorizonExec { status?: string; action?: string; entry_price?: number | null; reason?: string | null; metaapi_order_id?: string | null }
+export function positionHorizon(p: PosLike, execs: HorizonExec[]): 'short' | 'long' | undefined {
+  if (/SCALP|FastT/i.test(`${p.comment ?? ''} ${p.clientId ?? ''}`)) return 'short';
+  const ex = execs.filter(e => e.status === 'executed');
+  const byId = p.id ? ex.find(e => e.metaapi_order_id && String(e.metaapi_order_id) === String(p.id)) : undefined;
+  if (byId) { const h = classifyHorizon(byId.reason ?? null); if (h) return h; }
+  const dir = (p.type || '').toUpperCase().includes('BUY') ? 'BUY' : 'SELL';
+  const open = Number(p.openPrice);
+  if (!Number.isFinite(open)) return undefined;
+  let best: HorizonExec | null = null, bestDiff = Infinity;
+  for (const e of ex) {
+    if ((e.action || '').toUpperCase() !== dir || e.entry_price == null) continue;
+    const diff = Math.abs(Number(e.entry_price) - open);
+    if (diff < bestDiff) { bestDiff = diff; best = e; }
+  }
+  return best && bestDiff <= 2.0 ? classifyHorizon(best.reason ?? null) : undefined;
+}
+
 // Grupon deal-et e MT5 në trade të mbyllura. DREJTIMI merret nga deal-i HYRËS (IN), jo nga
 // deal-i MBYLLËS (OUT) — sepse OUT i një SELL-i është një BUY (dhe anasjelltas).
 export function groupDeals(deals: HistoryDeal[]): ClosedTrade[] {

@@ -20,7 +20,7 @@ import {
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
-import { groupDeals, attachSource, fasttFromExecutions, exitKind, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, exitKind, positionHorizon, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -99,7 +99,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [doneSignals, setDoneSignals] = useState<Signal[]>([]);
   // Id-të e pozicioneve FastT (nga logu) — për të klasifikuar saktë pozicionet e hapura si Afatshkurtër
   // edhe kur brokeri NUK ruan komentin "FastT" te pozicioni i kthyer nga MT5.
-  const [fasttPosIds, setFasttPosIds] = useState<Set<string>>(new Set());
+  const [execLog, setExecLog] = useState<HorizonExec[]>([]);
   const [selected, setSelected] = useState('XAUUSD');
   const [tf, setTf] = useState('1m');
   // Simbolet e lejuara nga cilësimet (auto_symbols). Ari default; të tjerat shtohen te Cilësimet.
@@ -220,7 +220,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       const fasttIds = new Set(fastt.map(f => f.id));
       // Id-të e pozicioneve të hapura nga FastT (orderId i hapjes == positionId) — për klasifikim të saktë
       // të pozicioneve të hapura si Afatshkurtër edhe kur brokeri s'e ruan komentin "FastT".
-      setFasttPosIds(new Set(rows.filter(r => r.status === 'executed' && /^fastt auto/i.test(r.reason || '') && r.metaapi_order_id).map(r => String(r.metaapi_order_id))));
+      setExecLog(rows as HorizonExec[]);
       let mt5Rest: ClosedTrade[] = [];
       if (!hist.error && Array.isArray(hist.deals)) {
         const grouped = groupDeals(hist.deals as HistoryDeal[]);
@@ -485,8 +485,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const posForSymbol = posnsForSymbol[0] || null; // i pari — për panelin "Ndrysho SL/TP" + prefill
   // Afatshkurtër = scalp (auto-trade-runner: tag 'SCALP') OSE FastT (scalp-live: tag 'FastT').
   // Kapet nga komenti OSE nga id-ja te logu i FastT-it (kur brokeri s'e ruan komentin "FastT").
-  const isPosScalp = (p: { id?: string; comment?: string; clientId?: string } | null) => !!p &&
-    (/SCALP|FastT/i.test(String(p.comment ?? '') + String(p.clientId ?? '')) || fasttPosIds.has(String(p.id ?? '')));
+  const isPosScalp = (p: { id?: string; type?: string; comment?: string; clientId?: string; openPrice?: number } | null) =>
+    !!p && positionHorizon(p, execLog) === 'short';
   const posIsScalp = isPosScalp(posForSymbol);
   const fcur = account?.currency || '$';
   const posVpp = /XAU/i.test(selected) ? 100 : /(USOIL|UKOIL|WTI|BRENT)/i.test(selected) ? 1000 : 100;

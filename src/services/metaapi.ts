@@ -107,6 +107,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
 export interface TradeExecution {
   id: string; symbol: string; action: string; volume: number;
   mode: string; status: string; reason: string | null; created_at: string;
+  entry_price?: number | null; metaapi_order_id?: string | null;
 }
 
 /** Lexon konfigurimin e MetaApi. Riprovon te gabimet kalimtare (rrjet) dhe i NGRE ato —
@@ -356,7 +357,7 @@ export async function cancelPreOpenOrder(id: string): Promise<void> {
 export async function loadExecutions(userId: string, limit = 10): Promise<TradeExecution[]> {
   const { data } = await supabase
     .from('trade_executions')
-    .select('id, symbol, action, volume, mode, status, reason, created_at')
+    .select('id, symbol, action, volume, mode, status, reason, created_at, entry_price, metaapi_order_id')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);

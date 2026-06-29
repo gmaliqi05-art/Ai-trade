@@ -9,6 +9,7 @@ import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCirc
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
 import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
+import { positionHorizon } from '../services/closedTrades';
 import { useMetaStream } from '../hooks/useMetaStream';
 
 export default function OpenPositionsPanel({ configured, section = 'both' }: { configured: boolean; section?: 'positions' | 'executions' | 'both' }) {
@@ -46,7 +47,8 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   }, [configured]);
 
   const refreshExecutions = useCallback(async () => {
-    if (user) setExecutions(await loadExecutions(user.id, 8));
+    // 60 rreshta që klasifikimi afatgjatë/afatshkurtër i pozicioneve të ketë mjaft histori (FastT log).
+    if (user) setExecutions(await loadExecutions(user.id, 60));
   }, [user]);
 
   // Rrahje çdo 2s për të rivlerësuar freskinë e feed-it (edhe kur s'vjen përditësim).
@@ -66,24 +68,24 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   useEffect(() => {
     if (!configured || streamHealthy) return;
     if (showPositions) refreshPositions();
-    if (showExecutions) refreshExecutions();
+    if (showExecutions || showPositions) refreshExecutions(); // edhe te 'positions' — për klasifikimin
     // Pozicionet (P&L live nga MT5) çdo 2s; ekzekutimet (DB) më rrallë, çdo ~12s.
     let tick = 0;
     const id = setInterval(() => {
       tick++;
       if (showPositions) refreshPositions();
-      if (showExecutions && tick % 6 === 0) refreshExecutions();
+      if ((showExecutions || showPositions) && tick % 6 === 0) refreshExecutions();
     }, 2000);
     return () => clearInterval(id);
   }, [configured, streamHealthy, showPositions, showExecutions, refreshPositions, refreshExecutions]);
 
   // Ekzekutimet (nga DB) nuk vijnë nga streaming — lexoji periodikisht edhe kur streaming-u është live.
   useEffect(() => {
-    if (!configured || !streamLive || !showExecutions) return;
+    if (!configured || !streamLive || !(showExecutions || showPositions)) return;
     refreshExecutions();
     const id = setInterval(refreshExecutions, 12000);
     return () => clearInterval(id);
-  }, [configured, streamLive, showExecutions, refreshExecutions]);
+  }, [configured, streamLive, showExecutions, showPositions, refreshExecutions]);
 
   // P&L LIVE = fitimi i broker-it për pozicionin (i njëjti numër që tregon MT5; përditësohet çdo 2s
   // ose real-time me streaming). Mbyllja bëhet me çmimin real të tregut.
@@ -177,9 +179,16 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                     {isBuy ? <TrendingUp className="w-3.5 h-3.5 text-green-400 shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400 shrink-0" />}
                     <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
                     <span className="text-white">{p.symbol}</span>
-                    {/FastT/i.test(`${p.comment ?? ''} ${p.clientId ?? ''}`) && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400">FastT</span>
-                    )}
+                    {(() => {
+                      // Afatgjatë (sinjal) ose Afatshkurtër (FastT/scalp) — i klasifikuar nga logu kur
+                      // brokeri s'e ruan komentin. Pa etiketë kur s'dihet (p.sh. manual i pastër).
+                      const h = positionHorizon(p, executions);
+                      return h ? (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${h === 'short' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                          {h === 'short' ? t('Afatshkurtër') : t('Afatgjatë')}
+                        </span>
+                      ) : null;
+                    })()}
                     <span className="text-gray-300">{p.volume} {t('lot')}</span>
                     {p.openPrice != null && <span className="text-gray-400">@ {p.openPrice}</span>}
                     {p.stopLoss != null && <span className="text-red-300/80">SL {p.stopLoss}</span>}
