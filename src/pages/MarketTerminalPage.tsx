@@ -73,11 +73,20 @@ function symMatch(sel: string, posSym: string): boolean {
   return false;
 }
 
-// Freskia e sinjalit: pas 30 min çmimi ka lëvizur dhe hyrje/SL/TP janë të vjetra —
-// mos tregto mbi to (rezultate jo të mira). Roboti auto përdor 15 min.
-const SIGNAL_FRESH_MIN = 30;
+// Cikli i jetës së sinjalit në ekran:
+//  • 0–5 min  → AKTIV për tregtim (çmimi ende afër hyrjes); 1 min i parë = pikë e gjelbër ndriçuese (i ri).
+//  • 5–15 min → "I VJETËR" (OLD) — shfaqet, por mos tregto (çmimi ka lëvizur).
+//  • >15 min  → hiqet nga lista.
+const SIGNAL_TRADE_MIN = 5;   // aktiv për tregtim
+const SIGNAL_HIDE_MIN = 15;   // pas kësaj fshihet nga lista
+const SIGNAL_NEW_MIN = 1;     // pikë e gjelbër ndriçuese për sinjalin e sapoardhur
+const SIGNAL_FRESH_MIN = SIGNAL_TRADE_MIN; // emër i ruajtur (mbrojtja e tregtisë manuale)
 const signalAgeMin = (iso?: string | null) => (iso ? (Date.now() - new Date(iso).getTime()) / 60000 : Infinity);
 const signalIsFresh = (iso?: string | null) => signalAgeMin(iso) <= SIGNAL_FRESH_MIN;
+const signalIsNew = (iso?: string | null) => signalAgeMin(iso) <= SIGNAL_NEW_MIN;
+const signalVisible = (iso?: string | null) => signalAgeMin(iso) <= SIGNAL_HIDE_MIN;
+// Loti që do tregtonte roboti i sinjaleve sipas besueshmërisë (pasqyron auto-trade-runner).
+const signalLotByConfidence = (conf: number) => (conf >= 90 ? 0.03 : conf >= 80 ? 0.02 : 0.01);
 
 function errText(t: (k: string) => string, code: string, message?: string): string {
   const map: Record<string, string> = {
@@ -465,9 +474,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const analysisParts = (a?: string | null) => (a || '').split(';').map(p => p.trim()).filter(Boolean).map(translateReason);
 
   // Sinjali i fundit i gjeneruar nga sistemi (sipas kohës), për tregti manuale me një klik.
-  const latestSignal = signals.length
+  // Pas 15 min hiqet (pxClock rifreskon çdo 1s → rivlerësohet automatikisht).
+  const latestSignalRaw = signals.length
     ? [...signals].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0]
     : null;
+  const latestSignal = latestSignalRaw && signalVisible(latestSignalRaw.created_at) ? latestSignalRaw : null;
 
   // Klik mbi një sinjal → mbush formën "Porosi e re" (simbol, drejtim, SL, TP).
   const applySignal = (s: Signal) => {
@@ -896,25 +907,35 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
           {/* Sinjali i fundit i gjeneruar nga sistemi — klik për ta tregtuar manualisht */}
           <div className="pt-3 border-t border-gray-800">
-            <div className="text-[11px] text-gray-500 mb-2 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
+            <div className="text-[11px] text-gray-500 mb-1 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
+            <p className="text-[10px] text-gray-600 mb-2 leading-snug">{t('Ky është sinjali aktual i motorit — pikërisht atë që tregton roboti i sinjaleve. Aktiv 5 min; pas 5 min shënohet I VJETËR; pas 15 min hiqet.')}</p>
             {latestSignal ? (
               <button onClick={() => applySignal(latestSignal)}
-                className={`w-full text-left rounded-xl px-3 py-2.5 border transition-colors ${appliedSignalId === latestSignal.id ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-800/40 border-gray-700/50 hover:bg-gray-800'}`}>
+                className={`w-full text-left rounded-xl px-3 py-2.5 border transition-colors ${appliedSignalId === latestSignal.id ? 'bg-amber-500/10 border-amber-500/40' : signalIsNew(latestSignal.created_at) ? 'bg-green-500/10 border-green-500/40' : 'bg-gray-800/40 border-gray-700/50 hover:bg-gray-800'}`}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="flex items-center gap-2">
+                    {signalIsNew(latestSignal.created_at) && (
+                      <span className="relative flex h-2.5 w-2.5" title={t('Sinjal i ri')}>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                      </span>
+                    )}
                     <span className="text-white text-sm font-bold">{latestSignal.symbol}</span>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${latestSignal.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{latestSignal.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isShortHorizon(latestSignal.timeframe) ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{horizonLabel(latestSignal.timeframe)}</span>
-                    {!signalIsFresh(latestSignal.created_at) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
+                    {signalIsNew(latestSignal.created_at)
+                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400">{t('I RI')}</span>
+                      : !signalIsFresh(latestSignal.created_at) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
                   </span>
                   <span className="text-amber-400 text-xs font-semibold">{latestSignal.confidence}%</span>
                 </div>
-                <div className="flex gap-3 text-[10px] text-gray-400 flex-wrap">
-                  {latestSignal.entry_price && <span>{t('Hyrje:')} <span className="text-white">{Number(latestSignal.entry_price).toLocaleString()}</span></span>}
-                  {latestSignal.target_price && <span>TP: <span className="text-green-400">{Number(latestSignal.target_price).toLocaleString()}</span></span>}
-                  {latestSignal.stop_loss && <span>SL: <span className="text-red-400">{Number(latestSignal.stop_loss).toLocaleString()}</span></span>}
+                <div className="flex gap-3 text-[11px] text-gray-200 flex-wrap">
+                  {latestSignal.entry_price && <span>{t('Hyrje:')} <span className="text-white font-semibold">{Number(latestSignal.entry_price).toLocaleString()}</span></span>}
+                  {latestSignal.target_price && <span><span className="text-green-400">TP:</span> <span className="text-white font-semibold">{Number(latestSignal.target_price).toLocaleString()}</span></span>}
+                  {latestSignal.stop_loss && <span><span className="text-red-400">SL:</span> <span className="text-white font-semibold">{Number(latestSignal.stop_loss).toLocaleString()}</span></span>}
+                  <span><span className="text-amber-400">{t('Lot:')}</span> <span className="text-white font-semibold">{signalLotByConfidence(Number(latestSignal.confidence)).toFixed(2)}</span></span>
                 </div>
-                <div className="text-[10px] text-gray-600 mt-1">🕒 {t('Gjeneruar:')} {fmtTime(latestSignal.created_at)}</div>
+                <div className="text-[10px] text-gray-500 mt-1">🕒 {t('Gjeneruar:')} {fmtTime(latestSignal.created_at)} · {signalIsFresh(latestSignal.created_at) ? t('aktiv për tregtim') : t('i vjetër — mos tregto')}</div>
               </button>
             ) : (
               <p className="text-gray-600 text-xs text-center py-2">{t('Asnjë sinjal i gjeneruar ende.')}</p>
@@ -1058,29 +1079,39 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet')}</h3>
           <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300">{t('Të gjitha')}</button>
         </div>
-        {signals.length === 0 ? (
+        {signals.filter(s => signalVisible(s.created_at)).length === 0 ? (
           <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal aktiv tani.')}</p>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {signals.map(s => {
+            {signals.filter(s => signalVisible(s.created_at)).map(s => {
               const fresh = signalIsFresh(s.created_at);
+              const isNew = signalIsNew(s.created_at);
               return (
-              <button key={s.id} onClick={() => applySignal(s)} className={`text-left rounded-xl px-3 py-2 transition-colors border ${appliedSignalId === s.id ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-800/40 border-transparent hover:bg-gray-800'} ${fresh ? '' : 'opacity-60'}`}>
+              <button key={s.id} onClick={() => applySignal(s)} className={`text-left rounded-xl px-3 py-2 transition-colors border ${appliedSignalId === s.id ? 'bg-amber-500/10 border-amber-500/40' : isNew ? 'bg-green-500/10 border-green-500/40' : 'bg-gray-800/40 border-transparent hover:bg-gray-800'} ${fresh ? '' : 'opacity-60'}`}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="flex items-center gap-2">
+                    {isNew && (
+                      <span className="relative flex h-2.5 w-2.5" title={t('Sinjal i ri')}>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                      </span>
+                    )}
                     <span className="text-white text-sm font-bold">{s.symbol}</span>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isShortHorizon(s.timeframe) ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{horizonLabel(s.timeframe)}</span>
-                    {!fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
+                    {isNew
+                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400">{t('I RI')}</span>
+                      : !fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
                   </span>
                   <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
                 </div>
-                <div className="flex gap-3 text-[11px] text-gray-400 flex-wrap">
-                  {s.entry_price && <span>{t('Hyrje:')} <span className="text-white">{Number(s.entry_price).toLocaleString()}</span></span>}
-                  {s.target_price && <span>{t('Objektiv:')} <span className="text-green-400">{Number(s.target_price).toLocaleString()}</span></span>}
-                  {s.stop_loss && <span>{t('Stop:')} <span className="text-red-400">{Number(s.stop_loss).toLocaleString()}</span></span>}
+                <div className="flex gap-3 text-[11px] text-gray-200 flex-wrap">
+                  {s.entry_price && <span>{t('Hyrje:')} <span className="text-white font-semibold">{Number(s.entry_price).toLocaleString()}</span></span>}
+                  {s.target_price && <span><span className="text-green-400">{t('Objektiv:')}</span> <span className="text-white font-semibold">{Number(s.target_price).toLocaleString()}</span></span>}
+                  {s.stop_loss && <span><span className="text-red-400">{t('Stop:')}</span> <span className="text-white font-semibold">{Number(s.stop_loss).toLocaleString()}</span></span>}
+                  <span><span className="text-amber-400">{t('Lot:')}</span> <span className="text-white font-semibold">{signalLotByConfidence(Number(s.confidence)).toFixed(2)}</span></span>
                 </div>
-                <div className="text-[10px] text-gray-600 mt-1">🕒 {fmtTime(s.created_at)}{fresh ? '' : t(' · mos tregto')}</div>
+                <div className="text-[10px] text-gray-500 mt-1">🕒 {fmtTime(s.created_at)}{fresh ? '' : t(' · mos tregto')}</div>
               </button>
               );
             })}
