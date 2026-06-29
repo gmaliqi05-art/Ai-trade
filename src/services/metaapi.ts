@@ -320,6 +320,11 @@ export function modifyPosition(positionId: string, stopLoss?: number, takeProfit
   return callTrade({ action: 'MODIFY', positionId, stopLoss, takeProfit });
 }
 
+/** Regjistron MENJËHERË një mbyllje (TP/SL/auto) kur fronti e kap nga streaming-u live → kohë reale. */
+export function recordClose(positionId: string, symbol?: string) {
+  return callTrade({ action: 'RECORD_CLOSE', positionId, symbol });
+}
+
 /**
  * Ekzekuton një tregti në MT5 via MetaApi (me mbrojtjet e rrezikut në server).
  * `entryPrice` (opsionale): nëse jepet dhe çmimi s'është ende aty, vendoset POROSI NË PRITJE

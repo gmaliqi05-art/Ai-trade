@@ -168,6 +168,39 @@ async function pushNotify(payload: Record<string, unknown>): Promise<void> {
   } catch { /* njoftimi s'duhet të ndalë tregtimin */ }
 }
 
+// Regjistron një pozicion TË MBYLLUR te position_closes (burim i qëndrueshëm i listës së mbyllur,
+// s'varet nga historiku i rëndë i MT5). Merr P&L-në + detajet nga një dritare e VOGËL historie.
+// Përdoret nga mbyllja manuale DHE nga RECORD_CLOSE (kur fronti kap një mbyllje TP/SL në kohë reale).
+async function recordPositionClose(cfg: MetaApiConfig, db: ReturnType<typeof createClient>, userId: string, positionId: string, fallbackSymbol?: string): Promise<boolean> {
+  try {
+    const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const recent = await metaApiGet(cfg, `/history-deals/time/${encodeURIComponent(since)}/${encodeURIComponent(new Date().toISOString())}`, { timeoutMs: 10000, attempts: 2 }) as Array<Record<string, unknown>>;
+    const mine = (Array.isArray(recent) ? recent : []).filter((d) => String(d.positionId ?? "") === String(positionId));
+    const outD = mine.find((d) => /OUT/i.test(String(d.entryType ?? "")));
+    if (!outD) return false; // ende e hapur ose s'ka deal mbyllje në dritare
+    const inD = mine.find((d) => /IN/i.test(String(d.entryType ?? "")));
+    const net = mine.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
+    const sym = String(inD?.symbol ?? outD.symbol ?? fallbackSymbol ?? "XAUUSD");
+    const dir = String(inD?.type ?? "").toUpperCase().includes("BUY") ? "BUY" : "SELL";
+    const entry = Number(inD?.price) || 0;
+    const { data: openM } = await db.from("trade_executions").select("reason")
+      .eq("user_id", userId).eq("status", "executed").eq("action", dir)
+      .gte("entry_price", entry - 3).lte("entry_price", entry + 3)
+      .gte("created_at", new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString())
+      .order("created_at", { ascending: false }).limit(5);
+    const reasons = ((openM ?? []) as Array<{ reason?: string }>).map((r) => (r.reason ?? "").toLowerCase());
+    const source = reasons.some((r) => r.startsWith("fastt")) ? "fastt" : reasons.some((r) => r.startsWith("auto (")) ? "auto" : "manual";
+    const horizon = source === "fastt" ? "short" : source === "auto" ? "long" : null;
+    await db.from("position_closes").upsert({
+      user_id: userId, position_id: String(positionId), symbol: sym, action: dir,
+      volume: Number(inD?.volume) || 0.01, entry_price: entry || null,
+      exit_price: Number(outD.price) || null, net, source, horizon,
+      opened_at: inD?.time ? String(inD.time) : null, closed_at: outD.time ? String(outD.time) : new Date().toISOString(),
+    }, { onConflict: "user_id,position_id" });
+    return true;
+  } catch { return false; }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
@@ -335,6 +368,15 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // RECORD_CLOSE — fronti e thërret KUR kap (nga streaming-u live) që një pozicion u mbyll (TP/SL/auto),
+    // që mbyllja të regjistrohet MENJËHERË te lista (kohë reale), pa pritur close-tracker-in (2 min).
+    if (action === "RECORD_CLOSE") {
+      const positionId = body.positionId;
+      if (!positionId) return json({ error: "bad_request", message: "positionId i nevojshëm" }, 400);
+      const recorded = await recordPositionClose(config, db, user.id, String(positionId), body.symbol);
+      return json({ success: true, recorded });
+    }
+
     // CLOSE — mbyll një pozicion të hapur sipas id-së.
     if (action === "CLOSE") {
       const positionId = body.positionId;
@@ -361,39 +403,8 @@ Deno.serve(async (req: Request) => {
             : (brokerMsg || `Mbyllja dështoi te brokeri (${resp.status}).`);
           return json({ error: "close_failed", status: resp.status, message: msg, market_closed: marketClosed, details: rb }, 502);
         }
-        // REGJISTRO mbylljen te 'position_closes' (MENJËHERË) — që trade-i të SHFAQET te "Trade-t e
-        // mbyllura" EDHE kur historiku i plotë i MT5 dështon (llogari me shumë deal-e → 502). P&L nga
-        // një dritare e VOGËL historie (e shpejtë). Vlen për ÇDO burim (sinjal/FastT/manual). Dedup me
-        // position_id (upsert) → s'ka dyfishim me close-tracker-in apo historikun e MT5.
-        try {
-          await new Promise((r) => setTimeout(r, 900)); // prit deal-in OUT të regjistrohet te brokeri
-          const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-          const recent = await metaApiGet(config, `/history-deals/time/${encodeURIComponent(since)}/${encodeURIComponent(new Date().toISOString())}`, { timeoutMs: 10000, attempts: 2 }) as Array<Record<string, unknown>>;
-          const mine = (Array.isArray(recent) ? recent : []).filter((d) => String(d.positionId ?? "") === String(positionId));
-          if (mine.length > 0) {
-            const inD = mine.find((d) => /IN/i.test(String(d.entryType ?? "")));
-            const outD = mine.find((d) => /OUT/i.test(String(d.entryType ?? "")));
-            const net = mine.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
-            const sym = String(inD?.symbol ?? mine[0].symbol ?? body.symbol ?? "XAUUSD");
-            const dir = String(inD?.type ?? "").toUpperCase().includes("BUY") ? "BUY" : "SELL";
-            const entry = Number(inD?.price) || 0;
-            // Burimi: kah + çmim afër një hapjeje te logu (FastT → short; auto/sinjal → long; ndryshe manual).
-            const { data: openM } = await db.from("trade_executions").select("reason")
-              .eq("user_id", user.id).eq("status", "executed").eq("action", dir)
-              .gte("entry_price", entry - 3).lte("entry_price", entry + 3)
-              .gte("created_at", new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString())
-              .order("created_at", { ascending: false }).limit(5);
-            const reasons = ((openM ?? []) as Array<{ reason?: string }>).map((r) => (r.reason ?? "").toLowerCase());
-            const source = reasons.some((r) => r.startsWith("fastt")) ? "fastt" : reasons.some((r) => r.startsWith("auto (")) ? "auto" : "manual";
-            const horizon = source === "fastt" ? "short" : source === "auto" ? "long" : null;
-            await db.from("position_closes").upsert({
-              user_id: user.id, position_id: String(positionId), symbol: sym, action: dir,
-              volume: Number(inD?.volume) || 0.01, entry_price: entry || null,
-              exit_price: outD ? Number(outD.price) : null, net, source, horizon,
-              opened_at: inD?.time ? String(inD.time) : null, closed_at: new Date().toISOString(),
-            }, { onConflict: "user_id,position_id" });
-          }
-        } catch { /* best-effort — mos e blloko përgjigjen e mbylljes */ }
+        // REGJISTRO mbylljen te 'position_closes' (MENJËHERË) — shfaqet te lista pavarësisht historikut të rëndë të MT5.
+        try { await new Promise((r) => setTimeout(r, 900)); await recordPositionClose(config, db, user.id, String(positionId), body.symbol); } catch { /* best-effort */ }
         await pushNotify({ user_id: user.id, title: "Trade i mbyllur (manual)", body: `${body.symbol || "Pozicioni"} u mbyll.`, url: "/", tag: "manual-close" });
         return json({ success: true, result: rb });
       } catch (e) {
