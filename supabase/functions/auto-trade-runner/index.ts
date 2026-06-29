@@ -161,6 +161,48 @@ function lotForConfidence(cfg: Cfg, conf: number): number {
   return Math.round(lot * 100) / 100;
 }
 
+// Loti i robotit të SINJALEVE sipas besueshmërisë — I PAVARUR nga max_lot i cilësimeve të faqes.
+// Si te demo që ka punuar: 0.01 bazë, 0.02 në ≥80%, 0.03 në ≥90%. Mbrojtja e rrezikut (lotByRisk)
+// mbetet e aktivizuar më poshtë, kështu që llogaritë e vogla s'e kalojnë kufirin.
+// Nëse përdoruesi ka zgjedhur QËLLIMISHT lot fiks (dynamic_lot=false), nderohet default_lot.
+function signalLotByConfidence(cfg: Cfg, conf: number): number {
+  if (cfg.dynamic_lot === false) return Number(cfg.default_lot) || 0.01;
+  let lot = 0.01;
+  if (conf >= 80) lot = 0.02;
+  if (conf >= 90) lot = 0.03;
+  return lot;
+}
+
+// RI-ANALIZË pas mbylljes — kthen arsyen e bllokimit nëse ri-hyrja në TË NJËJTIN drejtim duket
+// si "fundi i rrugës" (lëvizja po kthehet). null = e konfirmuar, lejo hyrjen.
+function reentryConfirm(action: string, t15: TF, m15: Candle[]): string | null {
+  const isBuy = action === "BUY";
+  const price = Number(t15.price);
+  const snap = (t15.snapshot ?? {}) as Record<string, unknown>;
+  const rsi15 = typeof snap.rsi14 === "number" ? snap.rsi14 : null;
+  const ema9 = typeof snap.ema9 === "number" ? snap.ema9 : null;
+  // 1) RSI 15m në zonë kthimi kundër vazhdimit të lëvizjes.
+  if (isBuy && rsi15 != null && rsi15 > 68) return "RSI 15m i mbi-blerë (kthim i mundshëm) — pres";
+  if (!isBuy && rsi15 != null && rsi15 < 32) return "RSI 15m i mbi-shitur (kthim i mundshëm) — pres";
+  // 2) Çmimi te fundi i lëvizjes (afër minimumit/maksimumit të fundit 15m).
+  const seg = m15.slice(-20);
+  if (seg.length >= 5) {
+    const lo = Math.min(...seg.map((c) => c.low)), hi = Math.max(...seg.map((c) => c.high));
+    const range = hi - lo;
+    if (range > 0) {
+      const pos = (price - lo) / range; // 0 = te minimumi, 1 = te maksimumi
+      if (!isBuy && pos < 0.15) return "Çmimi te fundi i rënies (afër minimumit 15m) — pres retest";
+      if (isBuy && pos > 0.85) return "Çmimi te maja e ngritjes (afër maksimumit 15m) — pres retest";
+    }
+  }
+  // 3) Momentumi afatshkurtër duhet ende të përputhet me drejtimin (çmimi vs EMA9 15m).
+  if (ema9 != null) {
+    if (!isBuy && price > ema9) return "Momentumi 15m po kthehet lart (çmimi mbi EMA9) — pres konfirmim";
+    if (isBuy && price < ema9) return "Momentumi 15m po kthehet poshtë (çmimi nën EMA9) — pres konfirmim";
+  }
+  return null;
+}
+
 // ---------- Indikatorë (për kontekstin e grafikut MT5) ----------
 function ema(v: number[], p: number): number[] {
   const out = new Array(v.length).fill(NaN);
@@ -1133,6 +1175,18 @@ Deno.serve(async (req: Request) => {
       // Bias-i i dollarit (një herë për përdorues) — për konfirmim ar↔dollar.
       const dxy = candidates.length > 0 ? await dollarBias(cfg) : "neutral";
 
+      // COOLDOWN PAS MBYLLJES — mbylljet e fundit (çdo simbol+drejtim) brenda dritares; përdoret që
+      // roboti të mos ri-hyjë menjëherë në të njëjtin drejtim pa një ri-analizë konfirmuese.
+      const REENTRY_COOLDOWN_MIN = 20;
+      const cdIso = new Date(Date.now() - REENTRY_COOLDOWN_MIN * 60 * 1000).toISOString();
+      const recentCloses = candidates.length > 0
+        ? ((await db.from("position_closes").select("symbol, action, closed_at")
+            .eq("user_id", cfg.user_id).gte("closed_at", cdIso)).data ?? [])
+        : [];
+      const normSym = (s: string) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const isGold = (s: string) => /XAU|GOLD|PAXG/i.test(s || "");
+      const sameAsset = (a: string, b: string) => normSym(a) === normSym(b) || (isGold(a) && isGold(b));
+
       for (const sig of candidates) {
         // FILTËR EKSPERTËSH — IDENTIK me demon: kapërce hyrjet e dobëta (mbi-ekstendim / mbrëmje ET 17–20).
         // Si te demo, kalohet pa log në DB — vetëm te përmbledhja (log() s'është ende në fushëveprim këtu).
@@ -1147,6 +1201,11 @@ Deno.serve(async (req: Request) => {
         // Emri REAL i simbolit te brokeri (rregullon "Unknown symbol 4301") — me cache të qëndrueshëm.
         const tradeSym = await resolveSymbol(cfg, sig.symbol, db);
 
+        // A u mbyll kohët e fundit një pozicion në TË NJËJTIN simbol+drejtim? (→ kërkon ri-analizë).
+        const recentSameDir = recentCloses.some((rc: { symbol?: string; action?: string }) =>
+          String(rc.action || "").toUpperCase() === action &&
+          (sameAsset(rc.symbol || "", tradeSym) || sameAsset(rc.symbol || "", sig.symbol)));
+
         // ---- ANKORIM te çmimi REAL MT5 (zgjidh bug-un PAXG→MT5) + konteksti i grafikut ----
         let entryPx: number | undefined;
         let stopLoss: number | undefined;
@@ -1155,6 +1214,7 @@ Deno.serve(async (req: Request) => {
         let tpDist = 0;
         let ctx: Record<string, unknown> | null = null;
         let dataSrc = "mt5";
+        let reentryVeto: string | null = null;
 
         const [m15, m1h, m4h] = await Promise.all([
           fetchMt5Candles(cfg, tradeSym, "15m", 300),
@@ -1172,6 +1232,8 @@ Deno.serve(async (req: Request) => {
           stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
           ctx = buildContext(sig.symbol, t15, t1h, t4h, entryPx);
+          // Ri-analizë vetëm nëse sapo u mbyll një trade në të njëjtin drejtim (cooldown).
+          if (recentSameDir) reentryVeto = reentryConfirm(action, t15, m15);
         } else {
           // Fallback: nivelet e sinjalit (PAXG) kur MT5 s'jep qirinj.
           dataSrc = "binance_fallback";
@@ -1180,11 +1242,14 @@ Deno.serve(async (req: Request) => {
           takeProfit = sig.target_price != null ? Number(sig.target_price) : undefined;
           slDist = entryPx != null && stopLoss != null ? Math.abs(entryPx - stopLoss) : 0;
           tpDist = entryPx != null && takeProfit != null ? Math.abs(takeProfit - entryPx) : slDist * 2;
+          // S'ka qirinj MT5 për ri-analizë → nëse sapo u mbyll në të njëjtin drejtim, prit (i kujdesshëm).
+          if (recentSameDir) reentryVeto = "S'ka të dhëna MT5 për ri-analizë pas mbylljes — pres sinjalin tjetër";
         }
 
-        // POSITION SIZING (fixed-fractional): rreziku per-trade = % e kapitalit (default 1%),
-        // i kapur te kufiri ditor; lot-i del nga distanca REALE e SL.
-        let volume = lotForConfidence(cfg, Number(sig.confidence) || 0);
+        // POSITION SIZING: lot sipas BESUESHMËRISË (si demo), i pavarur nga max_lot i cilësimeve.
+        // Mbrojtja e rrezikut (fixed-fractional, % e kapitalit) mbetet aktive më poshtë → e ul lotin
+        // kur rreziku real e tejkalon kufirin, kështu llogaritë e vogla mbrohen.
+        let volume = signalLotByConfidence(cfg, Number(sig.confidence) || 0);
         const maxRisk = Number(cfg.max_daily_loss) > 0 ? Number(cfg.max_daily_loss) : 100; // L1: pa limit të vlefshëm → default i sigurt
         const riskPct = Number(cfg.risk_per_trade_pct) || 1;
         const equityRisk = equity > 0 ? equity * (riskPct / 100) : 0;
@@ -1225,6 +1290,9 @@ Deno.serve(async (req: Request) => {
         if (dailyStop) { await log("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDailyRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
         // EKSPERIMENTAL: cool-off pas serie humbjesh — ndal edhe sinjalet swing.
         if (expBlockOpens) { summary.push({ user: cfg.user_id, signal: sig.id, status: "cooloff" }); continue; }
+        // COOLDOWN PAS MBYLLJES — sapo u mbyll një trade në të njëjtin drejtim dhe ri-analiza s'e
+        // konfirmon vazhdimin (lëvizja po kthehet) → prit sinjalin tjetër, mos hyr te fundi i rrugës.
+        if (reentryVeto) { await log("rejected", `Cooldown ri-hyrjeje: ${reentryVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "reentry_cooldown", reason: reentryVeto }); continue; }
         // FILTRA SHTESË (vetëm në modalitet STRIKT; default OFF = sjellja IDENTIKE me demon).
         // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
         if (cfg.signals_strict === true && netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
