@@ -13,7 +13,7 @@ import CompletedSignals from '../components/CompletedSignals';
 import SignalScanLog from '../components/SignalScanLog';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
-  loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice, loadPositionCloses,
+  loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice, loadPositionCloses, recordClose,
   loadPreOpenOrders, cancelPreOpenOrder,
   type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder,
 } from '../services/metaapi';
@@ -249,6 +249,26 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const pos = await loadOpenPositions();
     if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
   }, [user, metaConfigured]);
+
+  // KOHË REALE: kap mbylljet (TP/SL/auto) sapo pozicioni zhduket nga feed-i live i MT5, regjistroji
+  // MENJËHERË te position_closes dhe rifresko listën e mbyllur — pa pritur close-tracker-in (2 min).
+  const prevPosIdsRef = useRef<Set<string>>(new Set());
+  const posReadyRef = useRef(false);
+  useEffect(() => {
+    if (!metaConfigured) return;
+    const cur = new Set(positions.map(p => p.id));
+    const prev = prevPosIdsRef.current;
+    prevPosIdsRef.current = cur;
+    // Prit derisa të kemi marrë të paktën një herë pozicionet (shmang "mbyllje" false në ngarkim).
+    if (!posReadyRef.current) { posReadyRef.current = true; return; }
+    const closed = [...prev].filter(id => !cur.has(id));
+    if (closed.length === 0) return;
+    (async () => {
+      await new Promise(r => setTimeout(r, 1500)); // lër deal-in OUT të regjistrohet te brokeri
+      await Promise.all(closed.map(id => recordClose(id).catch(() => {})));
+      fetchMeta(); // rifresko "Trade-t e mbyllura" (përfshin mbylljet e reja)
+    })();
+  }, [positions, metaConfigured, fetchMeta]);
 
   // Rifreskim manual i të dhënave (me reagim vizual).
   const refreshAll = async () => {
