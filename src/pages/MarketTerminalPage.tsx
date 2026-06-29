@@ -191,7 +191,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         .eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${now}`).gte('created_at', since24).order('confidence', { ascending: false }).limit(8),
       // Sinjalet e PËRFUNDUARA (TP/SL/skaduar) të 24h të fundit — historiku i plotë te Raportet.
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, outcome, result_pct, closed_at')
-        .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', since24).order('closed_at', { ascending: false }).limit(12),
+        .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', since24).order('created_at', { ascending: false }).limit(12),
     ]);
     if (ar.data) setAssets(goldFirst(ar.data as Asset[]));
     if (sr.data) setSignals(sr.data as Signal[]);
@@ -483,7 +483,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   // Përmbledhje P&L për pasqyrë: LIVE (lundrues, pozicionet e hapura tani) + SOT (realizuar sot + live)
   // + GJITHSEJ (realizuar nga historiku i disponueshëm + live). I jep përdoruesit gjendjen e tregtimit.
-  const floatingPnl = Number(account?.profit ?? 0);
+  // Floating-u llogaritet nga SHUMA e pozicioneve të hapura (account.profit shpesh vjen null nga MT5).
+  const floatingPnl = positions.length > 0
+    ? positions.reduce((a, p) => a + Number(p.profit ?? 0), 0)
+    : Number(account?.profit ?? 0);
   const todayStr = new Date().toDateString();
   const realizedToday = history.reduce((a, h) => a + ((h.closeTime && new Date(h.closeTime).toDateString() === todayStr) ? (h.net || 0) : 0), 0);
   const realizedTotal = history.reduce((a, h) => a + (h.net || 0), 0);
@@ -713,11 +716,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* Gjendja e llogarisë — kompakte; shifrat e fshehura për privatësi (klik mbi to për t'i shfaqur/fshehur) */}
       {metaConfigured && (
         <div onClick={() => setShowBalances(s => !s)} title={t('Klik për të shfaqur/fshehur')}
-          className="grid grid-cols-2 lg:grid-cols-4 gap-2 cursor-pointer select-none">
+          className="grid grid-cols-3 gap-2 cursor-pointer select-none">
           {[
             { label: t('Balanca'), value: `${money(account?.balance)} ${cur}`, icon: Wallet, cls: 'text-white' },
             { label: t('Equity'), value: `${money(account?.equity)} ${cur}`, icon: Activity, cls: 'text-white' },
-            { label: t('Fitim/Humbje'), value: `${(account?.profit ?? 0) >= 0 ? '+' : ''}${money(account?.profit)}`, icon: TrendingUp, cls: (account?.profit ?? 0) >= 0 ? 'text-green-400' : 'text-red-400' },
             { label: t('Marzh i lirë'), value: `${money(account?.freeMargin)} ${cur}`, icon: Wallet, cls: 'text-white' },
           ].map((c, i) => {
             const Icon = c.icon;
