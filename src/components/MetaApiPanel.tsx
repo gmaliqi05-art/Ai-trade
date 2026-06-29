@@ -139,8 +139,14 @@ export default function MetaApiPanel() {
       <Section icon={Power} title={t('Kontrollet kryesore')} subtitle={t('Ndez/fik tregtimin automatik dhe sigurinë. Ruhen menjëherë.')}>
         <div className="grid sm:grid-cols-3 gap-3">
           <BigToggle
-            on={cfg.auto_trade} onClick={() => setAndSave('auto_trade', !cfg.auto_trade)} icon={Play}
-            title={t('Auto-trade')} desc={t('Roboti hap trade vetë sipas sinjaleve dhe modeleve aktive.')} />
+            on={cfg.auto_trade}
+            onClick={() => cfg.auto_trade
+              ? setAndSave('auto_trade', false)
+              /* Ndezja e Robotit të Sinjaleve fik AUTOMATIKISHT robotët e tjerë (scalp + FastT/short) —
+                 vetëm një robot tregton njëherësh. Përdoruesi mund ta rindezë short-in vetë më pas. */
+              : setManyAndSave({ auto_trade: true, strategy_scalp: false, scalp_live_enabled: false })}
+            icon={Play}
+            title={t('Auto-trade')} desc={t('Roboti hap trade vetë sipas sinjaleve. Ndezja fik robotët e tjerë (short/FastT).')} />
           <BigToggle
             on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo')} icon={Cloud} danger={cfg.mode === 'live'}
             title={cfg.mode === 'demo' ? t('Mode: DEMO') : t('Mode: LIVE')} desc={cfg.mode === 'demo' ? t('Para virtuale — pa rrezik. Ideale për test.') : t('PARA REALE. Sigurohu që e ke testuar në demo.')} onLabel={cfg.mode === 'live' ? 'LIVE' : 'DEMO'} forceOnColor={cfg.mode === 'live'} />
@@ -375,25 +381,26 @@ export default function MetaApiPanel() {
         </div>
 
         {/* Karta SCALP-LIVE — robot scalping në kohë reale (cikël brenda minutës) */}
-        {/* RREGULL: FastT çaktivizohet kur Roboti i Sinjaleve (auto_trade) është ON — vetëm një robot njëherësh. */}
-        <div className={`rounded-xl border p-3.5 transition-colors ${cfg.scalp_live_enabled && !cfg.auto_trade ? 'bg-rose-500/10 border-rose-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
+        {/* RREGULL: vetëm një robot njëherësh. Ndezja e FastT fik Robotin e Sinjaleve, dhe anasjelltas. */}
+        <div className={`rounded-xl border p-3.5 transition-colors ${cfg.scalp_live_enabled ? 'bg-rose-500/10 border-rose-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-semibold text-white flex items-center gap-2"><Zap className="w-4 h-4 text-rose-400" />{t('FastT live (kohë reale)')}</span>
             <button
-              onClick={() => { if (!cfg.auto_trade) setAndSave('scalp_live_enabled', !cfg.scalp_live_enabled); }}
-              disabled={!!cfg.auto_trade}
-              title={cfg.auto_trade ? t('FastT fiket kur Roboti i Sinjaleve është ON') : ''}
-              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.auto_trade ? 'bg-gray-700/30 text-gray-500 border-gray-700 cursor-not-allowed' : cfg.scalp_live_enabled ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
-              {cfg.auto_trade ? t('I FIKUR (sinjalet ON)') : cfg.scalp_live_enabled ? t('AKTIV') : t('JOAKTIV')}
+              onClick={() => cfg.scalp_live_enabled
+                ? setAndSave('scalp_live_enabled', false)
+                /* Ndezja e FastT-it (short) fik AUTOMATIKISHT Robotin e Sinjaleve — vetëm një robot njëherësh. */
+                : setManyAndSave({ scalp_live_enabled: true, auto_trade: false, strategy_scalp: false })}
+              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.scalp_live_enabled ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+              {cfg.scalp_live_enabled ? t('AKTIV') : t('JOAKTIV')}
             </button>
           </div>
-          {cfg.auto_trade && (
-            <p className="text-[11px] text-amber-400/90 mt-2">{t('FastT është i fikur sepse Roboti i Sinjaleve është ON. Vetëm një robot tregton njëherësh — fik sinjalet që ta përdorësh FastT.')}</p>
+          {cfg.auto_trade && !cfg.scalp_live_enabled && (
+            <p className="text-[11px] text-amber-400/90 mt-2">{t('Ndezja e FastT do të fikë Robotin e Sinjaleve — vetëm një robot tregton njëherësh.')}</p>
           )}
           <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Robot <span class="text-gray-300">krejt i pavarur</span> që ndjek <span class="text-gray-300">qirinjtë live 1m (~çdo 2.5–5 sekonda)</span>: kap ngritjet → BLEJ dhe rëniet → SHIT drejtpërdrejt nga momentum-i i qirinjve, <span class="text-rose-300">pa u ndikuar nga motori/strategjitë e tjera</span>. Mbron fitimin shpejt dhe del në kthesë. <span class="text-rose-300">Pa TP/SL fiks</span> — vetëm një SL "katastrofe" i gjerë te brokeri si parashutë.') }} />
 
-          {/* Nën-parametrat e scalp-live — të çaktivizuara edhe kur sinjalet janë ON */}
-          <div className={`mt-3 space-y-2.5 transition-opacity ${cfg.scalp_live_enabled && !cfg.auto_trade ? '' : 'opacity-40 pointer-events-none'}`}>
+          {/* Nën-parametrat e scalp-live */}
+          <div className={`mt-3 space-y-2.5 transition-opacity ${cfg.scalp_live_enabled ? '' : 'opacity-40 pointer-events-none'}`}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <NumField label={t('Lot (fiks)')} hint={t('Madhësia e vogël e pozicionit për scalp-live (p.sh. 0.01).')} value={cfg.scalp_live_lot} step="0.01" min="0.01" onChange={v => set('scalp_live_lot', v)} onBlur={save} />
               <NumField label={t('Maks. njëkohësisht')} hint={t('Sa pozicione scalp-live lejohen në të njëjtën kohë.')} value={cfg.scalp_live_max_trades} step="1" min="1" onChange={v => set('scalp_live_max_trades', v)} onBlur={save} />
