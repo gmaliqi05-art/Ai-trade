@@ -49,7 +49,7 @@ interface Cfg {
 interface Signal {
   id: string; symbol: string; type: string; confidence: number;
   entry_price: number | null; target_price: number | null; stop_loss: number | null;
-  analysis: string | null;
+  analysis: string | null; features?: Record<string, unknown> | null;
 }
 
 interface Position {
@@ -60,6 +60,19 @@ interface Position {
 
 // Rrumbullakim te 2 shifra dhjetore (për tekstin e njoftimeve push). Mungonte → "r2 is not defined".
 const r2 = (n: number): number => Math.round(n * 100) / 100;
+
+// FILTËR EKSPERTËSH — IDENTIK me demon (demo-trade-runner.expertVeto). Kapërce hyrjet e dobëta:
+//  (1) mbi-ekstendim (ADX>50 + RSI ekstrem) — i tepërt (motori e refuzon në krijim), mbahet për paritet.
+//  (2) mbrëmja NY (ora ET 17–20) — likuiditet i ulët. Që Live të hyjë SAKTË te të njëjtat sinjale si demo.
+function expertVeto(f: Record<string, unknown> | null | undefined): string | null {
+  if (!f) return null;
+  const adx = typeof f.adx === "number" ? f.adx : null;
+  const rsi = typeof f.rsi === "number" ? f.rsi : null;
+  const et = typeof f.et_hour === "number" ? f.et_hour : null;
+  if (adx != null && adx > 50 && rsi != null && (rsi < 25 || rsi > 75)) return "over-extended";
+  if (et != null && et >= 17 && et <= 20) return "evening-ET";
+  return null;
+}
 
 // Shenja që dallon pozicionet e hapura nga strategjia scalp (vendoset te `comment`/`clientId`).
 const SCALP_TAG = "SCALP";
@@ -1107,7 +1120,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: signals } = await db
         .from("signals")
-        .select("id, symbol, type, confidence, entry_price, target_price, stop_loss, analysis")
+        .select("id, symbol, type, confidence, entry_price, target_price, stop_loss, analysis, features")
         .eq("user_id", cfg.user_id).eq("status", "active").gte("created_at", sinceIso)
         .order("created_at", { ascending: false }).limit(5);
 
@@ -1121,6 +1134,10 @@ Deno.serve(async (req: Request) => {
       const dxy = candidates.length > 0 ? await dollarBias(cfg) : "neutral";
 
       for (const sig of candidates) {
+        // FILTËR EKSPERTËSH — IDENTIK me demon: kapërce hyrjet e dobëta (mbi-ekstendim / mbrëmje ET 17–20).
+        // Si te demo, kalohet pa log në DB — vetëm te përmbledhja (log() s'është ende në fushëveprim këtu).
+        const xveto = expertVeto(sig.features);
+        if (xveto) { summary.push({ user: cfg.user_id, signal: sig.id, status: "expert_veto", veto: xveto }); continue; }
         const { data: existing } = await db
           .from("trade_executions").select("id").eq("user_id", cfg.user_id).eq("signal_id", sig.id).limit(1);
         if (existing && existing.length > 0) continue;
