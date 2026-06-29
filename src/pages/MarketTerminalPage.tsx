@@ -473,7 +473,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Të GJITHA pozicionet e hapura për simbolin e zgjedhur (mund të jenë disa njëkohësisht).
   const posnsForSymbol = positions.filter(p => symMatch(selected, p.symbol));
   const posForSymbol = posnsForSymbol[0] || null; // i pari — për panelin "Ndrysho SL/TP" + prefill
-  const posIsScalp = posForSymbol ? /SCALP/i.test(String(posForSymbol.comment ?? '') + String(posForSymbol.clientId ?? '')) : false;
+  // Afatshkurtër = scalp (auto-trade-runner: tag 'SCALP') OSE FastT (scalp-live: tag 'FastT').
+  // FastT s'përmban 'SCALP' me qëllim → duhet kapur veçmas, përndryshe shfaqej gabimisht 'Afatgjatë'.
+  const posIsScalp = posForSymbol ? /SCALP|FastT/i.test(String(posForSymbol.comment ?? '') + String(posForSymbol.clientId ?? '')) : false;
   const fcur = account?.currency || '$';
   const posVpp = /XAU/i.test(selected) ? 100 : /(USOIL|UKOIL|WTI|BRENT)/i.test(selected) ? 1000 : 100;
   const r2 = (n: number) => n.toFixed(2);
@@ -563,7 +565,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // vizatohen këtu — i mbulon doreza e tërheqshme (që mos të dyfishohen).
   const chartLines: PriceLineDef[] = [
     ...posnsForSymbol.flatMap((p, i): PriceLineDef[] => {
-      const isScalp = /SCALP/i.test(String(p.comment ?? '') + String(p.clientId ?? ''));
+      const isScalp = /SCALP|FastT/i.test(String(p.comment ?? '') + String(p.clientId ?? ''));
       const pnl = livePnlOf(p), risk = riskOf(p), reward = rewardOf(p);
       const tag = multiPos ? ` #${i + 1}` : '';
       const editing = activePosId === p.id;
