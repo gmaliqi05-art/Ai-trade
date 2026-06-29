@@ -24,6 +24,7 @@ const SCALP_LIVE_TAG = "FastT";
 
 interface Cfg {
   user_id: string; account_id: string; token: string; region: string; mode: string;
+  auto_trade?: boolean;  // roboti i sinjaleve (master Signal→Live) — kur ON, FastT NUK tregton
   max_lot?: number; max_daily_loss?: number; kill_switch?: boolean;
   symbol_map?: Record<string, string> | null;
   day_start_equity?: number; day_start_date?: string;
@@ -595,7 +596,12 @@ Deno.serve(async (req: Request) => {
   try {
     const { data: configs } = await db.from("metaapi_config").select("*")
       .eq("scalp_live_enabled", true).eq("kill_switch", false);
-    const rows = (configs ?? []).map((r) => r as Cfg).filter((c) => c.account_id && c.token);
+    // RREGULL PLATFORME: kur Roboti i Sinjaleve (Signal→Live / auto_trade) është ON, TË GJITHË robotët
+    // e tjerë janë OFF — FastT S'GUXON të tregtojë paralel me sinjalet. Filtri në kod trajton saktë
+    // edhe auto_trade=null (e konsideron OFF), ndryshe nga .neq që do i përjashtonte gabimisht.
+    const rows = (configs ?? []).map((r) => r as Cfg)
+      .filter((c) => c.account_id && c.token)
+      .filter((c) => c.auto_trade !== true);
     if (rows.length === 0) {
       return new Response(JSON.stringify({ success: true, note: "asnjë përdorues scalp-live" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }

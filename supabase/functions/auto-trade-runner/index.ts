@@ -859,8 +859,10 @@ Deno.serve(async (req: Request) => {
         } catch { /* njoftimi s'duhet të ndalë robotin */ }
       }
       let openTrades = positions.length;
-      const scalpOn = cfg.strategy_scalp === true;
-      const swingOn = cfg.strategy_swing !== false; // default ON
+      const swingOn = cfg.strategy_swing !== false; // default ON (Roboti i Sinjaleve)
+      // RREGULL PLATFORME: kur Roboti i Sinjaleve (swing) është ON, TË GJITHË robotët e tjerë janë OFF.
+      // Scalp-i tregton VETËM në modalitetin scalp-only (swing i fikur) — kurrë paralel me sinjalet.
+      const scalpOn = cfg.strategy_scalp === true && !swingOn;
       let scalpOpen = positions.filter(isScalpPosition).length;
 
       // FILTRA EKSPERIMENTALË (opt-in): vetëm spread-guard (zbatohet brenda lak-eve të hyrjes).
