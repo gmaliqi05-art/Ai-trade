@@ -83,7 +83,7 @@ export default function CompletedSignals({ signals, variant = 'compact' }: { sig
   // ----- compact (Terminal MT5) -----
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
         <h3 className="text-white font-semibold text-sm flex items-center gap-2"><History className="w-4 h-4 text-amber-400" />{t('Sinjale të përfunduara')}</h3>
         {signals.length > 0 && (
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-800 text-gray-300">
@@ -91,12 +91,14 @@ export default function CompletedSignals({ signals, variant = 'compact' }: { sig
           </span>
         )}
       </div>
+      <p className="text-[10px] text-gray-600 mb-3 leading-snug">{t('Saktësia e motorit: a e preku çmimi TP-në apo SL-në. Përqindja është lëvizja e sinjalit, jo fitimi i llogarisë.')}</p>
       {signals.length === 0 ? (
         <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal i përfunduar ende. Vlerësohen automatikisht kur arrijnë TP/SL.')}</p>
       ) : (
         <div className="grid sm:grid-cols-2 gap-2">
           {signals.map(s => {
             const pct = s.result_pct == null ? null : Number(s.result_pct);
+            const tp = s.outcome === 'tp', sl = s.outcome === 'sl';
             return (
               <div key={s.id} className="bg-gray-800/40 rounded-xl px-3 py-2">
                 <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
@@ -106,6 +108,11 @@ export default function CompletedSignals({ signals, variant = 'compact' }: { sig
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${outcomeCls(s.outcome)}`}>{outcomeLabel(t, s.outcome)}</span>
                   </span>
                   {pct != null && <span className={`text-xs font-bold ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pct >= 0 ? '+' : ''}{pct}%</span>}
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] mb-1">
+                  {s.entry_price != null && <span className="text-gray-300">{t('Hyrje:')} <span className="text-white font-semibold">{s.entry_price.toLocaleString()}</span></span>}
+                  {s.target_price != null && <span className={tp ? 'text-green-400 font-bold' : 'text-gray-500'}>TP {s.target_price.toLocaleString()}{tp ? ' ✓' : ''}</span>}
+                  {s.stop_loss != null && <span className={sl ? 'text-red-400 font-bold' : 'text-gray-500'}>SL {s.stop_loss.toLocaleString()}{sl ? ' ✓' : ''}</span>}
                 </div>
                 <div className="text-[10px] text-gray-500">{t('🕒 Gjeneruar: {created} · Mbyllur: {closed}', { created: fmt(s.created_at), closed: fmt(s.closed_at) })}</div>
               </div>
