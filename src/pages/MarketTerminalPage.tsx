@@ -97,6 +97,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [assets, setAssets] = useState<Asset[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [doneSignals, setDoneSignals] = useState<Signal[]>([]);
+  // Id-të e pozicioneve FastT (nga logu) — për të klasifikuar saktë pozicionet e hapura si Afatshkurtër
+  // edhe kur brokeri NUK ruan komentin "FastT" te pozicioni i kthyer nga MT5.
+  const [fasttPosIds, setFasttPosIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState('XAUUSD');
   const [tf, setTf] = useState('1m');
   // Simbolet e lejuara nga cilësimet (auto_symbols). Ari default; të tjerat shtohen te Cilësimet.
@@ -215,6 +218,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
       const fastt = fasttFromExecutions(rows);
       const fasttIds = new Set(fastt.map(f => f.id));
+      // Id-të e pozicioneve të hapura nga FastT (orderId i hapjes == positionId) — për klasifikim të saktë
+      // të pozicioneve të hapura si Afatshkurtër edhe kur brokeri s'e ruan komentin "FastT".
+      setFasttPosIds(new Set(rows.filter(r => r.status === 'executed' && /^fastt auto/i.test(r.reason || '') && r.metaapi_order_id).map(r => String(r.metaapi_order_id))));
       let mt5Rest: ClosedTrade[] = [];
       if (!hist.error && Array.isArray(hist.deals)) {
         const grouped = groupDeals(hist.deals as HistoryDeal[]);
@@ -478,8 +484,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const posnsForSymbol = positions.filter(p => symMatch(selected, p.symbol));
   const posForSymbol = posnsForSymbol[0] || null; // i pari — për panelin "Ndrysho SL/TP" + prefill
   // Afatshkurtër = scalp (auto-trade-runner: tag 'SCALP') OSE FastT (scalp-live: tag 'FastT').
-  // FastT s'përmban 'SCALP' me qëllim → duhet kapur veçmas, përndryshe shfaqej gabimisht 'Afatgjatë'.
-  const posIsScalp = posForSymbol ? /SCALP|FastT/i.test(String(posForSymbol.comment ?? '') + String(posForSymbol.clientId ?? '')) : false;
+  // Kapet nga komenti OSE nga id-ja te logu i FastT-it (kur brokeri s'e ruan komentin "FastT").
+  const isPosScalp = (p: { id?: string; comment?: string; clientId?: string } | null) => !!p &&
+    (/SCALP|FastT/i.test(String(p.comment ?? '') + String(p.clientId ?? '')) || fasttPosIds.has(String(p.id ?? '')));
+  const posIsScalp = isPosScalp(posForSymbol);
   const fcur = account?.currency || '$';
   const posVpp = /XAU/i.test(selected) ? 100 : /(USOIL|UKOIL|WTI|BRENT)/i.test(selected) ? 1000 : 100;
   const r2 = (n: number) => n.toFixed(2);
@@ -569,7 +577,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // vizatohen këtu — i mbulon doreza e tërheqshme (që mos të dyfishohen).
   const chartLines: PriceLineDef[] = [
     ...posnsForSymbol.flatMap((p, i): PriceLineDef[] => {
-      const isScalp = /SCALP|FastT/i.test(String(p.comment ?? '') + String(p.clientId ?? ''));
+      const isScalp = isPosScalp(p);
       const pnl = livePnlOf(p), risk = riskOf(p), reward = rewardOf(p);
       const tag = multiPos ? ` #${i + 1}` : '';
       const editing = activePosId === p.id;
