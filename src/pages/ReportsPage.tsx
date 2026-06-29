@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar, Bot, Zap, Hand, Server } from 'lucide-react';
-import { loadTradeHistory, checkMetaApiConnection, type HistoryDeal, type AccountInfo } from '../services/metaapi';
-import { groupDeals, attachSource, fasttFromExecutions, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow } from '../services/closedTrades';
+import { loadTradeHistory, checkMetaApiConnection, loadPositionCloses, type HistoryDeal, type AccountInfo } from '../services/metaapi';
+import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow } from '../services/closedTrades';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n, dtLocale } from '../i18n/i18n';
@@ -101,31 +101,36 @@ export default function ReportsPage() {
       // edhe nëse historiku i MT5 dështon (502). Trade-t e tjera (manual/auto) merren nga historiku i MT5.
       let fastt: ClosedTrade[] = [];
       let mt5NonFastt: ClosedTrade[] = [];
+      let posCloses: ClosedTrade[] = [];
+      let posCloseIds = new Set<string>();
       if (user) {
         const sinceMs = (period === 'today' ? Date.now() - 2 * 86400000 : Date.now() - (fetchDays as number) * 86400000) - 6 * 3600 * 1000;
-        const { data: execsAll } = await supabase
-          .from('trade_executions')
-          .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
-          .eq('user_id', user.id)
-          .gte('created_at', new Date(sinceMs).toISOString())
-          .order('created_at', { ascending: false }).limit(1000);
+        const [{ data: execsAll }, posCloseRows] = await Promise.all([
+          supabase.from('trade_executions')
+            .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
+            .eq('user_id', user.id).gte('created_at', new Date(sinceMs).toISOString())
+            .order('created_at', { ascending: false }).limit(1000),
+          loadPositionCloses(user.id, Math.max(2, fetchDays as number)),
+        ]);
+        // Mbylljet e regjistruara nga serveri (close-tracker + manual) — burim i qëndrueshëm, S'varet nga MT5.
+        posCloses = closesFromPositions(posCloseRows);
+        posCloseIds = new Set(posCloses.map(p => p.id));
         const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
-        fastt = fasttFromExecutions(rows);
+        fastt = fasttFromExecutions(rows).filter(f => !posCloseIds.has(f.id));
         const fasttIds = new Set(fastt.map(f => f.id));
         if (!hist.error && Array.isArray(hist.deals)) {
           const grouped = groupDeals((hist.deals || []) as HistoryDeal[]);
           attachSource(grouped, rows.filter(r => r.status === 'executed') as ExecRow[]);
-          // Jo-FastT GJITHMONË nga MT5; + FastT-trade-t e MT5 që S'janë në log (mbyllje manuale / SL pas ndalimit).
-          mt5NonFastt = grouped.filter(t => t.source !== 'fastt' || !fasttIds.has(t.id));
+          mt5NonFastt = grouped.filter(t => !posCloseIds.has(t.id) && (t.source !== 'fastt' || !fasttIds.has(t.id)));
         }
       } else if (!hist.error && Array.isArray(hist.deals)) {
         mt5NonFastt = groupDeals((hist.deals || []) as HistoryDeal[]);
       }
-      // Nëse historiku i MT5 dështoi DHE s'kemi as trade FastT nga logu → shfaq gabimin.
-      if (hist.error && fastt.length === 0) {
+      // Nëse historiku i MT5 dështoi DHE s'kemi as trade FastT/server → shfaq gabimin.
+      if (hist.error && fastt.length === 0 && posCloses.length === 0) {
         setError(chk.message || hist.message || t('S\'u lexuan dot të dhënat e tregtimit.')); setTrades([]); return;
       }
-      setTrades([...fastt, ...mt5NonFastt].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
+      setTrades([...posCloses, ...fastt, ...mt5NonFastt].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
     } catch (e) {
       setError((e as Error).message || t('Gabim gjatë leximit.'));
     } finally {

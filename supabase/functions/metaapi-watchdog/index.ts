@@ -143,6 +143,55 @@ Deno.serve(async (req: Request) => {
         if (cfg.disconnect_alerted) { patch.disconnect_alerted = false; reconnected = true; }
         await upd(cfg.user_id, patch);
         if (reconnected) await notify(cfg.user_id, "MT5 reconnected", "Your MT5 account is connected again — auto-trade has resumed.");
+        // CLOSE-TRACKER: regjistro pozicionet që u MBYLLËN (krahaso me snapshot-in e mëparshëm), që lista e
+        // "Trade-t e mbyllura" të SHFAQET edhe kur historiku i plotë i MT5 dështon (llogari me shumë deal-e).
+        // FastT-in e kapërcejmë (scalp-live e regjistron vetë); regjistrojmë sinjal/auto/manual.
+        if (!dryRun) {
+          try {
+            const pr = await call(`${clientHost(cfg.region)}/users/current/accounts/${cfg.account_id}/positions`, { headers: { "auth-token": cfg.token } });
+            if (pr.status === 200 && Array.isArray(pr.body)) {
+              const cur: Record<string, { sym: string; action: string; entry: number; openTime: string; vol: number }> = {};
+              for (const p of pr.body as Array<Record<string, unknown>>) {
+                const id = String(p.id ?? ""); if (!id) continue;
+                cur[id] = { sym: String(p.symbol ?? ""), action: String(p.type ?? "").toUpperCase().includes("BUY") ? "BUY" : "SELL", entry: Number(p.openPrice) || 0, openTime: String(p.time ?? p.brokerTime ?? ""), vol: Number(p.volume) || 0 };
+              }
+              const { data: snapRow } = await db.from("open_pos_snapshot").select("positions").eq("user_id", cfg.user_id).maybeSingle();
+              const prev = ((snapRow as { positions?: Record<string, { sym: string; action: string; entry: number; openTime: string; vol: number }> } | null)?.positions) ?? {};
+              const closedIds = Object.keys(prev).filter((id) => !cur[id]);
+              if (closedIds.length > 0) {
+                let deals: Array<Record<string, unknown>> = [];
+                try {
+                  const since = new Date(now - 30 * 60 * 1000).toISOString();
+                  const hr = await call(`${clientHost(cfg.region)}/users/current/accounts/${cfg.account_id}/history-deals/time/${encodeURIComponent(since)}/${encodeURIComponent(nowIso)}`, { headers: { "auth-token": cfg.token } }, 12000);
+                  if (hr.status === 200 && Array.isArray(hr.body)) deals = hr.body as Array<Record<string, unknown>>;
+                } catch { /* P&L i panjohur */ }
+                const { data: opens } = await db.from("trade_executions").select("action, entry_price, reason")
+                  .eq("user_id", cfg.user_id).eq("status", "executed")
+                  .gte("created_at", new Date(now - 8 * 24 * 3600 * 1000).toISOString())
+                  .order("created_at", { ascending: false }).limit(200);
+                for (const id of closedIds) {
+                  const info = prev[id];
+                  const myDeals = deals.filter((d) => String(d.positionId ?? "") === id);
+                  const outD = myDeals.find((d) => /OUT/i.test(String(d.entryType ?? "")));
+                  const net = myDeals.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
+                  // Burimi nga logu i hapjeve (kah + çmim afër). FastT → kapërce (e mban scalp-live).
+                  const m = ((opens ?? []) as Array<{ action?: string; entry_price?: number; reason?: string }>).find((o) =>
+                    (o.action ?? "").toUpperCase() === info.action && Math.abs(Number(o.entry_price) - info.entry) <= 2.0 && /^(fastt auto|auto \()/i.test(o.reason ?? ""));
+                  const r = (m?.reason ?? "").toLowerCase();
+                  if (r.startsWith("fastt")) continue; // FastT → s'e regjistrojmë këtu
+                  const source = r.startsWith("auto (") ? "auto" : "manual";
+                  const horizon = r.startsWith("auto (") ? "long" : null;
+                  await db.from("position_closes").upsert({
+                    user_id: cfg.user_id, position_id: id, symbol: info.sym, action: info.action, volume: info.vol,
+                    entry_price: info.entry || null, exit_price: outD ? Number(outD.price) : null, net,
+                    source, horizon, opened_at: info.openTime || null, closed_at: nowIso,
+                  }, { onConflict: "user_id,position_id" });
+                }
+              }
+              await db.from("open_pos_snapshot").upsert({ user_id: cfg.user_id, positions: cur, updated_at: nowIso }, { onConflict: "user_id" });
+            }
+          } catch { /* best-effort — mos e prish watchdog-un */ }
+        }
         out.push({ user: cfg.user_id, action: "connected", reconnected });
         continue;
       }
