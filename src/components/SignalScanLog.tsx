@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { RefreshCw, CheckCircle2, ShieldAlert, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
 
@@ -58,6 +58,7 @@ export default function SignalScanLog({ title }: { title?: string }) {
   const { t } = useI18n();
   const [rows, setRows] = useState<ScanRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false); // si default vetëm 5 të fundit; butoni hap të tjerët
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,7 +112,7 @@ export default function SignalScanLog({ title }: { title?: string }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {(expanded ? rows : rows.slice(0, 5)).map((r) => {
                 const passed = r.created_signal || !r.reject_reason;
                 const buy = (r.gold_action || '').toUpperCase() === 'BUY';
                 return (
@@ -148,6 +149,15 @@ export default function SignalScanLog({ title }: { title?: string }) {
               })}
             </tbody>
           </table>
+          {rows.length > 5 && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="w-full flex items-center justify-center gap-1.5 text-[11px] text-amber-400 hover:text-amber-300 bg-gray-800/40 hover:bg-gray-800 py-2 transition-colors border-t border-gray-800"
+            >
+              <ChevronDown size={13} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+              {expanded ? t('Shfaq më pak') : t('Shfaq të gjitha ({n})', { n: rows.length })}
+            </button>
+          )}
         </div>
       )}
     </div>
