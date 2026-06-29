@@ -31,8 +31,10 @@ function outcomeCls(outcome?: string | null) {
   return outcome === 'tp' ? 'bg-green-500/20 text-green-400' : outcome === 'sl' ? 'bg-red-500/20 text-red-400' : 'bg-gray-600/30 text-gray-400';
 }
 
-export default function CompletedSignals({ signals, variant = 'compact' }: { signals: DoneSignal[]; variant?: 'compact' | 'full' }) {
+export default function CompletedSignals({ signals: signalsRaw, variant = 'compact' }: { signals: DoneSignal[]; variant?: 'compact' | 'full' }) {
   const { t } = useI18n();
+  // Renditja: sinjali më i RI (sipas kohës së gjenerimit) i pari në listë, pastaj me radhë.
+  const signals = [...signalsRaw].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   const stats = signalWinStats(signals);
 
   if (variant === 'full') {
