@@ -111,10 +111,12 @@ export default function ReportsPage() {
           .order('created_at', { ascending: false }).limit(1000);
         const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
         fastt = fasttFromExecutions(rows);
+        const fasttIds = new Set(fastt.map(f => f.id));
         if (!hist.error && Array.isArray(hist.deals)) {
           const grouped = groupDeals((hist.deals || []) as HistoryDeal[]);
           attachSource(grouped, rows.filter(r => r.status === 'executed') as ExecRow[]);
-          mt5NonFastt = grouped.filter(t => t.source !== 'fastt');
+          // Jo-FastT GJITHMONË nga MT5; + FastT-trade-t e MT5 që S'janë në log (mbyllje manuale / SL pas ndalimit).
+          mt5NonFastt = grouped.filter(t => t.source !== 'fastt' || !fasttIds.has(t.id));
         }
       } else if (!hist.error && Array.isArray(hist.deals)) {
         mt5NonFastt = groupDeals((hist.deals || []) as HistoryDeal[]);
