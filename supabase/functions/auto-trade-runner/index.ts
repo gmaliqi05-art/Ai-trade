@@ -1214,6 +1214,13 @@ Deno.serve(async (req: Request) => {
           String(rc.action || "").toUpperCase() === action &&
           (sameAsset(rc.symbol || "", tradeSym) || sameAsset(rc.symbol || "", sig.symbol)));
 
+        // PIKA AKTIVE për KËTË simbol + P&L-ja e tyre lundruese (floating). Përdoret që roboti të mos
+        // shtojë trade të ri kur ka pozicion aktiv NË HUMBJE (shmang humbje të shumfishuara) dhe të
+        // bëjë ri-analizë të tregut para se të shtojë mbi një pozicion ekzistues.
+        const sameSymPos = positions.filter((p) => sameAsset(p.symbol || "", tradeSym));
+        const hasActiveTrade = sameSymPos.length > 0;
+        const floatingSameSym = sameSymPos.reduce((a, p) => a + (Number(p.profit) || 0), 0);
+
         // ---- ANKORIM te çmimi REAL MT5 (zgjidh bug-un PAXG→MT5) + konteksti i grafikut ----
         let entryPx: number | undefined;
         let stopLoss: number | undefined;
@@ -1240,8 +1247,9 @@ Deno.serve(async (req: Request) => {
           stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
           ctx = buildContext(sig.symbol, t15, t1h, t4h, entryPx);
-          // Ri-analizë vetëm nëse sapo u mbyll një trade në të njëjtin drejtim (cooldown).
-          if (recentSameDir) {
+          // Ri-analizë kur sapo u mbyll një trade në të njëjtin drejtim (cooldown) OSE kur ka tashmë
+          // një pozicion aktiv (mos shto te fundi i rrugës / kur qirinjtë po kthehen).
+          if (recentSameDir || hasActiveTrade) {
             const sigRsi = Number((sig.features as Record<string, unknown> | undefined)?.rsi);
             reentryVeto = reentryConfirm(action, t15, m15, Number.isFinite(sigRsi) ? sigRsi : null);
           }
@@ -1253,8 +1261,8 @@ Deno.serve(async (req: Request) => {
           takeProfit = sig.target_price != null ? Number(sig.target_price) : undefined;
           slDist = entryPx != null && stopLoss != null ? Math.abs(entryPx - stopLoss) : 0;
           tpDist = entryPx != null && takeProfit != null ? Math.abs(takeProfit - entryPx) : slDist * 2;
-          // S'ka qirinj MT5 për ri-analizë → nëse sapo u mbyll në të njëjtin drejtim, prit (i kujdesshëm).
-          if (recentSameDir) reentryVeto = "S'ka të dhëna MT5 për ri-analizë pas mbylljes — pres sinjalin tjetër";
+          // S'ka qirinj MT5 për ri-analizë → nëse ka pozicion aktiv ose mbyllje të fundit, prit (i kujdesshëm).
+          if (recentSameDir || hasActiveTrade) reentryVeto = "S'ka të dhëna MT5 për ri-analizë — pres sinjalin tjetër";
         }
 
         // POSITION SIZING: lot sipas BESUESHMËRISË (si demo), i pavarur nga max_lot i cilësimeve.
@@ -1301,9 +1309,16 @@ Deno.serve(async (req: Request) => {
         if (dailyStop) { await log("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDailyRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
         // EKSPERIMENTAL: cool-off pas serie humbjesh — ndal edhe sinjalet swing.
         if (expBlockOpens) { summary.push({ user: cfg.user_id, signal: sig.id, status: "cooloff" }); continue; }
-        // COOLDOWN PAS MBYLLJES — sapo u mbyll një trade në të njëjtin drejtim dhe ri-analiza s'e
-        // konfirmon vazhdimin (lëvizja po kthehet) → prit sinjalin tjetër, mos hyr te fundi i rrugës.
-        if (reentryVeto) { await log("rejected", `Cooldown ri-hyrjeje: ${reentryVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "reentry_cooldown", reason: reentryVeto }); continue; }
+        // MBROJTJE: kur ka pozicion AKTIV në KËTË simbol që është NË HUMBJE (P&L lundrues < 0) →
+        // mos shto trade të ri (shmang humbjet e shumfishuara). Pritet derisa pozicioni ekzistues të
+        // kthehet në fitim ose të mbyllet — atëherë hyrjet lejohen prapë.
+        if (hasActiveTrade && floatingSameSym < 0) {
+          await log("rejected", `Pozicion aktiv në humbje (P&L ${floatingSameSym.toFixed(2)}) — mos shto trade të ri (shmang humbje të shumfishuara)`, null, null);
+          summary.push({ user: cfg.user_id, signal: sig.id, status: "active_neg_block", floating: r2(floatingSameSym) }); continue;
+        }
+        // COOLDOWN / RI-ANALIZË — sapo u mbyll një trade në të njëjtin drejtim OSE ka pozicion aktiv dhe
+        // tregu s'e konfirmon vazhdimin (lëvizja po kthehet / te fundi i rrugës) → prit, mos hyr.
+        if (reentryVeto) { await log("rejected", `Ri-analizë: ${reentryVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "reentry_cooldown", reason: reentryVeto }); continue; }
         // FILTRA SHTESË (vetëm në modalitet STRIKT; default OFF = sjellja IDENTIKE me demon).
         // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
         if (cfg.signals_strict === true && netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }

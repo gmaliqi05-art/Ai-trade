@@ -198,6 +198,9 @@ export interface OpenPosition {
   takeProfit?: number;
   profit?: number;
   swap?: number;
+  /** Koha e hapjes së pozicionit (ISO) nga MT5 — për të shfaqur orën+datën kur hyri trade-i. */
+  time?: string;
+  brokerTime?: string;
   /** Komenti/clientId — mban shenjën "SCALP" për trade-t afat-shkurta të robotit. */
   comment?: string;
   clientId?: string;

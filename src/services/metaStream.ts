@@ -19,6 +19,7 @@ export interface StreamPosition {
   id: string; symbol: string; type: string; volume: number;
   openPrice: number; currentPrice: number; profit: number;
   stopLoss?: number; takeProfit?: number; comment?: string; clientId?: string;
+  time?: string; // koha e hapjes (ISO) — për orën+datën kur hyri trade-i
 }
 
 export interface StreamSnapshot {
@@ -225,6 +226,7 @@ class MetaStream {
         takeProfit: p.takeProfit != null ? Number(p.takeProfit) : undefined,
         comment: p.comment != null ? String(p.comment) : undefined,
         clientId: p.clientId != null ? String(p.clientId) : undefined,
+        time: (() => { const tv = p.time ?? p.brokerTime; return tv instanceof Date ? tv.toISOString() : tv != null ? String(tv) : undefined; })(),
       }));
     } catch { /* injoro */ }
     try { orders = (this.terminal.orders || []) as unknown[]; } catch { /* injoro */ }
