@@ -3,7 +3,7 @@ import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, Chevron
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
-import { isPushSupported, isStandalone, isIosLike, getPushState, subscribePush, unsubscribePush, sendTestPush } from '../services/push';
+import { isStandalone, isIosLike, getPushState, subscribePush, unsubscribePush, sendTestPush } from '../services/push';
 
 type Section = 'profile' | 'security' | 'notifications' | 'subscription';
 
@@ -50,9 +50,25 @@ export default function SettingsPage() {
   };
 
   const testPush = async () => {
+    if (!user) return;
     setPushBusy(true); setPushMsg(null);
+    // Sigurohu që KJO pajisje (PWA ose shfletues) është e abonuar PARA testit. Pa këtë, testi i dërguar
+    // nga PWA-ja shkonte te token-i i shfletuesit (pajisje tjetër) dhe njoftimi NUK shfaqej në PWA.
+    const sub = await subscribePush(user.id);
+    if (!sub.ok) {
+      setPushMsg({
+        type: 'error',
+        text: sub.error === 'denied' ? t('Leja u refuzua. Lejo njoftimet te cilësimet e pajisjes.')
+          : sub.error === 'unsupported' ? t('Kjo pajisje nuk i mbështet njoftimet push.')
+          : (sub.error || t('Abonimi i kësaj pajisjeje dështoi.')),
+      });
+      setPush(await getPushState());
+      setPushBusy(false);
+      return;
+    }
     const r = await sendTestPush();
     setPushMsg(r.ok ? { type: 'success', text: t('Njoftimi i provës u dërgua — duhet të shfaqet brenda pak sekondash.') } : { type: 'error', text: r.error || t('Dërgimi dështoi.') });
+    setPush(await getPushState());
     setPushBusy(false);
   };
 
