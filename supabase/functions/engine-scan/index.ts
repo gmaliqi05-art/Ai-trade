@@ -868,6 +868,16 @@ Deno.serve(async (req: Request) => {
           expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
         });
         out.push({ symbol, user: u.user_id, action: sig.action, confidence: confPct, created: true });
+        // PUSH per-përdorues për çdo sinjal ≥70% (kërkesë e përdoruesit). Dedup-i 30 min i sinjalit e
+        // kufizon natyrshëm te ~1 njoftim/simbol/30min (anti-spam). Tag-u për-simbol → njoftimet zëvendësohen.
+        if (confPct >= 70) {
+          await pushNotify({
+            user_id: u.user_id,
+            title: `📈 Sinjal ${sig.action} ${symbol} • ${confPct}%`,
+            body: `Hyrje ${r2(sig.entry)} · TP ${sig.takeProfit != null ? r2(sig.takeProfit) : "—"} · SL ${sig.stopLoss != null ? r2(sig.stopLoss) : "—"}`,
+            url: "/", tag: `sig-${symbol}`,
+          });
+        }
       }
     }
     // Diagnostikë e ekzekutimit të fundit — që të shohim PSE s'gjenerohen sinjale (burimi i qirinjve, filtrat).
