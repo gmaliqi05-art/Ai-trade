@@ -480,6 +480,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     : null;
   const latestSignal = latestSignalRaw && signalVisible(latestSignalRaw.created_at) ? latestSignalRaw : null;
 
+  // Përmbledhje P&L për pasqyrë: LIVE (lundrues, pozicionet e hapura tani) + SOT (realizuar sot + live)
+  // + GJITHSEJ (realizuar nga historiku i disponueshëm + live). I jep përdoruesit gjendjen e tregtimit.
+  const floatingPnl = Number(account?.profit ?? 0);
+  const todayStr = new Date().toDateString();
+  const realizedToday = history.reduce((a, h) => a + ((h.closeTime && new Date(h.closeTime).toDateString() === todayStr) ? (h.net || 0) : 0), 0);
+  const realizedTotal = history.reduce((a, h) => a + (h.net || 0), 0);
+  const pnlToday = realizedToday + floatingPnl;
+  const pnlTotal = realizedTotal + floatingPnl;
+  const pnlCard = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)} ${account?.currency || '$'}`;
+  const pnlCls = (v: number) => v >= 0 ? 'text-green-400' : 'text-red-400';
+
   // Klik mbi një sinjal → mbush formën "Porosi e re" (simbol, drejtim, SL, TP).
   const applySignal = (s: Signal) => {
     // Mbrojtje: mos lejo tregti mbi sinjale të vjetra/po-skadojnë (çmimi ka lëvizur).
@@ -720,6 +731,22 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
+      {/* Pasqyra e fitim/humbjes — ditore, gjithsej, dhe gjendja live (lundruese) */}
+      {metaConfigured && (
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: t('Fitim/Humbje sot'), value: pnlCard(pnlToday), cls: pnlCls(pnlToday) },
+            { label: t('Fitim/Humbje gjithsej'), value: pnlCard(pnlTotal), cls: pnlCls(pnlTotal) },
+            { label: t('Live (hapur tani)'), value: pnlCard(floatingPnl), cls: pnlCls(floatingPnl) },
+          ].map((c) => (
+            <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-2">
+              <div className="text-gray-500 text-[10px] mb-0.5 flex items-center gap-1"><TrendingUp className="w-3 h-3" />{c.label}</div>
+              <div className={`font-bold text-[13px] tabular-nums ${c.cls} ${showBalances ? '' : 'blur-[6px]'}`}>{c.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* PARA-HAPJEJE — tregu i mbyllur OSE i ngrirë (çmimi s'lëviz): numëruesi + porositë në radhë */}
       {(() => {
         const calOpen = isMktOpen(new Date(nowTs));
@@ -852,6 +879,73 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* Porosi e re (majtas) + Trade-t e mbyllura (djathtas) — dy kolona në ekran të madh, stack në mobil */}
       <div className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-5 lg:items-start">
       <div>
+        {/* Sinjali i fundit — i vendosur SIPËR formës "Porosi e re" (klik për ta tregtuar). */}
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 mb-3">
+          <div className="text-[11px] text-gray-500 mb-1 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
+          <p className="text-[10px] text-gray-600 mb-2 leading-snug">{t('Ky është sinjali aktual i motorit — pikërisht atë që tregton roboti i sinjaleve. Aktiv 5 min; pas 5 min shënohet I VJETËR; pas 15 min hiqet.')}</p>
+          {latestSignal ? (
+            <button onClick={() => applySignal(latestSignal)}
+              className={`w-full text-left rounded-xl px-3 py-2.5 border transition-colors ${appliedSignalId === latestSignal.id ? 'bg-amber-500/10 border-amber-500/40' : signalIsNew(latestSignal.created_at) ? 'bg-green-500/10 border-green-500/40' : 'bg-gray-800/40 border-gray-700/50 hover:bg-gray-800'}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="flex items-center gap-2">
+                  {signalIsNew(latestSignal.created_at) && (
+                    <span className="relative flex h-2.5 w-2.5" title={t('Sinjal i ri')}>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                    </span>
+                  )}
+                  <span className="text-white text-sm font-bold">{latestSignal.symbol}</span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${latestSignal.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{latestSignal.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isShortHorizon(latestSignal.timeframe) ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{horizonLabel(latestSignal.timeframe)}</span>
+                  {signalIsNew(latestSignal.created_at)
+                    ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400">{t('I RI')}</span>
+                    : !signalIsFresh(latestSignal.created_at) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
+                </span>
+                <span className="text-amber-400 text-xs font-semibold">{latestSignal.confidence}%</span>
+              </div>
+              <div className="flex gap-3 text-[11px] text-gray-200 flex-wrap">
+                {latestSignal.entry_price && <span>{t('Hyrje:')} <span className="text-white font-semibold">{Number(latestSignal.entry_price).toLocaleString()}</span></span>}
+                {latestSignal.target_price && <span><span className="text-green-400">TP:</span> <span className="text-white font-semibold">{Number(latestSignal.target_price).toLocaleString()}</span></span>}
+                {latestSignal.stop_loss && <span><span className="text-red-400">SL:</span> <span className="text-white font-semibold">{Number(latestSignal.stop_loss).toLocaleString()}</span></span>}
+                <span><span className="text-amber-400">{t('Lot:')}</span> <span className="text-white font-semibold">{signalLotByConfidence(Number(latestSignal.confidence)).toFixed(2)}</span></span>
+              </div>
+              <div className="text-[10px] text-gray-500 mt-1">🕒 {t('Gjeneruar:')} {fmtTime(latestSignal.created_at)} · {signalIsFresh(latestSignal.created_at) ? t('aktiv për tregtim') : t('i vjetër — mos tregto')}</div>
+            </button>
+          ) : (
+            <p className="text-gray-600 text-xs text-center py-2">{t('Asnjë sinjal i gjeneruar ende.')}</p>
+          )}
+          {latestSignal && (
+            <>
+              <button onClick={() => setShowSignalInfo(s => !s)}
+                className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] text-amber-400 hover:text-amber-300 bg-gray-800/40 hover:bg-gray-800 rounded-lg py-1.5 transition-colors">
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSignalInfo ? 'rotate-180' : ''}`} />{t('Si u krijua ky sinjal')}
+              </button>
+              {showSignalInfo && (
+                <div className="mt-2 bg-gray-800/40 border border-gray-700/50 rounded-xl p-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div><span className="text-gray-500">{t('Lloji')}: </span><span className={isShortHorizon(latestSignal.timeframe) ? 'text-amber-400' : 'text-blue-400'}>{horizonLabel(latestSignal.timeframe)}</span></div>
+                    <div><span className="text-gray-500">{t('Periudha')}: </span><span className="text-white">{latestSignal.timeframe || '1h'}</span></div>
+                    <div><span className="text-gray-500">{t('Burimi')}: </span><span className="text-white">{latestSignal.source === 'engine' ? t('Motori AI') : latestSignal.source}</span></div>
+                    <div><span className="text-gray-500">{t('Besueshmëria')}: </span><span className="text-amber-400 font-semibold">{latestSignal.confidence}%</span></div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-gray-500 mb-1 font-semibold uppercase tracking-wide">{t('Filtrat që kaloi')}</div>
+                    {analysisParts(latestSignal.analysis).length > 0 ? (
+                      <ul className="space-y-1">
+                        {analysisParts(latestSignal.analysis).map((p, i) => (
+                          <li key={i} className="text-[11px] text-gray-300 flex gap-1.5"><span className="text-green-400">✓</span>{p}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[11px] text-gray-500">{t('Pa detaje analize.')}</p>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-600 leading-snug">{t('Sinjali u gjenerua nga motori mbi çmime LIVE kur këto filtra u plotësuan njëkohësisht. Afat-gjatë = mbahet më gjatë (orë/ditë); afat-shkurt = lëvizje e shpejtë.')}</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
         {/* Porosia BLEJ/SHIT — kompakte */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 space-y-2 h-fit">
           <h3 className="text-white font-semibold text-sm">{t('Porosi e re — {sym}', { sym: selected })}</h3>
@@ -904,76 +998,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           <button onClick={() => onNavigate('chart_analysis')} className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-xl py-1.5 text-xs font-medium transition-colors">
             <Brain className="w-3.5 h-3.5" />{t('Analizë AI për {sym}', { sym: selected })}
           </button>
-
-          {/* Sinjali i fundit i gjeneruar nga sistemi — klik për ta tregtuar manualisht */}
-          <div className="pt-3 border-t border-gray-800">
-            <div className="text-[11px] text-gray-500 mb-1 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
-            <p className="text-[10px] text-gray-600 mb-2 leading-snug">{t('Ky është sinjali aktual i motorit — pikërisht atë që tregton roboti i sinjaleve. Aktiv 5 min; pas 5 min shënohet I VJETËR; pas 15 min hiqet.')}</p>
-            {latestSignal ? (
-              <button onClick={() => applySignal(latestSignal)}
-                className={`w-full text-left rounded-xl px-3 py-2.5 border transition-colors ${appliedSignalId === latestSignal.id ? 'bg-amber-500/10 border-amber-500/40' : signalIsNew(latestSignal.created_at) ? 'bg-green-500/10 border-green-500/40' : 'bg-gray-800/40 border-gray-700/50 hover:bg-gray-800'}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="flex items-center gap-2">
-                    {signalIsNew(latestSignal.created_at) && (
-                      <span className="relative flex h-2.5 w-2.5" title={t('Sinjal i ri')}>
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-                      </span>
-                    )}
-                    <span className="text-white text-sm font-bold">{latestSignal.symbol}</span>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${latestSignal.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{latestSignal.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isShortHorizon(latestSignal.timeframe) ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{horizonLabel(latestSignal.timeframe)}</span>
-                    {signalIsNew(latestSignal.created_at)
-                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400">{t('I RI')}</span>
-                      : !signalIsFresh(latestSignal.created_at) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
-                  </span>
-                  <span className="text-amber-400 text-xs font-semibold">{latestSignal.confidence}%</span>
-                </div>
-                <div className="flex gap-3 text-[11px] text-gray-200 flex-wrap">
-                  {latestSignal.entry_price && <span>{t('Hyrje:')} <span className="text-white font-semibold">{Number(latestSignal.entry_price).toLocaleString()}</span></span>}
-                  {latestSignal.target_price && <span><span className="text-green-400">TP:</span> <span className="text-white font-semibold">{Number(latestSignal.target_price).toLocaleString()}</span></span>}
-                  {latestSignal.stop_loss && <span><span className="text-red-400">SL:</span> <span className="text-white font-semibold">{Number(latestSignal.stop_loss).toLocaleString()}</span></span>}
-                  <span><span className="text-amber-400">{t('Lot:')}</span> <span className="text-white font-semibold">{signalLotByConfidence(Number(latestSignal.confidence)).toFixed(2)}</span></span>
-                </div>
-                <div className="text-[10px] text-gray-500 mt-1">🕒 {t('Gjeneruar:')} {fmtTime(latestSignal.created_at)} · {signalIsFresh(latestSignal.created_at) ? t('aktiv për tregtim') : t('i vjetër — mos tregto')}</div>
-              </button>
-            ) : (
-              <p className="text-gray-600 text-xs text-center py-2">{t('Asnjë sinjal i gjeneruar ende.')}</p>
-            )}
-
-            {/* Raporti i analizës — si u krijua sinjali + filtrat që kaloi */}
-            {latestSignal && (
-              <>
-                <button onClick={() => setShowSignalInfo(s => !s)}
-                  className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] text-amber-400 hover:text-amber-300 bg-gray-800/40 hover:bg-gray-800 rounded-lg py-1.5 transition-colors">
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSignalInfo ? 'rotate-180' : ''}`} />{t('Si u krijua ky sinjal')}
-                </button>
-                {showSignalInfo && (
-                  <div className="mt-2 bg-gray-800/40 border border-gray-700/50 rounded-xl p-3 space-y-2">
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div><span className="text-gray-500">{t('Lloji')}: </span><span className={isShortHorizon(latestSignal.timeframe) ? 'text-amber-400' : 'text-blue-400'}>{horizonLabel(latestSignal.timeframe)}</span></div>
-                      <div><span className="text-gray-500">{t('Periudha')}: </span><span className="text-white">{latestSignal.timeframe || '1h'}</span></div>
-                      <div><span className="text-gray-500">{t('Burimi')}: </span><span className="text-white">{latestSignal.source === 'engine' ? t('Motori AI') : latestSignal.source}</span></div>
-                      <div><span className="text-gray-500">{t('Besueshmëria')}: </span><span className="text-amber-400 font-semibold">{latestSignal.confidence}%</span></div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-gray-500 mb-1 font-semibold uppercase tracking-wide">{t('Filtrat që kaloi')}</div>
-                      {analysisParts(latestSignal.analysis).length > 0 ? (
-                        <ul className="space-y-1">
-                          {analysisParts(latestSignal.analysis).map((p, i) => (
-                            <li key={i} className="text-[11px] text-gray-300 flex gap-1.5"><span className="text-green-400">✓</span>{p}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-[11px] text-gray-500">{t('Pa detaje analize.')}</p>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-gray-600 leading-snug">{t('Sinjali u gjenerua nga motori mbi çmime LIVE kur këto filtra u plotësuan njëkohësisht. Afat-gjatë = mbahet më gjatë (orë/ditë); afat-shkurt = lëvizje e shpejtë.')}</p>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
 
           {/* Modifiko SL/TP për pozicionin e hapur të këtij simboli */}
           {posForSymbol && (
