@@ -175,27 +175,35 @@ function signalLotByConfidence(cfg: Cfg, conf: number): number {
 
 // RI-ANALIZË pas mbylljes — kthen arsyen e bllokimit nëse ri-hyrja në TË NJËJTIN drejtim duket
 // si "fundi i rrugës" (lëvizja po kthehet). null = e konfirmuar, lejo hyrjen.
-function reentryConfirm(action: string, t15: TF, m15: Candle[]): string | null {
+// sigRsi = RSI-ja e VETË motorit (autoritare) për këtë sinjal; përdoret si filtri kryesor sepse
+// është më e qëndrueshme se RSI-ja e rillogaritur nga qirinjtë MT5 (mund të ndryshojë pak).
+function reentryConfirm(action: string, t15: TF, m15: Candle[], sigRsi: number | null): string | null {
   const isBuy = action === "BUY";
   const price = Number(t15.price);
   const snap = (t15.snapshot ?? {}) as Record<string, unknown>;
   const rsi15 = typeof snap.rsi14 === "number" ? snap.rsi14 : null;
   const ema9 = typeof snap.ema9 === "number" ? snap.ema9 : null;
-  // 1) RSI 15m në zonë kthimi kundër vazhdimit të lëvizjes.
-  if (isBuy && rsi15 != null && rsi15 > 68) return "RSI 15m i mbi-blerë (kthim i mundshëm) — pres";
-  if (!isBuy && rsi15 != null && rsi15 < 32) return "RSI 15m i mbi-shitur (kthim i mundshëm) — pres";
-  // 2) Çmimi te fundi i lëvizjes (afër minimumit/maksimumit të fundit 15m).
+  const adx15 = typeof snap.adx14 === "number" ? snap.adx14 : null;
+  // 1) RSI i MOTORIT i shtrirë → mos ndiq trendin te skaji (ri-hyrje SELL te fundi / BUY te maja).
+  if (!isBuy && sigRsi != null && sigRsi < 35) return `RSI ${sigRsi} afër mbi-shitjes — ri-hyrje SELL te fundi, pres`;
+  if (isBuy && sigRsi != null && sigRsi > 65) return `RSI ${sigRsi} afër mbi-blerjes — ri-hyrje BUY te maja, pres`;
+  // 2) RSI 15m (MT5) në zonë kthimi — pragje më të gjera për ri-hyrje.
+  if (!isBuy && rsi15 != null && rsi15 < 40) return "RSI 15m i ulët (kthim i mundshëm) — pres";
+  if (isBuy && rsi15 != null && rsi15 > 60) return "RSI 15m i lartë (kthim i mundshëm) — pres";
+  // 3) Treg i qetë/pa trend (ADX 15m i ulët) → mos ndiq lëvizjen, prit sinjalin tjetër.
+  if (adx15 != null && adx15 < 20) return "Treg i qetë (ADX 15m i ulët) — pres sinjalin tjetër";
+  // 4) Çmimi te skaji i lëvizjes (afër min/max të fundit 15m).
   const seg = m15.slice(-20);
   if (seg.length >= 5) {
     const lo = Math.min(...seg.map((c) => c.low)), hi = Math.max(...seg.map((c) => c.high));
     const range = hi - lo;
     if (range > 0) {
       const pos = (price - lo) / range; // 0 = te minimumi, 1 = te maksimumi
-      if (!isBuy && pos < 0.15) return "Çmimi te fundi i rënies (afër minimumit 15m) — pres retest";
-      if (isBuy && pos > 0.85) return "Çmimi te maja e ngritjes (afër maksimumit 15m) — pres retest";
+      if (!isBuy && pos < 0.30) return "Çmimi te fundi i rënies (skaji 15m) — pres retest";
+      if (isBuy && pos > 0.70) return "Çmimi te maja e ngritjes (skaji 15m) — pres retest";
     }
   }
-  // 3) Momentumi afatshkurtër duhet ende të përputhet me drejtimin (çmimi vs EMA9 15m).
+  // 5) Momentumi afatshkurtër duhet ende të përputhet me drejtimin (çmimi vs EMA9 15m).
   if (ema9 != null) {
     if (!isBuy && price > ema9) return "Momentumi 15m po kthehet lart (çmimi mbi EMA9) — pres konfirmim";
     if (isBuy && price < ema9) return "Momentumi 15m po kthehet poshtë (çmimi nën EMA9) — pres konfirmim";
@@ -1177,7 +1185,7 @@ Deno.serve(async (req: Request) => {
 
       // COOLDOWN PAS MBYLLJES — mbylljet e fundit (çdo simbol+drejtim) brenda dritares; përdoret që
       // roboti të mos ri-hyjë menjëherë në të njëjtin drejtim pa një ri-analizë konfirmuese.
-      const REENTRY_COOLDOWN_MIN = 20;
+      const REENTRY_COOLDOWN_MIN = 30;
       const cdIso = new Date(Date.now() - REENTRY_COOLDOWN_MIN * 60 * 1000).toISOString();
       const recentCloses = candidates.length > 0
         ? ((await db.from("position_closes").select("symbol, action, closed_at")
@@ -1233,7 +1241,10 @@ Deno.serve(async (req: Request) => {
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
           ctx = buildContext(sig.symbol, t15, t1h, t4h, entryPx);
           // Ri-analizë vetëm nëse sapo u mbyll një trade në të njëjtin drejtim (cooldown).
-          if (recentSameDir) reentryVeto = reentryConfirm(action, t15, m15);
+          if (recentSameDir) {
+            const sigRsi = Number((sig.features as Record<string, unknown> | undefined)?.rsi);
+            reentryVeto = reentryConfirm(action, t15, m15, Number.isFinite(sigRsi) ? sigRsi : null);
+          }
         } else {
           // Fallback: nivelet e sinjalit (PAXG) kur MT5 s'jep qirinj.
           dataSrc = "binance_fallback";
