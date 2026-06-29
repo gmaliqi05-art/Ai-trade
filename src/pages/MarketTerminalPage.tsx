@@ -214,13 +214,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(1000);
       const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
       const fastt = fasttFromExecutions(rows);
-      let mt5NonFastt: ClosedTrade[] = [];
+      const fasttIds = new Set(fastt.map(f => f.id));
+      let mt5Rest: ClosedTrade[] = [];
       if (!hist.error && Array.isArray(hist.deals)) {
         const grouped = groupDeals(hist.deals as HistoryDeal[]);
         attachSource(grouped, rows.filter(r => r.status === 'executed') as ExecRow[]);
-        mt5NonFastt = grouped.filter(t => t.source !== 'fastt'); // FastT-in e marrim nga logu (më i freskët)
+        // Jo-FastT (sinjal/manual/auto) merren GJITHMONË nga MT5. FastT-in e marrim nga logu (më i freskët),
+        // POR shtojmë edhe FastT-trade-t e MT5 që S'janë në log — p.sh. të mbyllura MANUALISHT, ose me SL
+        // pasi roboti u ndal (përndryshe nuk shfaqeshin askund). Dedup me id (orderId i hapjes == positionId në MT5).
+        mt5Rest = grouped.filter(t => t.source !== 'fastt' || !fasttIds.has(t.id));
       }
-      setHistory([...fastt, ...mt5NonFastt].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
+      setHistory([...fastt, ...mt5Rest].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
       if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
     }
     setLastUpdated(new Date());
