@@ -13,14 +13,14 @@ import CompletedSignals from '../components/CompletedSignals';
 import SignalScanLog from '../components/SignalScanLog';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
-  loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice,
+  loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice, loadPositionCloses,
   loadPreOpenOrders, cancelPreOpenOrder,
   type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
-import { groupDeals, attachSource, fasttFromExecutions, exitKind, positionHorizon, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -205,8 +205,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     // Lista e simboleve për tab-et — Ari gjithmonë + ato që ka aktivizuar përdoruesi te Cilësimet.
     setAllowedSymbols(['XAUUSD', ...(cfg.auto_symbols || '').split(',').map(s => s.trim().toUpperCase()).filter(s => s && s !== 'XAUUSD')]);
     if (configured) {
-      const [acc, hist, pos] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions()]);
+      const [acc, hist, pos, posCloseRows] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions(), loadPositionCloses(user.id)]);
       if (!acc.error && acc.account) setAccount(acc.account);
+      // Mbylljet e regjistruara nga serveri (close-tracker + manual) — burim i qëndrueshëm, S'varet nga MT5.
+      const posCloses = closesFromPositions(posCloseRows);
+      const posCloseIds = new Set(posCloses.map(p => p.id));
       // Trade-t e FastT-it ndërtohen DIREKT nga logu i robotit (trade_executions) — shfaqen GJITHMONË,
       // edhe nëse historiku i MT5 dështon (502). Trade-t e tjera (manual/auto) merren nga historiku i MT5.
       const sinceIso = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
@@ -228,9 +231,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         // Jo-FastT (sinjal/manual/auto) merren GJITHMONË nga MT5. FastT-in e marrim nga logu (më i freskët),
         // POR shtojmë edhe FastT-trade-t e MT5 që S'janë në log — p.sh. të mbyllura MANUALISHT, ose me SL
         // pasi roboti u ndal (përndryshe nuk shfaqeshin askund). Dedup me id (orderId i hapjes == positionId në MT5).
-        mt5Rest = grouped.filter(t => t.source !== 'fastt' || !fasttIds.has(t.id));
+        // Përjashto nga MT5 ato që i kemi nga serveri (position_closes) ose nga logu FastT (pa dyfishim).
+        mt5Rest = grouped.filter(t => !posCloseIds.has(t.id) && (t.source !== 'fastt' || !fasttIds.has(t.id)));
       }
-      setHistory([...fastt, ...mt5Rest].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
+      // FastT-trade-t e logut që S'janë te position_closes (mbylljet e shpejta të scalp-live).
+      const fasttDedup = fastt.filter(f => !posCloseIds.has(f.id));
+      setHistory([...posCloses, ...fasttDedup, ...mt5Rest].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
       if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
     }
     setLastUpdated(new Date());

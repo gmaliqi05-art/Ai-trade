@@ -354,6 +354,23 @@ export async function cancelPreOpenOrder(id: string): Promise<void> {
 }
 
 /** Lexon ekzekutimet e fundit për përdoruesin. */
+/** Mbylljet e regjistruara nga serveri (close-tracker + mbyllje manuale). Burim i qëndrueshëm i
+ *  "Trade-t e mbyllura" që S'varet nga historiku i rëndë i MT5 (që dështon për llogari me shumë deal-e). */
+export interface PositionCloseRow {
+  position_id: string; symbol: string | null; action: string | null; volume: number | null;
+  entry_price: number | null; exit_price: number | null; net: number | null;
+  source: string | null; horizon: string | null; opened_at: string | null; closed_at: string;
+}
+export async function loadPositionCloses(userId: string, days = 8): Promise<PositionCloseRow[]> {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const { data } = await supabase
+    .from('position_closes')
+    .select('position_id, symbol, action, volume, entry_price, exit_price, net, source, horizon, opened_at, closed_at')
+    .eq('user_id', userId).gte('closed_at', since)
+    .order('closed_at', { ascending: false }).limit(1000);
+  return (data as PositionCloseRow[]) ?? [];
+}
+
 export async function loadExecutions(userId: string, limit = 10): Promise<TradeExecution[]> {
   const { data } = await supabase
     .from('trade_executions')

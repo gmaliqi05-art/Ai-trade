@@ -42,6 +42,28 @@ function parseFasttNet(reason: string | null): number | null {
 // Ndërton trade-t e mbyllura të FastT-it DIREKT nga trade_executions (burimi autoritar i robotit):
 // çiftëzon çdo hyrje ('executed', "FastT auto…") me mbylljen pasuese ('info', "FastT mbylli…") të
 // të njëjtit simbol+drejtim. Kështu trade-t e FastT-it shfaqen GJITHMONË, pavarësisht historikut të MT5.
+// Mbylljet e regjistruara nga serveri (tabela position_closes) → ClosedTrade. Çdo rresht = një trade
+// i plotë (s'ka nevojë për çiftim) → burim i qëndrueshëm pavarësisht historikut të MT5.
+export interface PositionCloseLike {
+  position_id: string; symbol?: string | null; action?: string | null; volume?: number | null;
+  entry_price?: number | null; exit_price?: number | null; net?: number | null;
+  source?: string | null; horizon?: string | null; opened_at?: string | null; closed_at: string;
+}
+export function closesFromPositions(rows: PositionCloseLike[]): ClosedTrade[] {
+  return rows.map((r) => ({
+    id: r.position_id,
+    symbol: r.symbol || '—',
+    direction: (r.action || '').toUpperCase().includes('BUY') ? 'BUY' as const : 'SELL' as const,
+    openTime: r.opened_at || undefined, closeTime: r.closed_at,
+    volume: Number(r.volume) || 0,
+    entryPrice: r.entry_price != null ? Number(r.entry_price) : undefined,
+    exitPrice: r.exit_price != null ? Number(r.exit_price) : undefined,
+    net: Number(r.net) || 0,
+    source: (r.source as TradeSource) || 'mt5',
+    horizon: (r.horizon === 'short' || r.horizon === 'long') ? r.horizon : undefined,
+  }));
+}
+
 export function fasttFromExecutions(rows: FasttExecRow[]): ClosedTrade[] {
   const asc = [...rows].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
   const open: FasttExecRow[] = [];
