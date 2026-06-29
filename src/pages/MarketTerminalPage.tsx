@@ -141,6 +141,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
   const [lot, setLot] = useState('0.01');
+  const [showNewOrder, setShowNewOrder] = useState(false); // forma manuale e palosur si default; hapet me klik ose nga sinjali
   const [newEntry, setNewEntry] = useState('');   // Çmimi i hyrjes (porosi në pritje nëse s'është aty)
   const [newSl, setNewSl] = useState('');         // SL për porosinë e re (manuale)
   const [newTp, setNewTp] = useState('');         // TP për porosinë e re (manuale)
@@ -504,6 +505,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setNewEntry(s.entry_price != null ? String(s.entry_price) : '');
     setNewSl(s.stop_loss != null ? String(s.stop_loss) : '');
     setNewTp(s.target_price != null ? String(s.target_price) : '');
+    setLot(String(signalLotByConfidence(Number(s.confidence) || 0)));
+    setShowNewOrder(true); // hap automatik formën manuale me të dhënat e sinjalit
     setAppliedSignalId(s.id);
     setTradeMsg(null);
   };
@@ -747,6 +750,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
+      {/* Njoftim për orarin: tregu i arit mbyllet çdo natë; 1 orë para mbylljes roboti vetëm sugjeron (manual) */}
+      <div className="flex items-start gap-2 text-[11px] text-gray-400 bg-gray-900/60 border border-gray-800 rounded-lg px-3 py-2">
+        <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+        <span>{t('Tregu i arit (Hën–Pre) ka një pauzë ditore rreth orës 23:00–00:00. 1 orë para mbylljes roboti NUK hap trade automatik — sinjalet vijnë vetëm për tregti manuale (klik mbi sinjal për ta hapur formën).')}</span>
+      </div>
+
       {/* PARA-HAPJEJE — tregu i mbyllur OSE i ngrirë (çmimi s'lëviz): numëruesi + porositë në radhë */}
       {(() => {
         const calOpen = isMktOpen(new Date(nowTs));
@@ -946,9 +955,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             </>
           )}
         </div>
-        {/* Porosia BLEJ/SHIT — kompakte */}
+        {/* Porosia BLEJ/SHIT — VETËM manuale; e palosur si default. Klik mbi header → hapet bosh;
+            klik mbi sinjal → hapet automatik me të dhënat e mbushura. */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 space-y-2 h-fit">
-          <h3 className="text-white font-semibold text-sm">{t('Porosi e re — {sym}', { sym: selected })}</h3>
+          <button onClick={() => setShowNewOrder(v => !v)} className="w-full flex items-center justify-between text-left">
+            <h3 className="text-white font-semibold text-sm">{t('Porosi e re — {sym}', { sym: selected })} <span className="text-[10px] text-gray-500 font-normal">{t('(manual)')}</span></h3>
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showNewOrder ? 'rotate-180' : ''}`} />
+          </button>
+          {showNewOrder && (<>
           <div className="flex rounded-lg overflow-hidden border border-gray-700">
             <button onClick={() => setTradeType('buy')} className={`flex-1 py-2 text-sm font-semibold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('BLEJ')}</button>
             <button onClick={() => setTradeType('sell')} className={`flex-1 py-2 text-sm font-semibold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('SHIT')}</button>
@@ -1028,6 +1042,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               <p className="text-[10px] text-gray-600">{t('Linjat duken në grafik: Hyrje (blu), SL (kuq), TP (jeshil).')}</p>
             </div>
           )}
+          </>)}
         </div>
       </div>
 

@@ -117,6 +117,15 @@ function goldSessionOpen(d = new Date()): boolean {
   if (wd === "Sun") return h >= 23;     // e diel: vetëm pas hapjes 23:00
   return h >= 6 && h < 23;              // Hën–Pre: 06:00–23:00
 }
+// 1 ORË PARA MBYLLJES ditore të arit (22:00–22:59 Europe/Berlin, Hën–Pre): roboti NUK hap trade
+// AUTO — sinjalet gjenerohen e shfaqen për tregti MANUALE. Shmang hapjet pak para pauzës së tregut.
+function goldPreClose(d = new Date()): boolean {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", hour12: false }).formatToParts(d);
+  const wd = p.find((x) => x.type === "weekday")?.value || "";
+  const h = parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24;
+  if (wd === "Sat" || wd === "Sun") return false;
+  return h === 22;
+}
 function isCrypto(symbol: string): boolean {
   return /^(BTC|ETH|SOL|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK)/.test((symbol || "").toUpperCase());
 }
@@ -1309,6 +1318,12 @@ Deno.serve(async (req: Request) => {
         if (dailyStop) { await log("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDailyRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
         // EKSPERIMENTAL: cool-off pas serie humbjesh — ndal edhe sinjalet swing.
         if (expBlockOpens) { summary.push({ user: cfg.user_id, signal: sig.id, status: "cooloff" }); continue; }
+        // ORARI: 1 ORË PARA MBYLLJES (22:00–23:00 Berlin) → roboti NUK hap AUTO për arin; sinjali
+        // gjenerohet e shfaqet për tregti MANUALE (përdoruesi vendos vetë). Shmang hapjet para pauzës.
+        if (isGold(tradeSym) && goldPreClose()) {
+          await log("rejected", "1 orë para mbylljes së tregut — vetëm manual (auto i ndaluar)", null, null);
+          summary.push({ user: cfg.user_id, signal: sig.id, status: "pre_close_manual_only" }); continue;
+        }
         // MBROJTJE: kur ka pozicion AKTIV në KËTË simbol që është NË HUMBJE (P&L lundrues < 0) →
         // mos shto trade të ri (shmang humbjet e shumfishuara). Pritet derisa pozicioni ekzistues të
         // kthehet në fitim ose të mbyllet — atëherë hyrjet lejohen prapë.
