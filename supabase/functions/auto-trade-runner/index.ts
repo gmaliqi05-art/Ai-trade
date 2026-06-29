@@ -58,6 +58,9 @@ interface Position {
   trailingStopLoss?: unknown; // i vendosur kur trailing-u server-side është aktiv
 }
 
+// Rrumbullakim te 2 shifra dhjetore (për tekstin e njoftimeve push). Mungonte → "r2 is not defined".
+const r2 = (n: number): number => Math.round(n * 100) / 100;
+
 // Shenja që dallon pozicionet e hapura nga strategjia scalp (vendoset te `comment`/`clientId`).
 const SCALP_TAG = "SCALP";
 function isScalpPosition(p: Position): boolean {
