@@ -6,7 +6,7 @@
 // SL/TP vendosen/lëvizen mbi GRAFIK (prek linjën e hyrjes) — paneli vetëm i SHFAQ vlerat + P&L live.
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Clock } from 'lucide-react';
-import { useI18n } from '../i18n/i18n';
+import { useI18n, dtLocale } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
 import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
 import { positionHorizon } from '../services/closedTrades';
@@ -90,6 +90,15 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   // P&L LIVE = fitimi i broker-it për pozicionin (i njëjti numër që tregon MT5; përditësohet çdo 2s
   // ose real-time me streaming). Mbyllja bëhet me çmimin real të tregut.
   const livePnl = (p: OpenPosition): number => Number(p.profit ?? 0);
+
+  // Ora + data e hapjes së pozicionit (kur hyri trade-i) — nga MT5.
+  const fmtOpenTime = (p: OpenPosition): string | null => {
+    const iso = p.time || p.brokerTime;
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString(dtLocale(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  };
 
   const handleClose = async (posId: string) => {
     setClosingId(posId); setMsg(null);
@@ -204,6 +213,13 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                     </button>
                   </span>
                 </div>
+
+                {/* Ora + data kur hyri trade-i (nga MT5). */}
+                {fmtOpenTime(p) && (
+                  <div className="px-3 pb-2 -mt-1 text-[10px] text-gray-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3 shrink-0" />{t('Hapur:')} {fmtOpenTime(p)}
+                  </div>
+                )}
 
                 {/* Paralajmërim (jo buton): pozicion pa mbrojtje — vendos SL/TP te grafiku. */}
                 {noProtection && (

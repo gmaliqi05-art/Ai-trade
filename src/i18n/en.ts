@@ -294,6 +294,7 @@ export const en: Record<string, string> = {
   "Mbyllja dështoi.": "Closing failed.",
   "Pozicioni u mbyll.": "Position closed.",
   "Pozicionet e hapura (live nga MT5)": "Open positions (live from MT5)",
+  "Hapur:": "Opened:",
   "Po lexohen pozicionet…": "Loading positions…",
   "Asnjë pozicion i hapur tani.": "No open positions right now.",
   "lot": "lot",
