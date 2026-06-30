@@ -192,6 +192,47 @@ async function maCandles(cfg: Record<string, unknown>, symbol: string, tf: strin
   } catch { return null; }
 }
 
+// ---------- MBROJTJET (të njëjtat si te roboti LIVE — që demo të pasqyrojë live-in) ----------
+function isGold(s: string): boolean { return /XAU|GOLD|PAXG/i.test(s || ""); }
+function goldPreClose(d = new Date()): boolean {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", hour12: false }).formatToParts(d);
+  const wd = p.find((x) => x.type === "weekday")?.value || "";
+  const h = parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24;
+  if (wd === "Sat" || wd === "Sun") return false;
+  return h === 22;
+}
+function rejectionAgainst(action: "BUY" | "SELL", candles: Candle[]): boolean {
+  const isBuy = action === "BUY";
+  if (candles.length < 4) return false;
+  for (const c of candles.slice(-3, -1)) {
+    const range = c.high - c.low;
+    if (!(range > 0)) continue;
+    const bodyHi = Math.max(c.open, c.close), bodyLo = Math.min(c.open, c.close);
+    const upperWick = c.high - bodyHi, lowerWick = bodyLo - c.low;
+    const closePos = (c.close - c.low) / range;
+    if (!isBuy) { if (lowerWick / range >= 0.5 && closePos >= 0.6) return true; }
+    else { if (upperWick / range >= 0.5 && closePos <= 0.4) return true; }
+  }
+  return false;
+}
+function sweepAgainst(action: "BUY" | "SELL", candles: Candle[]): boolean {
+  const isBuy = action === "BUY";
+  if (candles.length < 14) return false;
+  const recent = candles.slice(-3, -1), ref = candles.slice(-14, -3);
+  if (ref.length < 5) return false;
+  const swingLow = Math.min(...ref.map((c) => c.low)), swingHigh = Math.max(...ref.map((c) => c.high));
+  for (const c of recent) {
+    if (!isBuy) { if (c.low < swingLow && c.close > swingLow) return true; }
+    else { if (c.high > swingHigh && c.close < swingHigh) return true; }
+  }
+  return false;
+}
+function priceActionVeto(action: "BUY" | "SELL", c15: Candle[] | null, c1h: Candle[] | null): boolean {
+  if (c15 && (rejectionAgainst(action, c15) || sweepAgainst(action, c15))) return true;
+  if (c1h && (rejectionAgainst(action, c1h) || sweepAgainst(action, c1h))) return true;
+  return false;
+}
+
 // ---------- Madhësimi i pozicionit (njëlloj si live) ----------
 function lotForConfidence(cfg: Record<string, unknown>, conf: number): number {
   let lot = Number(cfg.default_lot) || 0.01;
@@ -282,6 +323,11 @@ Deno.serve(async (req: Request) => {
       realGold = await maRealPrice(refCfg, realGoldSym);
       if (realGold != null) { priceBy.set("XAUUSD", realGold); priceBy.set("XAU", realGold); priceBy.set(normSym(realGoldSym), realGold); }
     }
+    // Qirinjtë 15m/1h të arit — për veton price-action (rejection/sweep), si te roboti LIVE.
+    let cg15: Candle[] | null = null, cg1h: Candle[] | null = null;
+    if (refCfg) [cg15, cg1h] = await Promise.all([maCandles(refCfg, realGoldSym, "15m", 60), maCandles(refCfg, realGoldSym, "1h", 60)]);
+    if (!cg15) cg15 = await fetchBinance("15m", 60);
+    if (!cg1h) cg1h = await fetchBinance("1h", 60);
 
     // 3) Trade-t e hapura — vlerësohen TË GJITHA (edhe ato manuale, që të mbyllen te SL/TP).
     const { data: openTrades } = await db
@@ -395,6 +441,20 @@ Deno.serve(async (req: Request) => {
           const slDist = Math.abs(entry - sl);
           if (!(slDist > 0)) continue;
           const isBuy = (s.type || "").toLowerCase() === "buy";
+          // MBROJTJET (si te roboti LIVE) — vlejnë për arin: që demo të pasqyrojë saktë live-in.
+          if (isGold(s.symbol)) {
+            // (a) 1 orë para mbylljes së tregut → mos hap.
+            if (goldPreClose()) { vetoed++; continue; }
+            // (b) Pozicion aktiv NË HUMBJE te ky simbol → mos shto (shmang humbje të shumfishuara).
+            const px = priceBy.get("XAU") ?? priceBy.get(normSym(s.symbol));
+            if (px != null) {
+              const mine = openRows.filter((r) => r.user_id === u.id && isGold(r.symbol));
+              const floating = mine.reduce((a, r) => a + (px - r.entry_price) * (r.side === "buy" ? 1 : -1) * (r.volume || 0) * 100, 0);
+              if (mine.length > 0 && floating < 0) { vetoed++; continue; }
+            }
+            // (c) Refuzim/sweep i freskët 15m/1h kundër drejtimit → mos kap fundin e lëvizjes.
+            if (priceActionVeto(isBuy ? "BUY" : "SELL", cg15, cg1h)) { vetoed++; continue; }
+          }
           let tp = s.target_price != null ? Number(s.target_price) : (isBuy ? entry + slDist * 2 : entry - slDist * 2);
           const tpDist = Math.abs(tp - entry);
           // ANCHOR te çmimi REAL i brokerit, duke RUAJTUR distancat e sinjalit (SL/TP) — metodologjia s'preket,
