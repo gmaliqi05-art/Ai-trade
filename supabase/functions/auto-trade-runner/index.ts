@@ -1314,6 +1314,13 @@ Deno.serve(async (req: Request) => {
           continue;
         }
         if (openTrades >= cfg.max_open_trades) { await log("rejected", `Max pozicione (${cfg.max_open_trades})`, null, null); continue; }
+        // SHKALLËZIM SIPAS BESUESHMËRISË (kërkesa jote): edhe nëse cilësimet lejojnë 3+ pozicione
+        // njëkohësisht, pozicioni i 2-të hapet VETËM me besueshmëri ≥80%, i 3-ti e tutje VETËM ≥90%.
+        {
+          const confPct = Number(sig.confidence) || 0;
+          if (openTrades >= 2 && confPct < 90) { await log("rejected", `Pozicioni ${openTrades + 1} njëkohësisht kërkon besueshmëri ≥90% (ke ${confPct}%)`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "conf_gate_90", conf: confPct }); continue; }
+          if (openTrades >= 1 && confPct < 80) { await log("rejected", `Pozicioni ${openTrades + 1} njëkohësisht kërkon besueshmëri ≥80% (ke ${confPct}%)`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "conf_gate_80", conf: confPct }); continue; }
+        }
         // Limit REAL i humbjes ditore: realized(sot) + floating(tani).
         if (dailyStop) { await log("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDailyRisk})`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "daily_loss_limit" }); continue; }
         // EKSPERIMENTAL: cool-off pas serie humbjesh — ndal edhe sinjalet swing.
