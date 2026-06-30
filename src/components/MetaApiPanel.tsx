@@ -136,19 +136,8 @@ export default function MetaApiPanel() {
       </div>
 
       {/* ======= KONTROLLET KRYESORE (ruhen menjëherë) ======= */}
-      <Section icon={Power} title={t('Kontrollet kryesore')} subtitle={t('Ndez/fik tregtimin automatik dhe sigurinë. Ruhen menjëherë.')}>
-        <div className="grid sm:grid-cols-3 gap-3">
-          <BigToggle
-            on={cfg.auto_trade}
-            onClick={() => cfg.auto_trade
-              ? setAndSave('auto_trade', false)
-              /* Ndezja e Robotit të Sinjaleve fik robotët e tjerë — VETËM nëse "të dy njëkohësisht"
-                 (allow_both_robots) është OFF. Kur është ON, FastT mbetet ashtu si është. */
-              : setManyAndSave(cfg.allow_both_robots
-                ? { auto_trade: true }
-                : { auto_trade: true, strategy_scalp: false, scalp_live_enabled: false })}
-            icon={Play}
-            title={t('Auto-trade')} desc={t('Roboti hap trade vetë sipas sinjaleve. Ndezja fik robotët e tjerë (short/FastT).')} />
+      <Section icon={Power} title={t('Kontrollet kryesore')} subtitle={t('Mode (Demo/Live) dhe siguria. Robotët ndizen te seksioni "Robotët" më poshtë.')}>
+        <div className="grid sm:grid-cols-2 gap-3">
           <BigToggle
             on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo')} icon={Cloud} danger={cfg.mode === 'live'}
             title={cfg.mode === 'demo' ? t('Mode: DEMO') : t('Mode: LIVE')} desc={cfg.mode === 'demo' ? t('Para virtuale — pa rrezik. Ideale për test.') : t('PARA REALE. Sigurohu që e ke testuar në demo.')} onLabel={cfg.mode === 'live' ? 'LIVE' : 'DEMO'} forceOnColor={cfg.mode === 'live'} />
@@ -275,7 +264,7 @@ export default function MetaApiPanel() {
       </Section>
 
       {/* ======= 3. MADHËSIA E POZICIONIT (lot dinamik) ======= */}
-      <Section icon={Gauge} title={t('3. Madhësia sipas besueshmërisë')} subtitle={t('Sa më e fortë analiza, aq më i madh loti.')}
+      <Section icon={Gauge} title={t('3. Madhësia sipas besueshmërisë')} subtitle={t('Sa më e fortë analiza, aq më i madh loti. Vlen për SCALP dhe DEMO — loti i sinjaleve live është i fiksuar (0.01/0.02/0.03).')}
         right={<TogglePill on={cfg.dynamic_lot} onClick={() => setAndSave('dynamic_lot', !cfg.dynamic_lot)} t={t} />}>
         <div className={`grid grid-cols-1 sm:grid-cols-3 gap-2.5 transition-opacity ${cfg.dynamic_lot ? '' : 'opacity-40 pointer-events-none'}`}>
           {([
@@ -298,7 +287,7 @@ export default function MetaApiPanel() {
       </Section>
 
       {/* ======= 4. AUTO-EKZEKUTIMI I SINJALEVE ======= */}
-      <Section icon={Play} title={t('4. Auto-ekzekutimi i sinjaleve')} subtitle={t('Filtrat që vendosin cilat sinjale hyjnë automatik (kur Auto-trade është ON).')}>
+      <Section icon={Play} title={t('4. Roboti i Sinjaleve — filtrat e hyrjes')} subtitle={t('Filtrat që vendosin cilat sinjale hyjnë automatik (kur Roboti i Sinjaleve është ON).')}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <NumField label={t('Besueshmëri minimale (%)')} hint={t('Vetëm sinjalet me besueshmëri ≥ këtij pragu ekzekutohen auto.')}
             value={cfg.min_confidence} step="1" min="0" max="100" onChange={v => set('min_confidence', v)} onBlur={save} />
@@ -544,9 +533,9 @@ export default function MetaApiPanel() {
         </div>
       </Section>
 
-      {/* ======= 7. POROSITË PARA HAPJES SË TREGUT (fundjavë/natë) ======= */}
-      <Section icon={Clock} title={t('7. Porositë para hapjes së tregut')}
-        subtitle={t('Kur tregu është i mbyllur (fundjavë/natë) dhe ti hap një trade, si të trajtohet? Zgjidh VETËM njërën — A ose B.')}>
+      {/* ======= 7. POROSITË PARA HAPJES — VETËM TREGTI MANUALE (jo robotët) ======= */}
+      <Section icon={Clock} title={t('7. Porositë para hapjes (tregti MANUALE)')}
+        subtitle={t('Vlen VETËM për trade-t që hap ti me dorë kur tregu është i mbyllur (fundjavë/natë) — NUK prek robotët. Zgjidh VETËM njërën — A ose B.')}>
 
         {/* Statusi: cila rrugë është aktive tani */}
         <div className={`flex items-center gap-2 text-[11px] rounded-xl px-3 py-2 border ${
