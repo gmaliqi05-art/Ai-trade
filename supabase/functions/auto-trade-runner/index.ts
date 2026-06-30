@@ -220,6 +220,50 @@ function reentryConfirm(action: string, t15: TF, m15: Candle[], sigRsi: number |
   return null;
 }
 
+// PRICE-ACTION (vetëm te roboti i EKZEKUTIMIT — nuk prek motorin e sinjaleve):
+// REFUZIM (rejection) — a tregon qiriku i fundit i MBYLLUR një bisht të gjatë KUNDËR drejtimit?
+//   SELL: bisht i gjatë POSHTË + mbyllje në pjesën e sipërme = blerësit mbrojtën → mos shit.
+//   BUY:  bisht i gjatë LART + mbyllje në pjesën e poshtme = shitësit mbrojtën → mos blej.
+// Kontrollohen 2 qirinjtë e fundit të MBYLLUR (kapërcehet i fundit që mund të jetë ende në formim).
+function rejectionAgainst(action: string, candles: Candle[]): boolean {
+  const isBuy = action === "BUY";
+  if (candles.length < 4) return false;
+  for (const c of candles.slice(-3, -1)) {
+    const range = c.high - c.low;
+    if (!(range > 0)) continue;
+    const bodyHi = Math.max(c.open, c.close), bodyLo = Math.min(c.open, c.close);
+    const upperWick = c.high - bodyHi, lowerWick = bodyLo - c.low;
+    const closePos = (c.close - c.low) / range; // 0 = te minimumi, 1 = te maksimumi
+    if (!isBuy) { if (lowerWick / range >= 0.5 && closePos >= 0.6) return true; } // refuzim rritës kundër SELL
+    else { if (upperWick / range >= 0.5 && closePos <= 0.4) return true; }        // refuzim rënës kundër BUY
+  }
+  return false;
+}
+// SWEEP (gjueti likuiditeti) — a shpoi çmimi një minimum/maksimum të fundit dhe u kthye mbrapsht?
+//   SELL: shpoi minimumin e fundit por u mbyll SËRISH MBI të (sweep rritës) → mos shit te fundi.
+//   BUY:  shpoi maksimumin e fundit por u mbyll SËRISH NËN të (sweep rënës) → mos blej te maja.
+function sweepAgainst(action: string, candles: Candle[]): boolean {
+  const isBuy = action === "BUY";
+  if (candles.length < 14) return false;
+  const recent = candles.slice(-3, -1);   // 2 qirinjtë e fundit të mbyllur
+  const ref = candles.slice(-14, -3);      // dritarja para tyre për nivelin swing
+  if (ref.length < 5) return false;
+  const swingLow = Math.min(...ref.map((c) => c.low)), swingHigh = Math.max(...ref.map((c) => c.high));
+  for (const c of recent) {
+    if (!isBuy) { if (c.low < swingLow && c.close > swingLow) return true; }   // sweep rritës kundër SELL
+    else { if (c.high > swingHigh && c.close < swingHigh) return true; }       // sweep rënës kundër BUY
+  }
+  return false;
+}
+// Përmbledhje: veto nëse ka refuzim OSE sweep kundër drejtimit në 15m ose 1h. null = pa pengesë.
+function priceActionVeto(action: string, m15: Candle[], m1h: Candle[]): string | null {
+  if (rejectionAgainst(action, m15)) return "Refuzim (rejection) 15m kundër drejtimit — pres";
+  if (rejectionAgainst(action, m1h)) return "Refuzim (rejection) 1h kundër drejtimit — pres";
+  if (sweepAgainst(action, m15)) return "Sweep likuiditeti 15m kundër drejtimit — pres";
+  if (sweepAgainst(action, m1h)) return "Sweep likuiditeti 1h kundër drejtimit — pres";
+  return null;
+}
+
 // ---------- Indikatorë (për kontekstin e grafikut MT5) ----------
 function ema(v: number[], p: number): number[] {
   const out = new Array(v.length).fill(NaN);
@@ -1239,6 +1283,7 @@ Deno.serve(async (req: Request) => {
         let ctx: Record<string, unknown> | null = null;
         let dataSrc = "mt5";
         let reentryVeto: string | null = null;
+        let paVeto: string | null = null;
 
         const [m15, m1h, m4h] = await Promise.all([
           fetchMt5Candles(cfg, tradeSym, "15m", 300),
@@ -1256,6 +1301,8 @@ Deno.serve(async (req: Request) => {
           stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
           ctx = buildContext(sig.symbol, t15, t1h, t4h, entryPx);
+          // PRICE-ACTION (gjithmonë): mos hyr kundër një refuzimi/sweep-i të freskët në 15m/1h.
+          paVeto = priceActionVeto(action, m15, m1h);
           // Ri-analizë kur sapo u mbyll një trade në të njëjtin drejtim (cooldown) OSE kur ka tashmë
           // një pozicion aktiv (mos shto te fundi i rrugës / kur qirinjtë po kthehen).
           if (recentSameDir || hasActiveTrade) {
@@ -1341,6 +1388,9 @@ Deno.serve(async (req: Request) => {
         // COOLDOWN / RI-ANALIZË — sapo u mbyll një trade në të njëjtin drejtim OSE ka pozicion aktiv dhe
         // tregu s'e konfirmon vazhdimin (lëvizja po kthehet / te fundi i rrugës) → prit, mos hyr.
         if (reentryVeto) { await log("rejected", `Ri-analizë: ${reentryVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "reentry_cooldown", reason: reentryVeto }); continue; }
+        // PRICE-ACTION — refuzim (rejection) ose sweep i freskët KUNDËR drejtimit → mos hyr, prit.
+        // Tregu s'shkon përgjithmonë në një drejtim; kjo e ndal robotin të shesë te fundi i një refuzimi.
+        if (paVeto) { await log("rejected", `Price-action: ${paVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "price_action_veto", reason: paVeto }); continue; }
         // FILTRA SHTESË (vetëm në modalitet STRIKT; default OFF = sjellja IDENTIKE me demon).
         // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
         if (cfg.signals_strict === true && netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
