@@ -254,12 +254,12 @@ function sweepAgainst(action: string, candles: Candle[]): boolean {
   }
   return false;
 }
-// Përmbledhje: veto nëse ka refuzim OSE sweep kundër drejtimit në 15m ose 1h. null = pa pengesë.
-function priceActionVeto(action: string, m15: Candle[], m1h: Candle[]): string | null {
-  if (rejectionAgainst(action, m15)) return "Refuzim (rejection) 15m kundër drejtimit — pres";
-  if (rejectionAgainst(action, m1h)) return "Refuzim (rejection) 1h kundër drejtimit — pres";
-  if (sweepAgainst(action, m15)) return "Sweep likuiditeti 15m kundër drejtimit — pres";
-  if (sweepAgainst(action, m1h)) return "Sweep likuiditeti 1h kundër drejtimit — pres";
+// Veto REAL-TIME te momenti i hyrjes — VETËM mbi qirinjtë 1m (jo 15m/1h, që janë të vonuar).
+// Refuzim/sweep janë sinjale afatshkurtra: kanë kuptim NDËRSA po ndodhin, te hyrja. null = pa pengesë.
+function priceActionVeto(action: string, m1: Candle[] | null): string | null {
+  if (!m1 || m1.length < 4) return null;
+  if (rejectionAgainst(action, m1)) return "Refuzim (rejection) 1m kundër drejtimit — pres";
+  if (sweepAgainst(action, m1)) return "Sweep likuiditeti 1m kundër drejtimit — pres";
   return null;
 }
 
@@ -1228,10 +1228,11 @@ Deno.serve(async (req: Request) => {
         let reentryVeto: string | null = null;
         let paVeto: string | null = null;
 
-        const [m15, m1h, m4h] = await Promise.all([
+        const [m15, m1h, m4h, m1] = await Promise.all([
           fetchMt5Candles(cfg, tradeSym, "15m", 300),
           fetchMt5Candles(cfg, tradeSym, "1h", 300),
           fetchMt5Candles(cfg, tradeSym, "4h", 300),
+          fetchMt5Candles(cfg, tradeSym, "1m", 60),
         ]);
 
         if (m15 && m1h && m4h && m15.length > 30 && m1h.length > 30 && m4h.length > 30) {
@@ -1244,8 +1245,8 @@ Deno.serve(async (req: Request) => {
           stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
           ctx = buildContext(sig.symbol, t15, t1h, t4h, entryPx);
-          // PRICE-ACTION (gjithmonë): mos hyr kundër një refuzimi/sweep-i të freskët në 15m/1h.
-          paVeto = priceActionVeto(action, m15, m1h);
+          // PRICE-ACTION REAL-TIME (vetëm 1m, te momenti i hyrjes): mos hyr kundër një refuzimi/sweep-i të freskët.
+          paVeto = priceActionVeto(action, m1);
           // Ri-analizë kur sapo u mbyll një trade në të njëjtin drejtim (cooldown) OSE kur ka tashmë
           // një pozicion aktiv (mos shto te fundi i rrugës / kur qirinjtë po kthehen).
           if (recentSameDir || hasActiveTrade) {
