@@ -47,30 +47,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    let done = false;
+    let cancelled = false, done = false;
     const finish = () => { if (!done) { done = true; setLoading(false); } };
-    // Rrjet i shtrirë mund të bllokojë getSession(); MOS ngec kurrë te "Loading…".
-    // Pas 6s hap aplikacionin gjithsesi — onAuthStateChange e rifreskon sesionin kur vjen.
-    const timer = setTimeout(finish, 6000);
-
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) fetchProfile(session.user.id);
-      })
-      .catch(() => { /* injoro — provohet sërish nga onAuthStateChange */ })
-      .finally(finish);
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // A ekziston një sesion i ruajtur te pajisja? (çelësat sb-*-auth-token te localStorage)
+    const hasStored = () => {
+      try { return Object.keys(localStorage).some((k) => k.startsWith('sb-') && k.includes('auth-token')); }
+      catch { return false; }
+    };
+    const apply = (session: Session | null) => {
+      if (cancelled) return;
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) { fetchProfile(session.user.id); }
-      else { setProfile(null); }
+      if (session?.user) fetchProfile(session.user.id); else setProfile(null);
+    };
+
+    // RIKUPERIM REZISTENT: në rrjet të ngadaltë/roaming, rifreskimi i token-it mund të vonohet.
+    // Sa kohë ekziston një sesion i ruajtur, RIPROVO disa herë para se ta konsiderojmë "i dalë" —
+    // që një refresh të mos të nxjerrë jashtë vetëm sepse rrjeti vonoi.
+    (async () => {
+      for (let attempt = 0; attempt < 4 && !cancelled; attempt++) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) { apply(session); break; }
+          if (!hasStored()) { apply(null); break; }      // s'ka gjurmë sesioni → vërtet i dalë
+        } catch { if (!hasStored()) { apply(null); break; } }
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 1500)); // prit e riprovo (rrjet i ngadaltë)
+      }
+      finish();
+    })();
+
+    // Fallback i fortë: mos ngec kurrë te "Loading…" — pas 8s hap aplikacionin gjithsesi.
+    const timer = setTimeout(finish, 8000);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      apply(session);
       finish();
     });
 
-    return () => { clearTimeout(timer); subscription.unsubscribe(); };
+    return () => { cancelled = true; clearTimeout(timer); subscription.unsubscribe(); };
   }, []);
 
   const signIn = async (email: string, password: string) => {
