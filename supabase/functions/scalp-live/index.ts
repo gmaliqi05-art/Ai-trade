@@ -847,7 +847,8 @@ Deno.serve(async (req: Request) => {
           }
 
           const entryPx = px;
-          const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50)); // distanca e SL-së katastrofe
+          // Distanca e SL-së katastrofe — me dysheme 1.0$ (jo 0.10$), që të kalojë "stops level"-in e brokerit.
+          const cat = Math.max(1.0, Number(cfg.scalp_live_catastrophe_usd ?? 1.50));
           const stopLoss = Math.round((isBuyS ? entryPx - cat : entryPx + cat) * 100) / 100;
           const volume = st.lot;
 
@@ -857,12 +858,27 @@ Deno.serve(async (req: Request) => {
 
           if (!(stopLoss > 0)) { await slog("rejected", "FastT pa SL katastrofe — refuzuar (siguri)", null, null); continue; }
           lastEntry.set(ck, Date.now());
-          const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, stopLoss, comment: SCALP_LIVE_TAG };
+          // HAPJE PA SL INLINE — shmang gabimin "Invalid stops" (broker refuzon SL-në inline kur bie te
+          // "stops level" ose kur çmimi i tick-ut s'përkon me fill-in). Trade-i hapet GJITHMONË.
+          const body: Record<string, unknown> = { actionType: isBuyS ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym, volume, comment: SCALP_LIVE_TAG };
           try {
             const r = await maTrade(cfg, body);
             if (!r.ok) { await slog("error", `FastT trade ${r.status}`, null, r.body); continue; }
             const br = brokerResult(r.body);
             if (!br.ok) { await slog("rejected", `FastT brokeri: ${br.msg || "refuzuar"} (${br.code})`, null, r.body); summary.push({ user: cfg.user_id, slv_reject: sym, code: br.code }); continue; }
+            // SL KATASTROFË me POSITION_MODIFY (më lenient se inline). Zgjeron distancën nëse brokeri
+            // e refuzon për "stops level" — që pozicioni të mbetet i mbrojtur edhe nëse funksioni ndalet.
+            if (br.orderId) {
+              let slSet = false;
+              for (const dist of [cat, cat * 2, cat * 3]) {
+                const sl = Math.round((isBuyS ? entryPx - dist : entryPx + dist) * 100) / 100;
+                try {
+                  const mr = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: br.orderId, stopLoss: sl });
+                  if (mr.ok && brokerResult(mr.body).ok) { slSet = true; break; }
+                } catch { /* provo distancë më të gjerë */ }
+              }
+              if (!slSet) await slog("info", "FastT: SL katastrofë s'u vendos (stops level i brokerit) — menaxhohet nga dalja aktive", br.orderId, null);
+            }
             await slog("executed", `FastT auto (${cfg.mode}): ${sgl.reason}`, br.orderId, r.body);
             await pushNotify({ user_id: cfg.user_id, title: "FastT hapi një trade", body: `${isBuyS ? "BLEJ" : "SHIT"} ${sym} • ${volume} lot (live, ${cfg.mode})`, url: "/", tag: "slv-open" });
             summary.push({ user: cfg.user_id, slv_open: sym, order: br.orderId });
