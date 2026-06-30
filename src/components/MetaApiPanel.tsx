@@ -237,6 +237,27 @@ export default function MetaApiPanel() {
         </p>
       </Section>
 
+      {/* ======= ROBOTËT AKTIVË — Sinjale + Tregtime të shkurta (mund të jenë të dy ON) ======= */}
+      <Section icon={Power} title={t('Robotët')} subtitle={t('Ndez/fik secilin robot. Mund t\'i kesh të dy njëkohësisht; fik secilin kur të duash.')}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button type="button"
+            onClick={() => cfg.auto_trade
+              ? setAndSave('auto_trade', false)
+              : setManyAndSave({ auto_trade: true, strategy_swing: true, allow_both_robots: true, kill_switch: false })}
+            className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.auto_trade ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
+            <Power className="w-4 h-4" />{cfg.auto_trade ? t('Roboti i Sinjaleve: ON') : t('Roboti i Sinjaleve: OFF')}
+          </button>
+          <button type="button"
+            onClick={() => cfg.strategy_scalp
+              ? setAndSave('strategy_scalp', false)
+              : setManyAndSave({ strategy_scalp: true, allow_both_robots: true })}
+            className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.strategy_scalp ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
+            <Zap className="w-4 h-4" />{cfg.strategy_scalp ? t('Tregtime të shkurta: ON') : t('Tregtime të shkurta: OFF')}
+          </button>
+        </div>
+        <p className="text-[11px] text-gray-500 mt-2.5 leading-snug">{t('Roboti i Sinjaleve (afatgjatë) dhe Tregtimet e shkurta (scalp) mund të punojnë bashkë — ndezja e njërit NUK e fik tjetrin. Live apo Demo vendoset te kontrollet kryesore lart.')}</p>
+      </Section>
+
       {/* ======= 2. MBROJTJA E RREZIKUT (globale) ======= */}
       <Section icon={ShieldAlert} title={t('2. Mbrojtja e rrezikut')} subtitle={t('Këto kufij vlejnë për ÇDO trade — manual, swing dhe scalp.')}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
