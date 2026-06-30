@@ -256,10 +256,11 @@ function sweepAgainst(action: "BUY" | "SELL", candles: Candle[]): boolean {
   }
   return false;
 }
-// Veto price-action mbi qirinjtë 5m (jo 1m — që të mos vrasë momentum-in e shpejtë). null = pa pengesë.
-function priceActionVeto(action: "BUY" | "SELL", c5m: Candle[]): string | null {
-  if (rejectionAgainst(action, c5m)) return "refuzim (rejection) 5m kundër drejtimit";
-  if (sweepAgainst(action, c5m)) return "sweep likuiditeti 5m kundër drejtimit";
+// Veto price-action REAL-TIME mbi qirinjtë 1m (te momenti i hyrjes). null = pa pengesë.
+function priceActionVeto(action: "BUY" | "SELL", c1: Candle[]): string | null {
+  if (!c1 || c1.length < 4) return null;
+  if (rejectionAgainst(action, c1)) return "refuzim (rejection) 1m kundër drejtimit";
+  if (sweepAgainst(action, c1)) return "sweep likuiditeti 1m kundër drejtimit";
   return null;
 }
 
@@ -608,16 +609,6 @@ const tickBuf = new Map<string, Tick[]>();
 const moveFloor = new Map<string, { t: number; v: number }>();
 // Cache i qirinjve 1m per simbol (rifreskuar çdo ~12s) — për "arsyetimin" mbi trendin/EMA9 live.
 const candleCache = new Map<string, { t: number; candles: Candle[] }>();
-// Cache i qirinjve 5m per simbol (rifreskuar çdo ~30s) — për veton price-action (rejection/sweep).
-const c5mCache = new Map<string, { t: number; candles: Candle[] }>();
-async function getC5m(cfg: Cfg, sym: string, ck: string): Promise<Candle[] | null> {
-  const now = Date.now();
-  const c = c5mCache.get(ck);
-  if (c && now - c.t < 30_000) return c.candles;
-  const fresh = await fetchMt5Candles(cfg, sym, "5m", 60);
-  if (fresh && fresh.length > 0) { c5mCache.set(ck, { t: now, candles: fresh }); return fresh; }
-  return c?.candles ?? null;
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -685,7 +676,8 @@ Deno.serve(async (req: Request) => {
       if (equity > 0 && equity < 50) lot = 0.01;
       lot = Math.max(0.01, Math.round(lot * 100) / 100);
       const allowed = (cfg.scalp_live_symbols || "XAUUSD").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-      const max = Math.max(1, Number(cfg.scalp_live_max_trades ?? 1));
+      // FastT: VETËM 1 pozicion njëkohësisht (pa pyramiding) — kërkesë e përdoruesit.
+      const max = 1;
       states.push({ cfg, equity, dailyStop, maxRisk, allowed, max, lot });
     }
     if (states.length === 0) {
@@ -850,8 +842,7 @@ Deno.serve(async (req: Request) => {
           }
           // (c) Refuzim/sweep i freskët 5m KUNDËR drejtimit → mos kap fundin e një lëvizjeje.
           {
-            const c5 = await getC5m(cfg, sym, ck);
-            const pav = c5 ? priceActionVeto(sgl.action, c5) : null;
+            const pav = priceActionVeto(sgl.action, cndl);
             if (pav) { summary.push({ user: cfg.user_id, slv_skip: sym, reason: `price_action:${pav}` }); continue; }
           }
 

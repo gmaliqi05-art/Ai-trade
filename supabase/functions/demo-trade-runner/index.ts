@@ -227,10 +227,10 @@ function sweepAgainst(action: "BUY" | "SELL", candles: Candle[]): boolean {
   }
   return false;
 }
-function priceActionVeto(action: "BUY" | "SELL", c15: Candle[] | null, c1h: Candle[] | null): boolean {
-  if (c15 && (rejectionAgainst(action, c15) || sweepAgainst(action, c15))) return true;
-  if (c1h && (rejectionAgainst(action, c1h) || sweepAgainst(action, c1h))) return true;
-  return false;
+// REAL-TIME te hyrja — vetëm 1m (jo 15m/1h, që janë të vonuar). Si te roboti LIVE.
+function priceActionVeto(action: "BUY" | "SELL", c1: Candle[] | null): boolean {
+  if (!c1 || c1.length < 4) return false;
+  return rejectionAgainst(action, c1) || sweepAgainst(action, c1);
 }
 
 // ---------- Madhësimi i pozicionit (njëlloj si live) ----------
@@ -323,11 +323,10 @@ Deno.serve(async (req: Request) => {
       realGold = await maRealPrice(refCfg, realGoldSym);
       if (realGold != null) { priceBy.set("XAUUSD", realGold); priceBy.set("XAU", realGold); priceBy.set(normSym(realGoldSym), realGold); }
     }
-    // Qirinjtë 15m/1h të arit — për veton price-action (rejection/sweep), si te roboti LIVE.
-    let cg15: Candle[] | null = null, cg1h: Candle[] | null = null;
-    if (refCfg) [cg15, cg1h] = await Promise.all([maCandles(refCfg, realGoldSym, "15m", 60), maCandles(refCfg, realGoldSym, "1h", 60)]);
-    if (!cg15) cg15 = await fetchBinance("15m", 60);
-    if (!cg1h) cg1h = await fetchBinance("1h", 60);
+    // Qirinjtë 1m të arit — për veton REAL-TIME price-action (rejection/sweep), si te roboti LIVE.
+    let cg1: Candle[] | null = null;
+    if (refCfg) cg1 = await maCandles(refCfg, realGoldSym, "1m", 60);
+    if (!cg1) cg1 = await fetchBinance("1m", 60);
 
     // 3) Trade-t e hapura — vlerësohen TË GJITHA (edhe ato manuale, që të mbyllen te SL/TP).
     const { data: openTrades } = await db
@@ -452,8 +451,8 @@ Deno.serve(async (req: Request) => {
               const floating = mine.reduce((a, r) => a + (px - r.entry_price) * (r.side === "buy" ? 1 : -1) * (r.volume || 0) * 100, 0);
               if (mine.length > 0 && floating < 0) { vetoed++; continue; }
             }
-            // (c) Refuzim/sweep i freskët 15m/1h kundër drejtimit → mos kap fundin e lëvizjes.
-            if (priceActionVeto(isBuy ? "BUY" : "SELL", cg15, cg1h)) { vetoed++; continue; }
+            // (c) Refuzim/sweep REAL-TIME 1m kundër drejtimit → mos kap fundin e lëvizjes.
+            if (priceActionVeto(isBuy ? "BUY" : "SELL", cg1)) { vetoed++; continue; }
           }
           let tp = s.target_price != null ? Number(s.target_price) : (isBuy ? entry + slDist * 2 : entry - slDist * 2);
           const tpDist = Math.abs(tp - entry);
