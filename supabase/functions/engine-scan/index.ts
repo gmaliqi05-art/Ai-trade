@@ -258,7 +258,7 @@ const ADX_MIN = 18;
 // mbi-ekstenduara" — ADX shumë i lartë (trend i rraskapitur para kthimit) dhe RSI ekstrem
 // (hyrje pikërisht kundër një kthimi të mundshëm). Këto dy filtra i refuzojnë ato hyrje.
 // Versioni 1 (pa këto) ruhet te tag-u git 'robot-signal-v1' për rikthim nëse dëmtojnë tregtimin.
-const ADX_MAX = 50;           // refuzo hyrjet kur trendi është i rraskapitur (ADX > 50)
+let ADX_MAX = 50;             // refuzo hyrjet kur trendi është i rraskapitur (ADX > këtij). E rregullueshme nga app_config (signals_adx_max).
 const RSI_EXTREME_LOW = 25;   // refuzo SHIT kur RSI < 25 (oversold ekstrem → rrezik bounce)
 const RSI_EXTREME_HIGH = 75;  // refuzo BLEJ kur RSI > 75 (overbought ekstrem → rrezik pullback)
 // RREGULLIM (SELL-only në range): trend-following kërkon TREND REAL. Pas një rënieje, EMA200(1h)
@@ -789,6 +789,14 @@ Deno.serve(async (req: Request) => {
     const { data: _r4 } = await db.from("app_config").select("value").eq("key", "signals_relax_4h").maybeSingle();
     RELAX_4H = (_r4 as { value?: string } | null)?.value === "true";
   } catch { RELAX_4H = false; }
+
+  // ADX_MAX i rregullueshëm (sa i lartë lejohet trendi para se ta quajmë "të rraskapitur").
+  // Default 50; rritja lejon trende më të forta. Lexohet nga app_config; revert = SQL.
+  try {
+    const { data: _am } = await db.from("app_config").select("value").eq("key", "signals_adx_max").maybeSingle();
+    const v = Number((_am as { value?: string } | null)?.value);
+    if (Number.isFinite(v) && v >= 30 && v <= 100) ADX_MAX = v;
+  } catch { /* mbaj default 50 */ }
 
   // Porta e fundjavës — mos gjenero sinjale kur tregu është i mbyllur (fundjavë).
   if (!isMarketOpen()) {
