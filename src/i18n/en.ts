@@ -313,6 +313,8 @@ export const en: Record<string, string> = {
   "(manual)": "(manual)",
   "Tregu i arit (Hën–Pre) ka një pauzë ditore rreth orës 23:00–00:00. 1 orë para mbylljes roboti NUK hap trade automatik — sinjalet vijnë vetëm për tregti manuale (klik mbi sinjal për ta hapur formën).": "Gold market (Mon–Fri) has a daily break around 23:00–00:00. One hour before the close the robot does NOT open automatic trades — signals come for manual trading only (tap a signal to open the form).",
   "Fitim/Humbje sot": "Profit/Loss today",
+  "Trade sot": "Trades today",
+  "P&L i realizuar (gjithsej)": "Realized P&L (total)",
   "Fitim/Humbje gjithsej": "Profit/Loss total",
   "Live (hapur tani)": "Live (open now)",
   "Historiku i Skanimeve (Live) — pse hyn ose s'hyn sinjali": "Scan history (Live) — why a signal enters or not",
