@@ -341,14 +341,19 @@ Deno.serve(async (req: Request) => {
     const { data: autoProfs } = await db.from("profiles").select("id, demo_balance").eq("demo_auto", true);
     const autoUsers = (autoProfs ?? []) as { id: string; demo_balance: number | null }[];
 
-    // Tregtimet e SHKURTA (scalp) në demo hapen VETËM për userat që e kanë NDEZUR butonin
-    // (metaapi_config.strategy_scalp=true). Default OFF → si te live. Tregtimet e gjata (sinjale) s'preken.
+    // Tregtimet e SHKURTA (scalp) në demo ndjekin SAKTË të njëjtin rregull si LIVE:
+    // scalp ndizet vetëm me strategy_scalp=ON DHE (swing OFF OSE "lejo të dy"=ON). Kur Roboti i
+    // Sinjaleve (swing) është ON, scalp-i rri OFF — përveç nëse përdoruesi ka ndezur "lejo të dy
+    // njëkohësisht" (allow_both_robots). Kështu demo është pasqyrë besnike e live-s.
     const scalpEnabled = new Set<string>();
     if (autoUsers.length) {
-      const { data: scfg } = await db.from("metaapi_config").select("user_id, strategy_scalp")
+      const { data: scfg } = await db.from("metaapi_config").select("user_id, strategy_scalp, strategy_swing, allow_both_robots")
         .in("user_id", autoUsers.map((u) => u.id));
-      for (const c of (scfg ?? []) as { user_id: string; strategy_scalp: boolean | null }[])
-        if (c.strategy_scalp === true) scalpEnabled.add(c.user_id);
+      for (const c of (scfg ?? []) as { user_id: string; strategy_scalp: boolean | null; strategy_swing: boolean | null; allow_both_robots: boolean | null }[]) {
+        const swingOn = c.strategy_swing !== false; // default ON (si te live)
+        const scalpOn = c.strategy_scalp === true && (!swingOn || c.allow_both_robots === true);
+        if (scalpOn) scalpEnabled.add(c.user_id);
+      }
     }
 
     // 5) Balanca per-user: për këdo me trade të hapura + userat me robot auto.
