@@ -22,6 +22,7 @@ interface Cfg {
   // Dy strategjitë: afat-gjatë (swing, sinjale 15m/1h/4h) dhe afat-shkurt (scalp, momentum 1m/5m).
   strategy_swing?: boolean;  // default true
   strategy_scalp?: boolean;  // default false
+  allow_both_robots?: boolean; // opt-in: lejo swing (sinjale) + scalp (short) njëkohësisht
   signals_allow_short?: boolean; // default false: LONG-only; true = lejo edhe SHORT
   signals_strict?: boolean;      // default false: sjellje IDENTIKE me demon (pa filtra shtesë); true = filtra R:R/DXY/Claude
   scalp_sl_usd?: number;     // distanca e SL në çmim ($) për ar, default 2
@@ -981,7 +982,8 @@ Deno.serve(async (req: Request) => {
       const swingOn = cfg.strategy_swing !== false; // default ON (Roboti i Sinjaleve)
       // RREGULL PLATFORME: kur Roboti i Sinjaleve (swing) është ON, TË GJITHË robotët e tjerë janë OFF.
       // Scalp-i tregton VETËM në modalitetin scalp-only (swing i fikur) — kurrë paralel me sinjalet.
-      const scalpOn = cfg.strategy_scalp === true && !swingOn;
+      // Scalp lejohet kur swing është OFF, OSE kur përdoruesi ka ndezur "të dy njëkohësisht".
+      const scalpOn = cfg.strategy_scalp === true && (!swingOn || cfg.allow_both_robots === true);
       let scalpOpen = positions.filter(isScalpPosition).length;
 
       // FILTRA EKSPERIMENTALË (opt-in): vetëm spread-guard (zbatohet brenda lak-eve të hyrjes).

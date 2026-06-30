@@ -145,7 +145,7 @@ export default function MetaApiPanel() {
               /* Ndezja e Robotit të Sinjaleve fik robotët e tjerë — VETËM nëse "të dy njëkohësisht"
                  (allow_both_robots) është OFF. Kur është ON, FastT mbetet ashtu si është. */
               : setManyAndSave(cfg.allow_both_robots
-                ? { auto_trade: true, strategy_scalp: false }
+                ? { auto_trade: true }
                 : { auto_trade: true, strategy_scalp: false, scalp_live_enabled: false })}
             icon={Play}
             title={t('Auto-trade')} desc={t('Roboti hap trade vetë sipas sinjaleve. Ndezja fik robotët e tjerë (short/FastT).')} />
@@ -392,7 +392,7 @@ export default function MetaApiPanel() {
                 ? setAndSave('scalp_live_enabled', false)
                 /* Ndezja e FastT-it fik Robotin e Sinjaleve VETËM nëse "të dy njëkohësisht" është OFF. */
                 : setManyAndSave(cfg.allow_both_robots
-                  ? { scalp_live_enabled: true, strategy_scalp: false }
+                  ? { scalp_live_enabled: true }
                   : { scalp_live_enabled: true, auto_trade: false, strategy_scalp: false })}
               className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.scalp_live_enabled ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
               {cfg.scalp_live_enabled ? t('AKTIV') : t('JOAKTIV')}
