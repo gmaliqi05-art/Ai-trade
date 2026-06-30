@@ -217,6 +217,51 @@ async function fetchMt5Candles(cfg: Cfg, symbol: string, tf: string, limit = 120
   return null;
 }
 
+// ───────── MBROJTJET (të njëjtat si te ROBOTI LIVE I SINJALEVE, përshtatur për FastT) ─────────
+function isGold(s: string): boolean { return /XAU|GOLD|PAXG/i.test(s || ""); }
+// 1 ORË PARA MBYLLJES ditore të arit (22:00–22:59 Europe/Berlin, Hën–Pre) → mos hap FastT.
+function goldPreClose(d = new Date()): boolean {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", hour12: false }).formatToParts(d);
+  const wd = p.find((x) => x.type === "weekday")?.value || "";
+  const h = parseInt(p.find((x) => x.type === "hour")?.value || "0", 10) % 24;
+  if (wd === "Sat" || wd === "Sun") return false;
+  return h === 22;
+}
+// REFUZIM (rejection) — bisht i gjatë KUNDËR drejtimit te 2 qirinjtë e fundit të mbyllur.
+function rejectionAgainst(action: "BUY" | "SELL", candles: Candle[]): boolean {
+  const isBuy = action === "BUY";
+  if (candles.length < 4) return false;
+  for (const c of candles.slice(-3, -1)) {
+    const range = c.high - c.low;
+    if (!(range > 0)) continue;
+    const bodyHi = Math.max(c.open, c.close), bodyLo = Math.min(c.open, c.close);
+    const upperWick = c.high - bodyHi, lowerWick = bodyLo - c.low;
+    const closePos = (c.close - c.low) / range;
+    if (!isBuy) { if (lowerWick / range >= 0.5 && closePos >= 0.6) return true; }
+    else { if (upperWick / range >= 0.5 && closePos <= 0.4) return true; }
+  }
+  return false;
+}
+// SWEEP (gjueti likuiditeti) — shpim i një min/max të fundit me mbyllje sërish brenda, kundër drejtimit.
+function sweepAgainst(action: "BUY" | "SELL", candles: Candle[]): boolean {
+  const isBuy = action === "BUY";
+  if (candles.length < 14) return false;
+  const recent = candles.slice(-3, -1), ref = candles.slice(-14, -3);
+  if (ref.length < 5) return false;
+  const swingLow = Math.min(...ref.map((c) => c.low)), swingHigh = Math.max(...ref.map((c) => c.high));
+  for (const c of recent) {
+    if (!isBuy) { if (c.low < swingLow && c.close > swingLow) return true; }
+    else { if (c.high > swingHigh && c.close < swingHigh) return true; }
+  }
+  return false;
+}
+// Veto price-action mbi qirinjtë 5m (jo 1m — që të mos vrasë momentum-in e shpejtë). null = pa pengesë.
+function priceActionVeto(action: "BUY" | "SELL", c5m: Candle[]): string | null {
+  if (rejectionAgainst(action, c5m)) return "refuzim (rejection) 5m kundër drejtimit";
+  if (sweepAgainst(action, c5m)) return "sweep likuiditeti 5m kundër drejtimit";
+  return null;
+}
+
 // Çmimi LIVE (tick) i një simboli — bid/ask direkt nga brokeri. Kjo është rruga "kohë reale":
 // FastT vendos mbi çmimin që po lëviz TANI, jo mbi qirinjtë e mbyllur.
 async function fetchTick(cfg: Cfg, symbol: string): Promise<number | null> {
@@ -562,6 +607,16 @@ const tickBuf = new Map<string, Tick[]>();
 const moveFloor = new Map<string, { t: number; v: number }>();
 // Cache i qirinjve 1m per simbol (rifreskuar çdo ~12s) — për "arsyetimin" mbi trendin/EMA9 live.
 const candleCache = new Map<string, { t: number; candles: Candle[] }>();
+// Cache i qirinjve 5m per simbol (rifreskuar çdo ~30s) — për veton price-action (rejection/sweep).
+const c5mCache = new Map<string, { t: number; candles: Candle[] }>();
+async function getC5m(cfg: Cfg, sym: string, ck: string): Promise<Candle[] | null> {
+  const now = Date.now();
+  const c = c5mCache.get(ck);
+  if (c && now - c.t < 30_000) return c.candles;
+  const fresh = await fetchMt5Candles(cfg, sym, "5m", 60);
+  if (fresh && fresh.length > 0) { c5mCache.set(ck, { t: now, candles: fresh }); return fresh; }
+  return c?.candles ?? null;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -782,6 +837,23 @@ Deno.serve(async (req: Request) => {
           // (Lejohen disa pozicione NË TË NJËJTIN drejtim — pyramiding; bllokohet vetëm kundërdrejtimi.)
           if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase()
               && (String(q.type || "").includes("BUY") !== isBuyS))) continue;
+
+          // ───────── MBROJTJET (si te roboti i sinjaleve, përshtatur për FastT) ─────────
+          // (a) 1 orë para mbylljes së arit (22:00–23:00 Berlin) → mos hap FastT.
+          if (isGold(sym) && goldPreClose()) { summary.push({ user: cfg.user_id, slv_skip: sym, reason: "pre_close" }); continue; }
+          // (b) Pozicion FastT aktiv NË HUMBJE te ky simbol → mos shto (shmang humbjet e shumfishuara).
+          {
+            const sameSymMine = mine.filter((q) => (q.symbol || "").toUpperCase() === sym.toUpperCase());
+            const floating = sameSymMine.reduce((a, q) => a + (Number(q.profit) || 0), 0);
+            if (sameSymMine.length > 0 && floating < 0) { summary.push({ user: cfg.user_id, slv_skip: sym, reason: "active_neg", floating: Math.round(floating * 100) / 100 }); continue; }
+          }
+          // (c) Refuzim/sweep i freskët 5m KUNDËR drejtimit → mos kap fundin e një lëvizjeje.
+          {
+            const c5 = await getC5m(cfg, sym, ck);
+            const pav = c5 ? priceActionVeto(sgl.action, c5) : null;
+            if (pav) { summary.push({ user: cfg.user_id, slv_skip: sym, reason: `price_action:${pav}` }); continue; }
+          }
+
           const entryPx = px;
           const cat = Math.max(0.10, Number(cfg.scalp_live_catastrophe_usd ?? 1.50)); // distanca e SL-së katastrofe
           const stopLoss = Math.round((isBuyS ? entryPx - cat : entryPx + cat) * 100) / 100;
