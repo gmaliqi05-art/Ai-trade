@@ -382,6 +382,12 @@ Deno.serve(async (req: Request) => {
           if (cnt >= maxOpen) break;
           if (s.entry_price == null || s.stop_loss == null) continue;
           if (Number(s.confidence ?? 0) < minConf) continue;
+          // SHKALLËZIM SIPAS BESUESHMËRISË: pozicioni i 2-të njëkohësisht kërkon ≥80%, i 3-ti e tutje ≥90%.
+          {
+            const confPct = Number(s.confidence ?? 0);
+            if (cnt >= 2 && confPct < 90) continue;
+            if (cnt >= 1 && confPct < 80) continue;
+          }
           if (seen.has(`${u.id}|${s.id}`)) continue;
           const veto = expertVeto(s.features);   // FILTËR EKSPERTËSH (DEMO) — kalo hyrjet e dobëta
           if (veto) { vetoed++; continue; }
