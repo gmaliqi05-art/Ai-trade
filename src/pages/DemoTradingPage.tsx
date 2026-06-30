@@ -275,6 +275,15 @@ export default function DemoTradingPage() {
   }, [open, livePx, unrealizedOf]);
 
   const realizedPnl = useMemo(() => fClosed.reduce((s, t) => s + (Number(t.profit) || 0), 0), [fClosed]);
+  // P&L i realizuar SOT (raport ditor, si te Live) — trade-t e mbyllura sot.
+  const realizedToday = useMemo(() => {
+    const today = new Date().toDateString();
+    return fClosed.reduce((s, t) => s + ((t.closed_at && new Date(t.closed_at).toDateString() === today) ? (Number(t.profit) || 0) : 0), 0);
+  }, [fClosed]);
+  const closedToday = useMemo(() => {
+    const today = new Date().toDateString();
+    return fClosed.filter((t) => t.closed_at && new Date(t.closed_at).toDateString() === today).length;
+  }, [fClosed]);
   const wins = fClosed.filter((t) => (Number(t.profit) || 0) > 0).length;
   const winRate = fClosed.length ? Math.round((wins / fClosed.length) * 100) : 0;
 
@@ -322,9 +331,14 @@ export default function DemoTradingPage() {
         <Card label={t('Pozicione të hapura')} value={`${open.length}`} sub={`${t('nga starti')} €${fmt(startBalance)}`} icon={<Activity className="w-4 h-4 text-violet-400" />} />
       </div>
 
-      {/* Performance strip */}
+      {/* Raporti DITOR (si te Live) */}
+      <div className="grid grid-cols-2 gap-3">
+        <Mini label={t('Fitim/Humbje sot')} value={`${realizedToday >= 0 ? '+' : ''}€${fmt(realizedToday)}`} tone={realizedToday >= 0 ? 'pos' : 'neg'} />
+        <Mini label={t('Trade sot')} value={`${closedToday}`} />
+      </div>
+      {/* Raporti GJITHSEJ */}
       <div className="grid grid-cols-3 gap-3">
-        <Mini label={t('P&L i realizuar')} value={`${realizedPnl >= 0 ? '+' : ''}€${fmt(realizedPnl)}`} tone={realizedPnl >= 0 ? 'pos' : 'neg'} />
+        <Mini label={t('P&L i realizuar (gjithsej)')} value={`${realizedPnl >= 0 ? '+' : ''}€${fmt(realizedPnl)}`} tone={realizedPnl >= 0 ? 'pos' : 'neg'} />
         <Mini label={t('Trade të mbyllura')} value={`${fClosed.length}`} />
         <Mini label={t('Win rate')} value={`${winRate}%`} tone={winRate >= 50 ? 'pos' : undefined} />
       </div>
