@@ -23,8 +23,6 @@ interface Cfg {
   strategy_swing?: boolean;  // default true
   strategy_scalp?: boolean;  // default false
   allow_both_robots?: boolean; // opt-in: lejo swing (sinjale) + scalp (short) njëkohësisht
-  signals_allow_short?: boolean; // default false: LONG-only; true = lejo edhe SHORT
-  signals_strict?: boolean;      // default false: sjellje IDENTIKE me demon (pa filtra shtesë); true = filtra R:R/DXY/Claude
   scalp_sl_usd?: number;     // distanca e SL në çmim ($) për ar, default 2
   scalp_tp_usd?: number;     // distanca e TP në çmim ($) për ar, default 4
   scalp_sl_pct?: number;     // SL i scalp-it për CRYPTO si % e çmimit, default 0.3
@@ -734,61 +732,7 @@ async function pushNotify(payload: Record<string, unknown>): Promise<void> {
 }
 
 // Claude si "portë" — tani me KONTEKSTIN real të grafikut MT5 (15m/1h/4h + nivele).
-// Verifikon trendin, momentumin, dhe a po hyn trade-i drejt e në nivel kundërshtues.
 type DB = ReturnType<typeof createClient>;
-async function claudeConfirm(
-  db: DB, sig: Signal, action: string,
-  proposal: { entry?: number; sl?: number; tp?: number; confidence: number },
-  ctx: Record<string, unknown> | null,
-): Promise<{ agree: boolean; reason: string }> {
-  try {
-    const { data: prov } = await db.from("ai_providers")
-      .select("api_key_encrypted, model").eq("slug", "anthropic").eq("is_active", true).maybeSingle();
-    const key = (prov as { api_key_encrypted?: string } | null)?.api_key_encrypted;
-    if (!key) return { agree: true, reason: "pa Claude (lejuar)" };
-    const model = (prov as { model?: string }).model || "claude-opus-4-8";
-
-    const sys = 'You are a strict, risk-aware trade validator for an automated trading bot. You receive multi-timeframe (15m/1h/4h) technical snapshots and key support/resistance levels for the symbol, plus the engine\'s proposed trade (already passed a multi-TF + EMA200 + ADX filter). Evaluate in order: (1) trend alignment across timeframes (price vs EMA200, EMA9/21, "trend" field); (2) momentum (MACD histogram sign, RSI — flag overbought>70 for BUY or oversold<30 for SELL); (3) is the entry running directly into the nearest opposing key level (resistance for BUY, support for SELL) with little room? (4) is risk:reward acceptable (>=1.5)? Reply ONLY compact JSON: {"agree": true|false, "confidence": 0-100, "reason": "short"}. Set agree=true ONLY if trend+momentum support the direction and the entry is not slamming into an opposing level.';
-
-    const payload = ctx
-      ? { engine_proposal: { action, confidence: proposal.confidence, entry: proposal.entry, stop_loss: proposal.sl, take_profit: proposal.tp }, market_context: ctx }
-      : { engine_proposal: { action, symbol: sig.symbol, confidence: proposal.confidence, entry: proposal.entry, stop_loss: proposal.sl, take_profit: proposal.tp, reasons: sig.analysis } };
-
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: 350, system: sys, messages: [{ role: "user", content: JSON.stringify(payload) }] }),
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!resp.ok) return { agree: true, reason: "Claude error (lejuar)" };
-    const data = await resp.json();
-    const text = data?.content?.[0]?.text || "";
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return { agree: true, reason: "Claude pa JSON (lejuar)" };
-    const parsed = JSON.parse(m[0]);
-    return { agree: !!parsed.agree, reason: String(parsed.reason || "") };
-  } catch {
-    return { agree: true, reason: "Claude exception (lejuar)" };
-  }
-}
-
-// Bias-i i dollarit përmes EURUSD (proxy i DXY: ari ka korrelacion negativ me dollarin).
-// "weak" = dollar i dobët → mbështet ar BLEJ; "strong" = dollar i fortë → mbështet ar SHIT.
-async function dollarBias(cfg: Cfg): Promise<"weak" | "strong" | "neutral"> {
-  try {
-    const c = await fetchMt5Candles(cfg, "EURUSD", "1h", 120);
-    if (!c || c.length < 60) return "neutral";
-    const closes = c.map((x) => x.close);
-    const e50 = ema(closes, 50);
-    const i = closes.length - 1;
-    const price = closes[i], m = e50[i];
-    if (!Number.isFinite(m) || !(m > 0)) return "neutral";
-    const diff = (price - m) / m;
-    if (diff > 0.0025) return "weak";    // EURUSD qartë mbi EMA50 → dollar i dobët
-    if (diff < -0.0025) return "strong"; // EURUSD qartë nën EMA50 → dollar i fortë
-    return "neutral";
-  } catch { return "neutral"; }
-}
 
 // Filtër lajmesh: bllokon hapjen e trade-ve rreth lajmeve USD me ndikim TË LARTË
 // (NFP/CPI/FOMC). Burim falas pa çelës: faireconomy (kalendari javor i ForexFactory).
@@ -1235,9 +1179,6 @@ Deno.serve(async (req: Request) => {
         allowed.has((s.symbol || "").toUpperCase()),
       ) as Signal[];
 
-      // Bias-i i dollarit (një herë për përdorues) — për konfirmim ar↔dollar.
-      const dxy = candidates.length > 0 ? await dollarBias(cfg) : "neutral";
-
       // COOLDOWN PAS MBYLLJES — mbylljet e fundit (çdo simbol+drejtim) brenda dritares; përdoret që
       // roboti të mos ri-hyjë menjëherë në të njëjtin drejtim pa një ri-analizë konfirmuese.
       const REENTRY_COOLDOWN_MIN = 30;
@@ -1346,10 +1287,6 @@ Deno.serve(async (req: Request) => {
         }
         volume = Math.round(volume * 100) / 100;
 
-        // PORTA R:R NETO — pas kostos së përafërt (spread/slippage), refuzo nëse R:R < 1.5.
-        const spreadCost = entryPx != null ? entryPx * 0.00008 : 0; // ~0.008% (≈ $0.32 te $4000)
-        const netRR = slDist + spreadCost > 0 ? (tpDist - spreadCost) / (slDist + spreadCost) : 0;
-
         const log = (status: string, reason: string, orderId: string | null, rawResp: unknown) =>
           db.from("trade_executions").insert({
             user_id: cfg.user_id, signal_id: sig.id, symbol: tradeSym, action, volume: Math.max(volume, 0.01),
@@ -1393,12 +1330,6 @@ Deno.serve(async (req: Request) => {
         // PRICE-ACTION — refuzim (rejection) ose sweep i freskët KUNDËR drejtimit → mos hyr, prit.
         // Tregu s'shkon përgjithmonë në një drejtim; kjo e ndal robotin të shesë te fundi i një refuzimi.
         if (paVeto) { await log("rejected", `Price-action: ${paVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "price_action_veto", reason: paVeto }); continue; }
-        // FILTRA SHTESË (vetëm në modalitet STRIKT; default OFF = sjellja IDENTIKE me demon).
-        // PORTA R:R NETO — refuzo setup-et me raport të dobët pas kostove.
-        if (cfg.signals_strict === true && netRR > 0 && netRR < 1.5) { await log("rejected", `R:R neto i dobët (${netRR.toFixed(2)} < 1.5) pas kostove`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "low_rr" }); continue; }
-        // KONFIRMIM DOLLARI (DXY via EURUSD) — refuzo kur dollari shkon qartë kundër arit.
-        if (cfg.signals_strict === true && isBuy && dxy === "strong") { await log("rejected", "Dollari i fortë (kundër BLEJ ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
-        if (cfg.signals_strict === true && !isBuy && dxy === "weak") { await log("rejected", "Dollari i dobët (kundër SHIT ari) — konfirmim DXY", null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "dollar_veto" }); continue; }
         // PORTFOLIO HEAT — rreziku total i hapur + ky trade s'duhet të kalojë MAX_HEAT_PCT të kapitalit.
         // PËRJASHTIM (si te scalp): lotin MINIMAL 0.01 e lejojmë sa kohë rreziku total mbetet brenda
         // kufirit DITOR (max_daily_loss) — mbrojtja reale për llogari të vogël, jo bllokim total i hyrjes.
@@ -1413,12 +1344,6 @@ Deno.serve(async (req: Request) => {
 
         // EKSPERIMENTAL: spread-guard — mos hap kur spread-i i arit është i gjerë (orë të holla/lajme).
         if (expOn && spreadTooWide(tradeSym, await getSpread(tradeSym))) { summary.push({ user: cfg.user_id, signal: sig.id, status: "spread_too_wide" }); continue; }
-
-        // CLAUDE SI PORTË — vetëm në modalitet STRIKT; default OFF = sjellja IDENTIKE me demon.
-        if (cfg.signals_strict === true) {
-          const gate = await claudeConfirm(db, sig, action, { entry: entryPx, sl: stopLoss, tp: takeProfit, confidence: Number(sig.confidence) || 0 }, ctx);
-          if (!gate.agree) { await log("rejected", `Claude s'pajtohet: ${gate.reason}`.slice(0, 200), null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "claude_rejected" }); continue; }
-        }
 
         const tradeBody: Record<string, unknown> = {
           actionType: isBuy ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL",
