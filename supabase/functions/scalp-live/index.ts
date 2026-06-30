@@ -24,7 +24,8 @@ const SCALP_LIVE_TAG = "FastT";
 
 interface Cfg {
   user_id: string; account_id: string; token: string; region: string; mode: string;
-  auto_trade?: boolean;  // roboti i sinjaleve (master Signal→Live) — kur ON, FastT NUK tregton
+  auto_trade?: boolean;  // roboti i sinjaleve (master Signal→Live) — kur ON, FastT NUK tregton (përveç allow_both_robots)
+  allow_both_robots?: boolean; // opt-in: lejo FastT + sinjalet njëkohësisht
   max_lot?: number; max_daily_loss?: number; kill_switch?: boolean;
   symbol_map?: Record<string, string> | null;
   day_start_equity?: number; day_start_date?: string;
@@ -651,12 +652,11 @@ Deno.serve(async (req: Request) => {
   try {
     const { data: configs } = await db.from("metaapi_config").select("*")
       .eq("scalp_live_enabled", true).eq("kill_switch", false);
-    // RREGULL PLATFORME: kur Roboti i Sinjaleve (Signal→Live / auto_trade) është ON, TË GJITHË robotët
-    // e tjerë janë OFF — FastT S'GUXON të tregtojë paralel me sinjalet. Filtri në kod trajton saktë
-    // edhe auto_trade=null (e konsideron OFF), ndryshe nga .neq që do i përjashtonte gabimisht.
+    // RREGULL PLATFORME: kur Roboti i Sinjaleve (auto_trade) është ON, FastT S'GUXON të tregtojë
+    // paralel — PËRVEÇ kur përdoruesi e ka ndezur qëllimisht allow_both_robots (opt-in).
     const rows = (configs ?? []).map((r) => r as Cfg)
       .filter((c) => c.account_id && c.token)
-      .filter((c) => c.auto_trade !== true);
+      .filter((c) => c.auto_trade !== true || c.allow_both_robots === true);
     if (rows.length === 0) {
       return new Response(JSON.stringify({ success: true, note: "asnjë përdorues scalp-live" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -833,9 +833,10 @@ Deno.serve(async (req: Request) => {
           const sgl = { action: tickDir, reason: `tick-start ${tickDir} (fresh + efikasitet + mikro-thyerje)` };
 
           const isBuyS = sgl.action === "BUY";
-          // ANTI-HEDGE: MOS hap drejtim të kundërt nëse ka pozicion FastT të kundërt te ky simbol.
+          // ANTI-HEDGE (ndër-robot): MOS hap drejtim të kundërt nëse ka NDONJË pozicion të kundërt te ky
+          // simbol — përfshirë ata të robotit të sinjaleve (kur të dy robotët punojnë njëkohësisht).
           // (Lejohen disa pozicione NË TË NJËJTIN drejtim — pyramiding; bllokohet vetëm kundërdrejtimi.)
-          if (positions.some((q) => isScalpLivePosition(q) && (q.symbol || "").toUpperCase() === sym.toUpperCase()
+          if (positions.some((q) => (q.symbol || "").toUpperCase() === sym.toUpperCase()
               && (String(q.type || "").includes("BUY") !== isBuyS))) continue;
 
           // ───────── MBROJTJET (si te roboti i sinjaleve, përshtatur për FastT) ─────────

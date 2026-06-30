@@ -295,6 +295,8 @@ export const en: Record<string, string> = {
   "Pozicioni u mbyll.": "Position closed.",
   "Pozicionet e hapura (live nga MT5)": "Open positions (live from MT5)",
   "Hapur:": "Opened:",
+  "Lejo të dy robotët njëkohësisht (Sinjalet + FastT)": "Allow both robots at once (Signals + FastT)",
+  "Të dy robotët mund të punojnë bashkë. FastT s'hap drejtim të kundërt mbi një pozicion ekzistues (anti-hedge).": "Both robots can run together. FastT won't open the opposite direction over an existing position (anti-hedge).",
   "(manual)": "(manual)",
   "Tregu i arit (Hën–Pre) ka një pauzë ditore rreth orës 23:00–00:00. 1 orë para mbylljes roboti NUK hap trade automatik — sinjalet vijnë vetëm për tregti manuale (klik mbi sinjal për ta hapur formën).": "Gold market (Mon–Fri) has a daily break around 23:00–00:00. One hour before the close the robot does NOT open automatic trades — signals come for manual trading only (tap a signal to open the form).",
   "Fitim/Humbje sot": "Profit/Loss today",
