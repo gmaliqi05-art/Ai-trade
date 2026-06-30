@@ -69,6 +69,8 @@ export interface MetaApiConfig {
   /** Mënyra e porosive PARA-HAPJES (kur tregu i mbyllur):
    *  'A' = pending te brokeri (te niveli i hyrjes); 'B' = radha jonë → hyn në treg kur hapet. Default 'B'. */
   preopen_mode: 'A' | 'B';
+  /** Lejo Robotin e Sinjaleve + FastT njëkohësisht (opt-in). Default OFF = ekskluzivë. */
+  allow_both_robots: boolean;
   /** SCALP-LIVE: robot scalping në kohë reale (cikël brenda minutës). Ndez/fik. Default OFF. */
   scalp_live_enabled: boolean;
   /** Lot fiks (i vogël) për scalp-live. Default 0.01. */
@@ -100,6 +102,7 @@ export const DEFAULT_CONFIG: MetaApiConfig = {
   be_enabled: false, be_offset_usd: 0.9,
   advanced_filters: false,
   preopen_mode: 'B',
+  allow_both_robots: false,
   scalp_live_enabled: false, scalp_live_lot: 0.01, scalp_live_symbols: 'XAUUSD', scalp_live_max_trades: 1,
   scalp_live_grab_usd: 0.50, scalp_live_giveback_usd: 0.25, scalp_live_cut_usd: 0.60, scalp_live_catastrophe_usd: 1.50,
 };
@@ -153,6 +156,7 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     be_offset_usd: Number(data.be_offset_usd ?? 0.9),
     advanced_filters: !!data.advanced_filters,
     preopen_mode: (data.preopen_mode === 'A' ? 'A' : 'B'),
+    allow_both_robots: !!data.allow_both_robots,
     scalp_live_enabled: !!data.scalp_live_enabled,
     scalp_live_lot: Number(data.scalp_live_lot ?? 0.01),
     scalp_live_symbols: data.scalp_live_symbols ?? 'XAUUSD',

@@ -142,9 +142,11 @@ export default function MetaApiPanel() {
             on={cfg.auto_trade}
             onClick={() => cfg.auto_trade
               ? setAndSave('auto_trade', false)
-              /* Ndezja e Robotit të Sinjaleve fik AUTOMATIKISHT robotët e tjerë (scalp + FastT/short) —
-                 vetëm një robot tregton njëherësh. Përdoruesi mund ta rindezë short-in vetë më pas. */
-              : setManyAndSave({ auto_trade: true, strategy_scalp: false, scalp_live_enabled: false })}
+              /* Ndezja e Robotit të Sinjaleve fik robotët e tjerë — VETËM nëse "të dy njëkohësisht"
+                 (allow_both_robots) është OFF. Kur është ON, FastT mbetet ashtu si është. */
+              : setManyAndSave(cfg.allow_both_robots
+                ? { auto_trade: true, strategy_scalp: false }
+                : { auto_trade: true, strategy_scalp: false, scalp_live_enabled: false })}
             icon={Play}
             title={t('Auto-trade')} desc={t('Roboti hap trade vetë sipas sinjaleve. Ndezja fik robotët e tjerë (short/FastT).')} />
           <BigToggle
@@ -388,13 +390,26 @@ export default function MetaApiPanel() {
             <button
               onClick={() => cfg.scalp_live_enabled
                 ? setAndSave('scalp_live_enabled', false)
-                /* Ndezja e FastT-it (short) fik AUTOMATIKISHT Robotin e Sinjaleve — vetëm një robot njëherësh. */
-                : setManyAndSave({ scalp_live_enabled: true, auto_trade: false, strategy_scalp: false })}
+                /* Ndezja e FastT-it fik Robotin e Sinjaleve VETËM nëse "të dy njëkohësisht" është OFF. */
+                : setManyAndSave(cfg.allow_both_robots
+                  ? { scalp_live_enabled: true, strategy_scalp: false }
+                  : { scalp_live_enabled: true, auto_trade: false, strategy_scalp: false })}
               className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.scalp_live_enabled ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
               {cfg.scalp_live_enabled ? t('AKTIV') : t('JOAKTIV')}
             </button>
           </div>
-          {cfg.auto_trade && !cfg.scalp_live_enabled && (
+          {/* Opt-in: lejo Robotin e Sinjaleve + FastT njëkohësisht (përndryshe janë ekskluzivë). */}
+          <label className="flex items-center justify-between gap-3 mt-3 cursor-pointer">
+            <span className="text-[11px] text-gray-300 leading-snug">{t('Lejo të dy robotët njëkohësisht (Sinjalet + FastT)')}</span>
+            <button onClick={() => setAndSave('allow_both_robots', !cfg.allow_both_robots)}
+              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border shrink-0 ${cfg.allow_both_robots ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+              {cfg.allow_both_robots ? t('AKTIV') : t('JOAKTIV')}
+            </button>
+          </label>
+          {cfg.allow_both_robots && (
+            <p className="text-[11px] text-emerald-400/90 mt-2">{t('Të dy robotët mund të punojnë bashkë. FastT s\'hap drejtim të kundërt mbi një pozicion ekzistues (anti-hedge).')}</p>
+          )}
+          {cfg.auto_trade && !cfg.scalp_live_enabled && !cfg.allow_both_robots && (
             <p className="text-[11px] text-amber-400/90 mt-2">{t('Ndezja e FastT do të fikë Robotin e Sinjaleve — vetëm një robot tregton njëherësh.')}</p>
           )}
           <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Robot <span class="text-gray-300">krejt i pavarur</span> që ndjek <span class="text-gray-300">qirinjtë live 1m (~çdo 2.5–5 sekonda)</span>: kap ngritjet → BLEJ dhe rëniet → SHIT drejtpërdrejt nga momentum-i i qirinjve, <span class="text-rose-300">pa u ndikuar nga motori/strategjitë e tjera</span>. Mbron fitimin shpejt dhe del në kthesë. <span class="text-rose-300">Pa TP/SL fiks</span> — vetëm një SL "katastrofe" i gjerë te brokeri si parashutë.') }} />
