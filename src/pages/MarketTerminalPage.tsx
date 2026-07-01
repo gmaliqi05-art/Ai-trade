@@ -105,6 +105,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const { t } = useI18n();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [latestSig, setLatestSig] = useState<Signal | null>(null); // sinjali më i RI (sipas kohës) për widget-in "Sinjali i fundit"
   const [doneSignals, setDoneSignals] = useState<Signal[]>([]);
   // Id-të e pozicioneve FastT (nga logu) — për të klasifikuar saktë pozicionet e hapura si Afatshkurtër
   // edhe kur brokeri NUK ruan komentin "FastT" te pozicioni i kthyer nga MT5.
@@ -184,18 +185,23 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   const fetchBase = useCallback(async () => {
     const since24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString(); // sinjalet > 24h fshihen
-    const [ar, sr, dr] = await Promise.all([
+    const [ar, sr, lr, dr] = await Promise.all([
       supabase.from('assets').select('id, symbol, name, category, current_price').eq('is_active', true).gt('current_price', 0),
       // Sinjalet AKTIVE të 24h të fundit. Filtrin e skadimit (expires_at) e bëjmë në KLIENT (më poshtë),
       // jo me .or() te query-ja: një filtër .or() me timestamp bëhej i brishtë dhe kthente listë bosh
       // edhe kur kishte sinjale aktive (prandaj "Asnjë sinjal aktiv" ndërsa motori kishte prodhuar).
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, timeframe, analysis, expires_at')
-        .eq('status', 'active').gte('created_at', since24).order('confidence', { ascending: false }).limit(12),
+        .eq('status', 'active').gte('created_at', since24).order('created_at', { ascending: false }).limit(12),
+      // Sinjali më i RI (sipas KOHËS) — për widget-in "Sinjali i fundit". I ndarë nga lista që sinjali
+      // i sapoardhur të shfaqet gjithmonë saktë, edhe kur lista pritet te 8 elementët.
+      supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, timeframe, analysis, expires_at')
+        .eq('status', 'active').gte('created_at', since24).order('created_at', { ascending: false }).limit(1),
       // Sinjalet e PËRFUNDUARA (TP/SL/skaduar) të 24h të fundit — historiku i plotë te Raportet.
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, outcome, result_pct, closed_at')
         .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', since24).order('created_at', { ascending: false }).limit(12),
     ]);
     if (ar.data) setAssets(goldFirst(ar.data as Asset[]));
+    if (lr.data) setLatestSig((lr.data as Signal[])[0] ?? null);
     if (sr.data) {
       // Fshih sinjalet e skaduara (expires_at kaluar) në klient — filtër i sigurt, pa .or() të brishtë.
       const nowMs = Date.now();
@@ -484,12 +490,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   };
   const analysisParts = (a?: string | null) => (a || '').split(';').map(p => p.trim()).filter(Boolean).map(translateReason);
 
-  // Sinjali i fundit i gjeneruar nga sistemi (sipas kohës), për tregti manuale me një klik.
-  // Pas 15 min hiqet (pxClock rifreskon çdo 1s → rivlerësohet automatikisht).
-  const latestSignalRaw = signals.length
-    ? [...signals].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0]
-    : null;
-  const latestSignal = latestSignalRaw && signalVisible(latestSignalRaw.created_at) ? latestSignalRaw : null;
+  // Sinjali i fundit i gjeneruar nga sistemi (sipas KOHËS, i marrë veçmas nga DB), për tregti manuale
+  // me një klik. Pas 15 min hiqet nga widget-i (pxClock rifreskon çdo 1s → rivlerësohet automatikisht)
+  // dhe mbetet te lista poshtë. Përdorim latestSig (renditje sipas kohës) që sinjali i ri me
+  // besueshmëri më të ulët të mos humbasë pas listës së renditur sipas besueshmërisë.
+  const latestSignal = latestSig && signalVisible(latestSig.created_at) ? latestSig : null;
 
   // Përmbledhje P&L për pasqyrë: LIVE (lundrues, pozicionet e hapura tani) + SOT (realizuar sot + live)
   // + GJITHSEJ (realizuar nga historiku i disponueshëm + live). I jep përdoruesit gjendjen e tregtimit.
