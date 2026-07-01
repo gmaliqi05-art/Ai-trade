@@ -762,11 +762,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
-      {/* Njoftim për orarin: tregu i arit mbyllet çdo natë; 1 orë para mbylljes roboti vetëm sugjeron (manual) */}
-      <div className="flex items-start gap-2 text-[11px] text-gray-400 bg-gray-900/60 border border-gray-800 rounded-lg px-3 py-2">
-        <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-        <span>{t('Tregu i arit (Hën–Pre) ka një pauzë ditore rreth orës 23:00–00:00. 1 orë para mbylljes roboti NUK hap trade automatik — sinjalet vijnë vetëm për tregti manuale (klik mbi sinjal për ta hapur formën).')}</span>
-      </div>
+      {/* Njoftimi për orarin u zhvendos te faqja "Lidhja & Konfigurimi" (zinte hapësirë këtu). */}
 
       {/* PARA-HAPJEJE — tregu i mbyllur OSE i ngrirë (çmimi s'lëviz): numëruesi + porositë në radhë */}
       {(() => {
