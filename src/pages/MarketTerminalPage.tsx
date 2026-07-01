@@ -1120,17 +1120,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       )}
       </div>
 
-      {/* 3) Sinjalet aktive (lista e plotë) — sinjale të vjetra, klik për të mbushur formën */}
+      {/* 3) Sinjalet aktive (lista e plotë) — rrinë derisa të mbyllen (TP/SL/skadim), si te demo;
+             klik për të mbushur formën. (Nuk fshihen pas 15 min si widget-i "Sinjali i fundit".) */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet')}</h3>
           <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300">{t('Të gjitha')}</button>
         </div>
-        {signals.filter(s => signalVisible(s.created_at)).length === 0 ? (
+        {signals.length === 0 ? (
           <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal aktiv tani.')}</p>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {signals.filter(s => signalVisible(s.created_at)).map(s => {
+            {signals.map(s => {
               const fresh = signalIsFresh(s.created_at);
               const isNew = signalIsNew(s.created_at);
               return (
