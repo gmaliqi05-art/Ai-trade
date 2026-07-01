@@ -183,18 +183,28 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const cancelPreOpen = async (id: string) => { await cancelPreOpenOrder(id); loadPreOpen(); };
 
   const fetchBase = useCallback(async () => {
-    const now = new Date().toISOString();
     const since24 = new Date(Date.now() - 24 * 3600 * 1000).toISOString(); // sinjalet > 24h fshihen
     const [ar, sr, dr] = await Promise.all([
       supabase.from('assets').select('id, symbol, name, category, current_price').eq('is_active', true).gt('current_price', 0),
-      supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, timeframe, analysis')
-        .eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${now}`).gte('created_at', since24).order('confidence', { ascending: false }).limit(8),
+      // Sinjalet AKTIVE të 24h të fundit. Filtrin e skadimit (expires_at) e bëjmë në KLIENT (më poshtë),
+      // jo me .or() te query-ja: një filtër .or() me timestamp bëhej i brishtë dhe kthente listë bosh
+      // edhe kur kishte sinjale aktive (prandaj "Asnjë sinjal aktiv" ndërsa motori kishte prodhuar).
+      supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, timeframe, analysis, expires_at')
+        .eq('status', 'active').gte('created_at', since24).order('confidence', { ascending: false }).limit(12),
       // Sinjalet e PËRFUNDUARA (TP/SL/skaduar) të 24h të fundit — historiku i plotë te Raportet.
       supabase.from('signals').select('id, type, symbol, confidence, entry_price, target_price, stop_loss, source, created_at, outcome, result_pct, closed_at')
         .in('status', ['hit_tp', 'hit_sl', 'expired']).gte('closed_at', since24).order('created_at', { ascending: false }).limit(12),
     ]);
     if (ar.data) setAssets(goldFirst(ar.data as Asset[]));
-    if (sr.data) setSignals(sr.data as Signal[]);
+    if (sr.data) {
+      // Fshih sinjalet e skaduara (expires_at kaluar) në klient — filtër i sigurt, pa .or() të brishtë.
+      const nowMs = Date.now();
+      const live = (sr.data as Signal[]).filter((s) => {
+        const e = (s as { expires_at?: string | null }).expires_at;
+        return !e || new Date(e).getTime() > nowMs;
+      });
+      setSignals(live.slice(0, 8));
+    }
     if (dr.data) setDoneSignals(dr.data as Signal[]);
   }, []);
 
