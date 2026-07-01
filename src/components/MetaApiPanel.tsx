@@ -245,6 +245,28 @@ export default function MetaApiPanel() {
           </button>
         </div>
         <p className="text-[11px] text-gray-500 mt-2.5 leading-snug">{t('Roboti i Sinjaleve (afatgjatë) dhe Tregtimet e shkurta (scalp) mund të punojnë bashkë — ndezja e njërit NUK e fik tjetrin. Live apo Demo vendoset te kontrollet kryesore lart.')}</p>
+
+        {/* MBROJTJA E FITIMIT — butona të shpejtë poshtë robotëve; vlerat e hollësishme te seksioni "Mbrojtja e fitimit" më poshtë. */}
+        <div className="mt-4 pt-3 border-t border-gray-800">
+          <p className="text-[11px] font-semibold text-gray-300 mb-2 flex items-center gap-1.5"><ShieldAlert className="w-3.5 h-3.5 text-amber-400" />{t('Mbrojtja e fitimit (menaxhoje vetë)')}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button type="button"
+              onClick={() => cfg.be_enabled
+                ? setAndSave('be_enabled', false)
+                : setManyAndSave({ be_enabled: true, be_offset_usd: (Number(cfg.be_offset_usd) > 0 && Number(cfg.be_offset_usd) <= 10) ? Number(cfg.be_offset_usd) : 0.9 })}
+              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.be_enabled ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
+              <ShieldAlert className="w-4 h-4" />{cfg.be_enabled ? t('Break-even: ON') : t('Break-even: OFF')}
+            </button>
+            <button type="button"
+              onClick={() => cfg.trail_enabled
+                ? setAndSave('trail_enabled', false)
+                : setManyAndSave({ trail_enabled: true, broker_trailing: false })}
+              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.trail_enabled ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
+              <TrendingUp className="w-4 h-4" />{cfg.trail_enabled ? t('Trailing: ON') : t('Trailing: OFF')}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2 leading-snug">{t('Break-even ngul SL-në te hyrja sapo trade-i kalon në fitim (mbron nga kthimi në humbje). Trailing e ndjek çmimin duke ngritur SL-në pas fitimit. Rregullo vlerat te seksioni "Mbrojtja e fitimit" më poshtë.')}</p>
+        </div>
       </Section>
 
       {/* ======= 2. MBROJTJA E RREZIKUT (globale) ======= */}

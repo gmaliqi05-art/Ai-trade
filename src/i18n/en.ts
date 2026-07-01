@@ -812,6 +812,8 @@ export const en: Record<string, string> = {
   "Porosia u anulua.": "Order cancelled.",
   "Anulimi dështoi.": "Cancel failed.",
   "6. Mbrojtja e fitimit (Trailing SL)": "6. Profit protection (Trailing SL)",
+  "Mbrojtja e fitimit (menaxhoje vetë)": "Profit protection (manage it yourself)",
+  "Break-even ngul SL-në te hyrja sapo trade-i kalon në fitim (mbron nga kthimi në humbje). Trailing e ndjek çmimin duke ngritur SL-në pas fitimit. Rregullo vlerat te seksioni \"Mbrojtja e fitimit\" më poshtë.": "Break-even locks the SL at entry once the trade goes into profit (protects it from turning into a loss). Trailing follows the price by raising the SL after profit. Adjust the values in the \"Profit protection\" section below.",
   "SL ndjek profitin automatik te ÇDO trade — mban një pjesë të fitimit kur çmimi ecën në favor.": "The SL follows profit automatically on EVERY trade — keeps part of the profit as price moves in your favor.",
   "% e fitimit që mban SL": "% of profit the SL keeps",
   "Sa shumë e fitimit mban SL ndërsa trade-i ecën. P.sh. 50% → kur je +10$, SL mban +5$; kur je +20$, SL mban +10$.": "How much of the profit the SL keeps as the trade moves. E.g. 50% → at +$10 the SL keeps +$5; at +$20 it keeps +$10.",
