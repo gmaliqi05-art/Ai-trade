@@ -111,6 +111,7 @@ interface Cfg {
   spike_mult: number; zone_atr: number; pressure_pct: number;
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
   learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
+  scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
 }
 
 // ---------- L5 — MËSIMI NGA VETVETJA (1×/24h) ----------
@@ -175,6 +176,7 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
 interface Trade {
   id: string; side: string; strategy: string; entry_price: number; sl: number; tp: number;
   lots: number; risk_usd: number; status: string; opened_at: string;
+  live?: boolean; live_order_id?: string | null;
 }
 const VPP = 100;
 
@@ -242,6 +244,15 @@ Deno.serve(async (req: Request) => {
     if (!c1 || !c15 || !c1h || !c4h || c1h.length < 210) { await logScan({ decision: "blocked", reject_reason: "no_data" }); return json({ ok: false, reason: "no_data" }); }
     const px = last(c1.map((c) => c.close));
 
+    // ---- KREDENCIALET LIVE (para vlerësimit — daljet scalp live kanë nevojë për to) ----
+    let broker: Broker | null = null;
+    if (cfg.live_enabled && cfg.live_user_id) {
+      const { data: mc } = await db.from("metaapi_config").select("account_id, token, region, kill_switch")
+        .eq("user_id", cfg.live_user_id).maybeSingle();
+      const m = mc as { account_id?: string; token?: string; region?: string; kill_switch?: boolean } | null;
+      if (m?.account_id && m?.token && m.kill_switch !== true) broker = { account_id: m.account_id, token: m.token, region: m.region || "london" };
+    }
+
     // ======= L4 — VLERËSIMI I TRADE-VE TË HAPURA (mbrojtja e fitimit GJITHMONË) =======
     // Break-even në +be_at_r; trailing (trail_lock_pct% e fitimit) pas +trail_at_r; TP/SL nga 1m high/low.
     const { data: openRows } = await db.from("mmt_trades").select("*").eq("status", "open");
@@ -274,6 +285,21 @@ Deno.serve(async (req: Request) => {
         if (hitTP) { closed = { status: "tp", exit: t.tp }; break; }
       }
       // Skadim: pas 48h mbyll me çmimin aktual (mos mbaj pozicione pafund).
+      // DALJET SCALP (Blic): time-stop (nëse s'lëviz brenda X min, dil) + venitje momentum-i
+      // (EMA9 kryqëzohet mbrapsht kundër pozicionit → dil menjëherë). Të dyja nga hulumtimi
+      // i skalperave profesionistë: "nëse s'ecën shpejt, s'ecën fare".
+      if (!closed && t.strategy === "scalp") {
+        const cl1e = c1.map((c) => c.close);
+        const e9now = last(ema(cl1e, 9)), e21now = last(ema(cl1e, 21));
+        const fade = isBuy ? e9now < e21now : e9now > e21now;
+        const ageMin = (Date.now() - since) / 60000;
+        if (fade || ageMin >= Math.max(3, Number(cfg.scalp_time_stop_min) || 15)) {
+          closed = { status: "expired", exit: px };
+          if (t.live && t.live_order_id && broker) {
+            try { await maTrade(broker, { actionType: "POSITION_CLOSE_ID", positionId: t.live_order_id }); } catch { /* pozicioni mund të jetë mbyllur vetë */ }
+          }
+        }
+      }
       if (!closed && Date.now() - since > 48 * 3600 * 1000) closed = { status: "expired", exit: px };
       if (closed) {
         const pnl = (isBuy ? closed.exit - t.entry_price : t.entry_price - closed.exit) * VPP * t.lots;
@@ -285,15 +311,6 @@ Deno.serve(async (req: Request) => {
         }).eq("id", t.id);
         closedNow++;
       }
-    }
-
-    // ---- KREDENCIALET LIVE (vetëm nëse pronari e ka ndezur çelësin te faqja MMT) ----
-    let broker: Broker | null = null;
-    if (cfg.live_enabled && cfg.live_user_id) {
-      const { data: mc } = await db.from("metaapi_config").select("account_id, token, region, kill_switch")
-        .eq("user_id", cfg.live_user_id).maybeSingle();
-      const m = mc as { account_id?: string; token?: string; region?: string; kill_switch?: boolean } | null;
-      if (m?.account_id && m?.token && m.kill_switch !== true) broker = { account_id: m.account_id, token: m.token, region: m.region || "london" };
     }
 
     // ---- MENAXHIMI LIVE (BE + trailing për pozicionet reale "MMT") — çdo skanim ----
@@ -323,6 +340,80 @@ Deno.serve(async (req: Request) => {
         }
       } catch { /* menaxhimi live s'duhet të ndalë skanimin */ }
     }
+
+    // ======= MMT-SCALP (Blic) — modul afat-shkurtër 1m, punon ÇDO MINUTË =======
+    // Metoda e ekspertëve: EMA9/EMA21(1m) + pullback + RSI7, në drejtim të 15m; SL i ngushtë
+    // (max($2, 1.2×ATR1m)), TP 1.5R; daljet: TP/SL/BE/trailing + time-stop + venitje EMA (te vlerësimi).
+    if (cfg.scalp_on && cfg.active && !(cfg.blackout_until && new Date(cfg.blackout_until).getTime() > Date.now())) {
+      const hU = new Date().getUTCHours();
+      const inSess = (cfg.sessions || []).some(([a, b]) => hU >= a && hU < b);
+      if (inSess) {
+        const today0 = new Date(); today0.setUTCHours(0, 0, 0, 0);
+        const { data: dayR } = await db.from("mmt_trades").select("status, pnl_usd, strategy, opened_at").gte("opened_at", today0.toISOString());
+        const dRows = (dayR ?? []) as { status: string; pnl_usd: number | null; strategy: string; opened_at: string }[];
+        const slT = dRows.filter((r) => r.status === "sl").length;
+        const pnlT = dRows.reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
+        const scT = dRows.filter((r) => r.strategy === "scalp").length;
+        const lastSc = dRows.filter((r) => r.strategy === "scalp").map((r) => new Date(r.opened_at).getTime()).sort((a, b) => b - a)[0] || 0;
+        const openNow = open.filter((t) => t.status === "open").length - closedNow;
+        if (slT < cfg.kill_after_sl && pnlT > -cfg.paper_equity * (cfg.daily_stop_pct / 100)
+          && openNow < cfg.max_open && scT < (Number(cfg.scalp_max_day) || 8)
+          && Date.now() - lastSc >= (Number(cfg.scalp_cooldown_min) || 5) * 60 * 1000) {
+          const cl1s = c1.map((c) => c.close);
+          const e9s = ema(cl1s, 9), e21s = ema(cl1s, 21), r7s = rsi(cl1s, 7);
+          const atr1m = last(atr(c1.map((c) => c.high), c1.map((c) => c.low), cl1s, 14));
+          const lastB = c1[c1.length - 1], prevB = c1[c1.length - 2];
+          const dir15s = last(c15.map((c) => c.close)) > last(ema(c15.map((c) => c.close), 20)) ? "BUY" : "SELL";
+          let sSide: "BUY" | "SELL" | null = null;
+          // BUY: mikro-trendi lart + pullback te EMA9 + qiri konfirmues + RSI7 50-80 (momentum pa ekstrem)
+          if (dir15s === "BUY" && last(e9s) > last(e21s) && lastB.close > last(e9s)
+            && prevB.low <= e9s[e9s.length - 2] * 1.0003 && lastB.close > lastB.open
+            && last(r7s) >= 50 && last(r7s) <= 80) sSide = "BUY";
+          // SELL: pasqyra
+          if (dir15s === "SELL" && last(e9s) < last(e21s) && lastB.close < last(e9s)
+            && prevB.high >= e9s[e9s.length - 2] * 0.9997 && lastB.close < lastB.open
+            && last(r7s) <= 50 && last(r7s) >= 20) sSide = "SELL";
+          if (sSide) {
+            // Mbrojtjet e çastit (versionet scalp): spike + presioni 8×1m + skanimi 10-sekondësh.
+            const rngs = c1.slice(-30).map((c) => c.high - c.low);
+            const avg1s = rngs.reduce((a, b) => a + b, 0) / rngs.length;
+            const okSpike = (lastB.high - lastB.low) <= cfg.spike_mult * avg1s;
+            let okPress = true;
+            { let bu = 0, be = 0; for (const b of c1.slice(-8)) { const bd = Math.abs(b.close - b.open) * (b.volume || 1); if (b.close >= b.open) bu += bd; else be += bd; } const tt = bu + be; if (tt > 0) { const ag = sSide === "BUY" ? be / tt : bu / tt; okPress = ag * 100 < cfg.pressure_pct; } }
+            if (okSpike && okPress) {
+              const s1b = await candles("1s", 15);
+              let px2 = lastB.close, okS = true;
+              if (s1b && s1b.length >= 10) { const l10 = s1b.slice(-10); const mv = l10[l10.length - 1].close - l10[0].close; const ag = sSide === "BUY" ? -mv : mv; okS = ag <= 0.3 * avg1s; px2 = l10[l10.length - 1].close; }
+              if (okS) {
+                const slD = Math.max(2, 1.2 * (Number.isFinite(atr1m) ? atr1m : 2));
+                const sl2 = sSide === "BUY" ? px2 - slD : px2 + slD;
+                const tp2 = sSide === "BUY" ? px2 + slD * (Number(cfg.scalp_tp_rr) || 1.5) : px2 - slD * (Number(cfg.scalp_tp_rr) || 1.5);
+                const riskU = cfg.paper_equity * (cfg.risk_pct / 100);
+                const lots2 = Math.max(0.01, Math.floor((riskU / (slD * VPP)) * 100) / 100);
+                let lOk = false, lId: string | null = null;
+                if (broker) {
+                  try {
+                    const r = await maTrade(broker, { actionType: sSide === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: "XAUUSD", volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(sl2 * 100) / 100, takeProfit: Math.round(tp2 * 100) / 100, comment: "MMT-S" });
+                    const rb = r.body as { orderId?: string } | null;
+                    lOk = r.ok && !!rb?.orderId; lId = rb?.orderId ?? null;
+                    try {
+                      await db.from("trade_executions").insert({ user_id: cfg.live_user_id, symbol: "XAUUSD", action: sSide, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), entry_price: Math.round(px2 * 100) / 100, stop_loss: Math.round(sl2 * 100) / 100, take_profit: Math.round(tp2 * 100) / 100, mode: "live", status: lOk ? "executed" : "error", reason: (lOk ? "MMT-S scalp auto (1m)" : `MMT-S live dështoi (${r.status})`).slice(0, 200), metaapi_order_id: lId, raw_response: r.body ?? null });
+                    } catch { /* logu s'ndal motorin */ }
+                  } catch { /* dështimi live s'e ndal letrën */ }
+                }
+                await db.from("mmt_trades").insert({ symbol: "XAUUSD", side: sSide, strategy: "scalp", regime: "SCALP", entry_price: Math.round(px2 * 100) / 100, sl: Math.round(sl2 * 100) / 100, tp: Math.round(tp2 * 100) / 100, lots: lots2, risk_usd: Math.round(slD * VPP * lots2 * 100) / 100, reason: `scalp 1m: EMA9/21 ${sSide === "BUY" ? "lart" : "poshtë"} + pullback, RSI7 ${Math.round(last(r7s))}`, live: lOk, live_order_id: lId });
+                await logScan({ price: px2, regime: "SCALP", decision: sSide === "BUY" ? "open_buy" : "open_sell", details: { strategy: "scalp", sl: sl2, tp: tp2, lots: lots2, live: lOk } });
+                return json({ ok: true, decision: sSide, strategy: "scalp", live: lOk, closed: closedNow });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Skanimi i PLOTË (regjimi + strategjitë swing/momentum) vetëm në kufijtë 5-minutësh —
+    // cron-i tani rreh çdo minutë vetëm për scalp-in dhe daljet e shpejta.
+    if (new Date().getUTCMinutes() % 5 !== 0) return json({ ok: true, tick: "1m", closed: closedNow });
 
     // ======= L0 — KLASIFIKUESI I REGJIMIT (1h + konfirmim 4h) =======
     const cl1h = c1h.map((c) => c.close), hi1h = c1h.map((c) => c.high), lo1h = c1h.map((c) => c.low);
