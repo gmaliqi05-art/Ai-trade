@@ -384,6 +384,19 @@ Deno.serve(async (req: Request) => {
         const rb = r.body as { orderId?: string; numericCode?: number } | null;
         liveOk = r.ok && !!rb?.orderId;
         liveOrderId = rb?.orderId ?? null;
+        // LIDHJA me tabelën e tregtimeve live: regjistro te trade_executions (shfaqet te
+        // "Ekzekutimet e fundit" / Tregto Live, si robotët e tjerë) — sukses OSE gabim.
+        try {
+          await db.from("trade_executions").insert({
+            user_id: cfg.live_user_id, symbol: "XAUUSD", action: side,
+            volume: Math.max(0.01, Number(cfg.live_lots) || 0.01),
+            entry_price: Math.round(pxNow * 100) / 100,
+            stop_loss: Math.round(sl * 100) / 100, take_profit: Math.round(tp * 100) / 100,
+            mode: "live", status: liveOk ? "executed" : "error",
+            reason: (liveOk ? `MMT auto (${strategy}/${regime}): ${why}` : `MMT live dështoi (${r.status})`).slice(0, 200),
+            metaapi_order_id: liveOrderId, raw_response: r.body ?? null,
+          });
+        } catch { /* logu s'duhet të ndalë motorin */ }
       } catch { /* dështimi live s'e ndal regjistrimin në letër */ }
     }
 

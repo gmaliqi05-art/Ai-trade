@@ -29,7 +29,7 @@ const REGJIME: Record<string, string> = {
 };
 
 export default function MmtPage() {
-  const { profile, user } = useAuth();
+  const { user } = useAuth();
   const { t } = useI18n();
   const [cfg, setCfg] = useState<MmtConfig | null>(null);
   const [trades, setTrades] = useState<MmtTrade[]>([]);
@@ -73,9 +73,6 @@ export default function MmtPage() {
     setSaving(false);
   };
 
-  if (!profile?.is_admin) {
-    return <div className="p-6"><p className="text-gray-400">{t('Kjo faqe është vetëm për administratorin.')}</p></div>;
-  }
   if (loading || !cfg) {
     return <div className="p-6 flex items-center gap-2 text-gray-400"><Loader2 className="w-4 h-4 animate-spin" />{t('Duke ngarkuar…')}</div>;
   }
