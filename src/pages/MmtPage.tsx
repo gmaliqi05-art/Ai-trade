@@ -82,9 +82,19 @@ export default function MmtPage() {
   }, [tf]);
   useEffect(() => {
     loadChart();
-    const id = setInterval(loadChart, 5000); // gati-live, si te Tregto Live
+    const id = setInterval(loadChart, 3000); // kohë reale (rifreskim çdo 3s)
     return () => clearInterval(id);
   }, [loadChart]);
+
+  // ÇMIMI I FUNDIT (nga qiriu më i ri) + P&L LUNDRUES në kohë reale për çdo pozicion të hapur —
+  // si te Tregto Live: (çmimi tani − hyrja) × drejtimi × $100/lot × lotët.
+  const lastPx = chartCandles.length ? chartCandles[chartCandles.length - 1].close : null;
+  const floatOf = useCallback((x: MmtTrade): number | null => {
+    if (lastPx == null) return null;
+    return (lastPx - Number(x.entry_price)) * (x.side === 'BUY' ? 1 : -1) * 100 * Number(x.lots);
+  }, [lastPx]);
+  const openTrades = trades.filter(x => x.status === 'open');
+  const floatingTotal = openTrades.reduce((a, x) => a + (floatOf(x) ?? 0), 0);
 
   // Linjat mbi grafik: hyrja/SL/TP e çdo trade-i MMT të HAPUR (blu/kuqe/jeshile, si te Live).
   const chartLines = useMemo<PriceLineDef[]>(() => {
@@ -187,8 +197,54 @@ export default function MmtPage() {
         ) : (
           <Mt5Chart candles={chartCandles} lines={chartLines} height={380} fitKey={`mmt_${tf}`} />
         )}
-        <p className="text-[10px] text-gray-600 mt-2">{t('Burimi: Binance PAXG — i njëjti çmim që lexon motori MMT. Linjat: blu = hyrja, e kuqe = SL, jeshile = TP (vetëm pozicionet e hapura të MMT).')}</p>
+        {/* Përmbledhja live nën grafik — si te Tregto Live */}
+        <div className="flex items-center gap-3 mt-2 text-[12px]">
+          <span className="text-gray-500">{t('Tani:')}</span>
+          <span className={`font-bold ${floatingTotal >= 0 ? 'text-green-400' : 'text-red-400'}`}>{floatingTotal >= 0 ? '+' : ''}{floatingTotal.toFixed(2)} $</span>
+          <span className="text-gray-600">· {openTrades.length} {t('pozicione hapur')}</span>
+          {lastPx != null && <span className="text-gray-600 ml-auto">XAU {lastPx.toFixed(2)}</span>}
+        </div>
+        <p className="text-[10px] text-gray-600 mt-1">{t('Burimi: Binance PAXG — i njëjti çmim që lexon motori MMT. Linjat: blu = hyrja, e kuqe = SL, jeshile = TP (vetëm pozicionet e hapura të MMT).')}</p>
       </div>
+
+      {/* POZICIONET E HAPURA (MMT) — raport në kohë reale për secilin: fitim/humbje tani + distanca te TP/SL */}
+      {openTrades.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3">
+            <Activity className="w-4 h-4 text-green-400" />{t('Pozicionet e hapura (MMT) — live')}
+            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" /></span>
+          </h3>
+          <div className="space-y-2">
+            {openTrades.map(x => {
+              const fl = floatOf(x);
+              const isBuy = x.side === 'BUY';
+              const toTP = lastPx != null ? Math.abs(Number(x.tp) - lastPx) : null;
+              const toSL = lastPx != null ? Math.abs(lastPx - Number(x.sl)) : null;
+              return (
+                <div key={x.id} className={`rounded-xl px-3 py-2.5 border ${fl == null ? 'border-gray-800 bg-gray-800/40' : fl >= 0 ? 'border-green-500/25 bg-green-500/5' : 'border-red-500/25 bg-red-500/5'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm">
+                      {isBuy ? <TrendingUp className="w-4 h-4 text-green-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
+                      <span className="text-white font-bold">{x.side}</span>
+                      <span className="text-gray-400 text-xs">{x.strategy}</span>
+                      <span className="text-gray-300 text-xs">@{Number(x.entry_price).toFixed(2)} · {x.lots} lot</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${x.live ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-300'}`}>{x.live ? 'REALE' : t('Letër')}</span>
+                    </span>
+                    <span className={`text-sm font-bold ${fl == null ? 'text-gray-500' : fl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {fl == null ? '—' : `${fl >= 0 ? '+' : ''}${fl.toFixed(2)} $`}
+                    </span>
+                  </div>
+                  <div className="flex gap-4 mt-1 text-[11px] text-gray-400">
+                    <span><span className="text-green-400">TP</span> {Number(x.tp).toFixed(2)}{toTP != null && <span className="text-gray-600"> (edhe {toTP.toFixed(2)}$)</span>}</span>
+                    <span><span className="text-red-400">SL</span> {Number(x.sl).toFixed(2)}{toSL != null && <span className="text-gray-600"> ({toSL.toFixed(2)}$ larg)</span>}</span>
+                    <span className="text-gray-600 ml-auto">🕒 {new Date(x.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* CILËSIMET — të VEÇANTA nga robotët e tjerë */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
@@ -330,10 +386,16 @@ export default function MmtPage() {
         return (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
             <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><FileText className="w-4 h-4 text-amber-400" />{t('Raportet MMT (vetëm ky robot)')}</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
+              <div className="bg-gray-800/40 rounded-xl p-3">
+                <p className="text-[11px] text-gray-500">{t('Live (hapur tani)')}</p>
+                <p className={`font-bold text-sm mt-0.5 ${floatingTotal >= 0 ? 'text-green-400' : 'text-red-400'}`}>{floatingTotal >= 0 ? '+' : ''}{floatingTotal.toFixed(2)} $</p>
+                <p className="text-[10px] text-gray-600">{openTrades.length} {t('pozicione')}</p>
+              </div>
               <div className="bg-gray-800/40 rounded-xl p-3">
                 <p className="text-[11px] text-gray-500">{t('Fitim/Humbje sot')}</p>
-                <p className={`font-bold text-sm mt-0.5 ${pnlToday >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnlToday >= 0 ? '+' : ''}{pnlToday.toFixed(2)} $</p>
+                <p className={`font-bold text-sm mt-0.5 ${(pnlToday + floatingTotal) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{(pnlToday + floatingTotal) >= 0 ? '+' : ''}{(pnlToday + floatingTotal).toFixed(2)} $</p>
+                <p className="text-[10px] text-gray-600">{t('realizuar')} {pnlToday >= 0 ? '+' : ''}{pnlToday.toFixed(2)}$ + {t('lundrues')}</p>
               </div>
               <div className="bg-gray-800/40 rounded-xl p-3">
                 <p className="text-[11px] text-gray-500">{t('Trade sot')}</p>
@@ -341,7 +403,7 @@ export default function MmtPage() {
               </div>
               <div className="bg-gray-800/40 rounded-xl p-3">
                 <p className="text-[11px] text-gray-500">{t('Gjithsej (letër+live)')}</p>
-                <p className={`font-bold text-sm mt-0.5 ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)} $</p>
+                <p className={`font-bold text-sm mt-0.5 ${(totalPnl + floatingTotal) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{(totalPnl + floatingTotal) >= 0 ? '+' : ''}{(totalPnl + floatingTotal).toFixed(2)} $</p>
               </div>
               <div className="bg-gray-800/40 rounded-xl p-3">
                 <p className="text-[11px] text-gray-500">{t('Saktësia')}</p>
