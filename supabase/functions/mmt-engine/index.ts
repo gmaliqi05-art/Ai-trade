@@ -109,6 +109,7 @@ interface Cfg {
   blackout_until: string | null; be_at_r: number; trail_at_r: number; trail_lock_pct: number;
   live_enabled: boolean; live_lots: number; live_user_id: string | null;
   spike_mult: number; zone_atr: number; pressure_pct: number;
+  momentum_on: boolean; momentum_er: number; momentum_atr: number;
 }
 interface Trade {
   id: string; side: string; strategy: string; entry_price: number; sl: number; tp: number;
@@ -257,17 +258,19 @@ Deno.serve(async (req: Request) => {
     const cl1h = c1h.map((c) => c.close), hi1h = c1h.map((c) => c.high), lo1h = c1h.map((c) => c.low);
     const cl4h = c4h.map((c) => c.close), cl15 = c15.map((c) => c.close);
     const ema200_1h = last(ema(cl1h, 200));
-    const ema200_4h = last(ema(cl4h, 200));
     const adx1h = last(adx(hi1h, lo1h, cl1h, 14));
     const er1h = effRatio(cl1h, 10);
     const atr1h = last(atr(hi1h, lo1h, cl1h, 14));
     const rsi15 = last(rsi(cl15, 14));
 
+    // Konfirmimi 4h me EMA50 (jo EMA200 — shumë e ngadaltë, humbte kthesat shumëditore
+    // si rally i 2 korrikut). EMA200(4h) mbahet vetëm si kontekst në log.
+    const ema50_4h = last(ema(cl4h, 50));
     let regime = "TRANSITION";
     if (cfg.blackout_until && new Date(cfg.blackout_until).getTime() > Date.now()) regime = "EVENT";
     else if (adx1h >= cfg.adx_trend_min && er1h >= cfg.er_trend_min) {
-      if (px > ema200_1h && px > ema200_4h) regime = "TREND_UP";
-      else if (px < ema200_1h && px < ema200_4h) regime = "TREND_DOWN";
+      if (px > ema200_1h && px > ema50_4h) regime = "TREND_UP";
+      else if (px < ema200_1h && px < ema50_4h) regime = "TREND_DOWN";
     } else if (adx1h < cfg.adx_range_max) regime = "RANGE";
 
     const base = { price: px, regime, adx: Math.round(adx1h * 10) / 10, er: Math.round(er1h * 100) / 100, rsi15: Math.round(rsi15), atr1h: Math.round(atr1h * 100) / 100 };
@@ -275,7 +278,9 @@ Deno.serve(async (req: Request) => {
 
     if (!cfg.active) return rej("mmt_off");
     if (regime === "EVENT") return rej("event_blackout");
-    if (regime === "TRANSITION") return rej("transition_no_trade"); // no-trade state = pozicion
+    // TRANZICION: strategjitë klasike s'punojnë, por MOMENTUM-i (shpërthimet e forta,
+    // BUY dhe SELL njësoj) lejohet — vetëm ai, me të gjitha mbrojtjet e çastit.
+    if (regime === "TRANSITION" && !cfg.momentum_on) return rej("transition_no_trade");
 
     // ======= L3 — SESIONET (kill-zones UTC; jashtë tyre → pa hyrje të reja) =======
     const hUTC = new Date().getUTCHours();
@@ -299,6 +304,26 @@ Deno.serve(async (req: Request) => {
     const e20_15 = last(ema(cl15, 20));
     const prevRsi15 = rsi(cl15, 14)[cl15.length - 2];
 
+    // MOMENTUM (BUY dhe SELL njësoj) — kap shpërthimet e forta që strategjitë e ngadalta i humbin:
+    // 12 min të fundit lëvizje ≥ momentum_atr×ATR(1h), e PASTËR (ER 1m ≥ momentum_er), në anën e
+    // duhur të EMA200(1h); qiriu i fundit i qetësuar (hyn në mikro-pauzë, jo në majë të flakës).
+    const tryMomentum = (): boolean => {
+      if (!cfg.momentum_on) return false;
+      const m12 = c1.slice(-12).map((c) => c.close);
+      const move = m12[m12.length - 1] - m12[0];
+      const erM = effRatio(m12, m12.length - 1);
+      if (Math.abs(move) < cfg.momentum_atr * atr1h || erM < cfg.momentum_er) return false;
+      const dir: "BUY" | "SELL" = move > 0 ? "BUY" : "SELL";
+      if (dir === "BUY" && px <= ema200_1h) return false;   // blej vetëm mbi strukturën 1h
+      if (dir === "SELL" && px >= ema200_1h) return false;  // shit vetëm nën të
+      const lb = c1[c1.length - 1];
+      const avg12 = c1.slice(-30).map((c) => c.high - c.low).reduce((a, b) => a + b, 0) / 30;
+      if (lb.high - lb.low > 2 * avg12) return false;        // qiriu i fundit ende flakë → prit pauzën
+      side = dir; strategy = "momentum";
+      why = `momentum: ${move > 0 ? "+" : ""}${move.toFixed(1)}$ në 12min, ER ${erM.toFixed(2)}`;
+      return true;
+    };
+
     if (regime === "TREND_DOWN" || regime === "TREND_UP") {
       strategy = "trend";
       const isDown = regime === "TREND_DOWN";
@@ -309,22 +334,29 @@ Deno.serve(async (req: Request) => {
       const confirmed = isDown ? lastBar.close < lastBar.open : lastBar.close > lastBar.open;
       const rsiOk = isDown ? (rsi15 < 60 && rsi15 > 25) : (rsi15 > 40 && rsi15 < 75); // jo në ekstrem
       if (pulled && confirmed && rsiOk) { side = isDown ? "SELL" : "BUY"; why = `pullback EMA20(15m) + mbyllje konfirmuese, RSI ${Math.round(rsi15)}`; }
-      else return rej(isDown ? "pa_pullback_sell" : "pa_pullback_buy");
+      else if (!tryMomentum()) return rej(isDown ? "pa_pullback_sell" : "pa_pullback_buy");
     } else if (regime === "RANGE") {
       strategy = "range";
       // Mean-reversion: fade ekstremet me RSI 15m + kthim konfirmues.
       if (rsi15 <= 27 && prevRsi15 < rsi15) { side = "BUY"; why = `range: RSI ${Math.round(rsi15)} kthehet nga poshtë`; }
       else if (rsi15 >= 73 && prevRsi15 > rsi15) { side = "SELL"; why = `range: RSI ${Math.round(rsi15)} kthehet nga lart`; }
-      else return rej("range_pa_ekstrem");
+      else if (!tryMomentum()) return rej("range_pa_ekstrem");
+    } else if (regime === "TRANSITION") {
+      // Në tranzicion punon VETËM momentum-i (shpërthimet e qarta); përndryshe prit.
+      if (!tryMomentum()) return rej("transition_pa_momentum");
     }
     if (!side) return rej("pa_sinjal");
 
     // ======= MBROJTJA E MBI-EKSTENSIONIT (mësimi i 1 korrikut: mos shit te fundi) =======
-    const days = Math.max(2, cfg.overext_days);
-    const dayBars = c1h.slice(-24 * days);
-    const nLow = Math.min(...dayBars.map((c) => c.low)), nHigh = Math.max(...dayBars.map((c) => c.high));
-    if (side === "SELL" && px - nLow < cfg.overext_atr * atr1h) return rej(`mbi_ekstension_sell(${(px - nLow).toFixed(1)}$ nga minimumi)`);
-    if (side === "BUY" && nHigh - px < cfg.overext_atr * atr1h) return rej(`mbi_ekstension_buy(${(nHigh - px).toFixed(1)}$ nga maksimumi)`);
+    // MOMENTUM përjashtohet: shpërthimi te ekstremi ËSHTË vetë hyrja e tij (e mbrojnë ER-ja e pastër,
+    // mikro-pauza, skanimi 1s, SL-ja e ngushtë dhe break-even +1R).
+    if (strategy !== "momentum") {
+      const days = Math.max(2, cfg.overext_days);
+      const dayBars = c1h.slice(-24 * days);
+      const nLow = Math.min(...dayBars.map((c) => c.low)), nHigh = Math.max(...dayBars.map((c) => c.high));
+      if (side === "SELL" && px - nLow < cfg.overext_atr * atr1h) return rej(`mbi_ekstension_sell(${(px - nLow).toFixed(1)}$ nga minimumi)`);
+      if (side === "BUY" && nHigh - px < cfg.overext_atr * atr1h) return rej(`mbi_ekstension_buy(${(nHigh - px).toFixed(1)}$ nga maksimumi)`);
+    }
 
     // Anti-stacking: max N në të njëjtin drejtim (Dhoma: 1 sinjal = 1 pozicion).
     const sameDir = open.filter((t) => t.status === "open" && t.side === side).length;
@@ -354,14 +386,25 @@ Deno.serve(async (req: Request) => {
     const swingLow = Math.min(...sw.map((c) => c.low)), swingHigh = Math.max(...sw.map((c) => c.high));
     if (!isBuySide && (px - roundBelow < zone || px - swingLow < zone)) return rej(`zone_mbeshtetje(${Math.min(px - roundBelow, px - swingLow).toFixed(1)}$)`);
     if (isBuySide && (roundAbove - px < zone || swingHigh - px < zone)) return rej(`zone_rezistence(${Math.min(roundAbove - px, swingHigh - px).toFixed(1)}$)`);
-    // 4) RI-SKANIMI I ÇASTIT (kërkesa jote: "2 sekonda para hyrjes"): rimerr qirinjtë 1m TË FRESKËT
-    //    pikërisht para ekzekutimit — nëse qiriu aktual po lëviz fort KUNDËR drejtimit, anulo hyrjen.
-    const fresh = await candles("1m", 5);
-    if (!fresh || fresh.length < 2) return rej("recheck_pa_te_dhena");
-    const now1m = fresh[fresh.length - 1];
-    const againstMove = isBuySide ? now1m.open - now1m.close : now1m.close - now1m.open; // sa po ecën kundër
-    if (againstMove > 0.5 * avg1m) return rej(`qiri_kunder_hyrjes(${againstMove.toFixed(2)}$ kundër)`);
-    const pxNow = now1m.close; // çmimi më i freskët — hyrja ankorohet këtu, jo te leximi i vjetër
+    // 4) RI-SKANIMI I ÇASTIT (kërkesa jote): SEKONDAT E FUNDIT para ekzekutimit — qirinj 1-SEKONDËSH.
+    //    Krahasohet lëvizja e 10 sekondave të fundit: nëse po ecën fort KUNDËR drejtimit → anulo.
+    //    Rezervë: nëse 1s s'ka të dhëna, përdoret qiriu i freskët 1m (i njëjti parim).
+    let pxNow = px;
+    const s1 = await candles("1s", 30);
+    if (s1 && s1.length >= 10) {
+      const last10s = s1.slice(-10);
+      const move10s = last10s[last10s.length - 1].close - last10s[0].close;
+      const against10s = isBuySide ? -move10s : move10s; // + = po ecën kundër nesh
+      if (against10s > 0.3 * avg1m) return rej(`sekondat_kunder(${against10s.toFixed(2)}$ në 10s)`);
+      pxNow = last10s[last10s.length - 1].close; // çmimi i sekondës së fundit — hyrja ankorohet këtu
+    } else {
+      const fresh = await candles("1m", 5);
+      if (!fresh || fresh.length < 2) return rej("recheck_pa_te_dhena");
+      const now1m = fresh[fresh.length - 1];
+      const againstMove = isBuySide ? now1m.open - now1m.close : now1m.close - now1m.open;
+      if (againstMove > 0.5 * avg1m) return rej(`qiri_kunder_hyrjes(${againstMove.toFixed(2)}$ kundër)`);
+      pxNow = now1m.close;
+    }
 
     // ======= HAPJA: SL nga ATR, TP nga R:R, lot nga rreziku fiks =======
     const slDist = Math.max(atr1h * 1.5, 2);
