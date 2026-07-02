@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Brain, Power, ShieldAlert, Activity, RefreshCw, Loader2, Clock, TrendingUp, TrendingDown, Zap } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Brain, Power, ShieldAlert, Activity, RefreshCw, Loader2, Clock, TrendingUp, TrendingDown, Zap, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
+import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
 
 // MMT — SUPER ROBOTI (faqe KOMPLET E VEÇANTË nga Cilësimet e robotëve ekzistues).
 // Faza HIJE: tregton vetëm në letër; këtu menaxhohen cilësimet e tij dhe shihet performanca.
@@ -39,6 +40,8 @@ export default function MmtPage() {
   const [trades, setTrades] = useState<MmtTrade[]>([]);
   const [scans, setScans] = useState<ScanRow[]>([]);
   const [learns, setLearns] = useState<LearnRow[]>([]);
+  const [chartCandles, setChartCandles] = useState<ChartCandle[]>([]);
+  const [tf, setTf] = useState<'1m' | '5m' | '15m' | '1h'>('1m');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sessionsTxt, setSessionsTxt] = useState('7-10,13-17');
@@ -46,7 +49,7 @@ export default function MmtPage() {
   const load = useCallback(async () => {
     const [{ data: c }, { data: tr }, { data: sc }, { data: ln }] = await Promise.all([
       supabase.from('mmt_config').select('*').eq('id', 1).maybeSingle(),
-      supabase.from('mmt_trades').select('*').order('opened_at', { ascending: false }).limit(30),
+      supabase.from('mmt_trades').select('*').order('opened_at', { ascending: false }).limit(150),
       supabase.from('mmt_scan_log').select('*').order('scanned_at', { ascending: false }).limit(12),
       supabase.from('mmt_learning').select('*').order('learned_at', { ascending: false }).limit(10),
     ]);
@@ -66,6 +69,33 @@ export default function MmtPage() {
     const id = setInterval(load, 30000);
     return () => clearInterval(id);
   }, [load]);
+
+  // GRAFIKU (TradingView lightweight-charts, si te Tregto Live) — qirinjtë nga Binance PAXG,
+  // i NJËJTI burim që përdor motori MMT → hyrjet/SL/TP përputhen saktë me atë që sheh motori.
+  const loadChart = useCallback(async () => {
+    try {
+      const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${tf}&limit=240`);
+      if (!r.ok) return;
+      const raw = (await r.json()) as unknown[][];
+      setChartCandles(raw.map(k => ({ time: Math.floor(Number(k[0]) / 1000), open: +(k[1] as string), high: +(k[2] as string), low: +(k[3] as string), close: +(k[4] as string) })));
+    } catch { /* rrjeti — provohet në tik-un tjetër */ }
+  }, [tf]);
+  useEffect(() => {
+    loadChart();
+    const id = setInterval(loadChart, 5000); // gati-live, si te Tregto Live
+    return () => clearInterval(id);
+  }, [loadChart]);
+
+  // Linjat mbi grafik: hyrja/SL/TP e çdo trade-i MMT të HAPUR (blu/kuqe/jeshile, si te Live).
+  const chartLines = useMemo<PriceLineDef[]>(() => {
+    const out: PriceLineDef[] = [];
+    trades.filter(x => x.status === 'open').forEach((x, i) => {
+      out.push({ price: Number(x.entry_price), color: '#3b82f6', title: `Hyrje #${i + 1} ${x.side} (${x.strategy})` });
+      out.push({ price: Number(x.sl), color: '#ef4444', title: `SL #${i + 1}` });
+      out.push({ price: Number(x.tp), color: '#22c55e', title: `TP #${i + 1}` });
+    });
+    return out;
+  }, [trades]);
 
   const set = <K extends keyof MmtConfig>(k: K, v: MmtConfig[K]) => setCfg(p => (p ? { ...p, [k]: v } : p));
   const save = async (patch?: Partial<MmtConfig>) => {
@@ -139,6 +169,25 @@ export default function MmtPage() {
         </button>
         <button onClick={load} className="p-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 hover:text-white"><RefreshCw className="w-4 h-4" /></button>
         {saving && <span className="text-[11px] text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />{t('Duke ruajtur…')}</span>}
+      </div>
+
+      {/* GRAFIKU (TradingView) — qirinjtë live + hyrjet/SL/TP e MMT të vizatuara */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />XAUUSD — {t('grafiku i MMT (hyrjet, SL, TP)')}</h3>
+          <div className="flex gap-1">
+            {(['1m', '5m', '15m', '1h'] as const).map(x => (
+              <button key={x} onClick={() => setTf(x)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold ${tf === x ? 'bg-amber-500 text-gray-900' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{x}</button>
+            ))}
+          </div>
+        </div>
+        {chartCandles.length === 0 ? (
+          <div className="h-[380px] flex items-center justify-center text-gray-600 text-xs"><Loader2 className="w-4 h-4 animate-spin mr-2" />{t('Duke ngarkuar qirinjtë…')}</div>
+        ) : (
+          <Mt5Chart candles={chartCandles} lines={chartLines} height={380} fitKey={`mmt_${tf}`} />
+        )}
+        <p className="text-[10px] text-gray-600 mt-2">{t('Burimi: Binance PAXG — i njëjti çmim që lexon motori MMT. Linjat: blu = hyrja, e kuqe = SL, jeshile = TP (vetëm pozicionet e hapura të MMT).')}</p>
       </div>
 
       {/* CILËSIMET — të VEÇANTA nga robotët e tjerë */}
@@ -261,6 +310,59 @@ export default function MmtPage() {
           </div>
         )}
       </div>
+
+      {/* RAPORTET MMT — si te Tregto Live, por vetëm me të dhënat e MMT */}
+      {(() => {
+        const closedAll = trades.filter(x => x.closed_at);
+        const dayKey = (iso: string) => new Date(iso).toLocaleDateString();
+        const todayKey = new Date().toLocaleDateString();
+        const closedToday = closedAll.filter(x => dayKey(x.closed_at!) === todayKey);
+        const pnlToday = closedToday.reduce((a, x) => a + Number(x.pnl_usd ?? 0), 0);
+        const byDay = new Map<string, { n: number; w: number; pnl: number; r: number }>();
+        closedAll.forEach(x => {
+          const k = dayKey(x.closed_at!);
+          const d = byDay.get(k) || { n: 0, w: 0, pnl: 0, r: 0 };
+          d.n++; if (Number(x.pnl_usd) > 0) d.w++;
+          d.pnl += Number(x.pnl_usd ?? 0); d.r += Number(x.r_multiple ?? 0);
+          byDay.set(k, d);
+        });
+        const days = [...byDay.entries()].slice(0, 7);
+        return (
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+            <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><FileText className="w-4 h-4 text-amber-400" />{t('Raportet MMT (vetëm ky robot)')}</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              <div className="bg-gray-800/40 rounded-xl p-3">
+                <p className="text-[11px] text-gray-500">{t('Fitim/Humbje sot')}</p>
+                <p className={`font-bold text-sm mt-0.5 ${pnlToday >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnlToday >= 0 ? '+' : ''}{pnlToday.toFixed(2)} $</p>
+              </div>
+              <div className="bg-gray-800/40 rounded-xl p-3">
+                <p className="text-[11px] text-gray-500">{t('Trade sot')}</p>
+                <p className="text-white font-bold text-sm mt-0.5">{closedToday.length} <span className="text-gray-500 font-normal">({closedToday.filter(x => Number(x.pnl_usd) > 0).length}W)</span></p>
+              </div>
+              <div className="bg-gray-800/40 rounded-xl p-3">
+                <p className="text-[11px] text-gray-500">{t('Gjithsej (letër+live)')}</p>
+                <p className={`font-bold text-sm mt-0.5 ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)} $</p>
+              </div>
+              <div className="bg-gray-800/40 rounded-xl p-3">
+                <p className="text-[11px] text-gray-500">{t('Saktësia')}</p>
+                <p className="text-white font-bold text-sm mt-0.5">{closed.length ? Math.round((wins.length / closed.length) * 100) : 0}% <span className="text-gray-500 font-normal">({totalR >= 0 ? '+' : ''}{totalR.toFixed(1)}R)</span></p>
+              </div>
+            </div>
+            {days.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[11px] text-gray-500 mb-1">{t('Raporti ditor (7 ditët e fundit)')}</p>
+                {days.map(([d, v]) => (
+                  <div key={d} className="flex items-center justify-between text-[11px] border-b border-gray-800/60 pb-1">
+                    <span className="text-gray-400">{d}</span>
+                    <span className="text-gray-400">{v.n} trade · {v.w}W/{v.n - v.w}L</span>
+                    <span className={v.pnl >= 0 ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>{v.pnl >= 0 ? '+' : ''}{v.pnl.toFixed(2)}$ ({v.r >= 0 ? '+' : ''}{v.r.toFixed(1)}R)</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* MËSIMI NGA VETVETJA (L5) */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
