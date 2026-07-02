@@ -13,6 +13,8 @@ interface MmtConfig {
   adx_trend_min: number; adx_range_max: number; er_trend_min: number;
   overext_atr: number; overext_days: number; sessions: [number, number][];
   blackout_until: string | null; be_at_r: number; trail_at_r: number; trail_lock_pct: number;
+  live_enabled: boolean; live_lots: number; live_user_id: string | null;
+  spike_mult: number; zone_atr: number; pressure_pct: number;
 }
 interface MmtTrade {
   id: string; side: string; strategy: string; regime: string; entry_price: number; sl: number; tp: number;
@@ -27,7 +29,7 @@ const REGJIME: Record<string, string> = {
 };
 
 export default function MmtPage() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const { t } = useI18n();
   const [cfg, setCfg] = useState<MmtConfig | null>(null);
   const [trades, setTrades] = useState<MmtTrade[]>([]);
@@ -154,6 +156,9 @@ export default function MmtPage() {
           {num('Break-even në (+R)', 'be_at_r', '0.1')}
           {num('Trailing pas (+R)', 'trail_at_r', '0.1')}
           {num('Trailing mban (%)', 'trail_lock_pct', '5')}
+          {num(t('Roja e spike-ve (×mes 1m)'), 'spike_mult', '0.5', t('qiri > kaq × mesatarja → prit'))}
+          {num(t('Zona e rrezikut (×ATR)'), 'zone_atr', '0.1', t('S/R + nivele $50'))}
+          {num(t('Presioni kundër maks (%)'), 'pressure_pct', '5', t('rrjedha e parasë 1m'))}
           <label className="block">
             <span className="text-[11px] text-gray-400">{t('Sesionet (orë UTC)')}</span>
             <input value={sessionsTxt} onChange={e => setSessionsTxt(e.target.value)} onBlur={() => save()}
@@ -168,6 +173,32 @@ export default function MmtPage() {
             className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
           <span className="text-[10px] text-gray-600">{t('P.sh. para fjalimeve të Fed — pa hyrje të reja deri atëherë.')}</span>
         </label>
+      </div>
+
+      {/* LIVE — çelësi në dorën e pronarit (default OFF). Kur ndizet, MMT ekzekuton REALISHT te MT5. */}
+      <div className={`rounded-2xl p-4 space-y-3 border ${cfg.live_enabled ? 'bg-red-500/5 border-red-500/40' : 'bg-gray-900 border-gray-800'}`}>
+        <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+          <Power className={`w-4 h-4 ${cfg.live_enabled ? 'text-red-400' : 'text-gray-500'}`} />
+          {t('LIVE — para reale')} {cfg.live_enabled && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">{t('AKTIV')}</span>}
+        </h3>
+        <p className="text-[11px] text-gray-400 leading-snug">
+          {t('Kur ky çelës është ON, çdo hyrje e MMT ekzekutohet REALISHT te llogaria MT5 (me lot fiks të vogël), përveç regjistrimit në letër. Rekomandim: lëre OFF derisa hija të mbledhë 50+ trade dhe rezultatet të të bindin — pastaj nise me 0.01.')}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+          <button type="button"
+            onClick={() => save({ live_enabled: !cfg.live_enabled, live_user_id: cfg.live_user_id || user?.id || null })}
+            className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.live_enabled ? 'bg-red-500/15 border-red-500/40 text-red-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
+            <Power className="w-4 h-4" />{cfg.live_enabled ? t('LIVE: ON — po tregton realisht') : t('LIVE: OFF — vetëm letër')}
+          </button>
+          {num(t('Lot live (fiks)'), 'live_lots', '0.01', t('fillimi i sigurt: 0.01'))}
+          <label className="block">
+            <span className="text-[11px] text-gray-400">{t('Llogaria MT5')}</span>
+            <button type="button" onClick={() => save({ live_user_id: user?.id || null })}
+              className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 hover:text-white text-left">
+              {cfg.live_user_id ? (cfg.live_user_id === user?.id ? t('✓ Llogaria ime MT5') : `${cfg.live_user_id.slice(0, 8)}…`) : t('Kliko: përdor llogarinë time')}
+            </button>
+          </label>
+        </div>
       </div>
 
       {/* TRADE-T HIJE */}
