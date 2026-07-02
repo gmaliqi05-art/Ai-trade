@@ -17,7 +17,7 @@ const corsHeaders = {
 };
 function json(o: unknown, s = 200) { return new Response(JSON.stringify(o), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 
-interface Candle { time: number; open: number; high: number; low: number; close: number; }
+interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; }
 
 // ---------- Indikatorët (të vetëpërmbajtur — moduli s'varet nga asnjë funksion tjetër) ----------
 function ema(v: number[], p: number): number[] {
@@ -97,7 +97,7 @@ async function candles(interval: string, limit = 300): Promise<Candle[] | null> 
     const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
     const raw = (await r.json()) as unknown[][];
-    return raw.map((k) => ({ time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string), low: +(k[3] as string), close: +(k[4] as string) }));
+    return raw.map((k) => ({ time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string), low: +(k[3] as string), close: +(k[4] as string), volume: +(k[5] as string) }));
   } catch { return null; }
 }
 
@@ -107,12 +107,36 @@ interface Cfg {
   adx_trend_min: number; adx_range_max: number; er_trend_min: number;
   overext_atr: number; overext_days: number; sessions: [number, number][];
   blackout_until: string | null; be_at_r: number; trail_at_r: number; trail_lock_pct: number;
+  live_enabled: boolean; live_lots: number; live_user_id: string | null;
+  spike_mult: number; zone_atr: number; pressure_pct: number;
 }
 interface Trade {
   id: string; side: string; strategy: string; entry_price: number; sl: number; tp: number;
   lots: number; risk_usd: number; status: string; opened_at: string;
 }
-const VPP = 100; // ari: $1 lëvizje × 1 lot = $100
+const VPP = 100;
+
+// ---------- LIVE (MetaApi) — identike me robotin e provuar; përdoret VETËM kur live_enabled=true ----------
+interface Broker { account_id: string; token: string; region: string; }
+const maHost = (r: string) => `https://mt-client-api-v1.${(r || "new-york").trim()}.agiliumtrade.ai`;
+async function maTrade(b: Broker, body: Record<string, unknown>) {
+  const resp = await fetch(`${maHost(b.region)}/users/current/accounts/${b.account_id}/trade`, {
+    method: "POST", headers: { "auth-token": b.token, "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(20000),
+  });
+  const txt = await resp.text();
+  let j: unknown = txt; try { j = JSON.parse(txt); } catch { /* tekst i thjeshtë */ }
+  return { ok: resp.ok, status: resp.status, body: j };
+}
+async function maPositions(b: Broker): Promise<Record<string, unknown>[] | null> {
+  try {
+    const r = await fetch(`${maHost(b.region)}/users/current/accounts/${b.account_id}/positions`, {
+      headers: { "auth-token": b.token }, signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+} // ari: $1 lëvizje × 1 lot = $100
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -192,6 +216,43 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ---- KREDENCIALET LIVE (vetëm nëse pronari e ka ndezur çelësin te faqja MMT) ----
+    let broker: Broker | null = null;
+    if (cfg.live_enabled && cfg.live_user_id) {
+      const { data: mc } = await db.from("metaapi_config").select("account_id, token, region, kill_switch")
+        .eq("user_id", cfg.live_user_id).maybeSingle();
+      const m = mc as { account_id?: string; token?: string; region?: string; kill_switch?: boolean } | null;
+      if (m?.account_id && m?.token && m.kill_switch !== true) broker = { account_id: m.account_id, token: m.token, region: m.region || "london" };
+    }
+
+    // ---- MENAXHIMI LIVE (BE + trailing për pozicionet reale "MMT") — çdo skanim ----
+    if (broker) {
+      try {
+        const pos = await maPositions(broker);
+        for (const p of pos ?? []) {
+          if (!String(p.comment || "").includes("MMT")) continue; // vetëm pozicionet e MMT — të tjerët s'i prek
+          const isBuy = String(p.type || "").includes("BUY");
+          const entry = Number(p.openPrice), cur = Number(p.currentPrice);
+          const slNow = p.stopLoss != null ? Number(p.stopLoss) : null;
+          if (!Number.isFinite(entry) || !Number.isFinite(cur) || slNow == null) continue;
+          const riskDist = Math.abs(entry - slNow) || 1;
+          const fav = isBuy ? cur - entry : entry - cur;
+          const rNow = fav / riskDist;
+          let target = slNow;
+          if (rNow >= cfg.trail_at_r) {
+            const lock = entry + (isBuy ? 1 : -1) * fav * (cfg.trail_lock_pct / 100);
+            if (isBuy ? lock > target : lock < target) target = lock;
+          } else if (rNow >= cfg.be_at_r) {
+            const be = entry + (isBuy ? 1 : -1) * riskDist * 0.05;
+            if (isBuy ? be > target : be < target) target = be;
+          }
+          if (target !== slNow && (isBuy ? target > slNow : target < slNow)) {
+            await maTrade(broker, { actionType: "POSITION_MODIFY", positionId: p.id, stopLoss: Math.round(target * 100) / 100, takeProfit: p.takeProfit ?? undefined });
+          }
+        }
+      } catch { /* menaxhimi live s'duhet të ndalë skanimin */ }
+    }
+
     // ======= L0 — KLASIFIKUESI I REGJIMIT (1h + konfirmim 4h) =======
     const cl1h = c1h.map((c) => c.close), hi1h = c1h.map((c) => c.high), lo1h = c1h.map((c) => c.low);
     const cl4h = c4h.map((c) => c.close), cl15 = c15.map((c) => c.close);
@@ -269,21 +330,71 @@ Deno.serve(async (req: Request) => {
     const sameDir = open.filter((t) => t.status === "open" && t.side === side).length;
     if (sameDir >= cfg.max_same_dir) return rej(`max_same_dir(${sameDir} ${side})`);
 
-    // ======= HAPJA (letër): SL nga ATR, TP nga R:R, lot nga rreziku fiks =======
+    // ======= MBROJTJET E ÇASTIT PARA HYRJES (analiza e thellë e mikro-strukturës) =======
+    const isBuySide = side === "BUY";
+    // 1) ROJA E SPIKE-VE: qiriu i fundit 1m shumë më i madh se mesatarja → lëvizje lajmesh/paniku, prit të ulet pluhuri.
+    const r1m = c1.slice(-30).map((c) => c.high - c.low);
+    const avg1m = r1m.reduce((a, b) => a + b, 0) / r1m.length;
+    const last1m = c1[c1.length - 1];
+    if ((last1m.high - last1m.low) > cfg.spike_mult * avg1m) return rej(`spike_i_madh(${(last1m.high - last1m.low).toFixed(1)}$ vs mes ${avg1m.toFixed(1)}$)`);
+    // 2) PRESIONI BLERËS/SHITËS (10 qirinjtë e fundit 1m, peshuar me volum): mos hyr kundër rrjedhës së parasë.
+    const p10 = c1.slice(-10);
+    let bullVol = 0, bearVol = 0;
+    for (const b of p10) { const body = Math.abs(b.close - b.open) * (b.volume || 1); if (b.close >= b.open) bullVol += body; else bearVol += body; }
+    const tot = bullVol + bearVol;
+    if (tot > 0) {
+      const against = isBuySide ? bearVol / tot : bullVol / tot;
+      if (against * 100 >= cfg.pressure_pct) return rej(`presion_kunder(${Math.round(against * 100)}% ${isBuySide ? "shites" : "blerës"})`);
+    }
+    // 3) ZONAT E RREZIKUT: nivele të rrumbullakëta ($50) + pivotet e fundit 1h — mos SHIT ngjitur me mbështetjen,
+    //    mos BLI ngjitur me rezistencën (aty tregu shpesh kthehet).
+    const zone = cfg.zone_atr * atr1h;
+    const roundBelow = Math.floor(px / 50) * 50, roundAbove = roundBelow + 50;
+    const sw = c1h.slice(-48); // pivotet e 2 ditëve të fundit
+    const swingLow = Math.min(...sw.map((c) => c.low)), swingHigh = Math.max(...sw.map((c) => c.high));
+    if (!isBuySide && (px - roundBelow < zone || px - swingLow < zone)) return rej(`zone_mbeshtetje(${Math.min(px - roundBelow, px - swingLow).toFixed(1)}$)`);
+    if (isBuySide && (roundAbove - px < zone || swingHigh - px < zone)) return rej(`zone_rezistence(${Math.min(roundAbove - px, swingHigh - px).toFixed(1)}$)`);
+    // 4) RI-SKANIMI I ÇASTIT (kërkesa jote: "2 sekonda para hyrjes"): rimerr qirinjtë 1m TË FRESKËT
+    //    pikërisht para ekzekutimit — nëse qiriu aktual po lëviz fort KUNDËR drejtimit, anulo hyrjen.
+    const fresh = await candles("1m", 5);
+    if (!fresh || fresh.length < 2) return rej("recheck_pa_te_dhena");
+    const now1m = fresh[fresh.length - 1];
+    const againstMove = isBuySide ? now1m.open - now1m.close : now1m.close - now1m.open; // sa po ecën kundër
+    if (againstMove > 0.5 * avg1m) return rej(`qiri_kunder_hyrjes(${againstMove.toFixed(2)}$ kundër)`);
+    const pxNow = now1m.close; // çmimi më i freskët — hyrja ankorohet këtu, jo te leximi i vjetër
+
+    // ======= HAPJA: SL nga ATR, TP nga R:R, lot nga rreziku fiks =======
     const slDist = Math.max(atr1h * 1.5, 2);
     const rrUsed = strategy === "range" ? Math.min(cfg.rr, 1.5) : cfg.rr; // range: objektiv modest (mesi), trend: R:R i plotë
-    const sl = side === "BUY" ? px - slDist : px + slDist;
-    const tp = side === "BUY" ? px + slDist * rrUsed : px - slDist * rrUsed;
+    const sl = isBuySide ? pxNow - slDist : pxNow + slDist;
+    const tp = isBuySide ? pxNow + slDist * rrUsed : pxNow - slDist * rrUsed;
     const riskUsd = cfg.paper_equity * (cfg.risk_pct / 100);
     const lots = Math.max(0.01, Math.floor((riskUsd / (slDist * VPP)) * 100) / 100);
 
+    // EKZEKUTIMI LIVE (vetëm kur pronari e ka ndezur çelësin LIVE te faqja MMT; lot fiks live_lots).
+    let liveOrderId: string | null = null;
+    let liveOk = false;
+    if (broker) {
+      try {
+        const r = await maTrade(broker, {
+          actionType: isBuySide ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: "XAUUSD",
+          volume: Math.max(0.01, Number(cfg.live_lots) || 0.01),
+          stopLoss: Math.round(sl * 100) / 100, takeProfit: Math.round(tp * 100) / 100, comment: "MMT",
+        });
+        const rb = r.body as { orderId?: string; numericCode?: number } | null;
+        liveOk = r.ok && !!rb?.orderId;
+        liveOrderId = rb?.orderId ?? null;
+      } catch { /* dështimi live s'e ndal regjistrimin në letër */ }
+    }
+
     await db.from("mmt_trades").insert({
       symbol: "XAUUSD", side, strategy, regime,
-      entry_price: Math.round(px * 100) / 100, sl: Math.round(sl * 100) / 100, tp: Math.round(tp * 100) / 100,
+      entry_price: Math.round(pxNow * 100) / 100, sl: Math.round(sl * 100) / 100, tp: Math.round(tp * 100) / 100,
       lots, risk_usd: Math.round(slDist * VPP * lots * 100) / 100, reason: why,
+      live: liveOk, live_order_id: liveOrderId,
     });
-    await logScan({ ...base, decision: side === "BUY" ? "open_buy" : "open_sell", details: { strategy, why, sl, tp, lots, rr: rrUsed } });
-    return json({ ok: true, regime, decision: side, strategy, why, closed: closedNow });
+    await logScan({ ...base, decision: side === "BUY" ? "open_buy" : "open_sell", details: { strategy, why, sl, tp, lots, rr: rrUsed, live: liveOk, live_order_id: liveOrderId } });
+    return json({ ok: true, regime, decision: side, strategy, why, live: liveOk, closed: closedNow });
   } catch (err) {
     await logScan({ decision: "blocked", reject_reason: `error: ${(err as Error).message}`.slice(0, 180) });
     return json({ error: (err as Error).message }, 500);
