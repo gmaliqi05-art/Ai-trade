@@ -1,0 +1,291 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+// ============================================================
+// MMT — SUPER ROBOTI (motor KOMPLET I VEÇANTË; HIJE/letër — ASNJË urdhër real).
+// Ndërtuar nga: hulumtimi i industrisë (regime detection, prop-firm risk, PTJ 5:1),
+// 415 trade-t e mësuara të MMTI (NY session, R:R 1:4, conf>=75) dhe Dhoma e
+// Ekspertëve (kill-zones 07-10/13-17 UTC, 1 sinjal = 1 pozicion, kill-switch pas 2 SL).
+// Parimi i artë: "Play great defense, not great offense" (Paul Tudor Jones).
+// SHTRESAT: L0 Regjimi → L1 Ansambli → L2 Rreziku → L3 Ngjarjet → L4 Mbrojtja e fitimit.
+// ============================================================
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-cron-secret",
+};
+function json(o: unknown, s = 200) { return new Response(JSON.stringify(o), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
+
+interface Candle { time: number; open: number; high: number; low: number; close: number; }
+
+// ---------- Indikatorët (të vetëpërmbajtur — moduli s'varet nga asnjë funksion tjetër) ----------
+function ema(v: number[], p: number): number[] {
+  const out = new Array(v.length).fill(NaN);
+  if (v.length < p) return out;
+  const k = 2 / (p + 1);
+  let s = 0; for (let i = 0; i < p; i++) s += v[i];
+  let prev = s / p; out[p - 1] = prev;
+  for (let i = p; i < v.length; i++) { prev = v[i] * k + prev * (1 - k); out[i] = prev; }
+  return out;
+}
+function rsi(v: number[], p = 14): number[] {
+  const out = new Array(v.length).fill(NaN);
+  if (v.length <= p) return out;
+  let g = 0, l = 0;
+  for (let i = 1; i <= p; i++) { const c = v[i] - v[i - 1]; if (c >= 0) g += c; else l -= c; }
+  let ag = g / p, al = l / p;
+  const rf = (a: number, b: number) => (b === 0 ? 100 : 100 - 100 / (1 + a / b));
+  out[p] = rf(ag, al);
+  for (let i = p + 1; i < v.length; i++) {
+    const c = v[i] - v[i - 1];
+    ag = (ag * (p - 1) + (c > 0 ? c : 0)) / p;
+    al = (al * (p - 1) + (c < 0 ? -c : 0)) / p;
+    out[i] = rf(ag, al);
+  }
+  return out;
+}
+function atr(h: number[], l: number[], c: number[], p = 14): number[] {
+  const n = c.length, out = new Array(n).fill(NaN);
+  if (n <= p) return out;
+  const tr = new Array(n).fill(NaN); tr[0] = h[0] - l[0];
+  for (let i = 1; i < n; i++) tr[i] = Math.max(h[i] - l[i], Math.abs(h[i] - c[i - 1]), Math.abs(l[i] - c[i - 1]));
+  let s = 0; for (let i = 1; i <= p; i++) s += tr[i];
+  let prev = s / p; out[p] = prev;
+  for (let i = p + 1; i < n; i++) { prev = (prev * (p - 1) + tr[i]) / p; out[i] = prev; }
+  return out;
+}
+function adx(h: number[], l: number[], c: number[], p = 14): number[] {
+  const n = c.length, out = new Array(n).fill(NaN);
+  if (n <= p * 2 + 1) return out;
+  const pDM = new Array(n).fill(0), mDM = new Array(n).fill(0), tr = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const up = h[i] - h[i - 1], dn = l[i - 1] - l[i];
+    pDM[i] = up > dn && up > 0 ? up : 0;
+    mDM[i] = dn > up && dn > 0 ? dn : 0;
+    tr[i] = Math.max(h[i] - l[i], Math.abs(h[i] - c[i - 1]), Math.abs(l[i] - c[i - 1]));
+  }
+  let aS = 0, pS = 0, mS = 0;
+  for (let i = 1; i <= p; i++) { aS += tr[i]; pS += pDM[i]; mS += mDM[i]; }
+  const dx = new Array(n).fill(NaN);
+  for (let i = p + 1; i < n; i++) {
+    aS = aS - aS / p + tr[i]; pS = pS - pS / p + pDM[i]; mS = mS - mS / p + mDM[i];
+    const pDI = aS === 0 ? 0 : 100 * pS / aS, mDI = aS === 0 ? 0 : 100 * mS / aS;
+    const d = pDI + mDI; dx[i] = d === 0 ? 0 : 100 * Math.abs(pDI - mDI) / d;
+  }
+  const f = dx.findIndex((x) => !Number.isNaN(x));
+  if (f === -1 || f + p >= n) return out;
+  let s = 0; for (let i = f; i < f + p; i++) s += dx[i];
+  let prev = s / p; out[f + p - 1] = prev;
+  for (let i = f + p; i < n; i++) { prev = (prev * (p - 1) + dx[i]) / p; out[i] = prev; }
+  return out;
+}
+function effRatio(c: number[], n = 10): number {
+  const L = c.length - 1;
+  if (L < n) return 0;
+  const net = Math.abs(c[L] - c[L - n]);
+  let vol = 0;
+  for (let i = L - n + 1; i <= L; i++) vol += Math.abs(c[i] - c[i - 1]);
+  return vol > 0 ? net / vol : 0;
+}
+const last = (a: number[]) => a[a.length - 1];
+
+// ---------- Qirinjtë: Binance PAXG (ari 24/7) ----------
+async function candles(interval: string, limit = 300): Promise<Candle[] | null> {
+  try {
+    const url = `https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${interval}&limit=${limit}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const raw = (await r.json()) as unknown[][];
+    return raw.map((k) => ({ time: Number(k[0]), open: +(k[1] as string), high: +(k[2] as string), low: +(k[3] as string), close: +(k[4] as string) }));
+  } catch { return null; }
+}
+
+interface Cfg {
+  active: boolean; paper_equity: number; risk_pct: number; rr: number;
+  max_open: number; max_same_dir: number; daily_stop_pct: number; kill_after_sl: number;
+  adx_trend_min: number; adx_range_max: number; er_trend_min: number;
+  overext_atr: number; overext_days: number; sessions: [number, number][];
+  blackout_until: string | null; be_at_r: number; trail_at_r: number; trail_lock_pct: number;
+}
+interface Trade {
+  id: string; side: string; strategy: string; entry_price: number; sl: number; tp: number;
+  lots: number; risk_usd: number; status: string; opened_at: string;
+}
+const VPP = 100; // ari: $1 lëvizje × 1 lot = $100
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  // Autorizim: cron (x-cron-secret) ose admin i kyçur.
+  let authorized = false;
+  try {
+    const { data: cs } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
+    if ((cs as { value?: string } | null)?.value && req.headers.get("x-cron-secret") === (cs as { value: string }).value) authorized = true;
+  } catch { /* vazhdo te kontrolli i user-it */ }
+  if (!authorized) {
+    const auth = req.headers.get("Authorization") || "";
+    const uc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+    const { data: u } = await uc.auth.getUser();
+    if (u?.user) {
+      const { data: p } = await db.from("profiles").select("is_admin").eq("id", u.user.id).maybeSingle();
+      if ((p as { is_admin?: boolean } | null)?.is_admin) authorized = true;
+    }
+  }
+  if (!authorized) return json({ error: "unauthorized" }, 401);
+
+  const logScan = async (row: Record<string, unknown>) => { try { await db.from("mmt_scan_log").insert(row); } catch { /* diagnostikë — mos ndal motorin */ } };
+
+  try {
+    const { data: cfgRow } = await db.from("mmt_config").select("*").eq("id", 1).maybeSingle();
+    const cfg = cfgRow as unknown as Cfg | null;
+    if (!cfg) return json({ error: "mmt_config mungon" }, 500);
+
+    // Qirinjtë: 1m (vlerësim i trade-ve të hapura), 15m (hyrje), 1h (regjim), 4h (konfirmim).
+    const [c1, c15, c1h, c4h] = await Promise.all([candles("1m"), candles("15m"), candles("1h"), candles("4h")]);
+    if (!c1 || !c15 || !c1h || !c4h || c1h.length < 210) { await logScan({ decision: "blocked", reject_reason: "no_data" }); return json({ ok: false, reason: "no_data" }); }
+    const px = last(c1.map((c) => c.close));
+
+    // ======= L4 — VLERËSIMI I TRADE-VE TË HAPURA (mbrojtja e fitimit GJITHMONË) =======
+    // Break-even në +be_at_r; trailing (trail_lock_pct% e fitimit) pas +trail_at_r; TP/SL nga 1m high/low.
+    const { data: openRows } = await db.from("mmt_trades").select("*").eq("status", "open");
+    const open = (openRows ?? []) as unknown as Trade[];
+    let closedNow = 0;
+    for (const t of open) {
+      const isBuy = t.side === "BUY";
+      const since = new Date(t.opened_at).getTime();
+      const bars = c1.filter((c) => c.time >= since);
+      if (bars.length === 0) continue;
+      const riskDist = Math.abs(t.entry_price - t.sl);
+      let sl = t.sl, closed: { status: string; exit: number } | null = null;
+      // Rindërto SL-në efektive bar-pas-bari (BE + trailing), pastaj kontrollo prekjet.
+      let bestMove = 0;
+      for (const b of bars) {
+        const fav = isBuy ? b.high - t.entry_price : t.entry_price - b.low;
+        if (fav > bestMove) bestMove = fav;
+        const rNow = riskDist > 0 ? bestMove / riskDist : 0;
+        if (rNow >= cfg.trail_at_r) {
+          const lock = t.entry_price + (isBuy ? 1 : -1) * bestMove * (cfg.trail_lock_pct / 100);
+          if (isBuy ? lock > sl : lock < sl) sl = lock;
+        } else if (rNow >= cfg.be_at_r) {
+          const be = t.entry_price + (isBuy ? 1 : -1) * riskDist * 0.05; // BE + ofset i vogël (mbulon spread-in)
+          if (isBuy ? be > sl : be < sl) sl = be;
+        }
+        const hitSL = isBuy ? b.low <= sl : b.high >= sl;
+        const hitTP = isBuy ? b.high >= t.tp : b.low <= t.tp;
+        // Nëse preken të dyja në të njëjtin bar → konservativ: numëro SL (defense first).
+        if (hitSL) { const moved = sl !== t.sl; closed = { status: moved ? (bestMove / (riskDist || 1) >= cfg.trail_at_r ? "trail" : "be") : "sl", exit: sl }; break; }
+        if (hitTP) { closed = { status: "tp", exit: t.tp }; break; }
+      }
+      // Skadim: pas 48h mbyll me çmimin aktual (mos mbaj pozicione pafund).
+      if (!closed && Date.now() - since > 48 * 3600 * 1000) closed = { status: "expired", exit: px };
+      if (closed) {
+        const pnl = (isBuy ? closed.exit - t.entry_price : t.entry_price - closed.exit) * VPP * t.lots;
+        const rMult = t.risk_usd > 0 ? pnl / t.risk_usd : 0;
+        await db.from("mmt_trades").update({
+          status: closed.status, exit_price: Math.round(closed.exit * 100) / 100,
+          pnl_usd: Math.round(pnl * 100) / 100, r_multiple: Math.round(rMult * 100) / 100,
+          closed_at: new Date().toISOString(),
+        }).eq("id", t.id);
+        closedNow++;
+      }
+    }
+
+    // ======= L0 — KLASIFIKUESI I REGJIMIT (1h + konfirmim 4h) =======
+    const cl1h = c1h.map((c) => c.close), hi1h = c1h.map((c) => c.high), lo1h = c1h.map((c) => c.low);
+    const cl4h = c4h.map((c) => c.close), cl15 = c15.map((c) => c.close);
+    const ema200_1h = last(ema(cl1h, 200));
+    const ema200_4h = last(ema(cl4h, 200));
+    const adx1h = last(adx(hi1h, lo1h, cl1h, 14));
+    const er1h = effRatio(cl1h, 10);
+    const atr1h = last(atr(hi1h, lo1h, cl1h, 14));
+    const rsi15 = last(rsi(cl15, 14));
+
+    let regime = "TRANSITION";
+    if (cfg.blackout_until && new Date(cfg.blackout_until).getTime() > Date.now()) regime = "EVENT";
+    else if (adx1h >= cfg.adx_trend_min && er1h >= cfg.er_trend_min) {
+      if (px > ema200_1h && px > ema200_4h) regime = "TREND_UP";
+      else if (px < ema200_1h && px < ema200_4h) regime = "TREND_DOWN";
+    } else if (adx1h < cfg.adx_range_max) regime = "RANGE";
+
+    const base = { price: px, regime, adx: Math.round(adx1h * 10) / 10, er: Math.round(er1h * 100) / 100, rsi15: Math.round(rsi15), atr1h: Math.round(atr1h * 100) / 100 };
+    const rej = async (r: string) => { await logScan({ ...base, decision: "hold", reject_reason: r }); return json({ ok: true, regime, decision: "hold", reason: r, closed: closedNow }); };
+
+    if (!cfg.active) return rej("mmt_off");
+    if (regime === "EVENT") return rej("event_blackout");
+    if (regime === "TRANSITION") return rej("transition_no_trade"); // no-trade state = pozicion
+
+    // ======= L3 — SESIONET (kill-zones UTC; jashtë tyre → pa hyrje të reja) =======
+    const hUTC = new Date().getUTCHours();
+    const inSession = (cfg.sessions || []).some(([a, b]) => hUTC >= a && hUTC < b);
+    if (!inSession) return rej(`jashte_sesionit(${hUTC}h)`);
+
+    // ======= L2 — MENAXHERI I RREZIKUT (prop-style, PARA se të mendojmë hyrjen) =======
+    const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+    const { data: dayRows } = await db.from("mmt_trades").select("status, pnl_usd").gte("closed_at", today.toISOString());
+    const closedToday = (dayRows ?? []) as { status: string; pnl_usd: number | null }[];
+    const dayPnl = closedToday.reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
+    const slToday = closedToday.filter((r) => r.status === "sl").length;
+    if (slToday >= cfg.kill_after_sl) return rej(`kill_switch(${slToday}SL)`);              // Dhoma e Ekspertëve
+    if (dayPnl <= -cfg.paper_equity * (cfg.daily_stop_pct / 100)) return rej(`stop_ditor(${dayPnl.toFixed(0)}$)`); // prop-firm
+    const stillOpen = open.length - closedNow;
+    if (stillOpen >= cfg.max_open) return rej(`max_open(${stillOpen})`);
+
+    // ======= L1 — ANSAMBLI I STRATEGJIVE (secila vetëm në regjimin e vet) =======
+    let side: "BUY" | "SELL" | null = null;
+    let strategy = "", why = "";
+    const e20_15 = last(ema(cl15, 20));
+    const prevRsi15 = rsi(cl15, 14)[cl15.length - 2];
+
+    if (regime === "TREND_DOWN" || regime === "TREND_UP") {
+      strategy = "trend";
+      const isDown = regime === "TREND_DOWN";
+      // Hyrje në PULLBACK me konfirmim mbylljeje (jo ndjekje e spike-ut — mësimi kundër kthesave të rreme):
+      // çmimi u tërhoq te EMA20(15m) dhe qiriu i fundit u MBYLL sërish në drejtim të trendit.
+      const lastBar = c15[c15.length - 1];
+      const pulled = isDown ? lastBar.high >= e20_15 * 0.999 : lastBar.low <= e20_15 * 1.001;
+      const confirmed = isDown ? lastBar.close < lastBar.open : lastBar.close > lastBar.open;
+      const rsiOk = isDown ? (rsi15 < 60 && rsi15 > 25) : (rsi15 > 40 && rsi15 < 75); // jo në ekstrem
+      if (pulled && confirmed && rsiOk) { side = isDown ? "SELL" : "BUY"; why = `pullback EMA20(15m) + mbyllje konfirmuese, RSI ${Math.round(rsi15)}`; }
+      else return rej(isDown ? "pa_pullback_sell" : "pa_pullback_buy");
+    } else if (regime === "RANGE") {
+      strategy = "range";
+      // Mean-reversion: fade ekstremet me RSI 15m + kthim konfirmues.
+      if (rsi15 <= 27 && prevRsi15 < rsi15) { side = "BUY"; why = `range: RSI ${Math.round(rsi15)} kthehet nga poshtë`; }
+      else if (rsi15 >= 73 && prevRsi15 > rsi15) { side = "SELL"; why = `range: RSI ${Math.round(rsi15)} kthehet nga lart`; }
+      else return rej("range_pa_ekstrem");
+    }
+    if (!side) return rej("pa_sinjal");
+
+    // ======= MBROJTJA E MBI-EKSTENSIONIT (mësimi i 1 korrikut: mos shit te fundi) =======
+    const days = Math.max(2, cfg.overext_days);
+    const dayBars = c1h.slice(-24 * days);
+    const nLow = Math.min(...dayBars.map((c) => c.low)), nHigh = Math.max(...dayBars.map((c) => c.high));
+    if (side === "SELL" && px - nLow < cfg.overext_atr * atr1h) return rej(`mbi_ekstension_sell(${(px - nLow).toFixed(1)}$ nga minimumi)`);
+    if (side === "BUY" && nHigh - px < cfg.overext_atr * atr1h) return rej(`mbi_ekstension_buy(${(nHigh - px).toFixed(1)}$ nga maksimumi)`);
+
+    // Anti-stacking: max N në të njëjtin drejtim (Dhoma: 1 sinjal = 1 pozicion).
+    const sameDir = open.filter((t) => t.status === "open" && t.side === side).length;
+    if (sameDir >= cfg.max_same_dir) return rej(`max_same_dir(${sameDir} ${side})`);
+
+    // ======= HAPJA (letër): SL nga ATR, TP nga R:R, lot nga rreziku fiks =======
+    const slDist = Math.max(atr1h * 1.5, 2);
+    const rrUsed = strategy === "range" ? Math.min(cfg.rr, 1.5) : cfg.rr; // range: objektiv modest (mesi), trend: R:R i plotë
+    const sl = side === "BUY" ? px - slDist : px + slDist;
+    const tp = side === "BUY" ? px + slDist * rrUsed : px - slDist * rrUsed;
+    const riskUsd = cfg.paper_equity * (cfg.risk_pct / 100);
+    const lots = Math.max(0.01, Math.floor((riskUsd / (slDist * VPP)) * 100) / 100);
+
+    await db.from("mmt_trades").insert({
+      symbol: "XAUUSD", side, strategy, regime,
+      entry_price: Math.round(px * 100) / 100, sl: Math.round(sl * 100) / 100, tp: Math.round(tp * 100) / 100,
+      lots, risk_usd: Math.round(slDist * VPP * lots * 100) / 100, reason: why,
+    });
+    await logScan({ ...base, decision: side === "BUY" ? "open_buy" : "open_sell", details: { strategy, why, sl, tp, lots, rr: rrUsed } });
+    return json({ ok: true, regime, decision: side, strategy, why, closed: closedNow });
+  } catch (err) {
+    await logScan({ decision: "blocked", reject_reason: `error: ${(err as Error).message}`.slice(0, 180) });
+    return json({ error: (err as Error).message }, 500);
+  }
+});
