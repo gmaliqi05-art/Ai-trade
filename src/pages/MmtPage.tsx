@@ -15,6 +15,7 @@ interface MmtConfig {
   blackout_until: string | null; be_at_r: number; trail_at_r: number; trail_lock_pct: number;
   live_enabled: boolean; live_lots: number; live_user_id: string | null;
   spike_mult: number; zone_atr: number; pressure_pct: number;
+  momentum_on: boolean; momentum_er: number; momentum_atr: number;
 }
 interface MmtTrade {
   id: string; side: string; strategy: string; regime: string; entry_price: number; sl: number; tp: number;
@@ -156,6 +157,16 @@ export default function MmtPage() {
           {num(t('Roja e spike-ve (×mes 1m)'), 'spike_mult', '0.5', t('qiri > kaq × mesatarja → prit'))}
           {num(t('Zona e rrezikut (×ATR)'), 'zone_atr', '0.1', t('S/R + nivele $50'))}
           {num(t('Presioni kundër maks (%)'), 'pressure_pct', '5', t('rrjedha e parasë 1m'))}
+          <label className="block">
+            <span className="text-[11px] text-gray-400">{t('Momentum (BUY+SELL)')}</span>
+            <button type="button" onClick={() => save({ momentum_on: !cfg.momentum_on })}
+              className={`mt-1 w-full rounded-lg px-3 py-2 text-sm font-semibold border ${cfg.momentum_on ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+              {cfg.momentum_on ? 'ON' : 'OFF'}
+            </button>
+            <span className="text-[10px] text-gray-600">{t('kap shpërthimet e forta')}</span>
+          </label>
+          {num(t('Momentum: lëvizja min (×ATR)'), 'momentum_atr', '0.1', t('në 12 min'))}
+          {num(t('Momentum: pastërtia (ER)'), 'momentum_er', '0.05', t('0.65 = lëvizje e pastër'))}
           <label className="block">
             <span className="text-[11px] text-gray-400">{t('Sesionet (orë UTC)')}</span>
             <input value={sessionsTxt} onChange={e => setSessionsTxt(e.target.value)} onBlur={() => save()}
