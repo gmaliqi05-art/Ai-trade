@@ -110,6 +110,67 @@ interface Cfg {
   live_enabled: boolean; live_lots: number; live_user_id: string | null;
   spike_mult: number; zone_atr: number; pressure_pct: number;
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
+  learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
+}
+
+// ---------- L5 — MËSIMI NGA VETVETJA (1×/24h) ----------
+// Analizon trade-t e veta të mbyllura (14 ditët e fundit) dhe rregullon parametrat
+// BRENDA kufijve të fortë: kur një strategji humb (expectancy < -0.2R me mostër të
+// mjaftueshme) → ia NGRE shtangën e hyrjes (më selektiv); kur fiton qartë → ia lehtëson
+// pak drejt default-it. KURRË s'e rrit rrezikun (risk_pct/live_lots/max_open s'preken).
+// Çdo ndryshim shkruhet te mmt_learning — plotësisht i auditueshëm.
+async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise<void> {
+  const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
+  const { data } = await db.from("mmt_trades").select("strategy, r_multiple, opened_at")
+    .not("closed_at", "is", null).gte("opened_at", since);
+  const rows = (data ?? []) as { strategy: string; r_multiple: number | null; opened_at: string }[];
+  const minN = Math.max(10, cfg.learn_min_trades);
+  const patch: Record<string, unknown> = { last_learned_at: new Date().toISOString() };
+  const log = async (param: string, oldV: unknown, newV: unknown, reason: string, n: number, exp: number) => {
+    await db.from("mmt_learning").insert({ param, old_value: String(oldV), new_value: String(newV), reason, sample_n: n, expectancy: Math.round(exp * 100) / 100 });
+  };
+  const expOf = (s: string) => {
+    const xs = rows.filter((r) => r.strategy === s && r.r_multiple != null).map((r) => Number(r.r_multiple));
+    return { n: xs.length, exp: xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0 };
+  };
+  // MOMENTUM: humb → ngre pastërtinë ER (më selektiv); humb rëndë → fike; fiton → lehtëso pak.
+  const m = expOf("momentum");
+  if (m.n >= minN) {
+    if (m.exp < -0.5 && cfg.momentum_on) { patch.momentum_on = false; await log("momentum_on", true, false, "momentum humbës i qëndrueshëm — u fik vetë", m.n, m.exp); }
+    else if (m.exp < -0.2) { const v = Math.min(0.85, cfg.momentum_er + 0.05); if (v !== cfg.momentum_er) { patch.momentum_er = v; await log("momentum_er", cfg.momentum_er, v, "momentum nën pritshmëri — kërkohet lëvizje më e pastër", m.n, m.exp); } }
+    else if (m.exp > 0.5) { const v = Math.max(0.5, cfg.momentum_er - 0.02); if (v !== cfg.momentum_er) { patch.momentum_er = v; await log("momentum_er", cfg.momentum_er, v, "momentum fitues — lehtësim i lehtë", m.n, m.exp); } }
+  }
+  // TREND: humb → kërko trend më të fortë (ADX/ER më lart); fiton qartë → kthehu ngadalë drejt 25.
+  const t = expOf("trend");
+  if (t.n >= minN) {
+    if (t.exp < -0.2) {
+      const a = Math.min(30, cfg.adx_trend_min + 1), e = Math.min(0.4, Math.round((cfg.er_trend_min + 0.02) * 100) / 100);
+      if (a !== cfg.adx_trend_min) { patch.adx_trend_min = a; await log("adx_trend_min", cfg.adx_trend_min, a, "trend humbës — kërkohet trend më i fortë", t.n, t.exp); }
+      if (e !== cfg.er_trend_min) { patch.er_trend_min = e; await log("er_trend_min", cfg.er_trend_min, e, "trend humbës — kërkohet lëvizje më e pastër", t.n, t.exp); }
+    } else if (t.exp > 0.5) {
+      const a = Math.max(25, cfg.adx_trend_min - 1);
+      if (a !== cfg.adx_trend_min) { patch.adx_trend_min = a; await log("adx_trend_min", cfg.adx_trend_min, a, "trend fitues — lehtësim drejt default-it", t.n, t.exp); }
+    }
+  }
+  // RANGE: humb → kërko range më të qetë (ADX max më i ulët).
+  const rg = expOf("range");
+  if (rg.n >= minN && rg.exp < -0.2) {
+    const v = Math.max(15, cfg.adx_range_max - 2);
+    if (v !== cfg.adx_range_max) { patch.adx_range_max = v; await log("adx_range_max", cfg.adx_range_max, v, "range humbës — kërkohet range më i qetë", rg.n, rg.exp); }
+  }
+  // SESIONET: hiq dritaren e orëve që humb qartë (kurrë s'shton orë të reja vetë; min 1 dritare mbetet).
+  if (Array.isArray(cfg.sessions) && cfg.sessions.length > 1) {
+    const byWin = cfg.sessions.map(([a, b]) => {
+      const xs = rows.filter((r) => { const h = new Date(r.opened_at).getUTCHours(); return h >= a && h < b && r.r_multiple != null; }).map((r) => Number(r.r_multiple));
+      return { win: [a, b] as [number, number], n: xs.length, exp: xs.length ? xs.reduce((x, y) => x + y, 0) / xs.length : 0 };
+    });
+    const bad = byWin.find((w) => w.n >= minN && w.exp < -0.3);
+    if (bad) {
+      const kept = cfg.sessions.filter(([a, b]) => !(a === bad.win[0] && b === bad.win[1]));
+      if (kept.length >= 1) { patch.sessions = kept; await log("sessions", JSON.stringify(cfg.sessions), JSON.stringify(kept), `dritarja ${bad.win[0]}-${bad.win[1]}h humbëse — u hoq`, bad.n, bad.exp); }
+    }
+  }
+  await db.from("mmt_config").update(patch).eq("id", 1);
 }
 interface Trade {
   id: string; side: string; strategy: string; entry_price: number; sl: number; tp: number;
@@ -166,6 +227,15 @@ Deno.serve(async (req: Request) => {
     const { data: cfgRow } = await db.from("mmt_config").select("*").eq("id", 1).maybeSingle();
     const cfg = cfgRow as unknown as Cfg | null;
     if (!cfg) return json({ error: "mmt_config mungon" }, 500);
+
+    // L5 — MËSIMI NGA VETVETJA: 1× në 24h, analizon rezultatet e veta dhe përshtat parametrat
+    // (brenda kufijve; rreziku KURRË s'rritet vetë). Dështimi i mësimit s'e ndal skanimin.
+    if (cfg.learn_enabled !== false) {
+      const lastL = cfg.last_learned_at ? new Date(cfg.last_learned_at).getTime() : 0;
+      if (Date.now() - lastL > 24 * 3600 * 1000) {
+        try { await learnPass(db, cfg); } catch { /* mësimi provohet sërish nesër */ }
+      }
+    }
 
     // Qirinjtë: 1m (vlerësim i trade-ve të hapura), 15m (hyrje), 1h (regjim), 4h (konfirmim).
     const [c1, c15, c1h, c4h] = await Promise.all([candles("1m"), candles("15m"), candles("1h"), candles("4h")]);

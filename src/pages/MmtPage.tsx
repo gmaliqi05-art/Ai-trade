@@ -16,7 +16,9 @@ interface MmtConfig {
   live_enabled: boolean; live_lots: number; live_user_id: string | null;
   spike_mult: number; zone_atr: number; pressure_pct: number;
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
+  learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
 }
+interface LearnRow { id: number; learned_at: string; param: string; old_value: string | null; new_value: string | null; reason: string | null; sample_n: number | null; expectancy: number | null; }
 interface MmtTrade {
   id: string; side: string; strategy: string; regime: string; entry_price: number; sl: number; tp: number;
   lots: number; status: string; exit_price: number | null; pnl_usd: number | null; r_multiple: number | null;
@@ -35,15 +37,17 @@ export default function MmtPage() {
   const [cfg, setCfg] = useState<MmtConfig | null>(null);
   const [trades, setTrades] = useState<MmtTrade[]>([]);
   const [scans, setScans] = useState<ScanRow[]>([]);
+  const [learns, setLearns] = useState<LearnRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sessionsTxt, setSessionsTxt] = useState('7-10,13-17');
 
   const load = useCallback(async () => {
-    const [{ data: c }, { data: tr }, { data: sc }] = await Promise.all([
+    const [{ data: c }, { data: tr }, { data: sc }, { data: ln }] = await Promise.all([
       supabase.from('mmt_config').select('*').eq('id', 1).maybeSingle(),
       supabase.from('mmt_trades').select('*').order('opened_at', { ascending: false }).limit(30),
       supabase.from('mmt_scan_log').select('*').order('scanned_at', { ascending: false }).limit(12),
+      supabase.from('mmt_learning').select('*').order('learned_at', { ascending: false }).limit(10),
     ]);
     if (c) {
       setCfg(c as MmtConfig);
@@ -52,6 +56,7 @@ export default function MmtPage() {
     }
     setTrades((tr ?? []) as MmtTrade[]);
     setScans((sc ?? []) as ScanRow[]);
+    setLearns((ln ?? []) as LearnRow[]);
     setLoading(false);
   }, []);
 
@@ -228,6 +233,33 @@ export default function MmtPage() {
                   {x.pnl_usd != null && <span className={Number(x.pnl_usd) >= 0 ? 'text-green-400' : 'text-red-400'}>{Number(x.pnl_usd) >= 0 ? '+' : ''}{Number(x.pnl_usd).toFixed(2)}$ ({Number(x.r_multiple).toFixed(1)}R)</span>}
                   <span className="text-gray-600">{new Date(x.opened_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                 </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MËSIMI NGA VETVETJA (L5) */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Brain className="w-4 h-4 text-amber-400" />{t('Mësimi nga vetvetja')}</h3>
+          <button type="button" onClick={() => save({ learn_enabled: !cfg.learn_enabled })}
+            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.learn_enabled !== false ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+            {cfg.learn_enabled !== false ? 'ON' : 'OFF'}
+          </button>
+        </div>
+        <p className="text-[11px] text-gray-500 leading-snug mb-3">
+          {t('Çdo 24 orë MMT analizon rezultatet e veta (14 ditët e fundit) dhe përshtat parametrat: strategjitë humbëse bëhen më selektive ose fiken, oraret humbëse hiqen, fituesit lehtësohen pak. Rreziku KURRË nuk rritet vetë. Çdo ndryshim shfaqet këtu.')}
+        </p>
+        {learns.length === 0 ? (
+          <p className="text-gray-600 text-xs text-center py-2">{t('Ende asnjë mësim — duhen të paktën')} {cfg.learn_min_trades} {t('trade të mbyllura që analiza të jetë e besueshme.')}</p>
+        ) : (
+          <div className="space-y-1.5">
+            {learns.map(l => (
+              <div key={l.id} className="text-[11px] text-gray-400 border-b border-gray-800/60 pb-1.5">
+                <span className="text-gray-500">{new Date(l.learned_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                {' · '}<span className="text-amber-400 font-semibold">{l.param}</span>: {l.old_value} → <span className="text-white">{l.new_value}</span>
+                {' — '}{l.reason} <span className="text-gray-600">({l.sample_n} trade, {Number(l.expectancy).toFixed(2)}R mes.)</span>
               </div>
             ))}
           </div>
