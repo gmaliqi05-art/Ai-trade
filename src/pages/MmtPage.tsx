@@ -17,6 +17,7 @@ interface MmtConfig {
   spike_mult: number; zone_atr: number; pressure_pct: number;
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
   learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
+  scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
 }
 interface LearnRow { id: number; learned_at: string; param: string; old_value: string | null; new_value: string | null; reason: string | null; sample_n: number | null; expectancy: number | null; }
 interface MmtTrade {
@@ -186,6 +187,28 @@ export default function MmtPage() {
             className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
           <span className="text-[10px] text-gray-600">{t('P.sh. para fjalimeve të Fed — pa hyrje të reja deri atëherë.')}</span>
         </label>
+      </div>
+
+      {/* MMT-SCALP (Blic) — tregtime të shkurta 1m, kontroll çdo minutë; ON/OFF nga pronari. */}
+      <div className={`rounded-2xl p-4 space-y-3 border ${cfg.scalp_on ? 'bg-amber-500/5 border-amber-500/40' : 'bg-gray-900 border-gray-800'}`}>
+        <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+          <Zap className={`w-4 h-4 ${cfg.scalp_on ? 'text-amber-400' : 'text-gray-500'}`} />
+          {t('SCALP (Blic) — tregtime të shkurta 1m')}
+          {cfg.scalp_on && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">{t('AKTIV')}</span>}
+        </h3>
+        <p className="text-[11px] text-gray-400 leading-snug">
+          {t('Ndjek qirinjtë 1-minutësh ÇDO MINUTË: hyn me EMA9/21 + pullback + RSI7 (në drejtim të 15m), SL i ngushtë, TP 1.5R. Del vetë kur momenti venitet (EMA kryqëzohet mbrapsht) ose kur s\'lëviz brenda kohës (time-stop). Fitime të vogla e të shpeshta — humbje të vogla e të prera shpejt.')}
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+          <button type="button" onClick={() => save({ scalp_on: !cfg.scalp_on })}
+            className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.scalp_on ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
+            <Zap className="w-4 h-4" />{cfg.scalp_on ? 'SCALP: ON' : 'SCALP: OFF'}
+          </button>
+          {num('TP (×SL)', 'scalp_tp_rr', '0.1', t('eksp.: ≥1.5'))}
+          {num(t('Maks. scalp/ditë'), 'scalp_max_day', '1')}
+          {num(t('Pushim mes tyre (min)'), 'scalp_cooldown_min', '1')}
+          {num('Time-stop (min)', 'scalp_time_stop_min', '1', t('dil nëse s\'lëviz'))}
+        </div>
       </div>
 
       {/* LIVE — çelësi në dorën e pronarit (default OFF). Kur ndizet, MMT ekzekuton REALISHT te MT5. */}
