@@ -181,7 +181,7 @@ interface Trade {
 const VPP = 100;
 
 // ---------- LIVE (MetaApi) — identike me robotin e provuar; përdoret VETËM kur live_enabled=true ----------
-interface Broker { account_id: string; token: string; region: string; }
+interface Broker { account_id: string; token: string; region: string; symbol: string; }
 const maHost = (r: string) => `https://mt-client-api-v1.${(r || "new-york").trim()}.agiliumtrade.ai`;
 async function maTrade(b: Broker, body: Record<string, unknown>) {
   const resp = await fetch(`${maHost(b.region)}/users/current/accounts/${b.account_id}/trade`, {
@@ -247,10 +247,15 @@ Deno.serve(async (req: Request) => {
     // ---- KREDENCIALET LIVE (para vlerësimit — daljet scalp live kanë nevojë për to) ----
     let broker: Broker | null = null;
     if (cfg.live_enabled && cfg.live_user_id) {
-      const { data: mc } = await db.from("metaapi_config").select("account_id, token, region, kill_switch")
+      const { data: mc } = await db.from("metaapi_config").select("account_id, token, region, kill_switch, symbol_map")
         .eq("user_id", cfg.live_user_id).maybeSingle();
-      const m = mc as { account_id?: string; token?: string; region?: string; kill_switch?: boolean } | null;
-      if (m?.account_id && m?.token && m.kill_switch !== true) broker = { account_id: m.account_id, token: m.token, region: m.region || "london" };
+      const m = mc as { account_id?: string; token?: string; region?: string; kill_switch?: boolean; symbol_map?: Record<string, string> | null } | null;
+      if (m?.account_id && m?.token && m.kill_switch !== true) {
+        // Emri REAL i arit te brokeri (p.sh. Vantage: "XAUUSD+") nga harta e mësuar e simboleve —
+        // rregullon "Unknown symbol 4301" që bllokoi urdhrat e parë live.
+        const sym = (m.symbol_map && (m.symbol_map["XAUUSD"] || m.symbol_map["xauusd"])) || "XAUUSD";
+        broker = { account_id: m.account_id, token: m.token, region: m.region || "london", symbol: sym };
+      }
     }
 
     // ======= L4 — VLERËSIMI I TRADE-VE TË HAPURA (mbrojtja e fitimit GJITHMONË) =======
@@ -393,7 +398,7 @@ Deno.serve(async (req: Request) => {
                 let lOk = false, lId: string | null = null;
                 if (broker) {
                   try {
-                    const r = await maTrade(broker, { actionType: sSide === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: "XAUUSD", volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(sl2 * 100) / 100, takeProfit: Math.round(tp2 * 100) / 100, comment: "MMT-S" });
+                    const r = await maTrade(broker, { actionType: sSide === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(sl2 * 100) / 100, takeProfit: Math.round(tp2 * 100) / 100, comment: "MMT-S" });
                     const rb = r.body as { orderId?: string } | null;
                     lOk = r.ok && !!rb?.orderId; lId = rb?.orderId ?? null;
                     try {
@@ -581,7 +586,7 @@ Deno.serve(async (req: Request) => {
     if (broker) {
       try {
         const r = await maTrade(broker, {
-          actionType: isBuySide ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: "XAUUSD",
+          actionType: isBuySide ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol,
           volume: Math.max(0.01, Number(cfg.live_lots) || 0.01),
           stopLoss: Math.round(sl * 100) / 100, takeProfit: Math.round(tp * 100) / 100, comment: "MMT",
         });
