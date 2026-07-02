@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Brain, Power, ShieldAlert, Activity, RefreshCw, Loader2, Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import { Brain, Power, ShieldAlert, Activity, RefreshCw, Loader2, Clock, TrendingUp, TrendingDown, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
