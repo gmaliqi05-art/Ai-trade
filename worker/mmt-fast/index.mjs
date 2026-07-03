@@ -69,7 +69,7 @@ let pos = null;                 // pozicioni i hapur fast {id, side, entry, sl, 
 let lastExitAt = 0;             // për cooldown
 let pending = null;             // burst në pritje konfirmimi {side, p0, t0}
 let m1Trend = 0;                // 1 = EMA9>EMA21 (1m), -1 = nën, 0 = e panjohur (rifreskohet çdo 30s)
-let lastHeartbeat = 0;
+let wsConnected = false;        // statusi i lidhjes me stream-in (për heartbeat diagnostik)
 
 const nowS = () => Date.now() / 1000;
 const px = () => (ticks.length ? ticks[ticks.length - 1].p : null);
@@ -92,7 +92,9 @@ async function refreshCfg() {
 // Mikro-trendi 1m (filtri i drejtimit — hulumtimi: pa filtër burst-et false të vrasin).
 async function refreshTrend() {
   try {
-    const r = await fetch("https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=1m&limit=30", { signal: AbortSignal.timeout(6000) });
+    // data-api.binance.vision: e njëjta e dhënë publike, PA bllokim gjeografik (binance.com
+    // bllokon IP-të e SHBA-së — serverat e Railway janë aty; kjo e zgjidh).
+    const r = await fetch("https://data-api.binance.vision/api/v3/klines?symbol=PAXGUSDT&interval=1m&limit=30", { signal: AbortSignal.timeout(6000) });
     if (!r.ok) return;
     const raw = await r.json();
     const closes = raw.map((k) => +k[4]);
@@ -217,16 +219,24 @@ async function managePos() {
 }
 
 // ---------- Heartbeat (faqja MMT sheh që worker-i është GJALLË) ----------
+// I PAVARUR nga tikët (setInterval) — raporton edhe kur stream-i s'lidhet dot,
+// që problemi të DUKET te logu i skanimeve në vend që worker-i të rrijë memec.
 async function heartbeat() {
-  if (Date.now() - lastHeartbeat < 5 * 60 * 1000) return;
-  lastHeartbeat = Date.now();
-  try { await sbInsert("mmt_scan_log", { price: px(), regime: "FAST", decision: pos ? `fast_pozicion_${pos.side}` : "fast_alive", reject_reason: cfg?.fast_on ? null : "fast_off" }); } catch { /* s'ndal robotin */ }
+  try {
+    const ticksLastMin = ticks.filter((t) => t.t >= nowS() - 60).length;
+    await sbInsert("mmt_scan_log", {
+      price: px(), regime: "FAST",
+      decision: pos ? `fast_pozicion_${pos.side}` : "fast_alive",
+      reject_reason: !cfg?.fast_on ? "fast_off" : (!wsConnected ? "ws_i_shkeputur" : (ticksLastMin === 0 ? "pa_tike_1min" : null)),
+    });
+  } catch (e) { log("heartbeat dështoi:", e.message); }
 }
 
 // ---------- Websocket-i i tikëve (Binance aggTrade — push, pa vonesë) ----------
 function connect() {
-  const ws = new WebSocket("wss://stream.binance.com:9443/ws/paxgusdt@aggTrade");
-  ws.on("open", () => log("✓ i lidhur me stream-in e tikëve (PAXG aggTrade)"));
+  // data-stream.binance.vision: i njëjti stream publik, PA bllokim gjeografik.
+  const ws = new WebSocket("wss://data-stream.binance.vision/ws/paxgusdt@aggTrade");
+  ws.on("open", () => { wsConnected = true; log("✓ i lidhur me stream-in e tikëve (PAXG aggTrade)"); });
   ws.on("message", async (raw) => {
     try {
       const m = JSON.parse(raw.toString());
@@ -235,11 +245,10 @@ function connect() {
       if (ticks.length > 6000 || (ticks[0] && ticks[0].t < cut - 60)) ticks = ticks.filter((t) => t.t >= cut);
       await managePos();
       await tryEnter();
-      await heartbeat();
     } catch (e) { log("tik err:", e.message); }
   });
-  ws.on("close", () => { log("stream u mbyll — rilidhje pas 3s"); setTimeout(connect, 3000); });
-  ws.on("error", (e) => { log("ws err:", e.message); try { ws.close(); } catch { /* */ } });
+  ws.on("close", () => { wsConnected = false; log("stream u mbyll — rilidhje pas 3s"); setTimeout(connect, 3000); });
+  ws.on("error", (e) => { wsConnected = false; log("ws err:", e.message); try { ws.close(); } catch { /* */ } });
 }
 
 // ---------- Nisja ----------
@@ -248,4 +257,7 @@ await refreshCfg();
 await refreshTrend();
 setInterval(refreshCfg, 15000);
 setInterval(refreshTrend, 30000);
+// Heartbeat i pavarur: i pari MENJËHERË (dëshmia e jetës edhe pa tikë), pastaj çdo 5 min.
+await heartbeat();
+setInterval(heartbeat, 5 * 60 * 1000);
 connect();
