@@ -7,9 +7,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // tikëve (Binance aggTrade via binance.vision — pa gjeo-bllokim) dhe REAGON NË
 // ÇDO TIK në kohë reale (~milisekonda zbulimi; ekzekutimi te brokeri ~200-500ms).
 // Nëse websocket-i dështon → bie te polling-u 1s çdo ~4s (rezerva e provuar).
-// Logjika: burst i konfirmuar (1.2s) → hyrje me bracket SL+TP; BE i çastit
-// +0.4R (i RUAJTUR në DB — mbijeton mes lakëve), trail 60% pas +0.8R, dalje në
-// burst të kundërt / ngecje; rojë anti-dyfishim me robotët e tjerë MMT.
+// Logjika (NDJEKËSI i lëvizjes): burst i vogël i konfirmuar (0.4s) → hyrje me
+// bracket SL+TP; +$0.50 favor → SL në 0; ndiqet KULMI çdo tik dhe DILET sapo
+// çmimi kthehet ~$0.40 nga kulmi (fitim i kyçur ose 0); SL i plotë = vetëm
+// frena e fatkeqësisë. Rojë anti-dyfishim me robotët e tjerë MMT.
 // I PAVARUR: kontrollohet vetëm nga fast_on + kufijtë fast_* (kill/stop/max të
 // vetët) — sesionet, blackout-i dhe kill-switch-i i përbashkët NUK e ndalin.
 // ============================================================
@@ -81,7 +82,7 @@ Deno.serve(async (req: Request) => {
     fast_on: boolean; fast_runner: string; paper_equity: number; risk_pct: number;
     fast_move_usd: number; fast_window_s: number; fast_sl_usd: number; fast_tp_rr: number;
     fast_stall_s: number; fast_max_day: number; fast_cooldown_s: number;
-    fast_kill_after_sl: number | null; fast_daily_stop_usd: number | null;
+    fast_kill_after_sl: number | null; fast_daily_stop_usd: number | null; fast_pullback_usd: number | null;
     live_enabled: boolean; live_lots: number; live_user_id: string | null;
   } | null;
   if (!cfg) return json({ error: "mmt_config mungon" }, 500);
@@ -107,7 +108,7 @@ Deno.serve(async (req: Request) => {
   const fastPnl = fastToday.reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
   if (fastSl >= (Number(cfg.fast_kill_after_sl) || 3)) { await beat("fast_alive", `fast_kill(${fastSl}SL)`, null); return json({ ok: true, skip: "fast_kill" }); }
   if (fastPnl <= -(Number(cfg.fast_daily_stop_usd) || 12)) { await beat("fast_alive", `fast_stop_ditor(${fastPnl.toFixed(2)}$)`, null); return json({ ok: true, skip: "fast_daily" }); }
-  if (fastToday.length >= (Number(cfg.fast_max_day) || 10)) { await beat("fast_alive", `fast_max_day(${fastToday.length})`, null); return json({ ok: true, skip: "max_day" }); }
+  if (fastToday.length >= (Number(cfg.fast_max_day) || 40)) { await beat("fast_alive", `fast_max_day(${fastToday.length})`, null); return json({ ok: true, skip: "max_day" }); }
   const lastClosed = fastToday.filter((r) => r.closed_at).map((r) => new Date(r.closed_at!).getTime()).sort((a, b) => b - a)[0] || 0;
 
   // Kredencialet live + trendi 1m.
@@ -117,11 +118,8 @@ Deno.serve(async (req: Request) => {
     const m = mc as { account_id?: string; token?: string; region?: string; kill_switch?: boolean; symbol_map?: Record<string, string> | null } | null;
     if (m?.account_id && m?.token && m.kill_switch !== true) broker = { account_id: m.account_id, token: m.token, region: m.region || "london", symbol: (m.symbol_map && m.symbol_map["XAUUSD"]) || "XAUUSD" };
   }
-  let m1Trend = 0;
-  try {
-    const r = await fetch("https://data-api.binance.vision/api/v3/klines?symbol=PAXGUSDT&interval=1m&limit=30", { signal: AbortSignal.timeout(5000) });
-    if (r.ok) { const raw = (await r.json()) as unknown[][]; const cl = raw.map((k) => +(k[4] as string)); m1Trend = ema(cl, 9) > ema(cl, 21) ? 1 : -1; }
-  } catch { /* pa trend → pa hyrje */ }
+  // PA filtra indikatorësh: analizat i bëjnë MMT-Long/Scalp — Fast vetëm NDJEK
+  // lëvizjen (bursti + presioni i agresorëve janë e gjithë "analiza" e tij).
 
   // Pozicioni fast i hapur + KUJTESA e mbrojtjes (best_fav nga DB + rillogaritje nga 1s).
   interface FastPos { id: string; side: string; entry_price: number; sl: number; tp: number; lots: number; risk_usd: number; live: boolean; live_order_id: string | null; opened_at: string; best_fav?: number | null; }
@@ -170,7 +168,7 @@ Deno.serve(async (req: Request) => {
   let lastBeatPx: number | null = null;
   const t0 = Date.now();
   const DEADLINE = 52_000; // ~52s punë për thirrje (cron çdo 60s)
-  const W = Math.max(2, Number(cfg.fast_window_s) || 5);
+  const W = Math.max(2, Number(cfg.fast_window_s) || 3);
   const nowS = () => Date.now() / 1000;
   let entriesThisRun = 0;
 
@@ -186,15 +184,21 @@ Deno.serve(async (req: Request) => {
   };
 
   // MENAXHIMI — thirret në çdo tik (WS: milisekonda; polling: çdo ~4s).
+  // Filozofia (kërkesa e pronarit): NDIQ lëvizjen dhe DIL PARA se të kthehet —
+  // me fitim ose në 0. SL-ja e plotë është vetëm frena e fatkeqësisë.
+  const PULL = Math.max(0.15, Number(cfg.fast_pullback_usd) || 0.4); // sa $ kthim nga kulmi = dil
+  const BE_AT = 0.5; // +$0.50 favor → mbrojtja në 0 (pa humbje nga këtu e tutje)
   const manageTick = async (px: number) => {
     if (!pos) return;
     const isBuy = pos.side === "BUY";
     const entry = Number(pos.entry_price), slD = Math.abs(entry - Number(pos.sl)) || Number(cfg.fast_sl_usd) || 2;
     const fav = isBuy ? px - entry : entry - px;
     if (fav > bestFav) bestFav = fav;
+    // Statusi i daljes sipas rezultatit: fitim → trail; ~0 → be; humbje e vogël
+    // (kthim i hershëm) → expired; vetëm SL i plotë → sl (ai numërohet te kill-i).
+    const exitStatus = (pnlPx: number) => pnlPx > 0.1 ? "trail" : (pnlPx >= -0.15 ? "be" : (pnlPx > -0.6 * slD ? "expired" : "sl"));
     let newSL = posSL;
-    if (bestFav / slD >= 0.8) { const lock = entry + (isBuy ? 1 : -1) * bestFav * 0.6; if (isBuy ? lock > newSL : lock < newSL) newSL = lock; }
-    else if (bestFav / slD >= 0.4) { const be = entry + (isBuy ? 1 : -1) * slD * 0.05; if (isBuy ? be > newSL : be < newSL) newSL = be; }
+    if (bestFav >= BE_AT) { const be = entry + (isBuy ? 1 : -1) * 0.05; if (isBuy ? be > newSL : be < newSL) newSL = be; }
     if (newSL !== posSL) {
       posSL = newSL;
       if (pos.live && pos.live_order_id && broker) {
@@ -206,45 +210,49 @@ Deno.serve(async (req: Request) => {
     }
     await persistProtection();
     if (isBuy ? px >= Number(pos.tp) : px <= Number(pos.tp)) return closePos("tp", Number(pos.tp));
-    if (isBuy ? px <= posSL : px >= posSL) return closePos(bestFav / slD >= 0.8 ? "trail" : (bestFav / slD >= 0.4 ? "be" : "sl"), posSL);
-    // Burst i kundërt → dil menjëherë; ngecje → dil.
+    if (isBuy ? px <= posSL : px >= posSL) return closePos(bestFav >= BE_AT ? "be" : "sl", posSL);
+    // DALJA KRYESORE — kthimi nga kulmi: fitimi i arritur mbrohet, jo shpresohet.
+    if (bestFav >= BE_AT) {
+      const pull = Math.max(PULL, 0.3 * bestFav); // kulm më i lartë → toleranca rritet pak, por fitimi mbetet i kyçur
+      if (bestFav - fav >= pull) return closePos(exitStatus(fav), px);
+    }
+    // Kthim i hershëm (para +0.5$): kundër-lëvizje e dukshme në dritare → dil në ~0/minus të vogël.
     const cut = nowS() - W;
     const win = ticks.filter((t) => t.t >= cut);
     if (win.length >= 5) {
       const mv = win[win.length - 1].p - win[0].p;
       const against = isBuy ? -mv : mv;
-      if (against >= (Number(cfg.fast_move_usd) || 1.2) * 0.8) return closePos(fav > 0 ? "trail" : "sl", px);
+      if (against >= (Number(cfg.fast_move_usd) || 0.6) * 0.6) return closePos(exitStatus(fav), px);
     }
     const ageS = (Date.now() - new Date(pos.opened_at).getTime()) / 1000;
-    if (ageS >= (Number(cfg.fast_stall_s) || 45) && fav < 0.2 * slD) return closePos(fav > 0 ? "trail" : "expired", px);
+    if (ageS >= (Number(cfg.fast_stall_s) || 45) && fav < 0.15) return closePos(exitStatus(fav), px);
   };
 
   // HYRJA — burst në tikë live me presion agresorësh + konfirmim 1.2s.
   const tryEntryTick = async (px: number) => {
-    if (pos || Date.now() - lastClosed < (Number(cfg.fast_cooldown_s) || 60) * 1000) return;
-    if (fastToday.length + entriesThisRun >= (Number(cfg.fast_max_day) || 10)) return;
+    if (pos || Date.now() - lastClosed < (Number(cfg.fast_cooldown_s) || 15) * 1000) return;
+    if (fastToday.length + entriesThisRun >= (Number(cfg.fast_max_day) || 40)) return;
     const cut = nowS() - W;
     const win = ticks.filter((t) => t.t >= cut);
     if (win.length < 8) return;
     const move = win[win.length - 1].p - win[0].p;
     const side: "BUY" | "SELL" = move > 0 ? "BUY" : "SELL";
     if (!pending) {
-      if (Math.abs(move) < (Number(cfg.fast_move_usd) || 1.2)) return;
+      if (Math.abs(move) < (Number(cfg.fast_move_usd) || 0.6)) return;
       let buyV = 0, sellV = 0;
       for (const t of win) { if (t.sellAggr) sellV += t.q; else buyV += t.q; }
       const tot = buyV + sellV; if (tot <= 0) return;
       const pressure = side === "BUY" ? buyV / tot : sellV / tot;
-      if (pressure < 0.65) return;
-      if ((side === "BUY" && m1Trend !== 1) || (side === "SELL" && m1Trend !== -1)) return;
+      if (pressure < 0.6) return;
       pending = { side, t0: Date.now(), move, p0: px };
       return;
     }
-    if (Date.now() - pending.t0 < 1200) return; // KONFIRMIMI 1.2s — kundër burst-eve false
+    if (Date.now() - pending.t0 < 400) return; // konfirmim i shkurtër 0.4s — sa për të skartuar tik-un e vetëm false
     const b = pending; pending = null;
     const held = b.side === "BUY"
       ? (px - (b.p0 - b.move)) / b.move
       : (((b.p0 + Math.abs(b.move)) - px) / Math.abs(b.move));
-    if (!(held >= 0.6)) return;
+    if (!(held >= 0.5)) return;
     // ROJA ANTI-DYFISHIM: robot tjetër MMT sapo hapi në të njëjtin drejtim (≤2 min) → mos hyr.
     try {
       const { data: recent } = await db.from("mmt_trades").select("id").eq("status", "open").eq("side", b.side)
