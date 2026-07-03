@@ -10,6 +10,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // Logjika: burst i konfirmuar (1.2s) → hyrje me bracket SL+TP; BE i çastit
 // +0.4R (i RUAJTUR në DB — mbijeton mes lakëve), trail 60% pas +0.8R, dalje në
 // burst të kundërt / ngecje; rojë anti-dyfishim me robotët e tjerë MMT.
+// I PAVARUR: kontrollohet vetëm nga fast_on + kufijtë fast_* (kill/stop/max të
+// vetët) — sesionet, blackout-i dhe kill-switch-i i përbashkët NUK e ndalin.
 // ============================================================
 
 const corsHeaders = {
@@ -64,11 +66,11 @@ Deno.serve(async (req: Request) => {
 
   const { data: cfgRow } = await db.from("mmt_config").select("*").eq("id", 1).maybeSingle();
   const cfg = cfgRow as Record<string, never> & {
-    active: boolean; fast_on: boolean; fast_runner: string; paper_equity: number; risk_pct: number;
+    fast_on: boolean; fast_runner: string; paper_equity: number; risk_pct: number;
     fast_move_usd: number; fast_window_s: number; fast_sl_usd: number; fast_tp_rr: number;
     fast_stall_s: number; fast_max_day: number; fast_cooldown_s: number;
-    kill_after_sl: number; daily_stop_pct: number; sessions: [number, number][];
-    blackout_until: string | null; live_enabled: boolean; live_lots: number; live_user_id: string | null;
+    fast_kill_after_sl: number | null; fast_daily_stop_usd: number | null;
+    live_enabled: boolean; live_lots: number; live_user_id: string | null;
   } | null;
   if (!cfg) return json({ error: "mmt_config mungon" }, 500);
 
@@ -77,21 +79,22 @@ Deno.serve(async (req: Request) => {
   };
 
   // Portat e qeta (heartbeat çdo minutë).
+  // MMT-Fast është I PAVARUR: e ndalin VETËM çelësi i tij FAST dhe kufijtë e tij
+  // fast_* — jo çelësi global, jo sesionet, jo blackout-i, jo kill-switch-i i
+  // përbashkët. E vetmja ndalesë e jashtme: tregu i arit i mbyllur (fundjava).
   if (cfg.fast_runner !== "edge") { await beat("fast_alive", "runner_vps", null); return json({ ok: true, skip: "runner_vps" }); }
-  if (!cfg.active || !cfg.fast_on) { await beat("fast_alive", "fast_off", null); return json({ ok: true, skip: "fast_off" }); }
-  if (cfg.blackout_until && new Date(cfg.blackout_until).getTime() > Date.now()) { await beat("fast_alive", "event_blackout", null); return json({ ok: true, skip: "blackout" }); }
-  const hU = new Date().getUTCHours();
-  if (!(cfg.sessions || [[7, 10], [13, 21]]).some(([a, b]) => hU >= a && hU < b)) { await beat("fast_alive", `jashte_sesionit(${hU}h)`, null); return json({ ok: true, skip: "session" }); }
+  if (!cfg.fast_on) { await beat("fast_alive", "fast_off", null); return json({ ok: true, skip: "fast_off" }); }
+  const nowD = new Date(); const dow = nowD.getUTCDay(); const hU = nowD.getUTCHours();
+  if (dow === 6 || (dow === 0 && hU < 22) || (dow === 5 && hU >= 21)) { await beat("fast_alive", "treg_mbyllur", null); return json({ ok: true, skip: "market_closed" }); }
 
-  // Kufijtë ditorë.
+  // Kufijtë ditorë — VETËM të Fast-it (humbjet e Long/Scalp nuk e ngrijnë).
   const today = new Date(); today.setUTCHours(0, 0, 0, 0);
-  const { data: dayR } = await db.from("mmt_trades").select("status, pnl_usd, strategy, opened_at, closed_at").gte("opened_at", today.toISOString());
-  const dRows = (dayR ?? []) as { status: string; pnl_usd: number | null; strategy: string; opened_at: string; closed_at: string | null }[];
-  const slT = dRows.filter((r) => r.status === "sl").length;
-  const pnlT = dRows.reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
-  const fastToday = dRows.filter((r) => r.strategy === "fast");
-  if (slT >= cfg.kill_after_sl) { await beat("fast_alive", `kill_switch(${slT}SL)`, null); return json({ ok: true, skip: "kill" }); }
-  if (pnlT <= -Number(cfg.paper_equity) * (Number(cfg.daily_stop_pct) / 100)) { await beat("fast_alive", "stop_ditor", null); return json({ ok: true, skip: "daily" }); }
+  const { data: dayR } = await db.from("mmt_trades").select("status, pnl_usd, opened_at, closed_at").eq("strategy", "fast").gte("opened_at", today.toISOString());
+  const fastToday = (dayR ?? []) as { status: string; pnl_usd: number | null; opened_at: string; closed_at: string | null }[];
+  const fastSl = fastToday.filter((r) => r.status === "sl").length;
+  const fastPnl = fastToday.reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
+  if (fastSl >= (Number(cfg.fast_kill_after_sl) || 3)) { await beat("fast_alive", `fast_kill(${fastSl}SL)`, null); return json({ ok: true, skip: "fast_kill" }); }
+  if (fastPnl <= -(Number(cfg.fast_daily_stop_usd) || 12)) { await beat("fast_alive", `fast_stop_ditor(${fastPnl.toFixed(2)}$)`, null); return json({ ok: true, skip: "fast_daily" }); }
   if (fastToday.length >= (Number(cfg.fast_max_day) || 10)) { await beat("fast_alive", `fast_max_day(${fastToday.length})`, null); return json({ ok: true, skip: "max_day" }); }
   const lastClosed = fastToday.filter((r) => r.closed_at).map((r) => new Date(r.closed_at!).getTime()).sort((a, b) => b - a)[0] || 0;
 
