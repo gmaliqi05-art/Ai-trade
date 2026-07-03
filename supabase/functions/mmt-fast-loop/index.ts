@@ -163,7 +163,14 @@ Deno.serve(async (req: Request) => {
   };
 
   // ======= GJENDJA E TIKËVE + LOGJIKA E UNIFIKUAR (ushqehet nga WS ose polling) =======
+  // Rrjedha PAXG ka PAK tregtime (disa/min) — pa themel dritarja mbetej bosh dhe
+  // hyrja s'ndizej kurrë. Prandaj seria mbushet me kandelet 1s (themeli); tikët
+  // live të websocket-it i shtohen sipër në kohë reale.
   let ticks: Tick[] = [];
+  try {
+    const seed = await k1s(120);
+    if (seed) ticks = seed.map((c) => ({ t: c.t, p: c.c, q: c.v || 1, sellAggr: c.c < c.o }));
+  } catch { /* WS/polling e mbushin */ }
   let pending: { side: "BUY" | "SELL"; t0: number; move: number; p0: number } | null = null;
   let lastBeatPx: number | null = null;
   const t0 = Date.now();
@@ -232,18 +239,34 @@ Deno.serve(async (req: Request) => {
   const tryEntryTick = async (px: number) => {
     if (pos || Date.now() - lastClosed < (Number(cfg.fast_cooldown_s) || 15) * 1000) return;
     if (fastToday.length + entriesThisRun >= (Number(cfg.fast_max_day) || 40)) return;
+    const TH = Number(cfg.fast_move_usd) || 0.6;
+    // Trigger 1 — BURST: lëvizje ≥TH brenda W sekondave.
     const cut = nowS() - W;
     const win = ticks.filter((t) => t.t >= cut);
-    if (win.length < 8) return;
-    const move = win[win.length - 1].p - win[0].p;
+    const burstMove = win.length >= 3 ? win[win.length - 1].p - win[0].p : 0;
+    // Trigger 2 — RRJEDHË: çmimi ka ecur ≥TH brenda 30s DHE është te kulmi i saj
+    // (lëvizje e qëndrueshme — kap edhe ngjitjet/rëniet graduale, jo vetëm shpërthimet).
+    const w30 = ticks.filter((t) => t.t >= nowS() - 30);
+    let driftMove = 0;
+    if (w30.length >= 5) {
+      const hi = Math.max(...w30.map((t) => t.p)), lo = Math.min(...w30.map((t) => t.p));
+      if (px - lo >= TH && hi - px <= 0.15) driftMove = px - lo;
+      else if (hi - px >= TH && px - lo <= 0.15) driftMove = -(hi - px);
+    }
+    const move = Math.abs(burstMove) >= TH ? burstMove : driftMove;
+    if (move === 0 && !pending) return;
     const side: "BUY" | "SELL" = move > 0 ? "BUY" : "SELL";
     if (!pending) {
-      if (Math.abs(move) < (Number(cfg.fast_move_usd) || 0.6)) return;
-      let buyV = 0, sellV = 0;
-      for (const t of win) { if (t.sellAggr) sellV += t.q; else buyV += t.q; }
-      const tot = buyV + sellV; if (tot <= 0) return;
-      const pressure = side === "BUY" ? buyV / tot : sellV / tot;
-      if (pressure < 0.6) return;
+      if (Math.abs(move) < TH) return;
+      // Presioni i agresorëve — kontrollohet vetëm kur ka mjaft tikë REALË;
+      // me rrjedhë të rrallë nuk e bllokon hyrjen.
+      const src = Math.abs(burstMove) >= TH ? win : w30;
+      if (src.length >= 6) {
+        let buyV = 0, sellV = 0;
+        for (const t of src) { if (t.sellAggr) sellV += t.q; else buyV += t.q; }
+        const tot = buyV + sellV;
+        if (tot > 0) { const pressure = side === "BUY" ? buyV / tot : sellV / tot; if (pressure < 0.55) return; }
+      }
       pending = { side, t0: Date.now(), move, p0: px };
       return;
     }
