@@ -32,6 +32,14 @@ interface MmtTrade {
 }
 interface ScanRow { id: number; scanned_at: string; price: number | null; regime: string | null; decision: string | null; reject_reason: string | null; adx: number | null; er: number | null; rsi15: number | null; }
 
+// Emrat zyrtarë të robotëve MMT (kërkesa e pronarit) — shfaqen kudo: pozicione, tregtime, raporte, grafik.
+const robotName = (strategy: string): string =>
+  strategy === 'scalp' ? 'MMT-Scalp' : strategy === 'fast' ? 'MMT-Fast' : 'MMT-Long';
+const robotCls = (strategy: string): string =>
+  strategy === 'scalp' ? 'bg-amber-500/20 text-amber-400'
+  : strategy === 'fast' ? 'bg-purple-500/20 text-purple-300'
+  : 'bg-sky-500/20 text-sky-300';
+
 const REGJIME: Record<string, string> = {
   TREND_UP: 'Trend LART', TREND_DOWN: 'Trend POSHTË', RANGE: 'Range (anësor)',
   TRANSITION: 'Tranzicion (pa tregti)', EVENT: 'Ngjarje (blackout)',
@@ -125,7 +133,7 @@ export default function MmtPage() {
       const slUsd = Math.abs(e - Number(x.sl)) * 100 * lots;
       const tpPips = Math.round(Math.abs(Number(x.tp) - e) * 10);
       const slPips = Math.round(Math.abs(e - Number(x.sl)) * 10);
-      out.push({ price: e, color: '#3b82f6', title: `Hyrje #${i + 1} ${x.side} (${x.strategy})` });
+      out.push({ price: e, color: '#3b82f6', title: `Hyrje #${i + 1} ${x.side} (${robotName(x.strategy)})` });
       out.push({ price: Number(x.sl), color: '#ef4444', title: `SL #${i + 1} −$${slUsd.toFixed(0)} (${slPips}p)` });
       out.push({ price: Number(x.tp), color: '#22c55e', title: `TP #${i + 1} +$${tpUsd.toFixed(0)} (${tpPips}p)` });
     });
@@ -255,7 +263,7 @@ export default function MmtPage() {
                     <span className="flex items-center gap-2 text-sm">
                       {isBuy ? <TrendingUp className="w-4 h-4 text-green-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
                       <span className="text-white font-bold">{x.side}</span>
-                      <span className="text-gray-400 text-xs">{x.strategy}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${robotCls(x.strategy)}`}>{robotName(x.strategy)}</span>
                       <span className="text-gray-300 text-xs">@{Number(x.entry_price).toFixed(2)} · {x.lots} lot</span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${x.live ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-300'}`}>{x.live ? 'REALE' : t('Letër')}</span>
                     </span>
@@ -450,7 +458,7 @@ export default function MmtPage() {
                 <span className="flex items-center gap-2">
                   {x.side === 'BUY' ? <TrendingUp className="w-3.5 h-3.5 text-green-400" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
                   <span className="text-white font-semibold">{x.side}</span>
-                  <span className="text-gray-500">{x.strategy}/{x.regime}</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${robotCls(x.strategy)}`}>{robotName(x.strategy)}</span>
                   <span className="text-gray-300">@{Number(x.entry_price).toFixed(2)}</span>
                   <span className="text-gray-500">SL {Number(x.sl).toFixed(2)} · TP {Number(x.tp).toFixed(2)} · {x.lots} lot</span>
                 </span>
@@ -508,6 +516,34 @@ export default function MmtPage() {
                 <p className="text-white font-bold text-sm mt-0.5">{closed.length ? Math.round((wins.length / closed.length) * 100) : 0}% <span className="text-gray-500 font-normal">({totalR >= 0 ? '+' : ''}{totalR.toFixed(1)}R)</span></p>
               </div>
             </div>
+            {/* RAPORTET E NDARA PËR SECILIN ROBOT (kërkesa e pronarit): MMT-Long / MMT-Scalp / MMT-Fast */}
+            {(() => {
+              const groups = new Map<string, { n: number; w: number; pnl: number; r: number; open: number }>();
+              trades.forEach(x => {
+                const k = robotName(x.strategy);
+                const g = groups.get(k) || { n: 0, w: 0, pnl: 0, r: 0, open: 0 };
+                if (x.status === 'open') g.open++;
+                else { g.n++; if (Number(x.pnl_usd) > 0) g.w++; g.pnl += Number(x.pnl_usd ?? 0); g.r += Number(x.r_multiple ?? 0); }
+                groups.set(k, g);
+              });
+              const order = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast'];
+              const strategyOf: Record<string, string> = { 'MMT-Long': 'trend', 'MMT-Scalp': 'scalp', 'MMT-Fast': 'fast' };
+              return (
+                <div className="space-y-1 mb-3">
+                  <p className="text-[11px] text-gray-500 mb-1">{t('Raporti sipas robotit')}</p>
+                  {order.map(name => {
+                    const g = groups.get(name) || { n: 0, w: 0, pnl: 0, r: 0, open: 0 };
+                    return (
+                      <div key={name} className="flex items-center justify-between text-[11px] border-b border-gray-800/60 pb-1">
+                        <span className={`font-bold px-1.5 py-0.5 rounded-full text-[10px] ${robotCls(strategyOf[name])}`}>{name}</span>
+                        <span className="text-gray-400">{g.n} {t('mbyllur')} · {g.w}W/{g.n - g.w}L{g.open > 0 ? ` · ${g.open} ${t('hapur')}` : ''}</span>
+                        <span className={g.pnl >= 0 ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}$ ({g.r >= 0 ? '+' : ''}{g.r.toFixed(1)}R)</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             {days.length > 0 && (
               <div className="space-y-1">
                 <p className="text-[11px] text-gray-500 mb-1">{t('Raporti ditor (7 ditët e fundit)')}</p>
