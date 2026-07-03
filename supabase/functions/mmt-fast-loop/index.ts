@@ -52,6 +52,18 @@ async function maTrade(b: Broker, body: Record<string, unknown>) {
   let j: unknown = txt; try { j = JSON.parse(txt); } catch { /* tekst */ }
   return { ok: resp.ok, status: resp.status, body: j };
 }
+// Çmimi REAL i brokerit — SL/TP live DUHEN në kornizën e tij: XAUUSD+ ndryshon
+// disa $ nga PAXG, ndryshe brokeri i refuzon me TRADE_RETCODE_INVALID_STOPS.
+async function maQuote(b: Broker): Promise<{ bid: number; ask: number } | null> {
+  try {
+    const r = await fetch(`${maHost(b.region)}/users/current/accounts/${b.account_id}/symbols/${encodeURIComponent(b.symbol)}/current-price?keepSubscription=false`, {
+      headers: { "auth-token": b.token }, signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const j = await r.json() as { bid?: number; ask?: number };
+    return typeof j.bid === "number" && typeof j.ask === "number" ? { bid: j.bid, ask: j.ask } : null;
+  } catch { return null; }
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -131,6 +143,17 @@ Deno.serve(async (req: Request) => {
       }
     } catch { /* mbetet vlera e DB */ }
   }
+  // Zhvendosja broker↔PAXG (freskohet çdo 20s) — çdo SL/TP live dërgohet me të.
+  let liveOff: { v: number; ts: number } | null = null;
+  const brokerOff = async (px: number): Promise<number | null> => {
+    if (!broker) return null;
+    if (liveOff && Date.now() - liveOff.ts < 20_000) return liveOff.v;
+    const q = await maQuote(broker);
+    if (!q) return liveOff ? liveOff.v : null;
+    liveOff = { v: (q.bid + q.ask) / 2 - px, ts: Date.now() };
+    return liveOff.v;
+  };
+
   let lastPersistedSL = posSL, lastPersistedFav = bestFav;
   const persistProtection = async () => {
     if (!pos) return;
@@ -174,7 +197,12 @@ Deno.serve(async (req: Request) => {
     else if (bestFav / slD >= 0.4) { const be = entry + (isBuy ? 1 : -1) * slD * 0.05; if (isBuy ? be > newSL : be < newSL) newSL = be; }
     if (newSL !== posSL) {
       posSL = newSL;
-      if (pos.live && pos.live_order_id && broker) { try { await maTrade(broker, { actionType: "POSITION_MODIFY", positionId: pos.live_order_id, stopLoss: Math.round(newSL * 100) / 100, takeProfit: Number(pos.tp) }); } catch { /* tiku tjetër */ } }
+      if (pos.live && pos.live_order_id && broker) {
+        try {
+          const off = await brokerOff(px);
+          if (off != null) await maTrade(broker, { actionType: "POSITION_MODIFY", positionId: pos.live_order_id, stopLoss: Math.round((newSL + off) * 100) / 100, takeProfit: Math.round((Number(pos.tp) + off) * 100) / 100 });
+        } catch { /* tiku tjetër */ }
+      }
     }
     await persistProtection();
     if (isBuy ? px >= Number(pos.tp) : px <= Number(pos.tp)) return closePos("tp", Number(pos.tp));
@@ -232,10 +260,18 @@ Deno.serve(async (req: Request) => {
     let lOk = false, lId: string | null = null;
     if (broker) {
       try {
-        const r = await maTrade(broker, { actionType: b.side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(sl * 100) / 100, takeProfit: Math.round(tp * 100) / 100, comment: "MMT-F" });
-        const rb = r.body as { orderId?: string } | null;
-        lOk = r.ok && !!rb?.orderId; lId = rb?.orderId ?? null;
-        try { await db.from("trade_executions").insert({ user_id: cfg.live_user_id, symbol: "XAUUSD", action: b.side, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), entry_price: Math.round(px * 100) / 100, stop_loss: Math.round(sl * 100) / 100, take_profit: Math.round(tp * 100) / 100, mode: "live", status: lOk ? "executed" : "error", reason: (lOk ? "MMT-F fast tik-live (burst i konfirmuar)" : `MMT-F live dështoi (${r.status})`).slice(0, 200), metaapi_order_id: lId, raw_response: r.body ?? null }); } catch { /* logu s'ndal */ }
+        // SL/TP përkthehen në kornizën e çmimit të brokerit (jo PAXG) — përndryshe INVALID_STOPS.
+        liveOff = null; // hyrja kërkon çmim të freskët të brokerit, jo cache
+        const off = await brokerOff(px);
+        const slL = off != null ? sl + off : null, tpL = off != null ? tp + off : null;
+        if (slL != null && tpL != null) {
+          const r = await maTrade(broker, { actionType: b.side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(slL * 100) / 100, takeProfit: Math.round(tpL * 100) / 100, comment: "MMT-F" });
+          const rb = r.body as { orderId?: string } | null;
+          lOk = r.ok && !!rb?.orderId; lId = rb?.orderId ?? null;
+          try { await db.from("trade_executions").insert({ user_id: cfg.live_user_id, symbol: "XAUUSD", action: b.side, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), entry_price: Math.round(px * 100) / 100, stop_loss: Math.round(slL * 100) / 100, take_profit: Math.round(tpL * 100) / 100, mode: "live", status: lOk ? "executed" : "error", reason: (lOk ? "MMT-F fast tik-live (burst i konfirmuar)" : `MMT-F live dështoi (${r.status})`).slice(0, 200), metaapi_order_id: lId, raw_response: r.body ?? null }); } catch { /* logu s'ndal */ }
+        } else {
+          try { await db.from("trade_executions").insert({ user_id: cfg.live_user_id, symbol: "XAUUSD", action: b.side, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), entry_price: Math.round(px * 100) / 100, stop_loss: Math.round(sl * 100) / 100, take_profit: Math.round(tp * 100) / 100, mode: "live", status: "error", reason: "MMT-F live u anulua: s'u mor çmimi i brokerit", raw_response: null }); } catch { /* */ }
+        }
       } catch { /* letra vazhdon */ }
     }
     const { data: ins } = await db.from("mmt_trades").insert({ symbol: "XAUUSD", side: b.side, strategy: "fast", regime: "FAST", entry_price: Math.round(px * 100) / 100, sl: Math.round(sl * 100) / 100, tp: Math.round(tp * 100) / 100, lots, risk_usd: Math.round(slD * VPP * lots * 100) / 100, reason: `fast tik-live: burst ${b.move > 0 ? "+" : ""}${b.move.toFixed(2)}$/${W}s i konfirmuar (ms)`, live: lOk, live_order_id: lId, best_fav: 0 }).select().single();

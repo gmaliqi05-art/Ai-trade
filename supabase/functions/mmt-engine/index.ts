@@ -215,6 +215,18 @@ async function maPositions(b: Broker): Promise<Record<string, unknown>[] | null>
     return await r.json();
   } catch { return null; }
 } // ari: $1 lëvizje × 1 lot = $100
+// Çmimi REAL i brokerit — SL/TP live DUHEN në kornizën e tij: XAUUSD+ ndryshon
+// disa $ nga burimi i kandelave, ndryshe stops të ngushta refuzohen (INVALID_STOPS).
+async function maQuote(b: Broker): Promise<{ bid: number; ask: number } | null> {
+  try {
+    const r = await fetch(`${maHost(b.region)}/users/current/accounts/${b.account_id}/symbols/${encodeURIComponent(b.symbol)}/current-price?keepSubscription=false`, {
+      headers: { "auth-token": b.token }, signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const j = await r.json() as { bid?: number; ask?: number };
+    return typeof j.bid === "number" && typeof j.ask === "number" ? { bid: j.bid, ask: j.ask } : null;
+  } catch { return null; }
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -448,11 +460,15 @@ Deno.serve(async (req: Request) => {
                 let lOk = false, lId: string | null = null;
                 if (broker) {
                   try {
-                    const r = await maTrade(broker, { actionType: sSide === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(sl2 * 100) / 100, takeProfit: Math.round(tp2 * 100) / 100, comment: "MMT-S" });
+                    // SL/TP në kornizën e çmimit REAL të brokerit — ndryshe INVALID_STOPS.
+                    const q = await maQuote(broker);
+                    const off = q ? (q.bid + q.ask) / 2 - px2 : null;
+                    const slL = off != null ? sl2 + off : sl2, tpL = off != null ? tp2 + off : tp2;
+                    const r = await maTrade(broker, { actionType: sSide === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(slL * 100) / 100, takeProfit: Math.round(tpL * 100) / 100, comment: "MMT-S" });
                     const rb = r.body as { orderId?: string } | null;
                     lOk = r.ok && !!rb?.orderId; lId = rb?.orderId ?? null;
                     try {
-                      await db.from("trade_executions").insert({ user_id: cfg.live_user_id, symbol: "XAUUSD", action: sSide, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), entry_price: Math.round(px2 * 100) / 100, stop_loss: Math.round(sl2 * 100) / 100, take_profit: Math.round(tp2 * 100) / 100, mode: "live", status: lOk ? "executed" : "error", reason: (lOk ? "MMT-S scalp auto (1m)" : `MMT-S live dështoi (${r.status})`).slice(0, 200), metaapi_order_id: lId, raw_response: r.body ?? null });
+                      await db.from("trade_executions").insert({ user_id: cfg.live_user_id, symbol: "XAUUSD", action: sSide, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), entry_price: Math.round(px2 * 100) / 100, stop_loss: Math.round(slL * 100) / 100, take_profit: Math.round(tpL * 100) / 100, mode: "live", status: lOk ? "executed" : "error", reason: (lOk ? "MMT-S scalp auto (1m)" : `MMT-S live dështoi (${r.status})`).slice(0, 200), metaapi_order_id: lId, raw_response: r.body ?? null });
                     } catch { /* logu s'ndal motorin */ }
                   } catch { /* dështimi live s'e ndal letrën */ }
                 }
@@ -635,10 +651,13 @@ Deno.serve(async (req: Request) => {
     let liveOk = false;
     if (broker) {
       try {
+        // SL/TP në kornizën e çmimit REAL të brokerit — ndryshe stops të ngushta refuzohen.
+        const q = await maQuote(broker);
+        const off = q ? (q.bid + q.ask) / 2 - pxNow : 0;
         const r = await maTrade(broker, {
           actionType: isBuySide ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol,
           volume: Math.max(0.01, Number(cfg.live_lots) || 0.01),
-          stopLoss: Math.round(sl * 100) / 100, takeProfit: Math.round(tp * 100) / 100, comment: "MMT",
+          stopLoss: Math.round((sl + off) * 100) / 100, takeProfit: Math.round((tp + off) * 100) / 100, comment: "MMT",
         });
         const rb = r.body as { orderId?: string; numericCode?: number } | null;
         liveOk = r.ok && !!rb?.orderId;
@@ -650,7 +669,7 @@ Deno.serve(async (req: Request) => {
             user_id: cfg.live_user_id, symbol: "XAUUSD", action: side,
             volume: Math.max(0.01, Number(cfg.live_lots) || 0.01),
             entry_price: Math.round(pxNow * 100) / 100,
-            stop_loss: Math.round(sl * 100) / 100, take_profit: Math.round(tp * 100) / 100,
+            stop_loss: Math.round((sl + off) * 100) / 100, take_profit: Math.round((tp + off) * 100) / 100,
             mode: "live", status: liveOk ? "executed" : "error",
             reason: (liveOk ? `MMT auto (${strategy}/${regime}): ${why}` : `MMT live dështoi (${r.status})`).slice(0, 200),
             metaapi_order_id: liveOrderId, raw_response: r.body ?? null,
