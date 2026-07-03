@@ -107,11 +107,37 @@ Deno.serve(async (req: Request) => {
   } catch { /* mbetet 0 → pa hyrje */ }
 
   // Pozicioni fast i hapur (nëse ka) — e menaxhojmë brenda lakut.
-  interface FastPos { id: string; side: string; entry_price: number; sl: number; tp: number; lots: number; risk_usd: number; live: boolean; live_order_id: string | null; opened_at: string; }
+  interface FastPos { id: string; side: string; entry_price: number; sl: number; tp: number; lots: number; risk_usd: number; live: boolean; live_order_id: string | null; opened_at: string; best_fav?: number | null; }
   const { data: openF } = await db.from("mmt_trades").select("*").eq("strategy", "fast").eq("status", "open").limit(1);
   let pos = ((openF ?? [])[0] as FastPos | undefined) || null;
   let posSL = pos ? Number(pos.sl) : 0;
-  let bestFav = 0;
+  // KUJTESA E MBROJTJES (fix): kulmi i favorit rikthehet nga DB (best_fav) DHE rillogaritet nga
+  // qirinjtë 1s që nga hapja — që BE/trailing të MOS rifillojnë nga zero çdo minutë (defekti që
+  // la një pozicion +$5 të kthehej në −1R pa u mbrojtur).
+  let bestFav = pos ? Math.max(0, Number(pos.best_fav ?? 0)) : 0;
+  if (pos) {
+    try {
+      const hist = await k1s(300); // ~5 min histori 1s
+      if (hist) {
+        const since = new Date(pos.opened_at).getTime() / 1000;
+        const isBuy = pos.side === "BUY";
+        for (const c of hist) {
+          if (c.t < since) continue;
+          const fav = isBuy ? c.h - Number(pos.entry_price) : Number(pos.entry_price) - c.l;
+          if (fav > bestFav) bestFav = fav;
+        }
+      }
+    } catch { /* mbetet vlera e DB */ }
+  }
+  let lastPersistedSL = posSL, lastPersistedFav = bestFav;
+  const persistProtection = async () => {
+    if (!pos) return;
+    if (posSL === lastPersistedSL && Math.abs(bestFav - lastPersistedFav) < 0.05) return;
+    try {
+      await db.from("mmt_trades").update({ sl: Math.round(posSL * 100) / 100, best_fav: Math.round(bestFav * 100) / 100 }).eq("id", pos.id);
+      lastPersistedSL = posSL; lastPersistedFav = bestFav;
+    } catch { /* iterimi tjetër */ }
+  };
 
   let pending: { side: "BUY" | "SELL"; t0: number; move: number; p0: number } | null = null;
   let lastBeatPx: number | null = null;
@@ -151,6 +177,7 @@ Deno.serve(async (req: Request) => {
         posSL = newSL;
         if (pos.live && pos.live_order_id && broker) { try { await maTrade(broker, { actionType: "POSITION_MODIFY", positionId: pos.live_order_id, stopLoss: Math.round(newSL * 100) / 100, takeProfit: Number(pos.tp) }); } catch { /* iterimi tjetër */ } }
       }
+      await persistProtection(); // FIX: SL i ngritur + kulmi ruhen në DB — mbijetojnë mes lakëve
       // TP/SL me çmimin e sekondës.
       if (isBuy ? px >= Number(pos.tp) : px <= Number(pos.tp)) { await closePos("tp", Number(pos.tp)); }
       else if (isBuy ? px <= posSL : px >= posSL) { await closePos(bestFav / slD >= 0.8 ? "trail" : (bestFav / slD >= 0.4 ? "be" : "sl"), posSL); }
@@ -186,7 +213,15 @@ Deno.serve(async (req: Request) => {
           ? (px - (pending.p0 - pending.move)) / pending.move
           : (((pending.p0 + Math.abs(pending.move)) - px) / Math.abs(pending.move));
         const b = pending; pending = null;
-        if (held >= 0.6 && fastToday.length < (Number(cfg.fast_max_day) || 10)) {
+        // ROJA ANTI-DYFISHIM: nëse një robot tjetër MMT (scalp/long) sapo hapi në të NJËJTIN
+        // drejtim (≤2 min), mos hyr edhe fast — dy hyrje identike në të njëjtin çast = rrezik 2×.
+        let dup = false;
+        try {
+          const { data: recent } = await db.from("mmt_trades").select("id").eq("status", "open").eq("side", b.side)
+            .gte("opened_at", new Date(Date.now() - 120_000).toISOString()).limit(1);
+          dup = !!(recent && recent.length);
+        } catch { /* në dyshim, lejo */ }
+        if (!dup && held >= 0.6 && fastToday.length < (Number(cfg.fast_max_day) || 10)) {
           const slD = Math.max(1, Number(cfg.fast_sl_usd) || 2);
           const sl = b.side === "BUY" ? px - slD : px + slD;
           const tp = b.side === "BUY" ? px + slD * (Number(cfg.fast_tp_rr) || 1.2) : px - slD * (Number(cfg.fast_tp_rr) || 1.2);

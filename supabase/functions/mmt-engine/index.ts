@@ -424,6 +424,10 @@ Deno.serve(async (req: Request) => {
           if (dir15s === "SELL" && last(e9s) < last(e21s) && lastB.close < last(e9s)
             && prevB.high >= e9s[e9s.length - 2] * 0.9997 && lastB.close < lastB.open
             && last(r7s) <= 50 && last(r7s) >= 20) sSide = "SELL";
+          // ROJA ANTI-DYFISHIM: nëse një robot tjetër MMT (fast/long) sapo hapi në të njëjtin
+          // drejtim (≤2 min), scalp-i s'hyn — dy hyrje identike njëkohësisht = rrezik 2×.
+          if (sSide && open.some((t) => t.status === "open" && t.side === sSide
+            && Date.now() - new Date(t.opened_at).getTime() < 120_000)) sSide = null;
           if (sSide) {
             // Mbrojtjet e çastit (versionet scalp): spike + presioni 8×1m + skanimi 10-sekondësh.
             const rngs = c1.slice(-30).map((c) => c.high - c.low);
