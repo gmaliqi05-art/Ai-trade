@@ -112,6 +112,7 @@ interface Cfg {
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
   learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
   scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
+  smart_exit: boolean;
 }
 
 // ---------- L5 — MËSIMI NGA VETVETJA (1×/24h) ----------
@@ -169,6 +170,19 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
     if (bad) {
       const kept = cfg.sessions.filter(([a, b]) => !(a === bad.win[0] && b === bad.win[1]));
       if (kept.length >= 1) { patch.sessions = kept; await log("sessions", JSON.stringify(cfg.sessions), JSON.stringify(kept), `dritarja ${bad.win[0]}-${bad.win[1]}h humbëse — u hoq`, bad.n, bad.exp); }
+    }
+  }
+  // C) REKOMANDIMI i shkallëzimit të lotit (KURRË automatik — kufi i fortë sigurie):
+  // pas ≥20 tradesh me pritshmëri pozitive dhe ≥50% fitore, shkruhet REKOMANDIM te mmt_learning —
+  // pronari e sheh te faqja MMT dhe e ndryshon vetë live_lots nëse pajtohet.
+  const allR = rows.filter((r) => r.r_multiple != null).map((r) => Number(r.r_multiple));
+  if (allR.length >= 20) {
+    const expAll = allR.reduce((a, b) => a + b, 0) / allR.length;
+    const wr = allR.filter((x) => x > 0).length / allR.length;
+    if (expAll > 0.3 && wr >= 0.5) {
+      const cur = Number(cfg.live_lots) || 0.01;
+      const next = Math.min(0.05, Math.round((cur + 0.01) * 100) / 100);
+      if (next > cur) await log("rekomandim_lot", cur, next, `${allR.length} trade me mesatare +${expAll.toFixed(2)}R dhe ${Math.round(wr * 100)}% fitore — mund ta rrisësh lotin live te seksioni LIVE (vendimi YTI, s'ndryshohet vetë)`, allR.length, expAll);
     }
   }
   await db.from("mmt_config").update(patch).eq("id", 1);
@@ -263,6 +277,9 @@ Deno.serve(async (req: Request) => {
     const { data: openRows } = await db.from("mmt_trades").select("*").eq("status", "open");
     const open = (openRows ?? []) as unknown as Trade[];
     let closedNow = 0;
+    // Momentum-i 15m (për Daljen e Mençur): a po kthehet tregu fort kundër pozicionit?
+    const cl15sm = c15.map((c) => c.close);
+    const e9_15v = last(ema(cl15sm, 9)), e21_15v = last(ema(cl15sm, 21)), rsi15sm = last(rsi(cl15sm, 14));
     for (const t of open) {
       const isBuy = t.side === "BUY";
       const since = new Date(t.opened_at).getTime();
@@ -279,7 +296,8 @@ Deno.serve(async (req: Request) => {
         if (rNow >= cfg.trail_at_r) {
           const lock = t.entry_price + (isBuy ? 1 : -1) * bestMove * (cfg.trail_lock_pct / 100);
           if (isBuy ? lock > sl : lock < sl) sl = lock;
-        } else if (rNow >= cfg.be_at_r) {
+        } else if (rNow >= (t.strategy === "scalp" ? Math.min(cfg.be_at_r, 0.5) : cfg.be_at_r)) {
+          // SCALP: mbrojtje e HERSHME (+0.5R) — "sapo del në profit, mbroje te hyrja" (kërkesa e pronarit).
           const be = t.entry_price + (isBuy ? 1 : -1) * riskDist * 0.05; // BE + ofset i vogël (mbulon spread-in)
           if (isBuy ? be > sl : be < sl) sl = be;
         }
@@ -302,6 +320,20 @@ Deno.serve(async (req: Request) => {
           closed = { status: "expired", exit: px };
           if (t.live && t.live_order_id && broker) {
             try { await maTrade(broker, { actionType: "POSITION_CLOSE_ID", positionId: t.live_order_id }); } catch { /* pozicioni mund të jetë mbyllur vetë */ }
+          }
+        }
+      }
+      // A) DALJA E MENÇUR (miratuar nga pronari): pozicion swing/momentum në fitim të LARTË (≥2R)
+      // dhe momentum-i 15m kthehet FORT kundër → merr fitimin e lartë tani, mos prit kthesën/TP-në.
+      if (!closed && cfg.smart_exit !== false && t.strategy !== "scalp") {
+        const favNow = isBuy ? px - t.entry_price : t.entry_price - px;
+        if (riskDist > 0 && favNow / riskDist >= 2) {
+          const flip = isBuy ? (e9_15v < e21_15v && rsi15sm < 45) : (e9_15v > e21_15v && rsi15sm > 55);
+          if (flip) {
+            closed = { status: "trail", exit: px };
+            if (t.live && t.live_order_id && broker) {
+              try { await maTrade(broker, { actionType: "POSITION_CLOSE_ID", positionId: t.live_order_id }); } catch { /* mund të jetë mbyllur vetë */ }
+            }
           }
         }
       }
@@ -335,7 +367,8 @@ Deno.serve(async (req: Request) => {
           if (rNow >= cfg.trail_at_r) {
             const lock = entry + (isBuy ? 1 : -1) * fav * (cfg.trail_lock_pct / 100);
             if (isBuy ? lock > target : lock < target) target = lock;
-          } else if (rNow >= cfg.be_at_r) {
+          } else if (rNow >= (String(p.comment || "").includes("MMT-S") ? Math.min(cfg.be_at_r, 0.5) : cfg.be_at_r)) {
+            // Scalp live (MMT-S): mbrojtje e hershme +0.5R edhe te pozicioni real.
             const be = entry + (isBuy ? 1 : -1) * riskDist * 0.05;
             if (isBuy ? be > target : be < target) target = be;
           }
