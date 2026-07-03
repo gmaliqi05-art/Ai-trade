@@ -100,9 +100,15 @@ export default function MmtPage() {
   const chartLines = useMemo<PriceLineDef[]>(() => {
     const out: PriceLineDef[] = [];
     trades.filter(x => x.status === 'open').forEach((x, i) => {
-      out.push({ price: Number(x.entry_price), color: '#3b82f6', title: `Hyrje #${i + 1} ${x.side} (${x.strategy})` });
-      out.push({ price: Number(x.sl), color: '#ef4444', title: `SL #${i + 1}` });
-      out.push({ price: Number(x.tp), color: '#22c55e', title: `TP #${i + 1}` });
+      // Vlera në $ e TP/SL për KËTË pozicion (lot × $100/lot × distanca) + pips (ari: 1 pip = $0.10).
+      const lots = Number(x.lots), e = Number(x.entry_price);
+      const tpUsd = Math.abs(Number(x.tp) - e) * 100 * lots;
+      const slUsd = Math.abs(e - Number(x.sl)) * 100 * lots;
+      const tpPips = Math.round(Math.abs(Number(x.tp) - e) * 10);
+      const slPips = Math.round(Math.abs(e - Number(x.sl)) * 10);
+      out.push({ price: e, color: '#3b82f6', title: `Hyrje #${i + 1} ${x.side} (${x.strategy})` });
+      out.push({ price: Number(x.sl), color: '#ef4444', title: `SL #${i + 1} −$${slUsd.toFixed(0)} (${slPips}p)` });
+      out.push({ price: Number(x.tp), color: '#22c55e', title: `TP #${i + 1} +$${tpUsd.toFixed(0)} (${tpPips}p)` });
     });
     return out;
   }, [trades]);
@@ -234,9 +240,18 @@ export default function MmtPage() {
                       {fl == null ? '—' : `${fl >= 0 ? '+' : ''}${fl.toFixed(2)} $`}
                     </span>
                   </div>
-                  <div className="flex gap-4 mt-1 text-[11px] text-gray-400">
-                    <span><span className="text-green-400">TP</span> {Number(x.tp).toFixed(2)}{toTP != null && <span className="text-gray-600"> (edhe {toTP.toFixed(2)}$)</span>}</span>
-                    <span><span className="text-red-400">SL</span> {Number(x.sl).toFixed(2)}{toSL != null && <span className="text-gray-600"> ({toSL.toFixed(2)}$ larg)</span>}</span>
+                  <div className="flex gap-4 mt-1 text-[11px] text-gray-400 flex-wrap">
+                    {(() => {
+                      const lots2 = Number(x.lots), e2 = Number(x.entry_price);
+                      const tpUsd = Math.abs(Number(x.tp) - e2) * 100 * lots2;
+                      const slUsd = Math.abs(e2 - Number(x.sl)) * 100 * lots2;
+                      const tpPips = Math.round(Math.abs(Number(x.tp) - e2) * 10);
+                      const slPips = Math.round(Math.abs(e2 - Number(x.sl)) * 10);
+                      return (<>
+                        <span><span className="text-green-400">TP</span> {Number(x.tp).toFixed(2)} = <span className="text-green-400 font-semibold">+{tpUsd.toFixed(2)}$</span> <span className="text-gray-600">({tpPips} pips{toTP != null ? ` · edhe ${toTP.toFixed(2)}$` : ''})</span></span>
+                        <span><span className="text-red-400">SL</span> {Number(x.sl).toFixed(2)} = <span className="text-red-400 font-semibold">−{slUsd.toFixed(2)}$</span> <span className="text-gray-600">({slPips} pips{toSL != null ? ` · ${toSL.toFixed(2)}$ larg` : ''})</span></span>
+                      </>);
+                    })()}
                     <span className="text-gray-600 ml-auto">🕒 {new Date(x.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                 </div>
