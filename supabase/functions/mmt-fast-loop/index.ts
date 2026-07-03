@@ -296,7 +296,16 @@ Deno.serve(async (req: Request) => {
         const off = await brokerOff(px);
         const slL = off != null ? sl + off : null, tpL = off != null ? tp + off : null;
         if (slL != null && tpL != null) {
-          const r = await maTrade(broker, { actionType: b.side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(slL * 100) / 100, takeProfit: Math.round(tpL * 100) / 100, comment: "MMT-F" });
+          const orderBody = { actionType: b.side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(slL * 100) / 100, takeProfit: Math.round(tpL * 100) / 100, comment: "MMT-F" };
+          let r = await maTrade(broker, orderBody);
+          // Gabimet KALIMTARE të brokerit (PRICE_OFF 10021 / REQUOTE 10004) → riprovo deri 2×.
+          for (let a = 0; a < 2; a++) {
+            const rb0 = r.body as { orderId?: string; numericCode?: number } | null;
+            if (r.ok && rb0?.orderId) break;
+            if (rb0?.numericCode !== 10021 && rb0?.numericCode !== 10004) break;
+            await sleep(400);
+            r = await maTrade(broker, orderBody);
+          }
           const rb = r.body as { orderId?: string } | null;
           lOk = r.ok && !!rb?.orderId; lId = rb?.orderId ?? null;
           try { await db.from("trade_executions").insert({ user_id: cfg.live_user_id, symbol: "XAUUSD", action: b.side, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), entry_price: Math.round(px * 100) / 100, stop_loss: Math.round(slL * 100) / 100, take_profit: Math.round(tpL * 100) / 100, mode: "live", status: lOk ? "executed" : "error", reason: (lOk ? "MMT-F fast tik-live (burst i konfirmuar)" : `MMT-F live dështoi (${r.status})`).slice(0, 200), metaapi_order_id: lId, raw_response: r.body ?? null }); } catch { /* logu s'ndal */ }
