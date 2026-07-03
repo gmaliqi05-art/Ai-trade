@@ -19,7 +19,7 @@ interface MmtConfig {
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
   learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
   scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
-  smart_exit: boolean;
+  smart_exit: boolean; tp_time_h: number; tp_time_usd: number;
 }
 interface LearnRow { id: number; learned_at: string; param: string; old_value: string | null; new_value: string | null; reason: string | null; sample_n: number | null; expectancy: number | null; }
 interface MmtTrade {
@@ -294,6 +294,8 @@ export default function MmtPage() {
           </label>
           {num(t('Momentum: lëvizja min (×ATR)'), 'momentum_atr', '0.1', t('në 12 min'))}
           {num(t('Momentum: pastërtia (ER)'), 'momentum_er', '0.05', t('0.65 = lëvizje e pastër'))}
+          {num(t('Merr fitimin pas (orë)'), 'tp_time_h', '0.5', t('0 = fikur'))}
+          {num(t('…me fitim min ($)'), 'tp_time_usd', '1', t('liron vendin për trade të reja'))}
           <label className="block">
             <span className="text-[11px] text-gray-400">{t('Dalja e Mençur')}</span>
             <button type="button" onClick={() => save({ smart_exit: !(cfg.smart_exit !== false) })}

@@ -112,7 +112,7 @@ interface Cfg {
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
   learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
   scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
-  smart_exit: boolean;
+  smart_exit: boolean; tp_time_h: number; tp_time_usd: number;
 }
 
 // ---------- L5 — MËSIMI NGA VETVETJA (1×/24h) ----------
@@ -334,6 +334,19 @@ Deno.serve(async (req: Request) => {
             if (t.live && t.live_order_id && broker) {
               try { await maTrade(broker, { actionType: "POSITION_CLOSE_ID", positionId: t.live_order_id }); } catch { /* mund të jetë mbyllur vetë */ }
             }
+          }
+        }
+      }
+      // MERR FITIMIN PAS KOHE (kërkesa e pronarit): pozicion i hapur GJATË (≥ tp_time_h orë)
+      // me fitim të mjaftueshëm (≥ tp_time_usd $) → mbylle me fitim dhe LIRO vendin — fituesit
+      // e ngadaltë të mos bllokojnë max_open dhe të humbin mundësitë e reja.
+      if (!closed && Number(cfg.tp_time_h) > 0 && t.strategy !== "scalp") {
+        const ageH = (Date.now() - since) / 3600000;
+        const pnlNow = (isBuy ? px - t.entry_price : t.entry_price - px) * VPP * t.lots;
+        if (ageH >= Number(cfg.tp_time_h) && pnlNow >= Math.max(1, Number(cfg.tp_time_usd) || 10)) {
+          closed = { status: "trail", exit: px };
+          if (t.live && t.live_order_id && broker) {
+            try { await maTrade(broker, { actionType: "POSITION_CLOSE_ID", positionId: t.live_order_id }); } catch { /* mund të jetë mbyllur vetë */ }
           }
         }
       }
