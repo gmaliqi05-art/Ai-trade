@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
+import { loadCandles } from '../services/metaapi';
 
 // MMT — SUPER ROBOTI (faqe KOMPLET E VEÇANTË nga Cilësimet e robotëve ekzistues).
 // Faza HIJE: tregton vetëm në letër; këtu menaxhohen cilësimet e tij dhe shihet performanca.
@@ -73,16 +74,31 @@ export default function MmtPage() {
     return () => clearInterval(id);
   }, [load]);
 
-  // GRAFIKU (TradingView lightweight-charts, si te Tregto Live) — qirinjtë nga Binance PAXG,
-  // i NJËJTI burim që përdor motori MMT → hyrjet/SL/TP përputhen saktë me atë që sheh motori.
+  // GRAFIKU (TradingView lightweight-charts) — KOHË REALE nga BROKERI (MetaApi/MT5, i njëjti
+  // çmim që sheh në aplikacionin MT5). PAXG (Binance) mbetet vetëm REZERVË kur MT5 s'përgjigjet
+  // (p.sh. fundjava) — se ka diferencë ~$5-6 dhe vonesë ndaj brokerit real.
+  const [chartSrc, setChartSrc] = useState<'mt5' | 'paxg'>('paxg');
   const loadChart = useCallback(async () => {
+    // 1) MT5 real (brokeri) — i pari.
     try {
-      const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${tf}&limit=240`);
+      const r = await loadCandles('XAUUSD', tf, 240) as { error?: unknown; candles?: { time: string; open: number; high: number; low: number; close: number }[] };
+      if (!r.error && Array.isArray(r.candles) && r.candles.length > 0) {
+        setChartCandles(r.candles.map(c => ({ time: Math.floor(new Date(c.time).getTime() / 1000), open: c.open, high: c.high, low: c.low, close: c.close })));
+        setChartSrc('mt5');
+        return;
+      }
+    } catch { /* provo rezervën */ }
+    // 2) Nëse MT5 tashmë ka dhënë qirinj më parë, MOS kalo te PAXG (shkallë tjetër çmimi → linjat zhvendosen).
+    if (chartSrc === 'mt5' && chartCandles.length > 0) return;
+    // 3) Rezerva: Binance PAXG (24/7).
+    try {
+      const r = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=PAXGUSDT&interval=${tf}&limit=240`);
       if (!r.ok) return;
       const raw = (await r.json()) as unknown[][];
       setChartCandles(raw.map(k => ({ time: Math.floor(Number(k[0]) / 1000), open: +(k[1] as string), high: +(k[2] as string), low: +(k[3] as string), close: +(k[4] as string) })));
+      setChartSrc('paxg');
     } catch { /* rrjeti — provohet në tik-un tjetër */ }
-  }, [tf]);
+  }, [tf, chartSrc, chartCandles.length]);
   useEffect(() => {
     loadChart();
     const id = setInterval(loadChart, 3000); // kohë reale (rifreskim çdo 3s)
@@ -213,7 +229,11 @@ export default function MmtPage() {
           <span className="text-gray-600">· {openTrades.length} {t('pozicione hapur')}</span>
           {lastPx != null && <span className="text-gray-600 ml-auto">XAU {lastPx.toFixed(2)}</span>}
         </div>
-        <p className="text-[10px] text-gray-600 mt-1">{t('Burimi: Binance PAXG — i njëjti çmim që lexon motori MMT. Linjat: blu = hyrja, e kuqe = SL, jeshile = TP (vetëm pozicionet e hapura të MMT).')}</p>
+        <p className="text-[10px] text-gray-600 mt-1">
+          {chartSrc === 'mt5'
+            ? t('Burimi: MT5 REAL (brokeri yt, kohë reale — i njëjti çmim si aplikacioni MT5). Linjat: blu = hyrja, e kuqe = SL, jeshile = TP.')
+            : t('Burimi: Binance PAXG (rezervë — MT5 s\'u përgjigj; ka diferencë ~$5-6 nga brokeri). Linjat: blu = hyrja, e kuqe = SL, jeshile = TP.')}
+        </p>
       </div>
 
       {/* POZICIONET E HAPURA (MMT) — raport në kohë reale për secilin: fitim/humbje tani + distanca te TP/SL */}
