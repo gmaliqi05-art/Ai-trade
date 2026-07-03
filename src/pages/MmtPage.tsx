@@ -20,6 +20,8 @@ interface MmtConfig {
   learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
   scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
   smart_exit: boolean; tp_time_h: number; tp_time_usd: number;
+  fast_on: boolean; fast_move_usd: number; fast_window_s: number; fast_sl_usd: number;
+  fast_tp_rr: number; fast_stall_s: number; fast_max_day: number; fast_cooldown_s: number;
 }
 interface LearnRow { id: number; learned_at: string; param: string; old_value: string | null; new_value: string | null; reason: string | null; sample_n: number | null; expectancy: number | null; }
 interface MmtTrade {
@@ -341,6 +343,39 @@ export default function MmtPage() {
           {num('Time-stop (min)', 'scalp_time_stop_min', '1', t('dil nëse s\'lëviz'))}
         </div>
       </div>
+
+      {/* MMT-FAST (Rruga A) — roboti tik-pas-tiku në VPS; ON/OFF nga pronari. */}
+      {(() => {
+        const fastBeat = scans.find(s => s.regime === 'FAST');
+        const fastAlive = fastBeat && (Date.now() - new Date(fastBeat.scanned_at).getTime()) < 12 * 60 * 1000;
+        return (
+          <div className={`rounded-2xl p-4 space-y-3 border ${cfg.fast_on ? 'bg-purple-500/5 border-purple-500/40' : 'bg-gray-900 border-gray-800'}`}>
+            <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+              <Activity className={`w-4 h-4 ${cfg.fast_on ? 'text-purple-400' : 'text-gray-500'}`} />
+              {t('FAST (tik-pas-tiku) — roboti i sekondave')}
+              {fastAlive
+                ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">{t('WORKER GJALLË')}</span>
+                : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-500">{t('WORKER JO AKTIV')}</span>}
+            </h3>
+            <p className="text-[11px] text-gray-400 leading-snug">
+              {t('Ndjek ÇDO TIK live (websocket) dhe hyn brenda sekondash kur nis një shpërthim i konfirmuar — ngritje → BUY, rënie → SELL. SL+TP të ngjitura që në hyrje, mbrojtje te hyrja në +0.4R, dalje në burst të kundërt ose ngecje. Kërkon worker-in 24/7 në VPS — shih worker/mmt-fast/README.md në repo.')}
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+              <button type="button" onClick={() => save({ fast_on: !cfg.fast_on })}
+                className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.fast_on ? 'bg-purple-500/15 border-purple-500/40 text-purple-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
+                <Activity className="w-4 h-4" />{cfg.fast_on ? 'FAST: ON' : 'FAST: OFF'}
+              </button>
+              {num(t('Burst min ($/dritare)'), 'fast_move_usd', '0.1')}
+              {num(t('Dritarja (sek)'), 'fast_window_s', '1')}
+              {num('SL ($)', 'fast_sl_usd', '0.5')}
+              {num('TP (×SL)', 'fast_tp_rr', '0.1')}
+              {num(t('Ngecja: dil pas (sek)'), 'fast_stall_s', '5')}
+              {num(t('Maks. fast/ditë'), 'fast_max_day', '1')}
+              {num(t('Pushim pas daljes (sek)'), 'fast_cooldown_s', '10')}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* LIVE — çelësi në dorën e pronarit (default OFF). Kur ndizet, MMT ekzekuton REALISHT te MT5. */}
       <div className={`rounded-2xl p-4 space-y-3 border ${cfg.live_enabled ? 'bg-red-500/5 border-red-500/40' : 'bg-gray-900 border-gray-800'}`}>

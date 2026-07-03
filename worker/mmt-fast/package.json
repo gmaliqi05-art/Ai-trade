@@ -1,0 +1,14 @@
+{
+  "name": "mmt-fast-worker",
+  "version": "1.0.0",
+  "description": "MMT-FAST — roboti tik-pas-tiku i arit (Binance websocket + MetaApi). Punon 24/7 në VPS.",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
