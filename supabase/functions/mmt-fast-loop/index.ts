@@ -205,7 +205,12 @@ Deno.serve(async (req: Request) => {
     // (kthim i hershëm) → expired; vetëm SL i plotë → sl (ai numërohet te kill-i).
     const exitStatus = (pnlPx: number) => pnlPx > 0.1 ? "trail" : (pnlPx >= -0.15 ? "be" : (pnlPx > -0.6 * slD ? "expired" : "sl"));
     let newSL = posSL;
-    if (bestFav >= BE_AT) { const be = entry + (isBuy ? 1 : -1) * 0.05; if (isBuy ? be > newSL : be < newSL) newSL = be; }
+    if (bestFav >= BE_AT) {
+      // SL ndjek KULMIN nga afër: kulmi − PULL (min. mbrojtja në 0). Kthimi
+      // >PULL nga kulmi godet SL-në → dalja me fitim të kyçur është AUTOMATIKE.
+      const lock = entry + (isBuy ? 1 : -1) * Math.max(0.05, bestFav - PULL);
+      if (isBuy ? lock > newSL : lock < newSL) newSL = lock;
+    }
     if (newSL !== posSL) {
       posSL = newSL;
       if (pos.live && pos.live_order_id && broker) {
@@ -217,12 +222,10 @@ Deno.serve(async (req: Request) => {
     }
     await persistProtection();
     if (isBuy ? px >= Number(pos.tp) : px <= Number(pos.tp)) return closePos("tp", Number(pos.tp));
-    if (isBuy ? px <= posSL : px >= posSL) return closePos(bestFav >= BE_AT ? "be" : "sl", posSL);
-    // DALJA KRYESORE — kthimi nga kulmi: fitimi i arritur mbrohet, jo shpresohet.
-    if (bestFav >= BE_AT) {
-      const pull = Math.max(PULL, 0.3 * bestFav); // kulm më i lartë → toleranca rritet pak, por fitimi mbetet i kyçur
-      if (bestFav - fav >= pull) return closePos(exitStatus(fav), px);
-    }
+    if (isBuy ? px <= posSL : px >= posSL) return closePos(exitStatus(isBuy ? posSL - entry : entry - posSL), posSL);
+    // DALJA KRYESORE — kthim FIKS $PULL nga kulmi = dil MENJËHERË me fitimin e kyçur
+    // (rezervë e çastit; SL-ja që ndjek kulmin e garanton edhe mes tikëve).
+    if (bestFav >= BE_AT && bestFav - fav >= PULL) return closePos(exitStatus(fav), px);
     // Kthim i hershëm (para +0.5$): kundër-lëvizje e dukshme në dritare → dil në ~0/minus të vogël.
     const cut = nowS() - W;
     const win = ticks.filter((t) => t.t >= cut);
