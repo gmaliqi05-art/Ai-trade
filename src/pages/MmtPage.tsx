@@ -214,6 +214,26 @@ export default function MmtPage() {
         {saving && <span className="text-[11px] text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />{t('Duke ruajtur…')}</span>}
       </div>
 
+      {/* KILL-SWITCH BANNER — i dukshëm kur mbrojtja e ka ndalur gjuetinë; rihapje me 1 prekje. */}
+      {(() => {
+        const todayKey = new Date().toLocaleDateString();
+        const slToday = trades.filter(x => x.status === 'sl' && x.closed_at && new Date(x.closed_at).toLocaleDateString() === todayKey).length;
+        const engaged = slToday >= Number(cfg.kill_after_sl || 2);
+        if (!engaged) return null;
+        return (
+          <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1">
+              <p className="text-red-300 font-bold text-sm">🛑 {t('Kill-switch aktiv')} — {slToday} SL {t('sot')} (kufiri: {cfg.kill_after_sl})</p>
+              <p className="text-[11px] text-red-200/70 mt-0.5">{t('Gjuetia u ndal vetë për të mbrojtur ditën (rregulli i Dhomës së Ekspertëve). Rifillon vetë nesër — ose rihape tani me kufi më të lartë.')}</p>
+            </div>
+            <button type="button" onClick={() => save({ kill_after_sl: slToday + 1 })}
+              className="px-4 py-2.5 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 text-sm font-bold hover:bg-red-500/30">
+              {t('Rihap gjuetinë sot')} (kufiri → {slToday + 1})
+            </button>
+          </div>
+        );
+      })()}
+
       {/* GRAFIKU (TradingView) — qirinjtë live + hyrjet/SL/TP e MMT të vizatuara */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
