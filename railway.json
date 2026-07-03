@@ -1,0 +1,8 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": { "builder": "NIXPACKS" },
+  "deploy": {
+    "startCommand": "cd worker/mmt-fast && npm install --no-audit --no-fund && node index.mjs",
+    "restartPolicyType": "ALWAYS"
+  }
+}
