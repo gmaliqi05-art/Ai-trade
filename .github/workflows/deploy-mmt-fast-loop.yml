@@ -1,0 +1,24 @@
+name: Deploy mmt-fast-loop
+
+# Deploy VETËM i mmt-fast-loop (MMT-FAST në Supabase — laku i sekondave; s'prek robotët e tjerë).
+# Nxitet manualisht (workflow_dispatch). Kërkon sekretin e repos: SUPABASE_ACCESS_TOKEN.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Deploy mmt-fast-loop (verify_jwt=false — cron me x-cron-secret)
+        run: supabase functions deploy mmt-fast-loop --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
