@@ -330,7 +330,24 @@ export default function MmtPage() {
             <span className="text-[11px] text-gray-400">{t('Sesionet (orë UTC)')}</span>
             <input value={sessionsTxt} onChange={e => setSessionsTxt(e.target.value)} onBlur={() => save()}
               className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="7-10,13-17" />
-            <span className="text-[10px] text-gray-600">{t('kill-zones; NY = 16-21')}</span>
+            {/* SINKRONIZIM AUTOMATIK me orën lokale të përdoruesit (shfletuesi e di zonën vetë). */}
+            {(() => {
+              const toLocal = (h: number) => { const d = new Date(); d.setUTCHours(h, 0, 0, 0); return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+              const wins = (cfg.sessions || []) as [number, number][];
+              const local = wins.map(([a, b]) => `${toLocal(a)}–${toLocal(b)}`).join(', ');
+              const hU = new Date().getUTCHours();
+              const inS = wins.some(([a, b]) => hU >= a && hU < b);
+              const next = wins.map(([a]) => a).filter(a => a > hU).sort((a, b) => a - b)[0] ?? wins.map(([a]) => a).sort((a, b) => a - b)[0];
+              return (
+                <span className="text-[10px] block mt-0.5">
+                  <span className="text-amber-400/90">{t('Në orën tënde:')} {local || '—'}</span>
+                  {' · '}
+                  {inS
+                    ? <span className="text-green-400 font-semibold">{t('gjuetia HAPUR tani')}</span>
+                    : <span className="text-gray-400">{t('mbyllur — rihapet në')} <span className="text-white font-semibold">{next != null ? toLocal(next) : '—'}</span></span>}
+                </span>
+              );
+            })()}
           </label>
         </div>
         <label className="block sm:max-w-xs">
