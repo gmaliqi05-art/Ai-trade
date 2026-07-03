@@ -36,7 +36,7 @@ export interface EditableSlTp {
 }
 
 export default function Mt5Chart({
-  candles, lines = [], height = 380, fitKey,
+  candles, lines = [], height = 380, fitKey, maxLineExpand,
   positions = [], activeId = null, onActiveChange, onCommitSlTp,
 }: {
   candles: ChartCandle[];
@@ -44,6 +44,10 @@ export default function Mt5Chart({
   height?: number;
   /** Kur ndryshon (p.sh. simboli ose periudha), grafiku ri-përshtatet; përndryshe ruan zoom-in manual. */
   fitKey?: string;
+  /** Kufi për zgjerimin e shkallës nga linjat Hyrje/SL/TP: maksimumi ±(kaq × diapazoni i qirinjve).
+      Pa vlerë = sjellja e vjetër (të gjitha linjat gjithmonë në pamje). Përdore kur TP/SL janë
+      shumë larg (p.sh. MMT me R:R 1:4) që qirinjtë të mos shtypen në vijë. */
+  maxLineExpand?: number;
   /** Pozicionet e hapura për këtë simbol (secila me pilulë te linja e hyrjes). */
   positions?: EditableSlTp[];
   /** Id-ja e pozicionit aktualisht në modë editimi (SL/TP të tërheqshëm). */
@@ -59,6 +63,8 @@ export default function Mt5Chart({
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const linePricesRef = useRef<number[]>([]); // çmimet e Hyrje/SL/TP për auto-scale
+  const maxExpandRef = useRef<number | undefined>(maxLineExpand);
+  maxExpandRef.current = maxLineExpand;
   const lastFitRef = useRef<string | null>(null); // fitKey-i i fundit për të cilin u ri-përshtat
   const labelEls = useRef<{ el: HTMLDivElement; price: number }[]>([]); // etiketat aktive + çmimi i tyre
   const rafRef = useRef<number | null>(null);
@@ -147,6 +153,14 @@ export default function Mt5Chart({
         let minValue = res.priceRange.minValue;
         let maxValue = res.priceRange.maxValue;
         for (const p of prices) { if (p < minValue) minValue = p; if (p > maxValue) maxValue = p; }
+        // KUFIRI (maxLineExpand): mos i lër linjat e largëta (TP 4R etj.) ta shtypin grafikun —
+        // zgjero maksimumi ±(kufi × diapazoni i qirinjve); linjat përtej dalin nga pamja.
+        const lim = maxExpandRef.current;
+        if (lim != null && Number.isFinite(lim)) {
+          const span = (res.priceRange.maxValue - res.priceRange.minValue) || 1;
+          minValue = Math.max(minValue, res.priceRange.minValue - span * lim);
+          maxValue = Math.min(maxValue, res.priceRange.maxValue + span * lim);
+        }
         const pad = (maxValue - minValue) * 0.12 || 1;
         return { ...res, priceRange: { minValue: minValue - pad, maxValue: maxValue + pad } };
       },
