@@ -3,7 +3,7 @@ import { Brain, Power, ShieldAlert, Activity, RefreshCw, Loader2, Clock, Trendin
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
-import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
+import Mt5Chart, { type ChartCandle, type PriceLineDef, type ChartMarkerDef } from '../components/Mt5Chart';
 import { loadCandles } from '../services/metaapi';
 
 // MMT — SUPER ROBOTI (faqe KOMPLET E VEÇANTË nga Cilësimet e robotëve ekzistues).
@@ -150,6 +150,32 @@ export default function MmtPage() {
     return out;
   }, [trades]);
 
+  // SHËNJIMET mbi grafik: hyrja (shigjetë me emrin e robotit) + dalja (rreth me fitim/humbje)
+  // për ÇDO tregtim MMT — edhe të mbyllurit shihen AKU ku ndodhën, jo vetëm në tabelë.
+  const tfSec = tf === '1m' ? 60 : tf === '5m' ? 300 : tf === '15m' ? 900 : 3600;
+  const chartMarkers = useMemo<ChartMarkerDef[]>(() => {
+    const robotColor = (s: string) => (s === 'scalp' ? '#f59e0b' : s === 'fast' ? '#a855f7' : '#38bdf8');
+    const bucket = (iso: string) => Math.floor(new Date(iso).getTime() / 1000 / tfSec) * tfSec;
+    const out: ChartMarkerDef[] = [];
+    for (const x of trades.slice(0, 40)) {
+      const isBuy = x.side === 'BUY';
+      out.push({
+        time: bucket(x.opened_at), position: isBuy ? 'belowBar' : 'aboveBar',
+        shape: isBuy ? 'arrowUp' : 'arrowDown', color: robotColor(x.strategy),
+        text: robotName(x.strategy).replace('MMT-', ''),
+      });
+      if (x.closed_at && x.pnl_usd != null) {
+        const pnl = Number(x.pnl_usd);
+        out.push({
+          time: bucket(x.closed_at), position: isBuy ? 'aboveBar' : 'belowBar',
+          shape: 'circle', color: pnl >= 0 ? '#22c55e' : '#ef4444',
+          text: `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}$`,
+        });
+      }
+    }
+    return out;
+  }, [trades, tfSec]);
+
   const set = <K extends keyof MmtConfig>(k: K, v: MmtConfig[K]) => setCfg(p => (p ? { ...p, [k]: v } : p));
   const save = async (patch?: Partial<MmtConfig>) => {
     if (!cfg) return;
@@ -258,7 +284,7 @@ export default function MmtPage() {
         {chartCandles.length === 0 ? (
           <div className="h-[380px] flex items-center justify-center text-gray-600 text-xs"><Loader2 className="w-4 h-4 animate-spin mr-2" />{t('Duke ngarkuar qirinjtë…')}</div>
         ) : (
-          <Mt5Chart candles={chartCandles} lines={chartLines} height={380} fitKey={`mmt_${tf}`} maxLineExpand={1.2} />
+          <Mt5Chart candles={chartCandles} lines={chartLines} markers={chartMarkers} height={380} fitKey={`mmt_${tf}`} maxLineExpand={1.2} />
         )}
         {/* Përmbledhja live nën grafik — si te Tregto Live */}
         <div className="flex items-center gap-3 mt-2 text-[12px]">

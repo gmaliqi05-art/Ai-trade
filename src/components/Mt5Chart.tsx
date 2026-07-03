@@ -10,8 +10,17 @@
 import { useEffect, useRef } from 'react';
 import {
   createChart, ColorType, LineStyle,
-  type IChartApi, type ISeriesApi, type IPriceLine, type UTCTimestamp,
+  type IChartApi, type ISeriesApi, type IPriceLine, type UTCTimestamp, type SeriesMarker, type Time,
 } from 'lightweight-charts';
+
+/** Shënjim mbi grafik (hyrje/dalje tregtimi): shigjetë/rreth me tekst te qiriri përkatës. */
+export interface ChartMarkerDef {
+  time: number; // sekonda UTC (rrumbullakosur te qiriri i periudhës)
+  position: 'aboveBar' | 'belowBar';
+  shape: 'arrowUp' | 'arrowDown' | 'circle';
+  color: string;
+  text?: string;
+}
 
 export interface ChartCandle {
   time: number; // sekonda (UTC)
@@ -37,10 +46,12 @@ export interface EditableSlTp {
 
 export default function Mt5Chart({
   candles, lines = [], height = 380, fitKey, maxLineExpand,
-  positions = [], activeId = null, onActiveChange, onCommitSlTp,
+  positions = [], activeId = null, onActiveChange, onCommitSlTp, markers = [],
 }: {
   candles: ChartCandle[];
   lines?: PriceLineDef[];
+  /** Shënjime hyrje/dalje tregtimesh mbi qirinj (shigjeta + rrathë me tekst). */
+  markers?: ChartMarkerDef[];
   height?: number;
   /** Kur ndryshon (p.sh. simboli ose periudha), grafiku ri-përshtatet; përndryshe ruan zoom-in manual. */
   fitKey?: string;
@@ -232,6 +243,18 @@ export default function Mt5Chart({
     }
     dataMetaRef.current = { n, first, last };
   }, [candles, fitKey]);
+
+  // Shënjimet e tregtimeve (hyrje/dalje) — vetëm brenda dritares kohore të qirinjve.
+  useEffect(() => {
+    const s = seriesRef.current;
+    if (!s || candles.length === 0) return;
+    const t0 = candles[0].time, t1 = candles[candles.length - 1].time;
+    const ms: SeriesMarker<Time>[] = markers
+      .filter(m => m.time >= t0 && m.time <= t1)
+      .sort((a, b) => a.time - b.time)
+      .map(m => ({ time: m.time as UTCTimestamp, position: m.position, shape: m.shape, color: m.color, text: m.text, size: 1 }));
+    s.setMarkers(ms);
+  }, [markers, candles]);
 
   // Përditëso linjat Hyrje/SL/TP + etiketat e majta.
   useEffect(() => {
