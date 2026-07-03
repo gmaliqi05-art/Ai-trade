@@ -220,7 +220,7 @@ export default function MmtPage() {
         {chartCandles.length === 0 ? (
           <div className="h-[380px] flex items-center justify-center text-gray-600 text-xs"><Loader2 className="w-4 h-4 animate-spin mr-2" />{t('Duke ngarkuar qirinjtë…')}</div>
         ) : (
-          <Mt5Chart candles={chartCandles} lines={chartLines} height={380} fitKey={`mmt_${tf}`} />
+          <Mt5Chart candles={chartCandles} lines={chartLines} height={380} fitKey={`mmt_${tf}`} maxLineExpand={1.2} />
         )}
         {/* Përmbledhja live nën grafik — si te Tregto Live */}
         <div className="flex items-center gap-3 mt-2 text-[12px]">
