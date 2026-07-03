@@ -12,8 +12,15 @@ const DEFAULT_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 const envUrl = import.meta.env.VITE_SUPABASE_URL;
 const envAnon = import.meta.env.VITE_SUPABASE_ANON_KEY;
-// Përdor env-in VETËM nëse është URL i vlefshëm i TË NJËJTIT projekt; ndryshe vlerat e fiksuara.
-const useEnv = typeof envUrl === 'string' && envUrl.includes(`${PROJECT_REF}.supabase.co`) && typeof envAnon === 'string' && envAnon.length > 20;
+// SIGURI: çelësi nga env pranohet VETËM nëse duket çelës PUBLIK (anon JWT 'eyJ…' ose
+// 'sb_publishable_…'). Çelësat SEKRETË ('sb_secret_…'/service_role) REFUZOHEN — Supabase i
+// bllokon në shfletues ("Forbidden use of secret API key in browser") dhe faqja rrëzohej
+// krejt kur dikush e vendoste gabimisht te env-i i host-it (Vercel).
+const anonLooksPublic = typeof envAnon === 'string' && envAnon.length > 20
+  && !envAnon.startsWith('sb_secret')
+  && (envAnon.startsWith('eyJ') || envAnon.startsWith('sb_publishable'));
+// Përdor env-in VETËM nëse është URL i TË NJËJTIT projekt DHE çelësi është publik.
+const useEnv = typeof envUrl === 'string' && envUrl.includes(`${PROJECT_REF}.supabase.co`) && anonLooksPublic;
 const supabaseUrl = useEnv ? envUrl : DEFAULT_URL;
 const supabaseAnonKey = useEnv ? envAnon : DEFAULT_ANON;
 
