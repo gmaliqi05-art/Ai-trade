@@ -29,7 +29,7 @@ interface LearnRow { id: number; learned_at: string; param: string; old_value: s
 interface MmtTrade {
   id: string; side: string; strategy: string; regime: string; entry_price: number; sl: number; tp: number;
   lots: number; status: string; exit_price: number | null; pnl_usd: number | null; r_multiple: number | null;
-  reason: string | null; opened_at: string; closed_at: string | null;
+  reason: string | null; opened_at: string; closed_at: string | null; live?: boolean;
 }
 interface ScanRow { id: number; scanned_at: string; price: number | null; regime: string | null; decision: string | null; reject_reason: string | null; adx: number | null; er: number | null; rsi15: number | null; }
 
@@ -117,10 +117,19 @@ export default function MmtPage() {
   // ÇMIMI I FUNDIT (nga qiriu më i ri) + P&L LUNDRUES në kohë reale për çdo pozicion të hapur —
   // si te Tregto Live: (çmimi tani − hyrja) × drejtimi × $100/lot × lotët.
   const lastPx = chartCandles.length ? chartCandles[chartCandles.length - 1].close : null;
+  // Tregtimet në LETËR mbahen me çmimin e burimit të motorit (PAXG), që është
+  // ~5$ larg çmimit MT5 — P&L-ja e tyre DUHET llogaritur me çmimin e vet,
+  // ndryshe shfaqet fitim/humbje fantazmë. Çmimi i motorit merret nga heartbeat-i.
+  const enginePx = useMemo(() => {
+    const s = scans.find(v => v.price != null);
+    return s ? Number(s.price) : null;
+  }, [scans]);
+  const pxFor = useCallback((x: MmtTrade): number | null => (x.live ? lastPx : (enginePx ?? lastPx)), [lastPx, enginePx]);
   const floatOf = useCallback((x: MmtTrade): number | null => {
-    if (lastPx == null) return null;
-    return (lastPx - Number(x.entry_price)) * (x.side === 'BUY' ? 1 : -1) * 100 * Number(x.lots);
-  }, [lastPx]);
+    const px = pxFor(x);
+    if (px == null) return null;
+    return (px - Number(x.entry_price)) * (x.side === 'BUY' ? 1 : -1) * 100 * Number(x.lots);
+  }, [pxFor]);
   const openTrades = trades.filter(x => x.status === 'open');
   const floatingTotal = openTrades.reduce((a, x) => a + (floatOf(x) ?? 0), 0);
 
@@ -276,8 +285,9 @@ export default function MmtPage() {
             {openTrades.map(x => {
               const fl = floatOf(x);
               const isBuy = x.side === 'BUY';
-              const toTP = lastPx != null ? Math.abs(Number(x.tp) - lastPx) : null;
-              const toSL = lastPx != null ? Math.abs(lastPx - Number(x.sl)) : null;
+              const pxX = pxFor(x);
+              const toTP = pxX != null ? Math.abs(Number(x.tp) - pxX) : null;
+              const toSL = pxX != null ? Math.abs(pxX - Number(x.sl)) : null;
               return (
                 <div key={x.id} className={`rounded-xl px-3 py-2.5 border ${fl == null ? 'border-gray-800 bg-gray-800/40' : fl >= 0 ? 'border-green-500/25 bg-green-500/5' : 'border-red-500/25 bg-red-500/5'}`}>
                   <div className="flex items-center justify-between">
