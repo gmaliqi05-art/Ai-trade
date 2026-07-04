@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Brain, Power, ShieldAlert, Activity, RefreshCw, Loader2, Clock, TrendingUp, TrendingDown, Zap, FileText } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Brain, Power, ShieldAlert, Activity, RefreshCw, Loader2, Clock, TrendingUp, TrendingDown, Zap, FileText, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
@@ -40,6 +40,25 @@ const robotCls = (strategy: string): string =>
   strategy === 'scalp' ? 'bg-amber-500/20 text-amber-400'
   : strategy === 'fast' ? 'bg-purple-500/20 text-purple-300'
   : 'bg-sky-500/20 text-sky-300';
+
+// Seksion i PALOSSHËM ("hamburger") për cilësimet — rrinë të mbyllura që të mos
+// zënë vend dhe të mos preken numrat aksidentalisht; hapen vetëm me prekje të
+// vetëdijshme te koka. Gjendja (ON/GJALLË) duket edhe pa e hapur.
+function Fold({ title, icon, badge, tint, children }: {
+  title: string; icon?: ReactNode; badge?: ReactNode; tint?: string; children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`rounded-2xl border ${tint || 'bg-gray-900 border-gray-800'}`}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3.5 text-left">
+        <span className="text-white font-semibold text-sm flex items-center gap-2 flex-wrap">{icon}{title}{badge}</span>
+        <ChevronDown className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="px-4 pb-4 space-y-3">{children}</div>}
+    </div>
+  );
+}
 
 const REGJIME: Record<string, string> = {
   TREND_UP: 'Trend LART', TREND_DOWN: 'Trend POSHTË', RANGE: 'Range (anësor)',
@@ -349,9 +368,9 @@ export default function MmtPage() {
         </div>
       )}
 
-      {/* CILËSIMET — të VEÇANTA nga robotët e tjerë */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
-        <h3 className="text-white font-semibold text-sm flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-400" />{t('Cilësimet MMT (vetëm ky robot)')}</h3>
+      {/* CILËSIMET — të VEÇANTA nga robotët e tjerë; TË PALOSURA (hamburger) që të mos
+          zënë vend dhe të mos preken numrat aksidentalisht. */}
+      <Fold title={t('Cilësimet MMT (vetëm ky robot)')} icon={<ShieldAlert className="w-4 h-4 text-amber-400" />}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {num(t('Kapitali i letrës ($)'), 'paper_equity', '50')}
           {num(t('Rreziku për trade (%)'), 'risk_pct', '0.1', t('PTJ: max 1%'))}
@@ -422,15 +441,13 @@ export default function MmtPage() {
             className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
           <span className="text-[10px] text-gray-600">{t('P.sh. para fjalimeve të Fed — pa hyrje të reja deri atëherë.')}</span>
         </label>
-      </div>
+      </Fold>
 
       {/* MMT-SCALP (Blic) — tregtime të shkurta 1m, kontroll çdo minutë; ON/OFF nga pronari. */}
-      <div className={`rounded-2xl p-4 space-y-3 border ${cfg.scalp_on ? 'bg-amber-500/5 border-amber-500/40' : 'bg-gray-900 border-gray-800'}`}>
-        <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-          <Zap className={`w-4 h-4 ${cfg.scalp_on ? 'text-amber-400' : 'text-gray-500'}`} />
-          {t('SCALP (Blic) — tregtime të shkurta 1m')}
-          {cfg.scalp_on && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">{t('AKTIV')}</span>}
-        </h3>
+      <Fold title={t('SCALP (Blic) — tregtime të shkurta 1m')}
+        icon={<Zap className={`w-4 h-4 ${cfg.scalp_on ? 'text-amber-400' : 'text-gray-500'}`} />}
+        badge={cfg.scalp_on ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">{t('AKTIV')}</span> : undefined}
+        tint={cfg.scalp_on ? 'bg-amber-500/5 border-amber-500/40' : undefined}>
         <p className="text-[11px] text-gray-400 leading-snug">
           {t('Ndjek qirinjtë 1-minutësh ÇDO MINUTË: hyn me EMA9/21 + pullback + RSI7 (në drejtim të 15m), SL i ngushtë, TP 1.5R. Del vetë kur momenti venitet (EMA kryqëzohet mbrapsht) ose kur s\'lëviz brenda kohës (time-stop). Fitime të vogla e të shpeshta — humbje të vogla e të prera shpejt.')}
         </p>
@@ -444,21 +461,22 @@ export default function MmtPage() {
           {num(t('Pushim mes tyre (min)'), 'scalp_cooldown_min', '1')}
           {num('Time-stop (min)', 'scalp_time_stop_min', '1', t('dil nëse s\'lëviz'))}
         </div>
-      </div>
+      </Fold>
 
-      {/* MMT-FAST (Rruga A) — roboti tik-pas-tiku në VPS; ON/OFF nga pronari. */}
+      {/* MMT-FAST (Rruga A) — roboti tik-pas-tiku; ON/OFF nga pronari. */}
       {(() => {
         const fastBeat = scans.find(s => s.regime === 'FAST');
         const fastAlive = fastBeat && (Date.now() - new Date(fastBeat.scanned_at).getTime()) < 12 * 60 * 1000;
         return (
-          <div className={`rounded-2xl p-4 space-y-3 border ${cfg.fast_on ? 'bg-purple-500/5 border-purple-500/40' : 'bg-gray-900 border-gray-800'}`}>
-            <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-              <Activity className={`w-4 h-4 ${cfg.fast_on ? 'text-purple-400' : 'text-gray-500'}`} />
-              {t('FAST (tik-pas-tiku) — roboti i sekondave')}
+          <Fold title={t('FAST (tik-pas-tiku) — roboti i sekondave')}
+            icon={<Activity className={`w-4 h-4 ${cfg.fast_on ? 'text-purple-400' : 'text-gray-500'}`} />}
+            badge={<>
+              {cfg.fast_on && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">ON</span>}
               {fastAlive
                 ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">{t('WORKER GJALLË')}</span>
                 : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-500">{t('WORKER JO AKTIV')}</span>}
-            </h3>
+            </>}
+            tint={cfg.fast_on ? 'bg-purple-500/5 border-purple-500/40' : undefined}>
             <p className="text-[11px] text-gray-400 leading-snug">
               {t('NDJEKËSI i lëvizjes: pa indikatorë (analizat i bëjnë Long/Scalp) — ndjek ÇDO TIK live (milisekonda), hyn sapo nis lëvizja (ngritje → BUY, rënie → SELL), në +$0.50 e çon mbrojtjen në 0, dhe DEL sapo çmimi kthehet nga kulmi — me fitim të kyçur ose në 0. SL i plotë vetëm si frenë fatkeqësie.')}
             </p>
@@ -481,16 +499,15 @@ export default function MmtPage() {
               {num(t('Stop ditor FAST ($)'), 'fast_daily_stop_usd', '1', t('vetëm humbjet e Fast'))}
               {num(t('Dil kur kthehet ($ nga kulmi)'), 'fast_pullback_usd', '0.1', t('fitimi kyçet këtu'))}
             </div>
-          </div>
+          </Fold>
         );
       })()}
 
       {/* LIVE — çelësi në dorën e pronarit (default OFF). Kur ndizet, MMT ekzekuton REALISHT te MT5. */}
-      <div className={`rounded-2xl p-4 space-y-3 border ${cfg.live_enabled ? 'bg-red-500/5 border-red-500/40' : 'bg-gray-900 border-gray-800'}`}>
-        <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-          <Power className={`w-4 h-4 ${cfg.live_enabled ? 'text-red-400' : 'text-gray-500'}`} />
-          {t('LIVE — para reale')} {cfg.live_enabled && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">{t('AKTIV')}</span>}
-        </h3>
+      <Fold title={t('LIVE — para reale')}
+        icon={<Power className={`w-4 h-4 ${cfg.live_enabled ? 'text-red-400' : 'text-gray-500'}`} />}
+        badge={cfg.live_enabled ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">{t('AKTIV')}</span> : undefined}
+        tint={cfg.live_enabled ? 'bg-red-500/5 border-red-500/40' : undefined}>
         <p className="text-[11px] text-gray-400 leading-snug">
           {t('Kur ky çelës është ON, çdo hyrje e MMT ekzekutohet REALISHT te llogaria MT5 (me lot fiks të vogël), përveç regjistrimit në letër. Rekomandim: lëre OFF derisa hija të mbledhë 50+ trade dhe rezultatet të të bindin — pastaj nise me 0.01.')}
         </p>
@@ -509,7 +526,7 @@ export default function MmtPage() {
             </button>
           </label>
         </div>
-      </div>
+      </Fold>
 
       {/* TRADE-T HIJE */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
@@ -579,31 +596,47 @@ export default function MmtPage() {
                 <p className="text-white font-bold text-sm mt-0.5">{closed.length ? Math.round((wins.length / closed.length) * 100) : 0}% <span className="text-gray-500 font-normal">({totalR >= 0 ? '+' : ''}{totalR.toFixed(1)}R)</span></p>
               </div>
             </div>
-            {/* RAPORTET E NDARA PËR SECILIN ROBOT (kërkesa e pronarit): MMT-Long / MMT-Scalp / MMT-Fast */}
+            {/* RAPORTE TË PLOTA TË NDARA PËR SECILIN ROBOT (kërkesa e pronarit): kartë e
+                veçantë me SAKTËSINË në %, fitimin total/sot, R dhe pozicionet — që të
+                krahasohet qartë se cili robot po sjell fitimet më të mira. */}
             {(() => {
-              const groups = new Map<string, { n: number; w: number; pnl: number; r: number; open: number }>();
-              trades.forEach(x => {
-                const k = robotName(x.strategy);
-                const g = groups.get(k) || { n: 0, w: 0, pnl: 0, r: 0, open: 0 };
-                if (x.status === 'open') g.open++;
-                else { g.n++; if (Number(x.pnl_usd) > 0) g.w++; g.pnl += Number(x.pnl_usd ?? 0); g.r += Number(x.r_multiple ?? 0); }
-                groups.set(k, g);
-              });
-              const order = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast'];
-              const strategyOf: Record<string, string> = { 'MMT-Long': 'trend', 'MMT-Scalp': 'scalp', 'MMT-Fast': 'fast' };
+              const order: [string, string][] = [['MMT-Long', 'trend'], ['MMT-Scalp', 'scalp'], ['MMT-Fast', 'fast']];
+              const stratOf = (s: string) => (s === 'scalp' ? 'scalp' : s === 'fast' ? 'fast' : 'trend');
               return (
-                <div className="space-y-1 mb-3">
-                  <p className="text-[11px] text-gray-500 mb-1">{t('Raporti sipas robotit')}</p>
-                  {order.map(name => {
-                    const g = groups.get(name) || { n: 0, w: 0, pnl: 0, r: 0, open: 0 };
-                    return (
-                      <div key={name} className="flex items-center justify-between text-[11px] border-b border-gray-800/60 pb-1">
-                        <span className={`font-bold px-1.5 py-0.5 rounded-full text-[10px] ${robotCls(strategyOf[name])}`}>{name}</span>
-                        <span className="text-gray-400">{g.n} {t('mbyllur')} · {g.w}W/{g.n - g.w}L{g.open > 0 ? ` · ${g.open} ${t('hapur')}` : ''}</span>
-                        <span className={g.pnl >= 0 ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}$ ({g.r >= 0 ? '+' : ''}{g.r.toFixed(1)}R)</span>
-                      </div>
-                    );
-                  })}
+                <div className="mb-3">
+                  <p className="text-[11px] text-gray-500 mb-1.5">{t('Raporti sipas robotit — krahaso kush po fiton më mirë')}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {order.map(([name, strat]) => {
+                      const mine = trades.filter(x => stratOf(x.strategy) === strat);
+                      const cl = mine.filter(x => x.closed_at);
+                      const w = cl.filter(x => Number(x.pnl_usd) > 0).length;
+                      const wr = cl.length ? Math.round((w / cl.length) * 100) : 0;
+                      const pnl = cl.reduce((a, x) => a + Number(x.pnl_usd ?? 0), 0);
+                      const r = cl.reduce((a, x) => a + Number(x.r_multiple ?? 0), 0);
+                      const tod = cl.filter(x => dayKey(x.closed_at!) === todayKey);
+                      const todPnl = tod.reduce((a, x) => a + Number(x.pnl_usd ?? 0), 0);
+                      const opens = mine.filter(x => x.status === 'open');
+                      const flo = opens.reduce((a, x) => a + (floatOf(x) ?? 0), 0);
+                      const avg = cl.length ? pnl / cl.length : 0;
+                      return (
+                        <div key={name} className="bg-gray-800/40 rounded-xl p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`font-bold px-2 py-0.5 rounded-full text-[11px] ${robotCls(strat)}`}>{name}</span>
+                            <span className={`text-lg font-bold ${wr >= 50 ? 'text-green-400' : cl.length === 0 ? 'text-gray-500' : 'text-amber-400'}`}>
+                              {cl.length ? `${wr}%` : '—'}
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-[11px]">
+                            <div className="flex justify-between"><span className="text-gray-500">{t('Saktësia')}</span><span className="text-gray-300">{w}W / {cl.length - w}L ({cl.length} {t('mbyllur')})</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">{t('Fitimi total')}</span><span className={`font-semibold ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}$ ({r >= 0 ? '+' : ''}{r.toFixed(1)}R)</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">{t('Mesatarja/trade')}</span><span className={avg >= 0 ? 'text-green-400' : 'text-red-400'}>{avg >= 0 ? '+' : ''}{avg.toFixed(2)}$</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">{t('Sot')}</span><span className={`${todPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{tod.length ? `${todPnl >= 0 ? '+' : ''}${todPnl.toFixed(2)}$ (${tod.length})` : '—'}</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">{t('Hapur tani')}</span><span className="text-gray-300">{opens.length ? `${opens.length} · ${flo >= 0 ? '+' : ''}${flo.toFixed(2)}$ ${t('lundrues')}` : '—'}</span></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })()}
