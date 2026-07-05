@@ -322,6 +322,15 @@ export function loadSymbolPrice(symbol: string) {
   return callTrade({ action: 'PRICE', symbol });
 }
 
+/** Pozicionet e hapura REALE nga MT5 (kohë reale): hyrja, SL/TP, çmimi tani, fitimi.
+ *  Përdoret që vijat në grafik të jenë NIVELET REALE te brokeri (jo snapshot i DB). */
+export async function loadBrokerPositions(): Promise<OpenPosition[]> {
+  try {
+    const r = await callTrade({ action: 'POSITIONS' });
+    return Array.isArray(r.positions) ? r.positions : [];
+  } catch { return []; }
+}
+
 /** Ndryshon SL/TP të një pozicioni të hapur (dërgon në MT5). */
 export function modifyPosition(positionId: string, stopLoss?: number, takeProfit?: number) {
   return callTrade({ action: 'MODIFY', positionId, stopLoss, takeProfit });

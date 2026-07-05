@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import Mt5Chart, { type ChartCandle, type PriceLineDef, type ChartMarkerDef } from '../components/Mt5Chart';
-import { loadCandles } from '../services/metaapi';
+import { loadCandles, loadBrokerPositions, type OpenPosition } from '../services/metaapi';
 
 // MMT — SUPER ROBOTI (faqe KOMPLET E VEÇANTË nga Cilësimet e robotëve ekzistues).
 // Faza HIJE: tregton vetëm në letër; këtu menaxhohen cilësimet e tij dhe shihet performanca.
@@ -30,7 +30,7 @@ interface LearnRow { id: number; learned_at: string; param: string; old_value: s
 interface MmtTrade {
   id: string; side: string; strategy: string; regime: string; entry_price: number; sl: number; tp: number;
   lots: number; status: string; exit_price: number | null; pnl_usd: number | null; r_multiple: number | null;
-  reason: string | null; opened_at: string; closed_at: string | null; live?: boolean;
+  reason: string | null; opened_at: string; closed_at: string | null; live?: boolean; live_order_id?: string | null;
 }
 interface ScanRow { id: number; scanned_at: string; price: number | null; regime: string | null; decision: string | null; reject_reason: string | null; adx: number | null; er: number | null; rsi15: number | null; }
 
@@ -136,6 +136,36 @@ export default function MmtPage() {
     return () => clearInterval(id);
   }, [loadChart]);
 
+  // POZICIONET REALE nga brokeri (MT5) — kohë reale çdo 3s. Vijat Hyrje/SL/TP në grafik
+  // dhe kartat marrin NIVELET REALE te brokeri (hyrja e vërtetë, SL që trailon, TP, çmimi
+  // tani, fitimi real) — jo snapshot-in e DB që mund të vonojë ose të jetë në kornizë tjetër.
+  const [brokerPos, setBrokerPos] = useState<OpenPosition[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => { const p = await loadBrokerPositions(); if (alive) setBrokerPos(p); };
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  // Harta: live_order_id → pozicioni real te brokeri (për të mbivendosur nivelet reale).
+  const brokerById = useMemo(() => {
+    const m = new Map<string, OpenPosition>();
+    for (const p of brokerPos) m.set(String(p.id), p);
+    return m;
+  }, [brokerPos]);
+  // Një trade i hapur me nivelet REALE (nëse është live dhe gjendet te brokeri).
+  const realLevels = useCallback((x: MmtTrade): { entry: number; sl: number; tp: number; cur: number | null; profit: number | null } => {
+    const bp = x.live ? brokerById.get(String((x as MmtTrade & { live_order_id?: string }).live_order_id ?? '')) : undefined;
+    if (bp && bp.openPrice) return {
+      entry: Number(bp.openPrice),
+      sl: bp.stopLoss != null ? Number(bp.stopLoss) : Number(x.sl),
+      tp: bp.takeProfit != null ? Number(bp.takeProfit) : Number(x.tp),
+      cur: bp.currentPrice != null ? Number(bp.currentPrice) : null,
+      profit: bp.profit != null ? Number(bp.profit) : null,
+    };
+    return { entry: Number(x.entry_price), sl: Number(x.sl), tp: Number(x.tp), cur: null, profit: null };
+  }, [brokerById]);
+
   // ÇMIMI I FUNDIT (nga qiriu më i ri) + P&L LUNDRUES në kohë reale për çdo pozicion të hapur —
   // si te Tregto Live: (çmimi tani − hyrja) × drejtimi × $100/lot × lotët.
   const lastPx = chartCandles.length ? chartCandles[chartCandles.length - 1].close : null;
@@ -147,11 +177,15 @@ export default function MmtPage() {
     return s ? Number(s.price) : null;
   }, [scans]);
   const pxFor = useCallback((x: MmtTrade): number | null => (x.live ? lastPx : (enginePx ?? lastPx)), [lastPx, enginePx]);
+  // Fitimi lundrues: për tregtitë REALE përdor fitimin REAL të brokerit nëse e kemi (100%
+  // i saktë); përndryshe llogarit nga çmimi i duhur (MT5 për live, PAXG për letër).
   const floatOf = useCallback((x: MmtTrade): number | null => {
+    const rl = realLevels(x);
+    if (x.live && rl.profit != null) return rl.profit;
     const px = pxFor(x);
     if (px == null) return null;
-    return (px - Number(x.entry_price)) * (x.side === 'BUY' ? 1 : -1) * 100 * Number(x.lots);
-  }, [pxFor]);
+    return (px - rl.entry) * (x.side === 'BUY' ? 1 : -1) * 100 * Number(x.lots);
+  }, [pxFor, realLevels]);
   const openTrades = trades.filter(x => x.status === 'open');
   const floatingTotal = openTrades.reduce((a, x) => a + (floatOf(x) ?? 0), 0);
 
@@ -159,18 +193,19 @@ export default function MmtPage() {
   const chartLines = useMemo<PriceLineDef[]>(() => {
     const out: PriceLineDef[] = [];
     trades.filter(x => x.status === 'open').forEach((x, i) => {
-      // Vlera në $ e TP/SL për KËTË pozicion (lot × $100/lot × distanca) + pips (ari: 1 pip = $0.10).
-      const lots = Number(x.lots), e = Number(x.entry_price);
-      const tpUsd = Math.abs(Number(x.tp) - e) * 100 * lots;
-      const slUsd = Math.abs(e - Number(x.sl)) * 100 * lots;
-      const tpPips = Math.round(Math.abs(Number(x.tp) - e) * 10);
-      const slPips = Math.round(Math.abs(e - Number(x.sl)) * 10);
+      // NIVELET REALE te brokeri (hyrja e vërtetë, SL që trailon, TP) — jo snapshot DB.
+      const { entry: e, sl, tp } = realLevels(x);
+      const lots = Number(x.lots);
+      const tpUsd = Math.abs(tp - e) * 100 * lots;
+      const slUsd = Math.abs(e - sl) * 100 * lots;
+      const tpPips = Math.round(Math.abs(tp - e) * 10);
+      const slPips = Math.round(Math.abs(e - sl) * 10);
       out.push({ price: e, color: '#3b82f6', title: `Hyrje #${i + 1} ${x.side} (${robotName(x.strategy)})` });
-      out.push({ price: Number(x.sl), color: '#ef4444', title: `SL #${i + 1} −$${slUsd.toFixed(0)} (${slPips}p)` });
-      out.push({ price: Number(x.tp), color: '#22c55e', title: `TP #${i + 1} +$${tpUsd.toFixed(0)} (${tpPips}p)` });
+      out.push({ price: sl, color: '#ef4444', title: `SL #${i + 1} −$${slUsd.toFixed(0)} (${slPips}p)` });
+      out.push({ price: tp, color: '#22c55e', title: `TP #${i + 1} +$${tpUsd.toFixed(0)} (${tpPips}p)` });
     });
     return out;
-  }, [trades]);
+  }, [trades, realLevels]);
 
   // SHËNJIMET mbi grafik: hyrja (shigjetë me emrin e robotit) + dalja (rreth me fitim/humbje)
   // për ÇDO tregtim MMT — edhe të mbyllurit shihen AKU ku ndodhën, jo vetëm në tabelë.
@@ -333,10 +368,12 @@ export default function MmtPage() {
             {openTrades.map(x => {
               const fl = floatOf(x);
               const isBuy = x.side === 'BUY';
-              const pxX = pxFor(x);
+              const rl = realLevels(x);
+              // Çmimi për distancat: për live = çmimi REAL i brokerit (currentPrice) nëse e kemi.
+              const pxX = (x.live && rl.cur != null) ? rl.cur : pxFor(x);
               // Distanca me shenjë: nëse çmimi e ka KALUAR TP-në/SL-në, trego "prekur", jo distancë.
-              const tpRem = pxX != null ? (isBuy ? Number(x.tp) - pxX : pxX - Number(x.tp)) : null;
-              const slRem = pxX != null ? (isBuy ? pxX - Number(x.sl) : Number(x.sl) - pxX) : null;
+              const tpRem = pxX != null ? (isBuy ? rl.tp - pxX : pxX - rl.tp) : null;
+              const slRem = pxX != null ? (isBuy ? pxX - rl.sl : rl.sl - pxX) : null;
               const toTP = tpRem != null ? Math.abs(tpRem) : null;
               const toSL = slRem != null ? Math.abs(slRem) : null;
               return (
@@ -346,7 +383,7 @@ export default function MmtPage() {
                       {isBuy ? <TrendingUp className="w-4 h-4 text-green-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
                       <span className="text-white font-bold">{x.side}</span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${robotCls(x.strategy)}`}>{robotName(x.strategy)}</span>
-                      <span className="text-gray-300 text-xs">@{Number(x.entry_price).toFixed(2)} · {x.lots} lot</span>
+                      <span className="text-gray-300 text-xs">@{rl.entry.toFixed(2)} · {x.lots} lot</span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${x.live ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-300'}`}>{x.live ? 'REALE' : t('Letër')}</span>
                     </span>
                     <span className={`text-sm font-bold ${fl == null ? 'text-gray-500' : fl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -355,14 +392,14 @@ export default function MmtPage() {
                   </div>
                   <div className="flex gap-4 mt-1 text-[11px] text-gray-400 flex-wrap">
                     {(() => {
-                      const lots2 = Number(x.lots), e2 = Number(x.entry_price);
-                      const tpUsd = Math.abs(Number(x.tp) - e2) * 100 * lots2;
-                      const slUsd = Math.abs(e2 - Number(x.sl)) * 100 * lots2;
-                      const tpPips = Math.round(Math.abs(Number(x.tp) - e2) * 10);
-                      const slPips = Math.round(Math.abs(e2 - Number(x.sl)) * 10);
+                      const lots2 = Number(x.lots), e2 = rl.entry;
+                      const tpUsd = Math.abs(rl.tp - e2) * 100 * lots2;
+                      const slUsd = Math.abs(e2 - rl.sl) * 100 * lots2;
+                      const tpPips = Math.round(Math.abs(rl.tp - e2) * 10);
+                      const slPips = Math.round(Math.abs(e2 - rl.sl) * 10);
                       return (<>
-                        <span><span className="text-green-400">TP</span> {Number(x.tp).toFixed(2)} = <span className="text-green-400 font-semibold">+{tpUsd.toFixed(2)}$</span> <span className="text-gray-600">({tpPips} pips{toTP != null ? (tpRem! <= 0 ? ' · PREKUR' : ` · edhe ${toTP.toFixed(2)}$`) : ''})</span></span>
-                        <span><span className="text-red-400">SL</span> {Number(x.sl).toFixed(2)} = <span className="text-red-400 font-semibold">−{slUsd.toFixed(2)}$</span> <span className="text-gray-600">({slPips} pips{toSL != null ? (slRem! <= 0 ? ' · PREKUR' : ` · ${toSL.toFixed(2)}$ larg`) : ''})</span></span>
+                        <span><span className="text-green-400">TP</span> {rl.tp.toFixed(2)} = <span className="text-green-400 font-semibold">+{tpUsd.toFixed(2)}$</span> <span className="text-gray-600">({tpPips} pips{toTP != null ? (tpRem! <= 0 ? ' · PREKUR' : ` · edhe ${toTP.toFixed(2)}$`) : ''})</span></span>
+                        <span><span className="text-red-400">SL</span> {rl.sl.toFixed(2)} = <span className="text-red-400 font-semibold">−{slUsd.toFixed(2)}$</span> <span className="text-gray-600">({slPips} pips{toSL != null ? (slRem! <= 0 ? ' · PREKUR' : ` · ${toSL.toFixed(2)}$ larg`) : ''})</span></span>
                       </>);
                     })()}
                     <span className="text-gray-600 ml-auto">🕒 {new Date(x.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
