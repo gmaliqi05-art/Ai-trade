@@ -65,6 +65,18 @@ async function maQuote(b: Broker): Promise<{ bid: number; ask: number } | null> 
     return typeof j.bid === "number" && typeof j.ask === "number" ? { bid: j.bid, ask: j.ask } : null;
   } catch { return null; }
 }
+// Pozicioni REAL te brokeri (hyrja, çmimi tani, SL/TP, fitimi real) — burimi i
+// vërtetë për menaxhimin e parave reale (jo PAXG).
+interface MaPos { id: string; type: string; openPrice: number; currentPrice: number; stopLoss?: number; takeProfit?: number; profit?: number; volume?: number; }
+async function maPositions(b: Broker): Promise<MaPos[] | null> {
+  try {
+    const r = await fetch(`${maHost(b.region)}/users/current/accounts/${b.account_id}/positions`, {
+      headers: { "auth-token": b.token }, signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as MaPos[];
+  } catch { return null; }
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -127,7 +139,10 @@ Deno.serve(async (req: Request) => {
   let pos = ((openF ?? [])[0] as FastPos | undefined) || null;
   let posSL = pos ? Number(pos.sl) : 0;
   let bestFav = pos ? Math.max(0, Number(pos.best_fav ?? 0)) : 0;
-  if (pos) {
+  // Rillogaritja e best_fav nga historia PAXG vlen VETËM për pozicionet në letër.
+  // Për pozicionet REALE, best_fav llogaritet nga çmimi i vërtetë i brokerit (te manageLive) —
+  // PAXG është instrument tjetër që divergon dhe do ta prishte menaxhimin e parave reale.
+  if (pos && !pos.live) {
     try {
       const hist = await k1s(300);
       if (hist) {
@@ -238,6 +253,63 @@ Deno.serve(async (req: Request) => {
     if (ageS >= (Number(cfg.fast_stall_s) || 45) && fav < 0.15) return closePos(exitStatus(fav), px);
   };
 
+  // ======= MENAXHIMI I POZICIONIT REAL — mbi çmimin e VËRTETË të MT5 (jo PAXG) =======
+  // RREGULLIM KRITIK: Fast tregton para reale në XAUUSD, por PAXG (burimi i tikëve) është
+  // instrument tjetër që divergon (p.sh. rihapja e së dielës: MT5 +$7, PAXG i sheshtë) —
+  // prandaj menaxhimi mbi PAXG e mbyllte pozicionin real gabimisht. Tani best_fav/trailing/
+  // dalja llogariten nga çmimi real i brokerit (marrë çdo ~2s); TP/SL server-side të brokerit
+  // mbeten frena e fortë. Nuk e mbyllim KURRË pozicionin real mbi mungesë të dhënash.
+  let liveBestFav = -1, liveSLmt = 0, lastLivePoll = 0;
+  const closePosLive = async (px: number, profit: number, status: string) => {
+    if (!pos) return;
+    const p = pos; pos = null;
+    if (p.live_order_id && broker) { try { await maTrade(broker, { actionType: "POSITION_CLOSE_ID", positionId: p.live_order_id }); } catch { /* TP/SL mund ta ketë mbyllur */ } }
+    const rM = Number(p.risk_usd) > 0 ? profit / Number(p.risk_usd) : 0;
+    try { await db.from("mmt_trades").update({ status, exit_price: Math.round(px * 100) / 100, pnl_usd: Math.round(profit * 100) / 100, r_multiple: Math.round(rM * 100) / 100, closed_at: new Date().toISOString() }).eq("id", p.id); } catch { /* */ }
+    await beat(profit >= 0 ? "fast_dalje_fitim" : "fast_dalje_humbje", `${status} ${profit >= 0 ? "+" : ""}${profit.toFixed(2)}$ (real MT5)`, px);
+  };
+  const manageLive = async () => {
+    if (!pos || !pos.live || !pos.live_order_id || !broker) return;
+    if (Date.now() - lastLivePoll < 2000) return; // ngop REST — çmimi real çdo ~2s
+    lastLivePoll = Date.now();
+    const positions = await maPositions(broker);
+    if (positions == null) return; // s'e prekim pozicionin real pa të dhëna të sigurta
+    const bp = positions.find((x) => String(x.id) === pos!.live_order_id);
+    if (!bp) {
+      // Pozicioni s'ekziston më te brokeri → TP/SL server-side e mbylli vetë. Reflektoje në DB.
+      const p = pos; pos = null;
+      try { await db.from("mmt_trades").update({ status: "mbyllur_broker", closed_at: new Date().toISOString() }).eq("id", p.id); } catch { /* */ }
+      await beat("fast_dalje_broker", "TP/SL i brokerit e mbylli", lastBeatPx);
+      return;
+    }
+    const isBuy = pos.side === "BUY";
+    const px = Number(bp.currentPrice), entry = Number(bp.openPrice);
+    const profit = Number(bp.profit ?? 0);
+    if (!Number.isFinite(px) || !Number.isFinite(entry)) return;
+    lastBeatPx = px;
+    const slD = Math.max(1, Number(cfg.fast_sl_usd) || 2);
+    if (liveBestFav < 0) { liveSLmt = bp.stopLoss != null ? Number(bp.stopLoss) : (isBuy ? entry - slD : entry + slD); liveBestFav = 0; }
+    const fav = isBuy ? px - entry : entry - px;
+    if (fav > liveBestFav) liveBestFav = fav;
+    // Trailing: SL ndjek kulmin − PULL pas +BE_AT (në kornizë REALE MT5 → dërgohet drejt).
+    let newSL = liveSLmt;
+    if (liveBestFav >= BE_AT) {
+      const lock = entry + (isBuy ? 1 : -1) * Math.max(0.05, liveBestFav - PULL);
+      if (isBuy ? lock > newSL : lock < newSL) newSL = lock;
+    }
+    if (newSL !== liveSLmt) {
+      liveSLmt = newSL;
+      try { await maTrade(broker, { actionType: "POSITION_MODIFY", positionId: pos.live_order_id, stopLoss: Math.round(newSL * 100) / 100, takeProfit: bp.takeProfit ?? undefined }); } catch { /* poll-i tjetër */ }
+      try { await db.from("mmt_trades").update({ sl: Math.round(newSL * 100) / 100, best_fav: Math.round(liveBestFav * 100) / 100 }).eq("id", pos.id); } catch { /* */ }
+    }
+    // DALJA me fitim të kyçur: kthim ≥ PULL nga kulmi (pas +BE_AT) → mbyll TANI në çmim real.
+    const exitStatus = (pf: number) => pf > 0.1 ? "trail" : (pf >= -0.15 ? "be" : "expired");
+    if (liveBestFav >= BE_AT && liveBestFav - fav >= PULL) return closePosLive(px, profit, exitStatus(profit));
+    // Stall: pas fast_stall_s pa favor → dil (SL i plotë e bën vetë brokeri).
+    const ageS = (Date.now() - new Date(pos.opened_at).getTime()) / 1000;
+    if (ageS >= (Number(cfg.fast_stall_s) || 45) && fav < 0.15) return closePosLive(px, profit, exitStatus(profit));
+  };
+
   // HYRJA — burst në tikë live me presion agresorësh + konfirmim 1.2s.
   const tryEntryTick = async (px: number) => {
     if (pos || Date.now() - lastClosed < (Number(cfg.fast_cooldown_s) || 15) * 1000) return;
@@ -346,7 +418,9 @@ Deno.serve(async (req: Request) => {
         if (Date.now() - t0 >= DEADLINE) { clearTimeout(guard); finish(true); return; }
         if (busy) return; // mos u mbivendos — tiku tjetër e merr gjendjen e re
         busy = true;
-        try { if (pos) await manageTick(tick.p); else await tryEntryTick(tick.p); }
+        // Pozicioni REAL → menaxho mbi çmimin e vërtetë MT5 (throttle 2s brenda manageLive);
+        // pozicioni në letër → PAXG; pa pozicion → provo hyrje me tikun PAXG.
+        try { if (pos && pos.live) await manageLive(); else if (pos) await manageTick(tick.p); else await tryEntryTick(tick.p); }
         finally { busy = false; }
       } catch { /* tik i dëmtuar — injoro */ }
     };
@@ -360,13 +434,24 @@ Deno.serve(async (req: Request) => {
         ticks = cs.map((c) => ({ t: c.t, p: c.c, q: c.v || 1, sellAggr: c.c < c.o }));
         const px = cs[cs.length - 1].c;
         lastBeatPx = px;
-        if (pos) await manageTick(px); else await tryEntryTick(px);
+        if (pos && pos.live) await manageLive(); else if (pos) await manageTick(px); else await tryEntryTick(px);
       }
       await sleep(4000);
     }
   };
 
+  // Për pozicionin REAL: menaxho çdo ~1.5s PAVARËSISHT tikëve PAXG (brokeri lëviz edhe
+  // kur PAXG hesht). Timer i pavarur; manageLive ka throttle-in e vet 2s te REST.
+  let liveTimer: number | undefined;
+  if (pos && pos.live) {
+    liveTimer = setInterval(() => {
+      if (busy) return;
+      busy = true;
+      manageLive().finally(() => { busy = false; });
+    }, 1500) as unknown as number;
+  }
   const wsOk = await runWs();
+  if (liveTimer !== undefined) clearInterval(liveTimer);
   if (!wsOk && Date.now() - t0 < DEADLINE - 5000) await runPolling();
 
   await beat(pos ? `fast_pozicion_${pos.side}` : "fast_alive", wsOk ? null : "ws_fallback_polling", lastBeatPx);
