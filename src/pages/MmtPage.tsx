@@ -20,6 +20,7 @@ interface MmtConfig {
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
   learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
   scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
+  scalp_candle_confirm: boolean;
   smart_exit: boolean; tp_time_h: number; tp_time_usd: number;
   fast_on: boolean; fast_move_usd: number; fast_window_s: number; fast_sl_usd: number;
   fast_tp_rr: number; fast_stall_s: number; fast_max_day: number; fast_cooldown_s: number;
@@ -461,6 +462,20 @@ export default function MmtPage() {
           {num(t('Pushim mes tyre (min)'), 'scalp_cooldown_min', '1')}
           {num('Time-stop (min)', 'scalp_time_stop_min', '1', t('dil nëse s\'lëviz'))}
         </div>
+        {/* KONFIRMIMI ME FIGURË QIRIU — konfluencë e provuar në kërkim; matet gjithmonë,
+            bllokon hyrjen vetëm kur ndizet. Filloi OFF: mbledhim provën A/B para se ta ndezim. */}
+        <div className="rounded-xl border border-gray-700/60 bg-gray-800/30 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] text-white font-medium">{t('Konfirmim me figurë qiriu (Engulfing / Morning-Evening Star / Pin Bar)')}</span>
+            <button type="button" onClick={() => save({ scalp_candle_confirm: !cfg.scalp_candle_confirm })}
+              className={`text-[11px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${cfg.scalp_candle_confirm ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
+              {cfg.scalp_candle_confirm ? 'ON — kërkon figurë' : 'OFF — vetëm mat'}
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">
+            {t('OFF (rekomanduar tani): çdo scalp etiketohet “figurë:…” ose “pa figurë” pa e ndryshuar sjelljen — mbledhim provën. Kur të dhënat te raporti tregojnë se hyrjet me figurë fitojnë më shumë, ndize ON që të kërkojë figurë para çdo hyrjeje.')}
+          </p>
+        </div>
       </Fold>
 
       {/* MMT-FAST (Rruga A) — roboti tik-pas-tiku; ON/OFF nga pronari. */}
@@ -632,6 +647,19 @@ export default function MmtPage() {
                             <div className="flex justify-between"><span className="text-gray-500">{t('Mesatarja/trade')}</span><span className={avg >= 0 ? 'text-green-400' : 'text-red-400'}>{avg >= 0 ? '+' : ''}{avg.toFixed(2)}$</span></div>
                             <div className="flex justify-between"><span className="text-gray-500">{t('Sot')}</span><span className={`${todPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{tod.length ? `${todPnl >= 0 ? '+' : ''}${todPnl.toFixed(2)}$ (${tod.length})` : '—'}</span></div>
                             <div className="flex justify-between"><span className="text-gray-500">{t('Hapur tani')}</span><span className="text-gray-300">{opens.length ? `${opens.length} · ${flo >= 0 ? '+' : ''}${flo.toFixed(2)}$ ${t('lundrues')}` : '—'}</span></div>
+                            {/* PROVA A/B për Scalp: fitorja e hyrjeve ME figurë vs PA figurë (nga eksperimenti). */}
+                            {strat === 'scalp' && (() => {
+                              const withP = cl.filter(x => (x.reason ?? '').includes('figurë:'));
+                              const noP = cl.filter(x => (x.reason ?? '').includes('pa figurë'));
+                              const wr2 = (arr: MmtTrade[]) => arr.length ? Math.round(arr.filter(y => Number(y.pnl_usd) > 0).length / arr.length * 100) : null;
+                              const wP = wr2(withP), wN = wr2(noP);
+                              return (
+                                <div className="mt-1.5 pt-1.5 border-t border-gray-700/50 space-y-0.5">
+                                  <div className="flex justify-between"><span className="text-emerald-400/80">{t('Me figurë')}</span><span className="text-gray-300">{wP != null ? `${wP}% (${withP.length})` : t('ende s\'ka')}</span></div>
+                                  <div className="flex justify-between"><span className="text-gray-500">{t('Pa figurë')}</span><span className="text-gray-300">{wN != null ? `${wN}% (${noP.length})` : t('ende s\'ka')}</span></div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       );

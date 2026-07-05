@@ -112,7 +112,35 @@ interface Cfg {
   momentum_on: boolean; momentum_er: number; momentum_atr: number;
   learn_enabled: boolean; learn_min_trades: number; last_learned_at: string | null;
   scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
+  scalp_candle_confirm: boolean;
   smart_exit: boolean; tp_time_h: number; tp_time_usd: number;
+}
+
+// ---------- FIGURAT E QIRINJVE (konfirmim opsional — konfluencë) ----------
+// Vetëm figurat me bazë të mirë në backtest: Engulfing, Morning/Evening Star,
+// Hammer/Shooting Star (pin bar). NUK përdoren si sinjal i vetëm (studimet e provuan
+// të dobëta të vetme) — vetëm si FILTËR konfirmimi mbi hyrjen ekzistuese EMA/RSI.
+// Kthen emrin e figurës nëse përputhet me anën, ose null. z = qiriri i fundit.
+function candlePattern(c: Candle[], side: "BUY" | "SELL"): string | null {
+  const n = c.length;
+  if (n < 3) return null;
+  const a = c[n - 3], b = c[n - 2], z = c[n - 1];
+  const body = (x: Candle) => Math.abs(x.close - x.open);
+  const rng = (x: Candle) => (x.high - x.low) || 1e-9;
+  const bull = (x: Candle) => x.close > x.open;
+  const bear = (x: Candle) => x.close < x.open;
+  const upW = (x: Candle) => x.high - Math.max(x.open, x.close);
+  const dnW = (x: Candle) => Math.min(x.open, x.close) - x.low;
+  if (side === "BUY") {
+    if (bear(b) && bull(z) && z.open <= b.close && z.close >= b.open && body(z) > body(b)) return "Engulfing";
+    if (bear(a) && body(a) > rng(a) * 0.5 && body(b) < rng(b) * 0.4 && bull(z) && z.close > (a.open + a.close) / 2) return "Morning Star";
+    if (body(z) > 0 && dnW(z) >= body(z) * 2 && upW(z) <= body(z) * 0.6) return "Hammer";
+    return null;
+  }
+  if (bull(b) && bear(z) && z.open >= b.close && z.close <= b.open && body(z) > body(b)) return "Engulfing";
+  if (bull(a) && body(a) > rng(a) * 0.5 && body(b) < rng(b) * 0.4 && bear(z) && z.close < (a.open + a.close) / 2) return "Evening Star";
+  if (body(z) > 0 && upW(z) >= body(z) * 2 && dnW(z) <= body(z) * 0.6) return "Shooting Star";
+  return null;
 }
 
 // ---------- L5 — MËSIMI NGA VETVETJA (1×/24h) ----------
@@ -440,6 +468,11 @@ Deno.serve(async (req: Request) => {
           // drejtim (≤2 min), scalp-i s'hyn — dy hyrje identike njëkohësisht = rrezik 2×.
           if (sSide && open.some((t) => t.status === "open" && t.side === sSide
             && Date.now() - new Date(t.opened_at).getTime() < 120_000)) sSide = null;
+          // KONFIRMIMI ME FIGURË QIRIU (konfluencë): matet GJITHMONË që të mbledhim
+          // provën A/B (fitorja me figurë vs pa figurë), por e BLLOKON hyrjen VETËM
+          // kur pronari ndez çelësin scalp_candle_confirm. Zero rrezik derisa provohet.
+          const cpat = sSide ? candlePattern(c1, sSide) : null;
+          if (sSide && cfg.scalp_candle_confirm && !cpat) sSide = null;
           if (sSide) {
             // Mbrojtjet e çastit (versionet scalp): spike + presioni 8×1m + skanimi 10-sekondësh.
             const rngs = c1.slice(-30).map((c) => c.high - c.low);
@@ -472,7 +505,7 @@ Deno.serve(async (req: Request) => {
                     } catch { /* logu s'ndal motorin */ }
                   } catch { /* dështimi live s'e ndal letrën */ }
                 }
-                await db.from("mmt_trades").insert({ symbol: "XAUUSD", side: sSide, strategy: "scalp", regime: "SCALP", entry_price: Math.round(px2 * 100) / 100, sl: Math.round(sl2 * 100) / 100, tp: Math.round(tp2 * 100) / 100, lots: lots2, risk_usd: Math.round(slD * VPP * lots2 * 100) / 100, reason: `scalp 1m: EMA9/21 ${sSide === "BUY" ? "lart" : "poshtë"} + pullback, RSI7 ${Math.round(last(r7s))}`, live: lOk, live_order_id: lId });
+                await db.from("mmt_trades").insert({ symbol: "XAUUSD", side: sSide, strategy: "scalp", regime: "SCALP", entry_price: Math.round(px2 * 100) / 100, sl: Math.round(sl2 * 100) / 100, tp: Math.round(tp2 * 100) / 100, lots: lots2, risk_usd: Math.round(slD * VPP * lots2 * 100) / 100, reason: `scalp 1m: EMA9/21 ${sSide === "BUY" ? "lart" : "poshtë"} + pullback, RSI7 ${Math.round(last(r7s))} · ${cpat ? "figurë:" + cpat : "pa figurë"}`, live: lOk, live_order_id: lId });
                 await logScan({ price: px2, regime: "SCALP", decision: sSide === "BUY" ? "open_buy" : "open_sell", details: { strategy: "scalp", sl: sl2, tp: tp2, lots: lots2, live: lOk } });
                 return json({ ok: true, decision: sSide, strategy: "scalp", live: lOk, closed: closedNow });
               }
