@@ -99,7 +99,9 @@ export default function MmtPage() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 30000);
+    // Rifreskim i shpeshtë (7s) — pozicionet e mbyllura zhduken shpejt, pa "fantazma"
+    // që dukeshin ende të hapura me çmim mbi TP para se tabela të rifreskohej.
+    const id = setInterval(load, 7000);
     return () => clearInterval(id);
   }, [load]);
 
@@ -332,8 +334,11 @@ export default function MmtPage() {
               const fl = floatOf(x);
               const isBuy = x.side === 'BUY';
               const pxX = pxFor(x);
-              const toTP = pxX != null ? Math.abs(Number(x.tp) - pxX) : null;
-              const toSL = pxX != null ? Math.abs(pxX - Number(x.sl)) : null;
+              // Distanca me shenjë: nëse çmimi e ka KALUAR TP-në/SL-në, trego "prekur", jo distancë.
+              const tpRem = pxX != null ? (isBuy ? Number(x.tp) - pxX : pxX - Number(x.tp)) : null;
+              const slRem = pxX != null ? (isBuy ? pxX - Number(x.sl) : Number(x.sl) - pxX) : null;
+              const toTP = tpRem != null ? Math.abs(tpRem) : null;
+              const toSL = slRem != null ? Math.abs(slRem) : null;
               return (
                 <div key={x.id} className={`rounded-xl px-3 py-2.5 border ${fl == null ? 'border-gray-800 bg-gray-800/40' : fl >= 0 ? 'border-green-500/25 bg-green-500/5' : 'border-red-500/25 bg-red-500/5'}`}>
                   <div className="flex items-center justify-between">
@@ -356,8 +361,8 @@ export default function MmtPage() {
                       const tpPips = Math.round(Math.abs(Number(x.tp) - e2) * 10);
                       const slPips = Math.round(Math.abs(e2 - Number(x.sl)) * 10);
                       return (<>
-                        <span><span className="text-green-400">TP</span> {Number(x.tp).toFixed(2)} = <span className="text-green-400 font-semibold">+{tpUsd.toFixed(2)}$</span> <span className="text-gray-600">({tpPips} pips{toTP != null ? ` · edhe ${toTP.toFixed(2)}$` : ''})</span></span>
-                        <span><span className="text-red-400">SL</span> {Number(x.sl).toFixed(2)} = <span className="text-red-400 font-semibold">−{slUsd.toFixed(2)}$</span> <span className="text-gray-600">({slPips} pips{toSL != null ? ` · ${toSL.toFixed(2)}$ larg` : ''})</span></span>
+                        <span><span className="text-green-400">TP</span> {Number(x.tp).toFixed(2)} = <span className="text-green-400 font-semibold">+{tpUsd.toFixed(2)}$</span> <span className="text-gray-600">({tpPips} pips{toTP != null ? (tpRem! <= 0 ? ' · PREKUR' : ` · edhe ${toTP.toFixed(2)}$`) : ''})</span></span>
+                        <span><span className="text-red-400">SL</span> {Number(x.sl).toFixed(2)} = <span className="text-red-400 font-semibold">−{slUsd.toFixed(2)}$</span> <span className="text-gray-600">({slPips} pips{toSL != null ? (slRem! <= 0 ? ' · PREKUR' : ` · ${toSL.toFixed(2)}$ larg`) : ''})</span></span>
                       </>);
                     })()}
                     <span className="text-gray-600 ml-auto">🕒 {new Date(x.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

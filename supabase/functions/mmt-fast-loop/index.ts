@@ -77,6 +77,18 @@ async function maPositions(b: Broker): Promise<MaPos[] | null> {
     return (await r.json()) as MaPos[];
   } catch { return null; }
 }
+// Fitimi REAL i realizuar për një pozicion që brokeri e mbylli vetë (TP/SL server-side).
+async function maRealizedPnl(b: Broker, positionId: string): Promise<number | null> {
+  try {
+    const r = await fetch(`${maHost(b.region)}/users/current/accounts/${b.account_id}/history-deals/position/${positionId}`, {
+      headers: { "auth-token": b.token }, signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) return null;
+    const deals = (await r.json()) as { profit?: number; commission?: number; swap?: number }[];
+    if (!Array.isArray(deals) || !deals.length) return null;
+    return deals.reduce((a, d) => a + Number(d.profit ?? 0) + Number(d.commission ?? 0) + Number(d.swap ?? 0), 0);
+  } catch { return null; }
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -116,11 +128,15 @@ Deno.serve(async (req: Request) => {
   const today = new Date(); today.setUTCHours(0, 0, 0, 0);
   const { data: dayR } = await db.from("mmt_trades").select("status, pnl_usd, opened_at, closed_at").eq("strategy", "fast").gte("opened_at", today.toISOString());
   const fastToday = (dayR ?? []) as { status: string; pnl_usd: number | null; opened_at: string; closed_at: string | null }[];
-  const fastSl = fastToday.filter((r) => r.status === "sl").length;
+  // KILL numëron VETËM humbjet REALE (pnl<0) — jo daljet me fitim që dikur etiketoheshin "sl".
+  const fastSl = fastToday.filter((r) => r.status === "sl" && Number(r.pnl_usd ?? 0) < 0).length;
   const fastPnl = fastToday.reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
-  if (fastSl >= (Number(cfg.fast_kill_after_sl) || 3)) { await beat("fast_alive", `fast_kill(${fastSl}SL)`, null); return json({ ok: true, skip: "fast_kill" }); }
-  if (fastPnl <= -(Number(cfg.fast_daily_stop_usd) || 12)) { await beat("fast_alive", `fast_stop_ditor(${fastPnl.toFixed(2)}$)`, null); return json({ ok: true, skip: "fast_daily" }); }
-  if (fastToday.length >= (Number(cfg.fast_max_day) || 40)) { await beat("fast_alive", `fast_max_day(${fastToday.length})`, null); return json({ ok: true, skip: "max_day" }); }
+  // Kufijtë NDALOJNË vetëm HYRJET E REJA — jo menaxhimin e pozicionit të hapur (i cili
+  // duhet të vazhdojë të mbrohet/mbyllet sipas çmimit real edhe pas kill-switch-it).
+  let entryBlock: string | null = null;
+  if (fastSl >= (Number(cfg.fast_kill_after_sl) || 3)) entryBlock = `fast_kill(${fastSl}SL)`;
+  else if (fastPnl <= -(Number(cfg.fast_daily_stop_usd) || 12)) entryBlock = `fast_stop_ditor(${fastPnl.toFixed(2)}$)`;
+  else if (fastToday.length >= (Number(cfg.fast_max_day) || 40)) entryBlock = `fast_max_day(${fastToday.length})`;
   const lastClosed = fastToday.filter((r) => r.closed_at).map((r) => new Date(r.closed_at!).getTime()).sort((a, b) => b - a)[0] || 0;
 
   // Kredencialet live + trendi 1m.
@@ -137,6 +153,9 @@ Deno.serve(async (req: Request) => {
   interface FastPos { id: string; side: string; entry_price: number; sl: number; tp: number; lots: number; risk_usd: number; live: boolean; live_order_id: string | null; opened_at: string; best_fav?: number | null; }
   const { data: openF } = await db.from("mmt_trades").select("*").eq("strategy", "fast").eq("status", "open").limit(1);
   let pos = ((openF ?? [])[0] as FastPos | undefined) || null;
+  // Nëse hyrjet janë të bllokuara (kill/stop/max) DHE s'ka pozicion të hapur → s'ka ç'të
+  // bëhet. Por nëse KA pozicion të hapur, VAZHDOJMË ta menaxhojmë (mbrojtje mbi çmim real).
+  if (entryBlock && !pos) { await beat("fast_alive", entryBlock, null); return json({ ok: true, skip: entryBlock }); }
   let posSL = pos ? Number(pos.sl) : 0;
   let bestFav = pos ? Math.max(0, Number(pos.best_fav ?? 0)) : 0;
   // Rillogaritja e best_fav nga historia PAXG vlen VETËM për pozicionet në letër.
@@ -276,10 +295,15 @@ Deno.serve(async (req: Request) => {
     if (positions == null) return; // s'e prekim pozicionin real pa të dhëna të sigurta
     const bp = positions.find((x) => String(x.id) === pos!.live_order_id);
     if (!bp) {
-      // Pozicioni s'ekziston më te brokeri → TP/SL server-side e mbylli vetë. Reflektoje në DB.
+      // Pozicioni s'ekziston më te brokeri → TP/SL server-side e mbylli vetë. Merr fitimin
+      // REAL nga historia e brokerit dhe reflektoje saktë në DB (win/loss i drejtë).
       const p = pos; pos = null;
-      try { await db.from("mmt_trades").update({ status: "mbyllur_broker", closed_at: new Date().toISOString() }).eq("id", p.id); } catch { /* */ }
-      await beat("fast_dalje_broker", "TP/SL i brokerit e mbylli", lastBeatPx);
+      const real = p.live_order_id ? await maRealizedPnl(broker, p.live_order_id) : null;
+      const pnl = real ?? 0;
+      const st = real == null ? "mbyllur_broker" : (pnl > 0.1 ? "tp" : (pnl < -0.1 ? "sl" : "be"));
+      const rM = Number(p.risk_usd) > 0 ? pnl / Number(p.risk_usd) : 0;
+      try { await db.from("mmt_trades").update({ status: st, pnl_usd: real != null ? Math.round(pnl * 100) / 100 : null, r_multiple: real != null ? Math.round(rM * 100) / 100 : null, closed_at: new Date().toISOString() }).eq("id", p.id); } catch { /* */ }
+      await beat(pnl >= 0 ? "fast_dalje_fitim" : "fast_dalje_humbje", `brokeri e mbylli ${real != null ? (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "$ (real)" : ""}`, lastBeatPx);
       return;
     }
     const isBuy = pos.side === "BUY";
@@ -312,6 +336,7 @@ Deno.serve(async (req: Request) => {
 
   // HYRJA — burst në tikë live me presion agresorësh + konfirmim 1.2s.
   const tryEntryTick = async (px: number) => {
+    if (entryBlock) return; // kill/stop/max — pa hyrje të reja (menaxhimi i të hapurit vazhdon)
     if (pos || Date.now() - lastClosed < (Number(cfg.fast_cooldown_s) || 15) * 1000) return;
     if (fastToday.length + entriesThisRun >= (Number(cfg.fast_max_day) || 40)) return;
     const TH = Number(cfg.fast_move_usd) || 0.6;
