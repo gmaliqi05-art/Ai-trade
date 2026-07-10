@@ -114,6 +114,8 @@ interface Cfg {
   scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
   scalp_candle_confirm: boolean;
   smart_exit: boolean; tp_time_h: number; tp_time_usd: number;
+  // Fusha të Fast-it (menaxhohen nga mmt-fast-loop, por mësimi këtu i rregullon).
+  fast_move_usd: number; fast_cooldown_s: number; fast_max_day: number; fast_pullback_usd: number;
 }
 
 // ---------- FIGURAT E QIRINJVE (konfirmim opsional — konfluencë) ----------
@@ -187,6 +189,36 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
   if (rg.n >= minN && rg.exp < -0.2) {
     const v = Math.max(15, cfg.adx_range_max - 2);
     if (v !== cfg.adx_range_max) { patch.adx_range_max = v; await log("adx_range_max", cfg.adx_range_max, v, "range humbës — kërkohet range më i qetë", rg.n, rg.exp); }
+  }
+  // FAST: analizon tregtitë e VETA. Humb → më selektiv (prag shpërthimi më i lartë + pushim
+  // më i gjatë + më pak/ditë = kundër bluarjes); fiton → lehtëson pak. Rreziku s'rritet kurrë.
+  // FAST ka frekuencë shumë të lartë (qindra tregtime): edhe pritshmëri pak nën zero =
+  // humbje e madhe totale nga kostot. Prandaj pragu është i ngushtë (−0.02R).
+  const f = expOf("fast");
+  if (f.n >= minN) {
+    if (f.exp < -0.02) {
+      const mv = Math.min(2.0, Math.round(((Number(cfg.fast_move_usd) || 0.6) + 0.2) * 100) / 100);
+      const cd = Math.min(120, (Number(cfg.fast_cooldown_s) || 15) + 15);
+      const md = Math.max(10, (Number(cfg.fast_max_day) || 40) - 20);
+      if (mv !== cfg.fast_move_usd) { patch.fast_move_usd = mv; await log("fast_move_usd", cfg.fast_move_usd, mv, `Fast humbës (${f.n} trade, ${f.exp.toFixed(2)}R) — kërkon shpërthim më të fortë, më pak hyrje false`, f.n, f.exp); }
+      if (cd !== cfg.fast_cooldown_s) { patch.fast_cooldown_s = cd; await log("fast_cooldown_s", cfg.fast_cooldown_s, cd, "Fast humbës — pushim më i gjatë mes hyrjeve (kundër mbi-tregtimit)", f.n, f.exp); }
+      if (md !== cfg.fast_max_day) { patch.fast_max_day = md; await log("fast_max_day", cfg.fast_max_day, md, "Fast humbës — më pak tregtime/ditë (cilësi mbi sasi)", f.n, f.exp); }
+    } else if (f.exp > 0.15) {
+      const mv = Math.max(0.6, Math.round(((Number(cfg.fast_move_usd) || 1.0) - 0.1) * 100) / 100);
+      if (mv !== cfg.fast_move_usd) { patch.fast_move_usd = mv; await log("fast_move_usd", cfg.fast_move_usd, mv, `Fast fitues (${f.exp.toFixed(2)}R) — lehtësim i lehtë i pragut`, f.n, f.exp); }
+    }
+  }
+  // SCALP: analizon tregtitë e VETA. Humb → ndez konfirmimin me figurë qiriu (më selektiv) +
+  // zgjat pushimin; fiton qartë → lehtëson pak pushimin. Rreziku s'rritet kurrë.
+  const sc = expOf("scalp");
+  if (sc.n >= minN) {
+    if (sc.exp < -0.05) {
+      if (!cfg.scalp_candle_confirm) { patch.scalp_candle_confirm = true; await log("scalp_candle_confirm", false, true, `Scalp humbës (${sc.n} trade, ${sc.exp.toFixed(2)}R) — u ndez konfirmimi me figurë qiriu (kërkon Engulfing/Star para hyrjes)`, sc.n, sc.exp); }
+      else { const v = Math.min(10, (Number(cfg.scalp_cooldown_min) || 1) + 1); if (v !== cfg.scalp_cooldown_min) { patch.scalp_cooldown_min = v; await log("scalp_cooldown_min", cfg.scalp_cooldown_min, v, "Scalp ende humbës me konfirmim — pushim më i gjatë mes tyre", sc.n, sc.exp); } }
+    } else if (sc.exp > 0.25 && cfg.scalp_candle_confirm) {
+      // fiton fort me konfirmim → provo pa të (më shumë hyrje) vetëm nëse fitimi është i qëndrueshëm.
+      patch.scalp_candle_confirm = false; await log("scalp_candle_confirm", true, false, `Scalp fitues i qëndrueshëm (${sc.exp.toFixed(2)}R) — hiqet kufizimi i figurës për më shumë mundësi`, sc.n, sc.exp);
+    }
   }
   // SESIONET: hiq dritaren e orëve që humb qartë (kurrë s'shton orë të reja vetë; min 1 dritare mbetet).
   if (Array.isArray(cfg.sessions) && cfg.sessions.length > 1) {
