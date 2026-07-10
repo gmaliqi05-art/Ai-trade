@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
 import { fetchBinanceCandles, type Timeframe } from '../ai-trader/market/candles';
-import { loadCandles as loadMt5Candles, loadSymbolPrice } from '../services/metaapi';
 import CompletedSignals, { type DoneSignal } from '../components/CompletedSignals';
 import SignalScanLog from '../components/SignalScanLog';
 import { useI18n } from '../i18n/i18n';
@@ -125,17 +124,10 @@ export default function DemoTradingPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  // Grafiku i arit — çmimi REAL i brokerit (MetaApi, i njëjti si te MT5/Live). Fallback te PAXG nëse MT5 s'është gati.
+  // Grafiku i arit për DEMO — PAXG (Binance), E NJËJTA kornizë me hyrjen që regjistron
+  // edge-function (demo-trade-action përdor PAXG) DHE me çmimin live. Kështu vija e hyrjes
+  // ulet SAKT mbi qirinj, jo ~$13 poshtë (mospërputhja e vjetër MT5-qirinj vs PAXG-hyrje).
   const loadCandles = useCallback(async () => {
-    try {
-      const r = await loadMt5Candles('XAUUSD', tf, 200) as { error?: string; candles?: Array<{ time: string; open: number; high: number; low: number; close: number }> };
-      if (!r.error && Array.isArray(r.candles) && r.candles.length > 0) {
-        setCandles(r.candles.map((c) => ({
-          time: Math.floor(new Date(c.time).getTime() / 1000), open: +c.open, high: +c.high, low: +c.low, close: +c.close,
-        })));
-        return;
-      }
-    } catch { /* fallback PAXG */ }
     try {
       const raw = await fetchBinanceCandles('PAXGUSDT', tf, 200);
       setCandles(raw.map((c) => ({ time: Math.floor(c.time / 1000), open: c.open, high: c.high, low: c.low, close: c.close })));
@@ -147,16 +139,12 @@ export default function DemoTradingPage() {
     return () => clearInterval(t);
   }, [loadCandles]);
 
-  // Çmimi real-time i arit — REAL nga brokeri (MetaApi, si te MT5), me fallback te Binance PAXG.
-  // Që grafiku, P&L-ja dhe mbyllja të jenë në TË NJËJTËN shkallë reale si MT5 (jo PAXG → pa mospërputhje 4015 vs 4007).
+  // Çmimi real-time i arit për DEMO — PAXG (Binance), E NJËJTA kornizë me qirinjtë e grafikut
+  // DHE me hyrjen që regjistron edge-function (demo-trade-action përdor PAXG). Kështu vija e
+  // hyrjes, vija "Tani", P&L dhe qirinjtë janë të gjitha në një kornizë → pa mospërputhje ~$13.
   useEffect(() => {
     let alive = true;
     const tick = async () => {
-      try {
-        const r = await loadSymbolPrice('XAUUSD') as { error?: string; price?: { bid?: number; ask?: number } };
-        const bid = Number(r?.price?.bid), ask = Number(r?.price?.ask);
-        if (alive && !r?.error && Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) { setLivePx((bid + ask) / 2); return; }
-      } catch { /* fallback PAXG */ }
       try {
         const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT', { signal: AbortSignal.timeout(5000) });
         if (!r.ok) return;
