@@ -756,7 +756,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         <div className="grid grid-cols-3 gap-2">
           {[
             { label: t('Fitim/Humbje sot'), value: pnlCard(pnlToday), cls: pnlCls(pnlToday) },
-            { label: t('Fitim/Humbje gjithsej'), value: pnlCard(pnlTotal), cls: pnlCls(pnlTotal) },
+            { label: t('Fitim/Humbje (8 ditët e fundit)'), value: pnlCard(pnlTotal), cls: pnlCls(pnlTotal) },
             { label: t('Live (hapur tani)'), value: pnlCard(floatingPnl), cls: pnlCls(floatingPnl) },
           ].map((c) => (
             <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-2">
