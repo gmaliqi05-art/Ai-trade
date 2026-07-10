@@ -414,52 +414,6 @@ export default function MetaApiPanel() {
           </div>
         </div>
 
-        {/* Karta SCALP-LIVE — robot scalping në kohë reale (cikël brenda minutës) */}
-        {/* RREGULL: vetëm një robot njëherësh. Ndezja e FastT fik Robotin e Sinjaleve, dhe anasjelltas. */}
-        <div className={`rounded-xl border p-3.5 transition-colors ${cfg.scalp_live_enabled ? 'bg-rose-500/10 border-rose-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-semibold text-white flex items-center gap-2"><Zap className="w-4 h-4 text-rose-400" />{t('FastT live (kohë reale)')}</span>
-            <button
-              onClick={() => cfg.scalp_live_enabled
-                ? setAndSave('scalp_live_enabled', false)
-                /* Ndezja e FastT-it fik Robotin e Sinjaleve VETËM nëse "të dy njëkohësisht" është OFF. */
-                : setManyAndSave(cfg.allow_both_robots
-                  ? { scalp_live_enabled: true }
-                  : { scalp_live_enabled: true, auto_trade: false, strategy_scalp: false })}
-              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cfg.scalp_live_enabled ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
-              {cfg.scalp_live_enabled ? t('AKTIV') : t('JOAKTIV')}
-            </button>
-          </div>
-          {/* Opt-in: lejo Robotin e Sinjaleve + FastT njëkohësisht (përndryshe janë ekskluzivë). */}
-          <label className="flex items-center justify-between gap-3 mt-3 cursor-pointer">
-            <span className="text-[11px] text-gray-300 leading-snug">{t('Lejo të dy robotët njëkohësisht (Sinjalet + FastT)')}</span>
-            <button onClick={() => setAndSave('allow_both_robots', !cfg.allow_both_robots)}
-              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border shrink-0 ${cfg.allow_both_robots ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-gray-700/50 text-gray-400 border-gray-600'}`}>
-              {cfg.allow_both_robots ? t('AKTIV') : t('JOAKTIV')}
-            </button>
-          </label>
-          {cfg.allow_both_robots && (
-            <p className="text-[11px] text-emerald-400/90 mt-2">{t('Të dy robotët mund të punojnë bashkë. FastT s\'hap drejtim të kundërt mbi një pozicion ekzistues (anti-hedge).')}</p>
-          )}
-          {cfg.auto_trade && !cfg.scalp_live_enabled && !cfg.allow_both_robots && (
-            <p className="text-[11px] text-amber-400/90 mt-2">{t('Ndezja e FastT do të fikë Robotin e Sinjaleve — vetëm një robot tregton njëherësh.')}</p>
-          )}
-          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('Robot <span class="text-gray-300">krejt i pavarur</span> që ndjek <span class="text-gray-300">qirinjtë live 1m (~çdo 2.5–5 sekonda)</span>: kap ngritjet → BLEJ dhe rëniet → SHIT drejtpërdrejt nga momentum-i i qirinjve, <span class="text-rose-300">pa u ndikuar nga motori/strategjitë e tjera</span>. Mbron fitimin shpejt dhe del në kthesë. <span class="text-rose-300">Pa TP/SL fiks</span> — vetëm një SL "katastrofe" i gjerë te brokeri si parashutë.') }} />
-
-          {/* Nën-parametrat e scalp-live */}
-          <div className={`mt-3 space-y-2.5 transition-opacity ${cfg.scalp_live_enabled ? '' : 'opacity-40 pointer-events-none'}`}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <NumField label={t('Lot (fiks)')} hint={t('Madhësia e vogël e pozicionit për scalp-live (p.sh. 0.01).')} value={cfg.scalp_live_lot} step="0.01" min="0.01" onChange={v => set('scalp_live_lot', v)} onBlur={save} />
-              <NumField label={t('Maks. njëkohësisht')} hint={t('Sa pozicione scalp-live lejohen në të njëjtën kohë.')} value={cfg.scalp_live_max_trades} step="1" min="1" onChange={v => set('scalp_live_max_trades', v)} onBlur={save} />
-              <NumField label={t('Marzha e fitimit ($ lëvizje)')} hint={t('Sapo ari shkon kaq $ në favor, aktivizohet mbrojtja e fitimit (grab). P.sh. 0.50.')} value={cfg.scalp_live_grab_usd} step="0.05" min="0.05" onChange={v => set('scalp_live_grab_usd', v)} onBlur={save} />
-              <NumField label={t('Kthim i lejuar nga maja ($)')} hint={t('Sa fitim lejohet të kthehet nga maja para se të mbyllet (trailing i ngushtë). P.sh. 0.25.')} value={cfg.scalp_live_giveback_usd} step="0.05" min="0.02" onChange={v => set('scalp_live_giveback_usd', v)} onBlur={save} />
-              <NumField label={t('Prerje e hershme ($ kundër)')} hint={t('Hapësira e ri-testit: del nëse ari shkon kaq $ kundër (p.sh. 0.60), para SL-së katastrofe.')} value={cfg.scalp_live_cut_usd} step="0.05" min="0.05" onChange={v => set('scalp_live_cut_usd', v)} onBlur={save} />
-              <NumField label={t('SL katastrofe ($ — parashutë)')} hint={t('SL i gjerë te brokeri si rrjetë sigurie nëse roboti/rrjeti bie (p.sh. 1.50). Mos e bëj shumë të vogël.')} value={cfg.scalp_live_catastrophe_usd} step="0.1" min="0.3" onChange={v => set('scalp_live_catastrophe_usd', v)} onBlur={save} />
-            </div>
-            <p className="text-[10px] text-gray-500 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('<span class="text-rose-400 font-semibold">⚠️ Agresiv:</span> hyrje/dalje shumë të shpejta. Rekomandohet ta provosh fillimisht në <span class="text-gray-300">demo</span> dhe me lot 0.01 në live. Funksionon vetëm për arin (XAUUSD) gjatë orarit të tregut.') }} />
-          </div>
-        </div>
-
         {/* Karta FILTRA TË AVANCUAR (Tier-1) — opt-in, default JOAKTIV */}
         <div className={`rounded-xl border p-3.5 transition-colors ${cfg.advanced_filters ? 'bg-purple-500/10 border-purple-500/30' : 'bg-gray-800/40 border-gray-700'}`}>
           <div className="flex items-center justify-between gap-3">
