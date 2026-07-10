@@ -143,7 +143,7 @@ export default function DemoTradingPage() {
   }, [tf]);
   useEffect(() => { loadCandles(); }, [loadCandles]);
   useEffect(() => {
-    const t = setInterval(loadCandles, 15000);
+    const t = setInterval(loadCandles, 5000); // real-time si Live/MMT (rifreskim çdo 5s)
     return () => clearInterval(t);
   }, [loadCandles]);
 
