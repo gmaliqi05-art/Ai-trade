@@ -316,6 +316,7 @@ export const en: Record<string, string> = {
   "Trade sot": "Trades today",
   "P&L i realizuar (gjithsej)": "Realized P&L (total)",
   "Fitim/Humbje gjithsej": "Profit/Loss total",
+  "Fitim/Humbje (8 ditët e fundit)": "Profit/Loss (last 8 days)",
   "Live (hapur tani)": "Live (open now)",
   "Historiku i Skanimeve (Live) — pse hyn ose s'hyn sinjali": "Scan history (Live) — why a signal enters or not",
   "Historiku i Skanimeve — pse hyn ose s'hyn sinjali": "Scan history — why a signal enters or not",
