@@ -84,6 +84,15 @@ function isScalpPosition(p: Position): boolean {
 function isScalpLivePosition(p: Position): boolean {
   return /FastT/i.test(String(p.comment ?? "")) || /FastT/i.test(String(p.clientId ?? ""));
 }
+// Shenja e Robotit te Sinjaleve (swing) — vendoset te comment i cdo urdhri auto.
+const SIG_TAG = "SIG";
+// Pozicion i HAPUR nga NJE ROBOT i platformes (SIG/SCALP/FastT/MMT) — pozicionet PA shenje
+// jane MANUALE te pronarit dhe filtrat e hyrjes se robotit NUK i numerojne (kerkese e pronarit:
+// tregtimi manual i tij mos ta bllokoje robotin).
+function isRobotPosition(p: Position): boolean {
+  const tag = `${String(p.comment ?? "")} ${String(p.clientId ?? "")}`;
+  return /SIG|SCALP|FastT|MMT/i.test(tag);
+}
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
 
@@ -922,13 +931,15 @@ Deno.serve(async (req: Request) => {
           }
         } catch { /* njoftimi s'duhet të ndalë robotin */ }
       }
-      let openTrades = positions.length;
+      // Kufijte e hyrjes numerojne VETEM pozicionet e robotit — manualet e pronarit s'e bllokojne.
+      const robotPositions = positions.filter(isRobotPosition);
+      let openTrades = robotPositions.length;
       const swingOn = cfg.strategy_swing !== false; // default ON (Roboti i Sinjaleve)
       // RREGULL PLATFORME: kur Roboti i Sinjaleve (swing) është ON, TË GJITHË robotët e tjerë janë OFF.
       // Scalp-i tregton VETËM në modalitetin scalp-only (swing i fikur) — kurrë paralel me sinjalet.
       // Scalp lejohet kur swing është OFF, OSE kur përdoruesi ka ndezur "të dy njëkohësisht".
       const scalpOn = cfg.strategy_scalp === true && (!swingOn || cfg.allow_both_robots === true);
-      let scalpOpen = positions.filter(isScalpPosition).length;
+      let scalpOpen = robotPositions.filter(isScalpPosition).length;
 
       // FILTRA EKSPERIMENTALË (opt-in): vetëm spread-guard (zbatohet brenda lak-eve të hyrjes).
       // Cool-off pas serie humbjesh u HOQ me kërkesë të përdoruesit — roboti NUK ndalon vetë pas humbjesh
@@ -941,7 +952,7 @@ Deno.serve(async (req: Request) => {
 
       // PORTFOLIO HEAT (Tier-2): rreziku total i hapur (distanca te SL × vlerë × lot).
       let openHeat = 0;
-      for (const p of positions) {
+      for (const p of robotPositions) {
         const op = Number(p.openPrice), sl = p.stopLoss != null ? Number(p.stopLoss) : null, vol = Number(p.volume) || 0;
         if (Number.isFinite(op) && sl != null && vol > 0) openHeat += Math.abs(op - sl) * valuePerPrice(p.symbol || "XAUUSD") * vol;
       }
@@ -1213,7 +1224,7 @@ Deno.serve(async (req: Request) => {
         // PIKA AKTIVE për KËTË simbol + P&L-ja e tyre lundruese (floating). Përdoret që roboti të mos
         // shtojë trade të ri kur ka pozicion aktiv NË HUMBJE (shmang humbje të shumfishuara) dhe të
         // bëjë ri-analizë të tregut para se të shtojë mbi një pozicion ekzistues.
-        const sameSymPos = positions.filter((p) => sameAsset(p.symbol || "", tradeSym));
+        const sameSymPos = robotPositions.filter((p) => sameAsset(p.symbol || "", tradeSym));
         const hasActiveTrade = sameSymPos.length > 0;
         const floatingSameSym = sameSymPos.reduce((a, p) => a + (Number(p.profit) || 0), 0);
 
@@ -1348,7 +1359,7 @@ Deno.serve(async (req: Request) => {
 
         const tradeBody: Record<string, unknown> = {
           actionType: isBuy ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL",
-          symbol: tradeSym, volume,
+          symbol: tradeSym, volume, comment: SIG_TAG,
         };
         if (stopLoss != null) tradeBody.stopLoss = stopLoss;
         if (takeProfit != null) tradeBody.takeProfit = takeProfit;
