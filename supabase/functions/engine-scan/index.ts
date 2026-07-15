@@ -391,10 +391,14 @@ async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = f
     d1_aligned: d1Boost > 0, confluence: confFactors, conf_max: maxConf,
     et_hour: et.hour, dow: et.dow, oil: oilSym, ts: Date.now(),
   };
+  // TP i KUFIZUAR për arin (analiza e 236 sinjaleve): TP-të ~$24 larg PREKEN (30 fitues),
+  // TP-të ~$40 larg përfundonin në SL (112 raste — çmimi kthehej 3-4$ para tyre).
+  // Prandaj: ari maks $25 distancë TP; nafta ruan RR 1:2 (pa ankesë atje).
+  const tpDist = isOil(symbol) ? stopDist * 2 : Math.min(stopDist * 2, 25);
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
-    takeProfit: Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
+    takeProfit: Math.max(0, isBuy ? price + tpDist : price - tpDist),
     reasons, features,
   };
 }
@@ -545,10 +549,14 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
     et_hour: et.hour, dow: et.dow, oil: false, ts: Date.now(),
   };
   _diag.gold_conf = Math.round(confidence * 100); _diag.gold_action = dir; _diag.gold_qpen = Math.round(qPen * 100); _diag.gold_d1boost = Math.round(d1Boost * 100);
+  // TP i KUFIZUAR për arin (analiza e 236 sinjaleve): TP-të ~$24 larg PREKEN (30 fitues),
+  // TP-të ~$40 larg përfundonin në SL (112 raste — çmimi kthehej 3-4$ para tyre).
+  // Prandaj: ari maks $25 distancë TP; nafta ruan RR 1:2 (pa ankesë atje).
+  const tpDist = isOil(symbol) ? stopDist * 2 : Math.min(stopDist * 2, 25);
   return {
     action: dir, confidence, entry: price,
     stopLoss: Math.max(0, isBuy ? price - stopDist : price + stopDist),
-    takeProfit: Math.max(0, isBuy ? price + stopDist * 2 : price - stopDist * 2),
+    takeProfit: Math.max(0, isBuy ? price + tpDist : price - tpDist),
     reasons, features,
   };
 }
