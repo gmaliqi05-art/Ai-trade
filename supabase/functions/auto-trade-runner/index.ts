@@ -633,6 +633,16 @@ async function grossLossToday(cfg: Cfg): Promise<number> {
 
 // ===== FILTRA EKSPERIMENTALË (opt-in per-përdorues: experimental_filters) =====
 // Spread-guard: spread-i aktual (ask-bid) i një simboli. Kthen null nëse s'merret.
+// Çmimi LIVE bid/ask i brokerit — për të ankoruar SL/TP te çmimi REAL i ekzekutimit
+// (jo te mbyllja e qiririt 15m), që të mos dalin "Invalid stops" kur tregu ka lëvizur.
+async function livePrice(cfg: Cfg, sym: string): Promise<{ bid: number; ask: number } | null> {
+  try {
+    const p = await maGet(cfg, `/symbols/${encodeURIComponent(sym)}/current-price`) as { ask?: number; bid?: number };
+    const ask = Number(p?.ask), bid = Number(p?.bid);
+    if (Number.isFinite(ask) && Number.isFinite(bid) && ask > 0 && bid > 0) return { bid, ask };
+  } catch { /* */ }
+  return null;
+}
 async function symbolSpread(cfg: Cfg, sym: string): Promise<number | null> {
   try {
     const p = await maGet(cfg, `/symbols/${encodeURIComponent(sym)}/current-price`) as { ask?: number; bid?: number };
@@ -1248,10 +1258,17 @@ Deno.serve(async (req: Request) => {
 
         if (m15 && m1h && m4h && m15.length > 30 && m1h.length > 30 && m4h.length > 30) {
           const t15 = buildTF(m15, "15m"), t1h = buildTF(m1h, "1h"), t4h = buildTF(m4h, "4h");
-          entryPx = t15.price; // çmimi më i freskët MT5
+          entryPx = t15.price; // çmimi më i freskët MT5 (mbyllja 15m)
+          // ANKORIM te çmimi LIVE i brokerit: BUY mbushet te ASK, SELL te BID — SL/TP maten nga aty,
+          // jo nga mbyllja e qiririt (shmang "Invalid stops 10016" kur tregu ka lëvizur mes tyre).
+          const lp = await livePrice(cfg, tradeSym);
+          if (lp) entryPx = isBuy ? lp.ask : lp.bid;
           // NAFTË: SL më i gjerë (ATR×2.0) — më volatile se ari; RR 1:2 ruhet.
           const stopMult = isOil(sig.symbol) ? 2.0 : 1.5;
           slDist = t1h.atr > 0 ? t1h.atr * stopMult : entryPx * (isOil(sig.symbol) ? 0.02 : 0.015);
+          // SL të paktën 8× spread-i aktual (freeze-level i brokerit) — mbrojtje shtesë ndaj 10016.
+          const sp = lp ? Math.abs(lp.ask - lp.bid) : 0;
+          slDist = Math.max(slDist, sp * 8);
           tpDist = slDist * 2;
           stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
