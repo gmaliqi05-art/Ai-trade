@@ -474,8 +474,8 @@ Deno.serve(async (req: Request) => {
         const today0 = new Date(); today0.setUTCHours(0, 0, 0, 0);
         const { data: dayR } = await db.from("mmt_trades").select("status, pnl_usd, strategy, opened_at").gte("opened_at", today0.toISOString());
         const dRows = (dayR ?? []) as { status: string; pnl_usd: number | null; strategy: string; opened_at: string }[];
-        const slT = dRows.filter((r) => r.status === "sl").length;
-        const pnlT = dRows.reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
+        const slT = dRows.filter((r) => r.status === "sl" && r.strategy !== "fast").length;
+        const pnlT = dRows.filter((r) => r.strategy !== "fast").reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
         const scT = dRows.filter((r) => r.strategy === "scalp").length;
         const lastSc = dRows.filter((r) => r.strategy === "scalp").map((r) => new Date(r.opened_at).getTime()).sort((a, b) => b - a)[0] || 0;
         const openNow = open.filter((t) => t.status === "open").length - closedNow;
@@ -586,8 +586,10 @@ Deno.serve(async (req: Request) => {
 
     // ======= L2 — MENAXHERI I RREZIKUT (prop-style, PARA se të mendojmë hyrjen) =======
     const today = new Date(); today.setUTCHours(0, 0, 0, 0);
-    const { data: dayRows } = await db.from("mmt_trades").select("status, pnl_usd").gte("closed_at", today.toISOString());
-    const closedToday = (dayRows ?? []) as { status: string; pnl_usd: number | null }[];
+    // Fast ka kufijte e VET (fast_kill/fast_daily) — SL-te dhe P&L-ja e tij te shumta
+    // NUK duhet te ndalin Long/Scalp/Range (me pare e ndotnin numeratorin e perbashket).
+    const { data: dayRows } = await db.from("mmt_trades").select("status, pnl_usd, strategy").gte("closed_at", today.toISOString());
+    const closedToday = ((dayRows ?? []) as { status: string; pnl_usd: number | null; strategy: string }[]).filter((r) => r.strategy !== "fast");
     const dayPnl = closedToday.reduce((a, r) => a + Number(r.pnl_usd ?? 0), 0);
     const slToday = closedToday.filter((r) => r.status === "sl").length;
     if (slToday >= cfg.kill_after_sl) return rej(`kill_switch(${slToday}SL)`);              // Dhoma e Ekspertëve
@@ -658,6 +660,10 @@ Deno.serve(async (req: Request) => {
     // Anti-stacking: max N në të njëjtin drejtim (Dhoma: 1 sinjal = 1 pozicion).
     const sameDir = open.filter((t) => t.status === "open" && t.side === side).length;
     if (sameDir >= cfg.max_same_dir) return rej(`max_same_dir(${sameDir} ${side})`);
+    // ANTI-DUBLIKAT: e njejta strategji + i njejti drejtim = 1 pozicion i hapur maksimumi.
+    // (Skanimi 5-min ri-hapte te NJEJTIN setup 2 here — humbje dyfishe identike 3x ne jave.)
+    if (open.some((t) => t.status === "open" && t.strategy === strategy && t.side === side))
+      return rej(`dublikat_${strategy}_${side} (pozicion i hapur i te njejtes strategji)`);
 
     // ======= MBROJTJET E ÇASTIT PARA HYRJES (analiza e thellë e mikro-strukturës) =======
     const isBuySide = side === "BUY";
