@@ -401,12 +401,14 @@ Deno.serve(async (req: Request) => {
         if (slL != null && tpL != null && off != null) {
           const orderBody = { actionType: b.side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(slL * 100) / 100, takeProfit: Math.round(tpL * 100) / 100, comment: "MMT-F" };
           let r = await maTrade(broker, orderBody);
-          // Gabimet KALIMTARE të brokerit (PRICE_OFF 10021 / REQUOTE 10004) → riprovo deri 2×.
-          for (let a = 0; a < 2; a++) {
+          // Gabimet KALIMTARE të brokerit → riprovo deri 3×: PRICE_OFF 10021, REQUOTE 10004,
+          // dhe NO_MONEY 10019 (serveri demo i Vantage VALËZON gjatë volatilitetit ekstrem —
+          // e provuar 07-16: refuzim në 17:26, pranim i të njëjtit urdhër në 17:33).
+          for (let a = 0; a < 3; a++) {
             const rb0 = r.body as { orderId?: string; numericCode?: number } | null;
             if (r.ok && rb0?.orderId) break;
-            if (rb0?.numericCode !== 10021 && rb0?.numericCode !== 10004) break;
-            await sleep(400);
+            if (rb0?.numericCode !== 10021 && rb0?.numericCode !== 10004 && rb0?.numericCode !== 10019) break;
+            await sleep(500);
             r = await maTrade(broker, orderBody);
           }
           const rb = r.body as { orderId?: string } | null;

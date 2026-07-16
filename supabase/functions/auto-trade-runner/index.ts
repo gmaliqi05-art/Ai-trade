@@ -1382,7 +1382,16 @@ Deno.serve(async (req: Request) => {
         if (takeProfit != null) tradeBody.takeProfit = takeProfit;
 
         try {
-          const r = await maTrade(cfg, tradeBody);
+          let r = await maTrade(cfg, tradeBody);
+          // Gabimet KALIMTARE të serverit (NO_MONEY 10019 / PRICE_OFF 10021 / REQUOTE 10004) →
+          // riprovo deri 3× me 500ms: serveri demo i Vantage valëzon gjatë volatilitetit ekstrem.
+          for (let a = 0; a < 3; a++) {
+            const rb0 = r.body as { orderId?: string; numericCode?: number } | null;
+            if (r.ok && rb0?.orderId) break;
+            if (rb0?.numericCode !== 10019 && rb0?.numericCode !== 10021 && rb0?.numericCode !== 10004) break;
+            await new Promise((res) => setTimeout(res, 500));
+            r = await maTrade(cfg, tradeBody);
+          }
           if (!r.ok) { await log("error", `trade ${r.status}`, null, r.body); summary.push({ user: cfg.user_id, signal: sig.id, status: "error" }); continue; }
           const br = brokerResult(r.body);
           if (!br.ok) {
