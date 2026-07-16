@@ -176,14 +176,21 @@ Deno.serve(async (req: Request) => {
     } catch { /* mbetet vlera e DB */ }
   }
   // Zhvendosja broker↔PAXG (freskohet çdo 20s) — çdo SL/TP live dërgohet me të.
+  // RREGULLIM KRITIK: kur thirrja e çmimit dështon (rate-limit i MetaApi — shkaku i vërtetë
+  // pse hyrjet live "anuloheshin" ndërsa manualet kalonin), RIPROVOHET 3× dhe si rezervë
+  // përdoret offset-i i ruajtur i freskët (≤30s) — hyrja live NUK anulohet më kot.
   let liveOff: { v: number; ts: number } | null = null;
-  const brokerOff = async (px: number): Promise<number | null> => {
+  const brokerOff = async (px: number, wantFresh = false): Promise<number | null> => {
     if (!broker) return null;
-    if (liveOff && Date.now() - liveOff.ts < 20_000) return liveOff.v;
-    const q = await maQuote(broker);
-    if (!q) return liveOff ? liveOff.v : null;
-    liveOff = { v: (q.bid + q.ask) / 2 - px, ts: Date.now() };
-    return liveOff.v;
+    const cacheOk = wantFresh ? 3_000 : 20_000; // hyrja kërkon çmim shumë të freskët
+    if (liveOff && Date.now() - liveOff.ts < cacheOk) return liveOff.v;
+    for (let i = 0; i < 3; i++) {
+      const q = await maQuote(broker);
+      if (q) { liveOff = { v: (q.bid + q.ask) / 2 - px, ts: Date.now() }; return liveOff.v; }
+      await sleep(300);
+    }
+    // Rezerva: offset-i i fundit nëse është i freskët (offset-i lëviz ngadalë — i sigurt ≤30s).
+    return liveOff && Date.now() - liveOff.ts < 30_000 ? liveOff.v : null;
   };
 
   let lastPersistedSL = posSL, lastPersistedFav = bestFav;
@@ -395,8 +402,7 @@ Deno.serve(async (req: Request) => {
     if (broker) {
       try {
         // SL/TP përkthehen në kornizën e çmimit të brokerit (jo PAXG) — përndryshe INVALID_STOPS.
-        liveOff = null; // hyrja kërkon çmim të freskët të brokerit, jo cache
-        const off = await brokerOff(px);
+        const off = await brokerOff(px, true); // çmim i freskët me riprovë + rezervë ≤30s
         const slL = off != null ? sl + off : null, tpL = off != null ? tp + off : null;
         if (slL != null && tpL != null && off != null) {
           const orderBody = { actionType: b.side === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: broker.symbol, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01), stopLoss: Math.round(slL * 100) / 100, takeProfit: Math.round(tpL * 100) / 100, comment: "MMT-F" };
