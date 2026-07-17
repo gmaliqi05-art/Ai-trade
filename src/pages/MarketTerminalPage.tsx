@@ -20,7 +20,7 @@ import {
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
-import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -1059,6 +1059,45 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       </div>
 
+      {/* RAPORTET SIPAS ROBOTIT (Live) — kartë e veçantë për secilin robot me saktësinë në %,
+          W/L dhe fitimin — nga historiku real i MT5 i 7 ditëve (kërkesa e pronarit). */}
+      {metaConfigured && history.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3">
+            <History className="w-4 h-4 text-amber-400" />{t('Raportet sipas robotit (Live, 7 ditët e fundit)')}
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {(() => {
+              const order = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast', 'Sinjalet', 'Sinjalet-Scalp', 'FastT', 'Manuale'];
+              const groups = new Map<string, ClosedTrade[]>();
+              for (const d of history) {
+                const k = d.robot || 'Manuale';
+                if (!groups.has(k)) groups.set(k, []);
+                groups.get(k)!.push(d);
+              }
+              return order.filter(k => groups.has(k)).map(k => {
+                const rows = groups.get(k)!;
+                const w = rows.filter(r => r.net > 0).length;
+                const net = rows.reduce((a, r) => a + r.net, 0);
+                const wr = Math.round((w / rows.length) * 100);
+                return (
+                  <div key={k} className="bg-gray-800/40 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${robotBadgeCls(k)}`}>{k}</span>
+                      <span className={`text-sm font-bold ${wr >= 50 ? 'text-green-400' : 'text-amber-400'}`}>{wr}%</span>
+                    </div>
+                    <div className="space-y-0.5 text-[11px]">
+                      <div className="flex justify-between"><span className="text-gray-500">{t('Tregtime')}</span><span className="text-gray-300">{rows.length} · {w}W/{rows.length - w}L</span></div>
+                      <div className="flex justify-between"><span className="text-gray-500">{t('Fitimi')}</span><span className={`font-semibold ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{net >= 0 ? '+' : ''}{net.toFixed(2)}$</span></div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* Trade-t e mbyllura (historiku real nga MT5) — 10 të parat, me buton për të zgjeruar */}
       {metaConfigured && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
@@ -1094,7 +1133,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                           <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
                           <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : d.direction === 'SELL' ? 'text-red-400' : 'text-gray-400'}`}>{isBuy ? t('BLEJ') : d.direction === 'SELL' ? t('SHIT') : '—'}</span></td>
                           <td className="py-2">{d.horizon === 'short' ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">{t('Shkurt')}</span> : d.horizon === 'long' ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400">{t('Gjatë')}</span> : <span className="text-gray-600">—</span>}</td>
-                          <td className="py-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${src.cls}`}>{src.label}</span></td>
+                          <td className="py-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${d.robot ? robotBadgeCls(d.robot) : src.cls}`}>{d.robot || src.label}</span></td>
                           <td className="py-2 text-right text-gray-300">{d.volume || '—'}</td>
                           <td className="py-2 text-right text-gray-300">{d.entryPrice != null ? d.entryPrice.toFixed(2) : '—'}</td>
                           <td className="py-2 text-right text-red-400/70">{d.plannedSL != null ? d.plannedSL.toFixed(2) : '—'}</td>
