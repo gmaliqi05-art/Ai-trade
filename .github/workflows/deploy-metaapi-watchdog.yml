@@ -1,0 +1,25 @@
+name: Deploy metaapi-watchdog
+
+# Deploy VETËM i metaapi-watchdog (monitorimi i lidhjes MT5 + close-tracker që regjistron
+# mbylljet me emrin e robotit te position_closes). Thirret nga cron me x-cron-secret →
+# --no-verify-jwt. Nxitet manualisht. Kërkon SUPABASE_ACCESS_TOKEN.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Deploy metaapi-watchdog (no-verify-jwt — autentikohet me x-cron-secret)
+        run: supabase functions deploy metaapi-watchdog --no-verify-jwt --project-ref zwyuscgqacfpjafznybg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
