@@ -235,6 +235,10 @@ export interface HistoryDeal {
   commission?: number;
   swap?: number;
   time?: string;
+  /** Etiketa e porosisë (MMT-F/MMT-S/MMT/SIG/SCALP/FastT) — identifikon ROBOTIN që e hapi. */
+  comment?: string;
+  clientId?: string;
+  brokerComment?: string;
 }
 
 /** Gjendja e llogarisë MT5 (nga account-information). */
@@ -380,13 +384,13 @@ export async function cancelPreOpenOrder(id: string): Promise<void> {
 export interface PositionCloseRow {
   position_id: string; symbol: string | null; action: string | null; volume: number | null;
   entry_price: number | null; exit_price: number | null; net: number | null;
-  source: string | null; horizon: string | null; opened_at: string | null; closed_at: string;
+  source: string | null; horizon: string | null; robot?: string | null; opened_at: string | null; closed_at: string;
 }
 export async function loadPositionCloses(userId: string, days = 8): Promise<PositionCloseRow[]> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   const { data } = await supabase
     .from('position_closes')
-    .select('position_id, symbol, action, volume, entry_price, exit_price, net, source, horizon, opened_at, closed_at')
+    .select('position_id, symbol, action, volume, entry_price, exit_price, net, source, horizon, robot, opened_at, closed_at')
     .eq('user_id', userId).gte('closed_at', since)
     .order('closed_at', { ascending: false }).limit(1000);
   return (data as PositionCloseRow[]) ?? [];

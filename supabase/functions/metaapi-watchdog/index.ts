@@ -174,17 +174,20 @@ Deno.serve(async (req: Request) => {
                   const myDeals = deals.filter((d) => String(d.positionId ?? "") === id);
                   const outD = myDeals.find((d) => /OUT/i.test(String(d.entryType ?? "")));
                   const net = myDeals.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
-                  // Burimi nga logu i hapjeve (kah + çmim afër). FastT → kapërce (e mban scalp-live).
+                  // ROBOTI nga logu i hapjeve (kah + çmim afër): MMT-F/MMT-S/MMT/scalp auto/auto( —
+                  // emërtimi i saktë ruhet te 'robot' për raportet e ndara. FastT → kapërce (e mban scalp-live).
                   const m = ((opens ?? []) as Array<{ action?: string; entry_price?: number; reason?: string }>).find((o) =>
-                    (o.action ?? "").toUpperCase() === info.action && Math.abs(Number(o.entry_price) - info.entry) <= 2.0 && /^(fastt auto|auto \()/i.test(o.reason ?? ""));
-                  const r = (m?.reason ?? "").toLowerCase();
-                  if (r.startsWith("fastt")) continue; // FastT → s'e regjistrojmë këtu
-                  const source = r.startsWith("auto (") ? "auto" : "manual";
-                  const horizon = r.startsWith("auto (") ? "long" : null;
+                    (o.action ?? "").toUpperCase() === info.action && Math.abs(Number(o.entry_price) - info.entry) <= 2.0 && /^(fastt|auto \(|mmt|scalp auto)/i.test(o.reason ?? ""));
+                  const r = m?.reason ?? "";
+                  if (/^fastt/i.test(r)) continue; // FastT → s'e regjistrojmë këtu
+                  const robot = /^MMT-F/i.test(r) ? "MMT-Fast" : /^MMT-S/i.test(r) ? "MMT-Scalp" : /^MMT/i.test(r) ? "MMT-Long"
+                    : /^scalp auto/i.test(r) ? "Sinjalet-Scalp" : /^auto ?\(/i.test(r) ? "Sinjalet" : null;
+                  const source = robot ? "auto" : "manual";
+                  const horizon = robot == null ? null : (robot === "Sinjalet" || robot === "MMT-Long" ? "long" : "short");
                   await db.from("position_closes").upsert({
                     user_id: cfg.user_id, position_id: id, symbol: info.sym, action: info.action, volume: info.vol,
                     entry_price: info.entry || null, exit_price: outD ? Number(outD.price) : null, net,
-                    source, horizon, opened_at: info.openTime || null, closed_at: nowIso,
+                    source, horizon, robot, opened_at: info.openTime || null, closed_at: nowIso,
                   }, { onConflict: "user_id,position_id" });
                 }
               }
