@@ -33,8 +33,12 @@ function outcomeCls(outcome?: string | null) {
 
 export default function CompletedSignals({ signals: signalsRaw, variant = 'compact' }: { signals: DoneSignal[]; variant?: 'compact' | 'full' }) {
   const { t } = useI18n();
-  // Renditja: sinjali më i RI (sipas kohës së gjenerimit) i pari në listë, pastaj me radhë.
-  const signals = [...signalsRaw].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  // VETËM 24 ORËT E FUNDIT (kërkesa e pronarit): lista tregon sinjalet e ditës — të vjetrat
+  // dilnin me 'Skadoi' të grumbulluara dhe e mbytnin pamjen. Filtrohet me kohën e MBYLLJES.
+  const DAY_MS = 24 * 3600 * 1000;
+  const signals = [...signalsRaw]
+    .filter(s => Date.now() - new Date(s.closed_at || s.created_at).getTime() < DAY_MS)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   const stats = signalWinStats(signals);
 
   if (variant === 'full') {
@@ -93,7 +97,7 @@ export default function CompletedSignals({ signals: signalsRaw, variant = 'compa
           </span>
         )}
       </div>
-      <p className="text-[10px] text-gray-600 mb-3 leading-snug">{t('Saktësia e motorit: a e preku çmimi TP-në apo SL-në. Përqindja është lëvizja e sinjalit, jo fitimi i llogarisë.')}</p>
+      <p className="text-[10px] text-gray-600 mb-3 leading-snug">{t('Saktësia e motorit: a e preku çmimi TP-në apo SL-në. Përqindja është lëvizja e sinjalit, jo fitimi i llogarisë.')} {t('Shfaqen vetëm 24 orët e fundit. "Skadoi" = s\'u prek as TP as SL brenda afatit — u mbyll pa u vendosur.')}</p>
       {signals.length === 0 ? (
         <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal i përfunduar ende. Vlerësohen automatikisht kur arrijnë TP/SL.')}</p>
       ) : (
