@@ -20,7 +20,7 @@ import {
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
-import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, robotOfPosition, type ClosedTrade, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, robotOfPosition, robotOf, type ClosedTrade, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -246,6 +246,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         .eq('user_id', user.id)
         .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(1000);
       const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
+      // PLOTËSIM EKZAKT për mbylljet e serverit (position_closes s'i ruan vetë SL/TP): rreshti i
+      // logut me metaapi_order_id == positionId jep SL/TP e planifikuara + robotin — përputhje 1:1.
+      const byOrderId = new Map<string, FasttExecRow & ExecRow>();
+      for (const r of rows) if (r.status === 'executed' && r.metaapi_order_id) byOrderId.set(String(r.metaapi_order_id), r);
+      for (const t of posCloses) {
+        const e = byOrderId.get(String(t.id));
+        if (!e) continue;
+        if (t.plannedSL == null && e.stop_loss != null) t.plannedSL = Number(e.stop_loss);
+        if (t.plannedTP == null && e.take_profit != null) t.plannedTP = Number(e.take_profit);
+        if (!t.robot) t.robot = robotOf(e.reason, e.signal_id);
+      }
       const fastt = fasttFromExecutions(rows);
       const fasttIds = new Set(fastt.map(f => f.id));
       // Id-të e pozicioneve të hapura nga FastT (orderId i hapjes == positionId) — për klasifikim të saktë
@@ -1125,6 +1136,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   const rows = groups.get(k)!;
                   const w = rows.filter(r => r.net > 0).length;
                   const net = rows.reduce((a, r) => a + r.net, 0);
+                  // Totalet BRUTO për rreshtin përmbledhës në fund: fitimet dhe humbjet veç e veç.
+                  const grossWin = rows.filter(r => r.net > 0).reduce((a, r) => a + r.net, 0);
+                  const grossLoss = rows.filter(r => r.net < 0).reduce((a, r) => a + r.net, 0);
                   const wr = Math.round((w / rows.length) * 100);
                   const expanded = !!expandedRobots[k];
                   const shown = expanded ? rows : rows.slice(0, 5);
@@ -1170,7 +1184,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                                     <span className="text-gray-300">{d.exitPrice != null ? d.exitPrice.toFixed(2) : '—'}</span>
                                     {ek === 'tp' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-green-500/20 text-green-400">TP</span>}
                                     {ek === 'sl' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-400">SL</span>}
-                                    {ek === 'other' && d.exitPrice != null && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/40 text-gray-400">{t('Manual')}</span>}
+                                    {/* "Manual" (mbyllje jo në SL/TP) ka kuptim VETËM kur SL/TP e planifikuara dihen —
+                                        përndryshe çdo mbyllje robotike etiketohej gabimisht "Manual". */}
+                                    {ek === 'other' && d.exitPrice != null && (d.plannedSL != null || d.plannedTP != null) && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/40 text-gray-400">{t('Manual')}</span>}
                                   </td>
                                   <td className={`py-2 text-right font-semibold ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
                                   <td className="py-2 text-right text-gray-500">{d.closeTime ? new Date(d.closeTime).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
@@ -1179,6 +1195,16 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                             })}
                           </tbody>
                         </table>
+                      </div>
+                      {/* TOTALI në fund të tabelës së robotit (kërkesa e pronarit): fitimet bruto,
+                          humbjet bruto dhe bilanci neto — që të dihet saktë sa fiton e sa humb secili. */}
+                      <div className="mt-2 pt-2 border-t border-gray-700/60 flex items-center justify-between flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
+                        <span className="text-gray-400">{t('Totali')} · {rows.length} {t('tregtime')}</span>
+                        <span className="flex items-center gap-3 tabular-nums">
+                          <span className="text-green-400">{t('Fitime')}: +{grossWin.toFixed(2)}$</span>
+                          <span className="text-red-400">{t('Humbje')}: {grossLoss.toFixed(2)}$</span>
+                          <span className={net >= 0 ? 'text-green-400' : 'text-red-400'}>{t('Bilanci')}: {net >= 0 ? '+' : ''}{net.toFixed(2)}$</span>
+                        </span>
                       </div>
                       {rows.length > 5 && (
                         <button onClick={() => setExpandedRobots(s => ({ ...s, [k]: !s[k] }))}

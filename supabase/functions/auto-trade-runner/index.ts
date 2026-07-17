@@ -918,6 +918,19 @@ Deno.serve(async (req: Request) => {
         grossLoss = await grossLossToday(cfg);
       } catch (e) {
         summary.push({ user: cfg.user_id, error: `metaapi: ${(e as Error).message}` });
+        // DUKSHMËRI: skip-i i heshtur i përdoruesit (MetaApi s'u përgjigj) linte 0 gjurmë — dukej
+        // sikur roboti "s'punon". Shëno një rresht info, max 1 për 15 min (pa spam).
+        try {
+          const { data: recent } = await db.from("trade_executions").select("id")
+            .eq("user_id", cfg.user_id).eq("status", "info").ilike("reason", "Roboti kapërceu ciklin%")
+            .gte("created_at", new Date(Date.now() - 15 * 60 * 1000).toISOString()).limit(1);
+          if (!recent || recent.length === 0) {
+            await db.from("trade_executions").insert({
+              user_id: cfg.user_id, symbol: "XAUUSD", action: "BUY", volume: 0.01, mode: cfg.mode, status: "info",
+              reason: `Roboti kapërceu ciklin — MetaApi s'u përgjigj (${(e as Error).message.slice(0, 80)}). Provon sërish çdo minutë.`,
+            });
+          }
+        } catch { /* njoftimi s'duhet të ndalë robotin */ }
         continue;
       }
       // NDALUES DITOR: ndalon kur humbja NETO (ekuiteti) OSE humbja BRUTO kalon kufirin.
@@ -1213,13 +1226,24 @@ Deno.serve(async (req: Request) => {
       const sameAsset = (a: string, b: string) => normSym(a) === normSym(b) || (isGold(a) && isGold(b));
 
       for (const sig of candidates) {
-        // FILTËR EKSPERTËSH — IDENTIK me demon: kapërce hyrjet e dobëta (mbi-ekstendim / mbrëmje ET 17–20).
-        // Si te demo, kalohet pa log në DB — vetëm te përmbledhja (log() s'është ende në fushëveprim këtu).
-        const xveto = expertVeto(sig.features);
-        if (xveto) { summary.push({ user: cfg.user_id, signal: sig.id, status: "expert_veto", veto: xveto }); continue; }
+        // Kontrolli i dublikatit BËHET I PARI — që veto-t më poshtë të logohen NJË herë për sinjal.
         const { data: existing } = await db
           .from("trade_executions").select("id").eq("user_id", cfg.user_id).eq("signal_id", sig.id).limit(1);
         if (existing && existing.length > 0) continue;
+        // FILTËR EKSPERTËSH — IDENTIK me demon: kapërce hyrjet e dobëta (mbi-ekstendim / mbrëmje ET 17–20).
+        // TANI LOGOHET në DB (më parë ishte i heshtur → sinjalet "zhdukeshin" pa asnjë shpjegim).
+        const xveto = expertVeto(sig.features);
+        if (xveto) {
+          summary.push({ user: cfg.user_id, signal: sig.id, status: "expert_veto", veto: xveto });
+          try {
+            await db.from("trade_executions").insert({
+              user_id: cfg.user_id, signal_id: sig.id, symbol: sig.symbol, action: sig.type === "buy" ? "BUY" : "SELL",
+              volume: 0.01, mode: cfg.mode, status: "rejected",
+              reason: `Veto eksperti: ${xveto === "evening-ET" ? "mbrëmja NY (ET 17–20, likuiditet i ulët)" : "mbi-ekstendim (ADX>50 + RSI ekstrem)"}`,
+            });
+          } catch { /* */ }
+          continue;
+        }
 
         const action = sig.type === "buy" ? "BUY" : "SELL";
         const isBuy = action === "BUY";
