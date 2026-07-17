@@ -165,18 +165,21 @@ Deno.serve(async (req: Request) => {
                   const hr = await call(`${clientHost(cfg.region)}/users/current/accounts/${cfg.account_id}/history-deals/time/${encodeURIComponent(since)}/${encodeURIComponent(nowIso)}`, { headers: { "auth-token": cfg.token } }, 12000);
                   if (hr.status === 200 && Array.isArray(hr.body)) deals = hr.body as Array<Record<string, unknown>>;
                 } catch { /* P&L i panjohur */ }
-                const { data: opens } = await db.from("trade_executions").select("action, entry_price, reason")
+                const { data: opens } = await db.from("trade_executions").select("action, entry_price, reason, metaapi_order_id")
                   .eq("user_id", cfg.user_id).eq("status", "executed")
                   .gte("created_at", new Date(now - 8 * 24 * 3600 * 1000).toISOString())
                   .order("created_at", { ascending: false }).limit(200);
+                type OpenExec = { action?: string; entry_price?: number; reason?: string; metaapi_order_id?: string | null };
                 for (const id of closedIds) {
                   const info = prev[id];
                   const myDeals = deals.filter((d) => String(d.positionId ?? "") === id);
                   const outD = myDeals.find((d) => /OUT/i.test(String(d.entryType ?? "")));
                   const net = myDeals.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
-                  // ROBOTI nga logu i hapjeve (kah + çmim afër): MMT-F/MMT-S/MMT/scalp auto/auto( —
-                  // emërtimi i saktë ruhet te 'robot' për raportet e ndara. FastT → kapërce (e mban scalp-live).
-                  const m = ((opens ?? []) as Array<{ action?: string; entry_price?: number; reason?: string }>).find((o) =>
+                  // ROBOTI nga logu i hapjeve — së pari përputhja EKZAKTE (metaapi_order_id == positionId;
+                  // kështu tregtia manuale "OK (live)" s'merret kurrë për robot), pastaj kah + çmim afër.
+                  // Emërtimi ruhet te 'robot' për raportet e ndara. FastT → kapërce (e mban scalp-live).
+                  const exact = ((opens ?? []) as OpenExec[]).find((o) => o.metaapi_order_id && String(o.metaapi_order_id) === id);
+                  const m = exact ?? ((opens ?? []) as OpenExec[]).find((o) =>
                     (o.action ?? "").toUpperCase() === info.action && Math.abs(Number(o.entry_price) - info.entry) <= 2.0 && /^(fastt|auto \(|mmt|scalp auto)/i.test(o.reason ?? ""));
                   const r = m?.reason ?? "";
                   if (/^fastt/i.test(r)) continue; // FastT → s'e regjistrojmë këtu
