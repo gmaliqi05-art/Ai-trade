@@ -36,6 +36,18 @@ export function robotOf(reason: string | null, signalId: string | null): string 
   if (/^auto ?\(/i.test(r) || signalId) return 'Sinjalet';
   return 'Manuale';
 }
+/** Emri i robotit nga komenti/clientId i një POZICIONI TË HAPUR (etiketat e porosive:
+ *  MMT-F / MMT-S / MMT / SIG / SCALP / FastT). Pa etiketë → null (tregtim manual). */
+export function robotOfPosition(p: { comment?: string; clientId?: string }): string | null {
+  const s = `${p.comment ?? ''} ${p.clientId ?? ''}`;
+  if (/MMT-F/i.test(s)) return 'MMT-Fast';
+  if (/MMT-S/i.test(s)) return 'MMT-Scalp';
+  if (/MMT/i.test(s)) return 'MMT-Long';
+  if (/SCALP/i.test(s)) return 'Sinjalet-Scalp';
+  if (/SIG/i.test(s)) return 'Sinjalet';
+  if (/FastT/i.test(s)) return 'FastT';
+  return null;
+}
 // Ngjyra e etiketës për çdo robot — e njëjta paletë me faqen MMT.
 export function robotBadgeCls(robot?: string): string {
   switch (robot) {
