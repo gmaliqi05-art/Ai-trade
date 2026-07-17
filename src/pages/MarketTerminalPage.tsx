@@ -20,7 +20,7 @@ import {
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
-import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, type ClosedTrade, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -151,7 +151,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [tradeMsg, setTradeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [showAllHistory, setShowAllHistory] = useState(false);
+  // Zgjerimi i tabelës së secilit robot te "Tregtitë e mbyllura sipas robotit" (çelës = emri i robotit).
+  const [expandedRobots, setExpandedRobots] = useState<Record<string, boolean>>({});
   const [showSignalInfo, setShowSignalInfo] = useState(false);
   const [confirmNoSLTP, setConfirmNoSLTP] = useState(false);
   const [showBalances, setShowBalances] = useState(false); // privatësi: shifrat e fshehura (të turbullta) si default
@@ -454,15 +455,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       loadPreOpen();
     }
     setTradeLoading(false);
-  };
-
-  // Etiketa e burimit të trade-it (Auto / Signal / Manual / MT5).
-  const srcMeta: Record<TradeSource, { label: string; cls: string }> = {
-    fastt: { label: t('FastT'), cls: 'bg-rose-500/20 text-rose-400' },
-    auto: { label: t('Auto'), cls: 'bg-amber-500/20 text-amber-400' },
-    signal: { label: t('Signal'), cls: 'bg-blue-500/20 text-blue-400' },
-    manual: { label: t('Manual'), cls: 'bg-green-500/20 text-green-400' },
-    mt5: { label: t('MT5'), cls: 'bg-gray-600/40 text-gray-400' },
   };
 
   // Horizonti: periudha të shkurtra (1m/5m/15m) = afat-shkurt; përndryshe afat-gjatë (swing).
@@ -1098,67 +1090,94 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
-      {/* Trade-t e mbyllura (historiku real nga MT5) — 10 të parat, me buton për të zgjeruar */}
+      {/* TREGTITË E MBYLLURA — TABELË E VEÇANTË PËR SECILIN ROBOT (kërkesa e pronarit):
+          çdo robot ka tabelën e vet me totalet (tregtime, W/L, saktësi, bilanc) që të dihet
+          saktë cili po fiton e cili po humb. Tregtimet manuale kanë tabelën e tyre në fund. */}
       {metaConfigured && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><History className="w-4 h-4 text-amber-400" />{t('Trade-t e mbyllura (7 ditët e fundit)')}</h3>
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><History className="w-4 h-4 text-amber-400" />{t('Tregtitë e mbyllura sipas robotit (7 ditët e fundit)')}</h3>
           {history.length === 0 ? (
             <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë trade i mbyllur ende.')}</p>
           ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-500 border-b border-gray-800">
-                      <th className="text-left font-medium py-2">{t('Simboli')}</th>
-                      <th className="text-left font-medium py-2">{t('Lloji')}</th>
-                      <th className="text-left font-medium py-2">{t('Afati')}</th>
-                      <th className="text-left font-medium py-2">{t('Burimi')}</th>
-                      <th className="text-right font-medium py-2">{t('Lot')}</th>
-                      <th className="text-right font-medium py-2">{t('Hyrje')}</th>
-                      <th className="text-right font-medium py-2">SL</th>
-                      <th className="text-right font-medium py-2">TP</th>
-                      <th className="text-right font-medium py-2">{t('Dalja')}</th>
-                      <th className="text-right font-medium py-2">{t('Fitim/Humbje')}</th>
-                      <th className="text-right font-medium py-2">{t('Koha')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-800/60">
-                    {(showAllHistory ? history : history.slice(0, 10)).map(d => {
-                      const isBuy = d.direction === 'BUY';
-                      const src = srcMeta[d.source || 'mt5'];
-                      const ek = exitKind(d);
-                      return (
-                        <tr key={d.id} className="hover:bg-gray-800/30">
-                          <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
-                          <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : d.direction === 'SELL' ? 'text-red-400' : 'text-gray-400'}`}>{isBuy ? t('BLEJ') : d.direction === 'SELL' ? t('SHIT') : '—'}</span></td>
-                          <td className="py-2">{d.horizon === 'short' ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">{t('Shkurt')}</span> : d.horizon === 'long' ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400">{t('Gjatë')}</span> : <span className="text-gray-600">—</span>}</td>
-                          <td className="py-2"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${d.robot ? robotBadgeCls(d.robot) : src.cls}`}>{d.robot || src.label}</span></td>
-                          <td className="py-2 text-right text-gray-300">{d.volume || '—'}</td>
-                          <td className="py-2 text-right text-gray-300">{d.entryPrice != null ? d.entryPrice.toFixed(2) : '—'}</td>
-                          <td className="py-2 text-right text-red-400/70">{d.plannedSL != null ? d.plannedSL.toFixed(2) : '—'}</td>
-                          <td className="py-2 text-right text-green-400/70">{d.plannedTP != null ? d.plannedTP.toFixed(2) : '—'}</td>
-                          <td className="py-2 text-right whitespace-nowrap">
-                            <span className="text-gray-300">{d.exitPrice != null ? d.exitPrice.toFixed(2) : '—'}</span>
-                            {ek === 'tp' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-green-500/20 text-green-400">TP</span>}
-                            {ek === 'sl' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-400">SL</span>}
-                            {ek === 'other' && d.exitPrice != null && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/40 text-gray-400">{t('Manual')}</span>}
-                          </td>
-                          <td className={`py-2 text-right font-semibold ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
-                          <td className="py-2 text-right text-gray-500">{d.closeTime ? new Date(d.closeTime).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {history.length > 10 && (
-                <button onClick={() => setShowAllHistory(s => !s)}
-                  className="mt-3 w-full text-xs text-amber-400 hover:text-amber-300 bg-gray-800/40 hover:bg-gray-800 rounded-lg py-2 transition-colors">
-                  {showAllHistory ? t('Shfaq më pak') : t('Shfaq të gjitha ({n})', { n: history.length })}
-                </button>
-              )}
-            </>
+            <div className="space-y-4">
+              {(() => {
+                const order = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast', 'Sinjalet', 'Sinjalet-Scalp', 'FastT', 'Manuale'];
+                const groups = new Map<string, ClosedTrade[]>();
+                for (const d of history) {
+                  const k = d.robot || 'Manuale';
+                  if (!groups.has(k)) groups.set(k, []);
+                  groups.get(k)!.push(d);
+                }
+                return order.filter(k => groups.has(k)).map(k => {
+                  const rows = groups.get(k)!;
+                  const w = rows.filter(r => r.net > 0).length;
+                  const net = rows.reduce((a, r) => a + r.net, 0);
+                  const wr = Math.round((w / rows.length) * 100);
+                  const expanded = !!expandedRobots[k];
+                  const shown = expanded ? rows : rows.slice(0, 5);
+                  return (
+                    <div key={k} className="bg-gray-800/30 border border-gray-800 rounded-xl p-3">
+                      {/* Koka e robotit: emri + totalet e tij (të ndara qartë nga robotët e tjerë). */}
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${robotBadgeCls(k)}`}>{k === 'Manuale' ? t('Manuale (tregtimet e tua)') : k}</span>
+                        <span className="flex items-center gap-3 text-[11px]">
+                          <span className="text-gray-400">{rows.length} {t('tregtime')} · <span className="text-green-400">{w}W</span>/<span className="text-red-400">{rows.length - w}L</span></span>
+                          <span className={`font-bold ${wr >= 50 ? 'text-green-400' : 'text-amber-400'}`}>{wr}%</span>
+                          <span className={`font-bold tabular-nums ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{net >= 0 ? '+' : ''}{net.toFixed(2)}$</span>
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-gray-500 border-b border-gray-800">
+                              <th className="text-left font-medium py-2">{t('Simboli')}</th>
+                              <th className="text-left font-medium py-2">{t('Lloji')}</th>
+                              <th className="text-right font-medium py-2">{t('Lot')}</th>
+                              <th className="text-right font-medium py-2">{t('Hyrje')}</th>
+                              <th className="text-right font-medium py-2">SL</th>
+                              <th className="text-right font-medium py-2">TP</th>
+                              <th className="text-right font-medium py-2">{t('Dalja')}</th>
+                              <th className="text-right font-medium py-2">{t('Fitim/Humbje')}</th>
+                              <th className="text-right font-medium py-2">{t('Koha')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-800/60">
+                            {shown.map(d => {
+                              const isBuy = d.direction === 'BUY';
+                              const ek = exitKind(d);
+                              return (
+                                <tr key={d.id} className="hover:bg-gray-800/30">
+                                  <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
+                                  <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : d.direction === 'SELL' ? 'text-red-400' : 'text-gray-400'}`}>{isBuy ? t('BLEJ') : d.direction === 'SELL' ? t('SHIT') : '—'}</span></td>
+                                  <td className="py-2 text-right text-gray-300">{d.volume || '—'}</td>
+                                  <td className="py-2 text-right text-gray-300">{d.entryPrice != null ? d.entryPrice.toFixed(2) : '—'}</td>
+                                  <td className="py-2 text-right text-red-400/70">{d.plannedSL != null ? d.plannedSL.toFixed(2) : '—'}</td>
+                                  <td className="py-2 text-right text-green-400/70">{d.plannedTP != null ? d.plannedTP.toFixed(2) : '—'}</td>
+                                  <td className="py-2 text-right whitespace-nowrap">
+                                    <span className="text-gray-300">{d.exitPrice != null ? d.exitPrice.toFixed(2) : '—'}</span>
+                                    {ek === 'tp' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-green-500/20 text-green-400">TP</span>}
+                                    {ek === 'sl' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-400">SL</span>}
+                                    {ek === 'other' && d.exitPrice != null && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/40 text-gray-400">{t('Manual')}</span>}
+                                  </td>
+                                  <td className={`py-2 text-right font-semibold ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
+                                  <td className="py-2 text-right text-gray-500">{d.closeTime ? new Date(d.closeTime).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      {rows.length > 5 && (
+                        <button onClick={() => setExpandedRobots(s => ({ ...s, [k]: !s[k] }))}
+                          className="mt-2 w-full text-xs text-amber-400 hover:text-amber-300 bg-gray-800/40 hover:bg-gray-800 rounded-lg py-1.5 transition-colors">
+                          {expanded ? t('Shfaq më pak') : t('Shfaq të gjitha ({n})', { n: rows.length })}
+                        </button>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
           )}
         </div>
       )}

@@ -85,7 +85,7 @@ function parseFasttNet(reason: string | null): number | null {
 export interface PositionCloseLike {
   position_id: string; symbol?: string | null; action?: string | null; volume?: number | null;
   entry_price?: number | null; exit_price?: number | null; net?: number | null;
-  source?: string | null; horizon?: string | null; opened_at?: string | null; closed_at: string;
+  source?: string | null; horizon?: string | null; robot?: string | null; opened_at?: string | null; closed_at: string;
 }
 export function closesFromPositions(rows: PositionCloseLike[]): ClosedTrade[] {
   return rows.map((r) => ({
@@ -98,7 +98,8 @@ export function closesFromPositions(rows: PositionCloseLike[]): ClosedTrade[] {
     exitPrice: r.exit_price != null ? Number(r.exit_price) : undefined,
     net: Number(r.net) || 0,
     source: (r.source as TradeSource) || 'mt5',
-    robot: r.source === 'auto' ? 'Sinjalet' : r.source === 'fastt' ? 'FastT' : r.source === 'manual' ? 'Manuale' : undefined,
+    // Emri i saktë i robotit vjen nga serveri (kolona 'robot'); rreshtat e vjetër pa të → nga burimi.
+    robot: r.robot || (r.source === 'auto' ? 'Sinjalet' : r.source === 'fastt' ? 'FastT' : r.source === 'manual' ? 'Manuale' : undefined),
     horizon: (r.horizon === 'short' || r.horizon === 'long') ? r.horizon : undefined,
   }));
 }
@@ -197,6 +198,14 @@ export function groupDeals(deals: HistoryDeal[]): ClosedTrade[] {
       g.openTime = d.time || g.openTime;
       g.volume = Number(d.volume) || g.volume;
       if (d.symbol) g.symbol = d.symbol;
+      // ROBOTI direkt nga etiketa e porosisë që ruan brokeri në deal-in hyrës — burimi më
+      // autoritar; kur mungon, attachSource() e gjen nga logu i ekzekutimeve.
+      const rb = robotOfPosition({ comment: `${d.comment ?? ''} ${d.brokerComment ?? ''}`, clientId: d.clientId });
+      if (rb) {
+        g.robot = rb;
+        g.source = rb === 'FastT' ? 'fastt' : 'auto';
+        g.horizon = rb === 'Sinjalet' || rb === 'MMT-Long' ? 'long' : 'short';
+      }
     }
     if (et.includes('OUT')) {
       g.exitPrice = Number(d.price) || g.exitPrice;
@@ -211,6 +220,10 @@ export function groupDeals(deals: HistoryDeal[]): ClosedTrade[] {
 }
 
 // Lidh secilin trade me burimin duke përputhur ekzekutimet (simbol + drejtim + kohë afër hapjes).
+// Simboli NORMALIZOHET (XAUUSD+ ≡ XAUUSD ≡ XAUUSD.m) — logu ruan simbolin bazë ndërsa brokeri
+// kthen variantin e vet me prapashtesë; pa normalizim asnjë trade robotik s'përputhej (dilnin 'Manuale').
+const normSym = (s: string) => (s || '').toUpperCase().replace(/[^A-Z]/g, '');
+const sameSym = (a: string, b: string) => { const x = normSym(a), y = normSym(b); return x === y || x.startsWith(y) || y.startsWith(x); };
 export function attachSource(trades: ClosedTrade[], execs: ExecRow[]): void {
   const used = new Set<ExecRow>();
   for (const tr of trades) {
@@ -218,18 +231,22 @@ export function attachSource(trades: ClosedTrade[], execs: ExecRow[]): void {
     let best: ExecRow | null = null, bestDiff = Infinity;
     for (const e of execs) {
       if (used.has(e)) continue;
-      if ((e.symbol || '').toUpperCase() !== (tr.symbol || '').toUpperCase()) continue;
+      if (!sameSym(e.symbol || '', tr.symbol || '')) continue;
       if (e.action !== tr.direction) continue;
       const diff = Math.abs(new Date(e.created_at).getTime() - openMs);
       if (diff < bestDiff) { bestDiff = diff; best = e; }
     }
     if (best && bestDiff < 10 * 60 * 1000) {
-      used.add(best); tr.source = classifySource(best.reason, best.signal_id);
-      tr.robot = robotOf(best.reason, best.signal_id);
-      tr.horizon = classifyHorizon(best.reason);
+      used.add(best);
+      // Etiketa e brokerit (nga groupDeals) ka përparësi — logu vetëm PLOTËSON (SL/TP e planifikuara).
+      if (!tr.robot) {
+        tr.source = classifySource(best.reason, best.signal_id);
+        tr.robot = robotOf(best.reason, best.signal_id);
+        tr.horizon = classifyHorizon(best.reason);
+      }
       if (best.stop_loss != null) tr.plannedSL = Number(best.stop_loss);
       if (best.take_profit != null) tr.plannedTP = Number(best.take_profit);
     }
-    else tr.source = 'mt5';
+    else if (!tr.robot) tr.source = 'mt5';
   }
 }

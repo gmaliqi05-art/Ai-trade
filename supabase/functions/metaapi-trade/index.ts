@@ -183,18 +183,31 @@ async function recordPositionClose(cfg: MetaApiConfig, db: ReturnType<typeof cre
     const sym = String(inD?.symbol ?? outD.symbol ?? fallbackSymbol ?? "XAUUSD");
     const dir = String(inD?.type ?? "").toUpperCase().includes("BUY") ? "BUY" : "SELL";
     const entry = Number(inD?.price) || 0;
-    const { data: openM } = await db.from("trade_executions").select("reason")
+    const { data: openM } = await db.from("trade_executions").select("reason, signal_id")
       .eq("user_id", userId).eq("status", "executed").eq("action", dir)
       .gte("entry_price", entry - 3).lte("entry_price", entry + 3)
       .gte("created_at", new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString())
       .order("created_at", { ascending: false }).limit(5);
-    const reasons = ((openM ?? []) as Array<{ reason?: string }>).map((r) => (r.reason ?? "").toLowerCase());
-    const source = reasons.some((r) => r.startsWith("fastt")) ? "fastt" : reasons.some((r) => r.startsWith("auto (")) ? "auto" : "manual";
-    const horizon = source === "fastt" ? "short" : source === "auto" ? "long" : null;
+    // ROBOTI që e hapi trade-in — (1) nga etiketa e porosisë te brokeri (comment/clientId i deal-it
+    // hyrës: MMT-F/MMT-S/MMT/SIG/SCALP/FastT), (2) ndryshe nga arsyeja e ekzekutimit në log.
+    // Emërtimi i saktë ruhet te kolona 'robot' → raportet e ndara sipas robotit te Tregto Live.
+    const robotOfText = (s: string): string | null =>
+      /MMT-F/i.test(s) ? "MMT-Fast" : /MMT-S/i.test(s) ? "MMT-Scalp" : /MMT/i.test(s) ? "MMT-Long"
+      : /FastT/i.test(s) ? "FastT" : /SCALP|scalp auto/i.test(s) ? "Sinjalet-Scalp"
+      : /\bSIG\b|^auto ?\(/i.test(s) ? "Sinjalet" : null;
+    let robot = robotOfText(`${inD?.comment ?? ""} ${inD?.clientId ?? ""} ${inD?.brokerComment ?? ""}`);
+    if (!robot) {
+      for (const r of (openM ?? []) as Array<{ reason?: string; signal_id?: string | null }>) {
+        robot = robotOfText(r.reason ?? "") ?? (r.signal_id ? "Sinjalet" : null);
+        if (robot) break;
+      }
+    }
+    const source = robot === "FastT" ? "fastt" : robot ? "auto" : "manual";
+    const horizon = robot == null ? null : (robot === "Sinjalet" || robot === "MMT-Long" ? "long" : "short");
     await db.from("position_closes").upsert({
       user_id: userId, position_id: String(positionId), symbol: sym, action: dir,
       volume: Number(inD?.volume) || 0.01, entry_price: entry || null,
-      exit_price: Number(outD.price) || null, net, source, horizon,
+      exit_price: Number(outD.price) || null, net, source, horizon, robot,
       opened_at: inD?.time ? String(inD.time) : null, closed_at: outD.time ? String(outD.time) : new Date().toISOString(),
     }, { onConflict: "user_id,position_id" });
     return true;
