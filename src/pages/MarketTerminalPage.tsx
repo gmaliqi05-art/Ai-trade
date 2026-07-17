@@ -20,7 +20,7 @@ import {
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
-import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, type ClosedTrade, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, robotOfPosition, type ClosedTrade, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
 import { useI18n, dtLocale } from '../i18n/i18n';
 
 interface Asset { id: string; symbol: string; name: string; category: string; current_price: number; }
@@ -634,16 +634,23 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Çaktivizo editimin e SL/TP kur pozicioni mbyllet ose ndërrohet simboli.
   const activeStillOpen = editables.some(e => e.positionId === activePosId);
   useEffect(() => { if (activePosId && !activeStillOpen) setActivePosId(null); }, [activePosId, activeStillOpen]);
+  // Ngjyra e linjës së Hyrjes sipas ROBOTIT (e njëjta paletë me raportet) — që në grafik të
+  // dallohet menjëherë cili robot e hapi trade-in; blu = manual/i panjohur.
+  const robotLineColor = (robot: string | null): string =>
+    robot === 'MMT-Long' ? '#38bdf8' : robot === 'MMT-Scalp' ? '#f59e0b' : robot === 'MMT-Fast' ? '#a855f7'
+    : robot === 'Sinjalet' ? '#10b981' : robot === 'Sinjalet-Scalp' ? '#14b8a6' : robot === 'FastT' ? '#f43f5e' : '#3b82f6';
   // Linjat: Hyrje/SL/TP për ÇDO pozicion + linja "Tani". SL/TP të pozicionit AKTIV (në editim) nuk
   // vizatohen këtu — i mbulon doreza e tërheqshme (që mos të dyfishohen).
   const chartLines: PriceLineDef[] = [
     ...posnsForSymbol.flatMap((p, i): PriceLineDef[] => {
       const isScalp = isPosScalp(p);
+      const robot = robotOfPosition(p);
+      const who = robot ?? (isScalp ? t('Afatshkurtër') : t('Afatgjatë'));
       const pnl = livePnlOf(p), risk = riskOf(p), reward = rewardOf(p);
       const tag = multiPos ? ` #${i + 1}` : '';
       const editing = activePosId === p.id;
       return [
-        ...(p.openPrice ? [{ price: p.openPrice, color: '#3b82f6', title: `${t('Hyrje')}${tag} · ${isScalp ? t('Afatshkurtër') : t('Afatgjatë')}${pnl != null ? ` · ${pnl >= 0 ? '+' : ''}${r2(pnl)} ${fcur}` : ''}` }] : []),
+        ...(p.openPrice ? [{ price: p.openPrice, color: robotLineColor(robot), title: `${t('Hyrje')}${tag} · ${who}${pnl != null ? ` · ${pnl >= 0 ? '+' : ''}${r2(pnl)} ${fcur}` : ''}` }] : []),
         ...((p.stopLoss && !editing) ? [{ price: p.stopLoss, color: '#ef4444', title: `SL${tag}${risk != null ? ` · -${r2(risk)} ${fcur}` : ''}` }] : []),
         ...((p.takeProfit && !editing) ? [{ price: p.takeProfit, color: '#22c55e', title: `TP${tag}${reward != null ? ` · +${r2(reward)} ${fcur}` : ''}` }] : []),
       ];
@@ -878,7 +885,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             </div>
             {posForSymbol && (
               <div className="flex items-center gap-3 px-4 py-1.5 border-t border-gray-800 text-[11px] flex-wrap">
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${posIsScalp ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}</span>
+                {(() => {
+                  // Etiketa nën grafik: emri i saktë i robotit kur dihet; ndryshe afati si më parë.
+                  const rb = posForSymbol ? robotOfPosition(posForSymbol) : null;
+                  return rb
+                    ? <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${robotBadgeCls(rb)}`}>{rb}</span>
+                    : <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${posIsScalp ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{posIsScalp ? t('Afatshkurtër') : t('Afatgjatë')}</span>;
+                })()}
                 {totalLivePnl != null && (
                   <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-amber-400" />{t('Tani')}: <span className={`font-bold ${totalLivePnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{totalLivePnl >= 0 ? '+' : ''}{r2(totalLivePnl)} {fcur}</span></span>
                 )}
