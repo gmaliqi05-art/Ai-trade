@@ -188,18 +188,31 @@ async function recordPositionClose(cfg: MetaApiConfig, db: ReturnType<typeof cre
       .gte("entry_price", entry - 3).lte("entry_price", entry + 3)
       .gte("created_at", new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString())
       .order("created_at", { ascending: false }).limit(5);
-    // ROBOTI që e hapi trade-in — (1) nga etiketa e porosisë te brokeri (comment/clientId i deal-it
-    // hyrës: MMT-F/MMT-S/MMT/SIG/SCALP/FastT), (2) ndryshe nga arsyeja e ekzekutimit në log.
+    // ROBOTI që e hapi trade-in — me radhë besueshmërie:
+    //  (1) EKZAKT: rreshti i logut me metaapi_order_id == positionId (orderId i hyrjes = positionId
+    //      në MT5) — kështu tregtia MANUALE e platformës ("OK (live)") s'ngatërrohet KURRË me një
+    //      robot që tregton me çmim të ngjashëm në të njëjtat minuta (Fast tregton vazhdimisht afër).
+    //  (2) etiketa e porosisë te brokeri (comment/clientId: MMT-F/MMT-S/MMT/SIG/SCALP/FastT),
+    //  (3) përputhje e përafërt me çmim+kah nga logu (rezerva e fundit).
     // Emërtimi i saktë ruhet te kolona 'robot' → raportet e ndara sipas robotit te Tregto Live.
     const robotOfText = (s: string): string | null =>
       /MMT-F/i.test(s) ? "MMT-Fast" : /MMT-S/i.test(s) ? "MMT-Scalp" : /MMT/i.test(s) ? "MMT-Long"
       : /FastT/i.test(s) ? "FastT" : /SCALP|scalp auto/i.test(s) ? "Sinjalet-Scalp"
       : /\bSIG\b|^auto ?\(/i.test(s) ? "Sinjalet" : null;
-    let robot = robotOfText(`${inD?.comment ?? ""} ${inD?.clientId ?? ""} ${inD?.brokerComment ?? ""}`);
-    if (!robot) {
-      for (const r of (openM ?? []) as Array<{ reason?: string; signal_id?: string | null }>) {
-        robot = robotOfText(r.reason ?? "") ?? (r.signal_id ? "Sinjalet" : null);
-        if (robot) break;
+    const { data: exactRow } = await db.from("trade_executions").select("reason, signal_id")
+      .eq("user_id", userId).eq("status", "executed").eq("metaapi_order_id", String(positionId))
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const ex = exactRow as { reason?: string; signal_id?: string | null } | null;
+    let robot: string | null;
+    if (ex) {
+      robot = robotOfText(ex.reason ?? "") ?? (ex.signal_id ? "Sinjalet" : null);
+    } else {
+      robot = robotOfText(`${inD?.comment ?? ""} ${inD?.clientId ?? ""} ${inD?.brokerComment ?? ""}`);
+      if (!robot) {
+        for (const r of (openM ?? []) as Array<{ reason?: string; signal_id?: string | null }>) {
+          robot = robotOfText(r.reason ?? "") ?? (r.signal_id ? "Sinjalet" : null);
+          if (robot) break;
+        }
       }
     }
     const source = robot === "FastT" ? "fastt" : robot ? "auto" : "manual";
