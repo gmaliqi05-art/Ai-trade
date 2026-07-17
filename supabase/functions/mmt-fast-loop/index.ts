@@ -286,12 +286,29 @@ Deno.serve(async (req: Request) => {
   // dalja llogariten nga çmimi real i brokerit (marrë çdo ~2s); TP/SL server-side të brokerit
   // mbeten frena e fortë. Nuk e mbyllim KURRË pozicionin real mbi mungesë të dhënash.
   let liveBestFav = -1, liveSLmt = 0, lastLivePoll = 0;
+  // Mbyllja e Fast shkruhet DIREKT te position_closes (tabela e Tregto Live): watchdog-u
+  // 2-minutësh s'i kap dot pozicionet ~30-60s që hapen e mbyllen mes dy kontrolleve të tij —
+  // vetë loop-i e di mbylljen në sekondë, me fitimin real të brokerit.
+  const recordFastClose = async (p: FastPos, exitPx: number | null, net: number | null) => {
+    if (!p.live_order_id || !cfg.live_user_id) return; // vetëm tregtitë LIVE
+    try {
+      await db.from("position_closes").upsert({
+        user_id: cfg.live_user_id, position_id: String(p.live_order_id), symbol: broker?.symbol || "XAUUSD",
+        action: p.side, volume: Math.max(0.01, Number(cfg.live_lots) || 0.01),
+        entry_price: Number(p.entry_price) || null, exit_price: exitPx != null ? Math.round(exitPx * 100) / 100 : null,
+        net: net != null ? Math.round(net * 100) / 100 : null,
+        source: "auto", horizon: "short", robot: "MMT-Fast",
+        opened_at: p.opened_at, closed_at: new Date().toISOString(),
+      }, { onConflict: "user_id,position_id" });
+    } catch { /* raporti s'duhet të ndalë tregtimin */ }
+  };
   const closePosLive = async (px: number, profit: number, status: string) => {
     if (!pos) return;
     const p = pos; pos = null;
     if (p.live_order_id && broker) { try { await maTrade(broker, { actionType: "POSITION_CLOSE_ID", positionId: p.live_order_id }); } catch { /* TP/SL mund ta ketë mbyllur */ } }
     const rM = Number(p.risk_usd) > 0 ? profit / Number(p.risk_usd) : 0;
     try { await db.from("mmt_trades").update({ status, exit_price: Math.round(px * 100) / 100, pnl_usd: Math.round(profit * 100) / 100, r_multiple: Math.round(rM * 100) / 100, closed_at: new Date().toISOString() }).eq("id", p.id); } catch { /* */ }
+    await recordFastClose(p, px, profit);
     await beat(profit >= 0 ? "fast_dalje_fitim" : "fast_dalje_humbje", `${status} ${profit >= 0 ? "+" : ""}${profit.toFixed(2)}$ (real MT5)`, px);
   };
   const manageLive = async () => {
@@ -310,6 +327,7 @@ Deno.serve(async (req: Request) => {
       const st = real == null ? "mbyllur_broker" : (pnl > 0.1 ? "tp" : (pnl < -0.1 ? "sl" : "be"));
       const rM = Number(p.risk_usd) > 0 ? pnl / Number(p.risk_usd) : 0;
       try { await db.from("mmt_trades").update({ status: st, pnl_usd: real != null ? Math.round(pnl * 100) / 100 : null, r_multiple: real != null ? Math.round(rM * 100) / 100 : null, closed_at: new Date().toISOString() }).eq("id", p.id); } catch { /* */ }
+      await recordFastClose(p, null, real);
       await beat(pnl >= 0 ? "fast_dalje_fitim" : "fast_dalje_humbje", `brokeri e mbylli ${real != null ? (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "$ (real)" : ""}`, lastBeatPx);
       return;
     }
