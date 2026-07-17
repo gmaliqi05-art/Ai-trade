@@ -203,9 +203,15 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
       if (mv !== cfg.fast_move_usd) { patch.fast_move_usd = mv; await log("fast_move_usd", cfg.fast_move_usd, mv, `Fast humbës (${f.n} trade, ${f.exp.toFixed(2)}R) — kërkon shpërthim më të fortë, më pak hyrje false`, f.n, f.exp); }
       if (cd !== cfg.fast_cooldown_s) { patch.fast_cooldown_s = cd; await log("fast_cooldown_s", cfg.fast_cooldown_s, cd, "Fast humbës — pushim më i gjatë mes hyrjeve (kundër mbi-tregtimit)", f.n, f.exp); }
       if (md !== cfg.fast_max_day) { patch.fast_max_day = md; await log("fast_max_day", cfg.fast_max_day, md, "Fast humbës — më pak tregtime/ditë (cilësi mbi sasi)", f.n, f.exp); }
-    } else if (f.exp > 0.15) {
-      const mv = Math.max(0.6, Math.round(((Number(cfg.fast_move_usd) || 1.0) - 0.1) * 100) / 100);
-      if (mv !== cfg.fast_move_usd) { patch.fast_move_usd = mv; await log("fast_move_usd", cfg.fast_move_usd, mv, `Fast fitues (${f.exp.toFixed(2)}R) — lehtësim i lehtë i pragut`, f.n, f.exp); }
+    } else if (f.exp > 0.02) {
+      // FITUES (kërkesa e pronarit): Fast duhet të tregtojë PANDËRPRERË kur po fiton — mësimi
+      // liron gradualisht PO ATO çelësa që shtrëngon kur humb (simetrik), kurrë nën dyshemetë
+      // e sigurisë: prag ≥0.8$ (kundër zhurmës), pushim ≥30s (kundër bluarjes). Rreziku për
+      // tregti (SL/lot) NUK preket kurrë — lirohet vetëm frekuenca.
+      const mv = Math.max(0.8, Math.round(((Number(cfg.fast_move_usd) || 1.0) - 0.1) * 100) / 100);
+      const cd = Math.max(30, (Number(cfg.fast_cooldown_s) || 90) - 15);
+      if (mv !== cfg.fast_move_usd) { patch.fast_move_usd = mv; await log("fast_move_usd", cfg.fast_move_usd, mv, `Fast fitues (${f.n} trade, ${f.exp.toFixed(2)}R) — prag më i ulët shpërthimi, më shumë hyrje`, f.n, f.exp); }
+      if (cd !== cfg.fast_cooldown_s) { patch.fast_cooldown_s = cd; await log("fast_cooldown_s", cfg.fast_cooldown_s, cd, "Fast fitues — pushim më i shkurtër mes hyrjeve (tregtim më i vazhdueshëm)", f.n, f.exp); }
     }
   }
   // SCALP: analizon tregtitë e VETA. Humb → ndez konfirmimin me figurë qiriu (më selektiv) +
