@@ -9,7 +9,7 @@ import { Loader2, RefreshCw, X, TrendingUp, TrendingDown, CheckCircle, AlertCirc
 import { useI18n, dtLocale } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
 import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
-import { positionHorizon } from '../services/closedTrades';
+import { positionHorizon, robotOfPosition, robotBadgeCls } from '../services/closedTrades';
 import { useMetaStream } from '../hooks/useMetaStream';
 
 export default function OpenPositionsPanel({ configured, section = 'both' }: { configured: boolean; section?: 'positions' | 'executions' | 'both' }) {
@@ -189,8 +189,12 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                     <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
                     <span className="text-white">{p.symbol}</span>
                     {(() => {
-                      // Afatgjatë (sinjal) ose Afatshkurtër (FastT/scalp) — i klasifikuar nga logu kur
-                      // brokeri s'e ruan komentin. Pa etiketë kur s'dihet (p.sh. manual i pastër).
+                      // EMRI I ROBOTIT nga etiketa e porosisë (MMT-F/MMT-S/MMT/SIG/SCALP); kur brokeri
+                      // s'e ruan komentin, bie te klasifikimi afatgjatë/afatshkurtër nga logu.
+                      const robot = robotOfPosition(p);
+                      if (robot) return (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${robotBadgeCls(robot)}`}>{robot}</span>
+                      );
                       const h = positionHorizon(p, executions);
                       return h ? (
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${h === 'short' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>
