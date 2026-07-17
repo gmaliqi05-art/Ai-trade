@@ -215,7 +215,47 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     if (dr.data) setDoneSignals(dr.data as Signal[]);
   }, []);
 
-  // Lexon gjendjen reale të MT5: llogaria + historiku.
+  // Trade-t "extra" nga historiku i rëndë i MT5 (manualet e vjetra jashtë regjistrit) — cache e
+  // leximit të fundit të suksesshëm, që tabela të MOS varet nga një thirrje që dështon shpesh (429/502).
+  const mt5RestRef = useRef<ClosedTrade[]>([]);
+
+  // TABELA E MBYLLURA VETËM NGA DB (position_closes + logu i ekzekutimeve) — e shpejtë (~100ms)
+  // dhe e PAVARUR nga MetaApi: robotët i shkruajnë mbylljet aty në sekondë, kështu tabela
+  // përditësohet çdo 10s edhe kur MetaApi është në rate-limit dhe historiku i rëndë ngec.
+  const fetchCloses = useCallback(async () => {
+    if (!user) return null;
+    const posCloseRows = await loadPositionCloses(user.id);
+    const posCloses = closesFromPositions(posCloseRows);
+    const posCloseIds = new Set(posCloses.map(p => p.id));
+    const sinceIso = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
+    const { data: execsAll } = await supabase
+      .from('trade_executions')
+      .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
+      .eq('user_id', user.id)
+      .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(1000);
+    const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
+    // PLOTËSIM EKZAKT për mbylljet e serverit (position_closes s'i ruan vetë SL/TP): rreshti i
+    // logut me metaapi_order_id == positionId jep SL/TP e planifikuara + robotin — përputhje 1:1.
+    const byOrderId = new Map<string, FasttExecRow & ExecRow>();
+    for (const r of rows) if (r.status === 'executed' && r.metaapi_order_id) byOrderId.set(String(r.metaapi_order_id), r);
+    for (const t of posCloses) {
+      const e = byOrderId.get(String(t.id));
+      if (!e) continue;
+      if (t.plannedSL == null && e.stop_loss != null) t.plannedSL = Number(e.stop_loss);
+      if (t.plannedTP == null && e.take_profit != null) t.plannedTP = Number(e.take_profit);
+      if (!t.robot) t.robot = robotOf(e.reason, e.signal_id);
+    }
+    const fastt = fasttFromExecutions(rows);
+    const fasttIds = new Set(fastt.map(f => f.id));
+    setExecLog(rows as HorizonExec[]);
+    // FastT-trade-t e logut që S'janë te position_closes (mbylljet e shpejta të scalp-live).
+    const fasttDedup = fastt.filter(f => !posCloseIds.has(f.id));
+    const mt5Rest = mt5RestRef.current.filter(t => !posCloseIds.has(t.id) && !fasttIds.has(t.id));
+    setHistory([...posCloses, ...fasttDedup, ...mt5Rest].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
+    return { posCloses, posCloseIds, rows, fastt, fasttIds, fasttDedup };
+  }, [user]);
+
+  // Lexon gjendjen reale të MT5: llogaria + historiku i rëndë (plotëson tabelën me manualet e vjetra).
   const fetchMeta = useCallback(async () => {
     if (!user) return;
     let cfg;
@@ -232,53 +272,28 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     // Lista e simboleve për tab-et — Ari gjithmonë + ato që ka aktivizuar përdoruesi te Cilësimet.
     setAllowedSymbols(['XAUUSD', ...(cfg.auto_symbols || '').split(',').map(s => s.trim().toUpperCase()).filter(s => s && s !== 'XAUUSD')]);
     if (configured) {
-      const [acc, hist, pos, posCloseRows] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions(), loadPositionCloses(user.id)]);
+      const [acc, hist, pos] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions()]);
       if (!acc.error && acc.account) setAccount(acc.account);
-      // Mbylljet e regjistruara nga serveri (close-tracker + manual) — burim i qëndrueshëm, S'varet nga MT5.
-      const posCloses = closesFromPositions(posCloseRows);
-      const posCloseIds = new Set(posCloses.map(p => p.id));
-      // Trade-t e FastT-it ndërtohen DIREKT nga logu i robotit (trade_executions) — shfaqen GJITHMONË,
-      // edhe nëse historiku i MT5 dështon (502). Trade-t e tjera (manual/auto) merren nga historiku i MT5.
-      const sinceIso = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
-      const { data: execsAll } = await supabase
-        .from('trade_executions')
-        .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
-        .eq('user_id', user.id)
-        .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(1000);
-      const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
-      // PLOTËSIM EKZAKT për mbylljet e serverit (position_closes s'i ruan vetë SL/TP): rreshti i
-      // logut me metaapi_order_id == positionId jep SL/TP e planifikuara + robotin — përputhje 1:1.
-      const byOrderId = new Map<string, FasttExecRow & ExecRow>();
-      for (const r of rows) if (r.status === 'executed' && r.metaapi_order_id) byOrderId.set(String(r.metaapi_order_id), r);
-      for (const t of posCloses) {
-        const e = byOrderId.get(String(t.id));
-        if (!e) continue;
-        if (t.plannedSL == null && e.stop_loss != null) t.plannedSL = Number(e.stop_loss);
-        if (t.plannedTP == null && e.take_profit != null) t.plannedTP = Number(e.take_profit);
-        if (!t.robot) t.robot = robotOf(e.reason, e.signal_id);
-      }
-      const fastt = fasttFromExecutions(rows);
-      const fasttIds = new Set(fastt.map(f => f.id));
-      // Id-të e pozicioneve të hapura nga FastT (orderId i hapjes == positionId) — për klasifikim të saktë
-      // të pozicioneve të hapura si Afatshkurtër edhe kur brokeri s'e ruan komentin "FastT".
-      setExecLog(rows as HorizonExec[]);
-      let mt5Rest: ClosedTrade[] = [];
-      if (!hist.error && Array.isArray(hist.deals)) {
+      const dbRes = await fetchCloses();
+      if (dbRes && !hist.error && Array.isArray(hist.deals)) {
         const grouped = groupDeals(hist.deals as HistoryDeal[]);
-        attachSource(grouped, rows.filter(r => r.status === 'executed') as ExecRow[]);
-        // Jo-FastT (sinjal/manual/auto) merren GJITHMONË nga MT5. FastT-in e marrim nga logu (më i freskët),
-        // POR shtojmë edhe FastT-trade-t e MT5 që S'janë në log — p.sh. të mbyllura MANUALISHT, ose me SL
-        // pasi roboti u ndal (përndryshe nuk shfaqeshin askund). Dedup me id (orderId i hapjes == positionId në MT5).
-        // Përjashto nga MT5 ato që i kemi nga serveri (position_closes) ose nga logu FastT (pa dyfishim).
-        mt5Rest = grouped.filter(t => !posCloseIds.has(t.id) && (t.source !== 'fastt' || !fasttIds.has(t.id)));
+        attachSource(grouped, dbRes.rows.filter(r => r.status === 'executed') as ExecRow[]);
+        // Jo-FastT (sinjal/manual/auto) merren nga MT5; dedup me regjistrin e serverit + logun FastT.
+        // Në dështim të historikut, cache-ja e fundit mbetet — rreshtat e vjetër s'zhduken më nga tabela.
+        mt5RestRef.current = grouped.filter(t => !dbRes.posCloseIds.has(t.id) && (t.source !== 'fastt' || !dbRes.fasttIds.has(t.id)));
+        setHistory([...dbRes.posCloses, ...dbRes.fasttDedup, ...mt5RestRef.current].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
       }
-      // FastT-trade-t e logut që S'janë te position_closes (mbylljet e shpejta të scalp-live).
-      const fasttDedup = fastt.filter(f => !posCloseIds.has(f.id));
-      setHistory([...posCloses, ...fasttDedup, ...mt5Rest].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
       if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
     }
     setLastUpdated(new Date());
-  }, [user]);
+  }, [user, fetchCloses]);
+
+  // Rifreskim i SHPEJTË i tabelës së mbyllura (vetëm DB, çdo 10s) — i pavarur nga MetaApi.
+  useEffect(() => {
+    if (!metaConfigured) return;
+    const id = setInterval(() => { fetchCloses().catch(() => {}); }, 10000);
+    return () => clearInterval(id);
+  }, [metaConfigured, fetchCloses]);
 
   // Poll i shpejtë VETËM i pozicioneve (P&L live + numri i tyre) — më i shpeshtë se fetch-i i plotë,
   // pa ri-tërhequr historikun/llogarinë. Përditëson VETËM në sukses (ruan të fundit në gabim kalimtar).
