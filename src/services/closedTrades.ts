@@ -21,6 +21,32 @@ export interface ClosedTrade {
   source?: TradeSource;
   /** Afati i trade-it: afat-shkurt (scalp) ose afat-gjate (swing) — nga arsyeja e ekzekutimit. */
   horizon?: 'short' | 'long';
+  /** ROBOTI që e hapi (emërtim i saktë për raporte): MMT-Long/MMT-Scalp/MMT-Fast/Sinjalet/Sinjalet-Scalp/FastT/Manuale. */
+  robot?: string;
+}
+
+// Emri i SAKTË i robotit nga arsyeja e ekzekutimit (burimi autoritar i secilit robot).
+export function robotOf(reason: string | null, signalId: string | null): string {
+  const r = reason || '';
+  if (/^MMT-F/i.test(r)) return 'MMT-Fast';
+  if (/^MMT-S/i.test(r)) return 'MMT-Scalp';
+  if (/^MMT[ \-]/i.test(r) || /^MMT auto/i.test(r)) return 'MMT-Long';
+  if (/^FastT/i.test(r)) return 'FastT';
+  if (/^scalp auto/i.test(r)) return 'Sinjalet-Scalp';
+  if (/^auto ?\(/i.test(r) || signalId) return 'Sinjalet';
+  return 'Manuale';
+}
+// Ngjyra e etiketës për çdo robot — e njëjta paletë me faqen MMT.
+export function robotBadgeCls(robot?: string): string {
+  switch (robot) {
+    case 'MMT-Long': return 'bg-sky-500/20 text-sky-300';
+    case 'MMT-Scalp': return 'bg-amber-500/20 text-amber-400';
+    case 'MMT-Fast': return 'bg-purple-500/20 text-purple-300';
+    case 'Sinjalet': return 'bg-emerald-500/20 text-emerald-300';
+    case 'Sinjalet-Scalp': return 'bg-teal-500/20 text-teal-300';
+    case 'FastT': return 'bg-rose-500/20 text-rose-400';
+    default: return 'bg-gray-600/40 text-gray-400';
+  }
 }
 
 export interface ExecRow { action: string; symbol: string; signal_id: string | null; reason: string | null; created_at: string; stop_loss?: number | null; take_profit?: number | null; }
@@ -60,6 +86,7 @@ export function closesFromPositions(rows: PositionCloseLike[]): ClosedTrade[] {
     exitPrice: r.exit_price != null ? Number(r.exit_price) : undefined,
     net: Number(r.net) || 0,
     source: (r.source as TradeSource) || 'mt5',
+    robot: r.source === 'auto' ? 'Sinjalet' : r.source === 'fastt' ? 'FastT' : r.source === 'manual' ? 'Manuale' : undefined,
     horizon: (r.horizon === 'short' || r.horizon === 'long') ? r.horizon : undefined,
   }));
 }
@@ -87,7 +114,7 @@ export function fasttFromExecutions(rows: FasttExecRow[]): ClosedTrade[] {
         volume: entry?.volume != null ? Number(entry.volume) : 0,
         entryPrice: ep, exitPrice: exit,
         plannedSL: entry?.stop_loss != null ? Number(entry.stop_loss) : undefined,
-        net, source: 'fastt', horizon: 'short',
+        net, source: 'fastt', horizon: 'short', robot: 'FastT',
       });
     }
   }
@@ -186,6 +213,7 @@ export function attachSource(trades: ClosedTrade[], execs: ExecRow[]): void {
     }
     if (best && bestDiff < 10 * 60 * 1000) {
       used.add(best); tr.source = classifySource(best.reason, best.signal_id);
+      tr.robot = robotOf(best.reason, best.signal_id);
       tr.horizon = classifyHorizon(best.reason);
       if (best.stop_loss != null) tr.plannedSL = Number(best.stop_loss);
       if (best.take_profit != null) tr.plannedTP = Number(best.take_profit);
