@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar, Bot, Zap, Hand, Server } from 'lucide-react';
+import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar, Bot, Zap, Hand } from 'lucide-react';
 import { loadTradeHistory, checkMetaApiConnection, loadPositionCloses, type HistoryDeal, type AccountInfo } from '../services/metaapi';
-import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, type ClosedTrade, type TradeSource, type ExecRow, type FasttExecRow } from '../services/closedTrades';
+import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, robotOf, type ClosedTrade, type ExecRow, type FasttExecRow } from '../services/closedTrades';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n, dtLocale } from '../i18n/i18n';
@@ -116,6 +116,10 @@ export default function ReportsPage() {
         posCloses = closesFromPositions(posCloseRows);
         posCloseIds = new Set(posCloses.map(p => p.id));
         const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
+        // Emri i saktë i robotit për mbylljet pa etiketë — përputhje EKZAKTE me logun (orderId == positionId).
+        const byOrderId = new Map<string, FasttExecRow & ExecRow>();
+        for (const r of rows) if (r.status === 'executed' && r.metaapi_order_id) byOrderId.set(String(r.metaapi_order_id), r);
+        for (const pc of posCloses) { if (!pc.robot) { const e = byOrderId.get(String(pc.id)); if (e) pc.robot = robotOf(e.reason, e.signal_id); } }
         fastt = fasttFromExecutions(rows).filter(f => !posCloseIds.has(f.id));
         const fasttIds = new Set(fastt.map(f => f.id));
         if (!hist.error && Array.isArray(hist.deals)) {
@@ -163,20 +167,22 @@ export default function ReportsPage() {
   const sigDecided = sigTp + sigSl;
   const sigWr = sigDecided ? Math.round((sigTp / sigDecided) * 100) : 0;
 
-  // Përmbledhje + grupim sipas BURIMIT (auto / sinjal / manual / direkt MT5).
-  const SOURCE_ORDER: TradeSource[] = ['fastt', 'auto', 'signal', 'manual', 'mt5'];
-  const sourceMeta: Record<TradeSource, { label: string; icon: typeof Bot; color: string }> = {
-    fastt: { label: t('FastT'), icon: Zap, color: 'text-rose-400' },
-    auto: { label: t('Auto (Roboti)'), icon: Bot, color: 'text-amber-400' },
-    signal: { label: t('Nga sinjali'), icon: Zap, color: 'text-blue-400' },
-    manual: { label: t('Manual'), icon: Hand, color: 'text-green-400' },
-    mt5: { label: t('Direkt në MT5'), icon: Server, color: 'text-gray-400' },
+  // Përmbledhje + grupim sipas ROBOTIT — emërtimi i saktë, njësoj si te Trade Live.
+  const ROBOT_ORDER = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast', 'Sinjalet', 'Sinjalet-Scalp', 'FastT', 'Manuale'];
+  const robotColor: Record<string, string> = {
+    'MMT-Long': 'text-sky-300', 'MMT-Scalp': 'text-amber-400', 'MMT-Fast': 'text-purple-300',
+    'Sinjalet': 'text-emerald-300', 'Sinjalet-Scalp': 'text-teal-300', 'FastT': 'text-rose-400', 'Manuale': 'text-green-400',
   };
-  const bySource = SOURCE_ORDER.map(src => {
-    const list = shown.filter(tr => (tr.source || 'mt5') === src);
+  const robotIcon: Record<string, typeof Bot> = {
+    'MMT-Long': Bot, 'MMT-Scalp': Bot, 'MMT-Fast': Bot,
+    'Sinjalet': Zap, 'Sinjalet-Scalp': Zap, 'FastT': Zap, 'Manuale': Hand,
+  };
+  const robotLabel = (k: string) => k === 'Manuale' ? t('Manuale (tregtimet e tua)') : k;
+  const byRobot = ROBOT_ORDER.map(key => {
+    const list = shown.filter(tr => (tr.robot || 'Manuale') === key);
     const net = list.reduce((s, tr) => s + tr.net, 0);
     const w = list.filter(tr => tr.net > 0).length, l = list.filter(tr => tr.net < 0).length;
-    return { src, list, net, wins: w, losses: l };
+    return { key, list, net, wins: w, losses: l };
   }).filter(g => g.list.length > 0);
 
   const exportCSV = () => {
@@ -199,7 +205,7 @@ export default function ReportsPage() {
     lines.push('');
     lines.push(t('TRADE-T E DETAJUARA'));
     lines.push(t('Mbyllur,Simboli,Drejtimi,Burimi,Lot,Hyrje,Dalje,P&L'));
-    shown.forEach(tr => lines.push(`${tr.closeTime ? new Date(tr.closeTime).toLocaleString(dtLocale()) : ''},${tr.symbol},${tr.direction},${sourceMeta[tr.source || 'mt5'].label},${tr.volume},${tr.entryPrice ?? ''},${tr.exitPrice ?? ''},${tr.net.toFixed(2)}`));
+    shown.forEach(tr => lines.push(`${tr.closeTime ? new Date(tr.closeTime).toLocaleString(dtLocale()) : ''},${tr.symbol},${tr.direction},${tr.robot || t('Manuale')},${tr.volume},${tr.entryPrice ?? ''},${tr.exitPrice ?? ''},${tr.net.toFixed(2)}`));
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `goldtrade_raport_${period === 'today' ? 'sot' : period === 'day' ? customDate : period + 'd'}_${Date.now()}.csv`; a.click();
@@ -353,18 +359,18 @@ export default function ReportsPage() {
                 </div>
               </div>
 
-              {/* Përmbledhje sipas burimit — cila mënyrë po sjell më shumë fitim */}
-              {bySource.length > 0 && (
+              {/* Përmbledhje sipas ROBOTIT — cili robot po sjell fitim e cili humbje */}
+              {byRobot.length > 0 && (
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-                  <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><BarChart2 className="w-4 h-4 text-amber-400" />{t('Sipas burimit')}</h3>
+                  <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><BarChart2 className="w-4 h-4 text-amber-400" />{t('Sipas robotit')}</h3>
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    {bySource.map(g => {
-                      const Icon = sourceMeta[g.src].icon;
+                    {byRobot.map(g => {
+                      const Icon = robotIcon[g.key] || Bot;
                       const dec = g.wins + g.losses;
                       const wr = dec ? Math.round((g.wins / dec) * 100) : 0;
                       return (
-                        <div key={g.src} className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-3">
-                          <div className={`flex items-center gap-1.5 text-xs font-semibold ${sourceMeta[g.src].color}`}><Icon className="w-3.5 h-3.5" />{sourceMeta[g.src].label}</div>
+                        <div key={g.key} className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-3">
+                          <div className={`flex items-center gap-1.5 text-xs font-semibold ${robotColor[g.key] || 'text-gray-400'}`}><Icon className="w-3.5 h-3.5" />{robotLabel(g.key)}</div>
                           <div className={`font-bold text-lg mt-1 ${colr(g.net)}`}>{fmtMoney(g.net)}</div>
                           <div className="text-[11px] text-gray-500 mt-0.5">{t('{count} trade · {wins}F/{losses}H · {wr}%', { count: g.list.length, wins: g.wins, losses: g.losses, wr })}</div>
                         </div>
@@ -375,7 +381,7 @@ export default function ReportsPage() {
                 </div>
               )}
 
-              {/* Trade-t e detajuara — të grupuara sipas burimit me vijë ndarëse */}
+              {/* Trade-t e detajuara — të grupuara sipas ROBOTIT me vijë ndarëse */}
               <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
                   <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" />{t('Lëvizjet e tua (trade-t)')}</h3>
@@ -397,14 +403,14 @@ export default function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800/60">
-                      {bySource.map(g => {
-                        const Icon = sourceMeta[g.src].icon;
+                      {byRobot.map(g => {
+                        const Icon = robotIcon[g.key] || Bot;
                         return [
                           // Vija ndarëse / titulli i grupit
-                          <tr key={`${g.src}-h`} className="bg-gray-800/50 border-t-2 border-gray-700">
+                          <tr key={`${g.key}-h`} className="bg-gray-800/50 border-t-2 border-gray-700">
                             <td colSpan={6} className="px-4 py-2">
-                              <span className={`flex items-center gap-1.5 text-xs font-bold ${sourceMeta[g.src].color}`}>
-                                <Icon className="w-3.5 h-3.5" />{sourceMeta[g.src].label} · {g.list.length}
+                              <span className={`flex items-center gap-1.5 text-xs font-bold ${robotColor[g.key] || 'text-gray-400'}`}>
+                                <Icon className="w-3.5 h-3.5" />{robotLabel(g.key)} · {g.list.length}
                               </span>
                             </td>
                             <td className={`px-4 py-2 text-right font-bold text-xs ${colr(g.net)}`}>{fmtMoney(g.net)}</td>
