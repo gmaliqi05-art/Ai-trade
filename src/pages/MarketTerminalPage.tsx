@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import {
-  Activity, RefreshCw, Loader2, TrendingUp, Zap, Brain,
-  Wallet, AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
+  Activity, RefreshCw, Loader2, Zap, Brain,
+  AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
   ArrowUp, ArrowDown, Clock, X,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -98,6 +98,30 @@ function errText(t: (k: string) => string, code: string, message?: string): stri
     max_daily_loss: t('Arritur limiti i humbjes ditore.'),
   };
   return map[code] || message || code;
+}
+
+// SEKSION I PALOSSHËM me kujtesë (localStorage) — pamja klasike e terminalit: koka gjithmonë e
+// dukshme, përmbajtja hapet/mbyllet me një klik dhe zgjedhja mbahet mend për herën tjetër.
+// `bare` = pa kornizë karte (për seksione që kanë kartat e veta brenda).
+function TLFold({ k, title, icon, right, defaultOpen = true, bare = false, children }: {
+  k: string; title: string; icon?: ReactNode; right?: ReactNode; defaultOpen?: boolean; bare?: boolean; children: ReactNode;
+}) {
+  const [open, setOpen] = useState<boolean>(() => {
+    try { const v = localStorage.getItem('tl_fold_' + k); return v == null ? defaultOpen : v === '1'; } catch { return defaultOpen; }
+  });
+  const toggle = () => setOpen(o => { try { localStorage.setItem('tl_fold_' + k, o ? '0' : '1'); } catch { /* */ } return !o; });
+  return (
+    <div className={bare ? '' : 'bg-gray-900 border border-gray-800 rounded-2xl'}>
+      <div className={`flex items-center gap-2 ${bare ? 'px-1 py-1' : 'px-4 py-3'}`}>
+        <button onClick={toggle} className="flex-1 flex items-center justify-between text-left min-w-0">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2 truncate">{icon}{title}</h3>
+          <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {right}
+      </div>
+      {open && <div className={bare ? 'space-y-5' : 'px-4 pb-4'}>{children}</div>}
+    </div>
+  );
 }
 
 export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: ClientPage) => void }) {
@@ -756,37 +780,23 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* Gjendja e llogarisë — kompakte; shifrat e fshehura për privatësi (klik mbi to për t'i shfaqur/fshehur) */}
       {metaConfigured && (
         <div onClick={() => setShowBalances(s => !s)} title={t('Klik për të shfaqur/fshehur')}
-          className="grid grid-cols-3 gap-2 cursor-pointer select-none">
+          className="bg-gray-900 border border-gray-800 rounded-2xl px-3 py-2.5 cursor-pointer select-none grid grid-cols-3 sm:grid-cols-6 gap-x-4 gap-y-2 sm:divide-x sm:divide-gray-800">
+          {/* SHIRIT KLASIK 6-vlerësh (si terminalet klasike): Balanca · Equity · Marzhi · P&L sot ·
+              P&L 8 ditë · Live — një bar i vetëm në vend të dy rreshtave me karta. */}
           {[
-            { label: t('Balanca'), value: `${money(account?.balance)} ${cur}`, icon: Wallet, cls: 'text-white' },
-            { label: t('Equity'), value: `${money(account?.equity)} ${cur}`, icon: Activity, cls: 'text-white' },
-            { label: t('Marzh i lirë'), value: `${money(account?.freeMargin)} ${cur}`, icon: Wallet, cls: 'text-white' },
-          ].map((c, i) => {
-            const Icon = c.icon;
-            return (
-              <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-2">
-                <div className="flex items-center justify-between text-gray-500 text-[10px] mb-0.5">
-                  <span className="flex items-center gap-1"><Icon className="w-3 h-3" />{c.label}</span>
-                  {i === 0 && (showBalances ? <Eye className="w-3 h-3 text-gray-500" /> : <EyeOff className="w-3 h-3 text-gray-500" />)}
-                </div>
-                <div className={`font-bold text-[13px] transition-all ${c.cls} ${showBalances ? '' : 'blur-[6px]'}`}>{c.value}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Pasqyra e fitim/humbjes — ditore, gjithsej, dhe gjendja live (lundruese) */}
-      {metaConfigured && (
-        <div className="grid grid-cols-3 gap-2">
-          {[
+            { label: t('Balanca'), value: `${money(account?.balance)} ${cur}`, cls: 'text-white', eye: true },
+            { label: t('Equity'), value: `${money(account?.equity)} ${cur}`, cls: 'text-white' },
+            { label: t('Marzh i lirë'), value: `${money(account?.freeMargin)} ${cur}`, cls: 'text-white' },
             { label: t('Fitim/Humbje sot'), value: pnlCard(pnlToday), cls: pnlCls(pnlToday) },
             { label: t('Fitim/Humbje (8 ditët e fundit)'), value: pnlCard(pnlTotal), cls: pnlCls(pnlTotal) },
             { label: t('Live (hapur tani)'), value: pnlCard(floatingPnl), cls: pnlCls(floatingPnl) },
           ].map((c) => (
-            <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-2">
-              <div className="text-gray-500 text-[10px] mb-0.5 flex items-center gap-1"><TrendingUp className="w-3 h-3" />{c.label}</div>
-              <div className={`font-bold text-[13px] tabular-nums ${c.cls} ${showBalances ? '' : 'blur-[6px]'}`}>{c.value}</div>
+            <div key={c.label} className="min-w-0 sm:pl-4 sm:first:pl-0">
+              <div className="flex items-center gap-1 text-gray-500 text-[10px] mb-0.5 truncate">
+                <span className="truncate">{c.label}</span>
+                {c.eye && (showBalances ? <Eye className="w-3 h-3 text-gray-500 shrink-0" /> : <EyeOff className="w-3 h-3 text-gray-500 shrink-0" />)}
+              </div>
+              <div className={`font-bold text-sm tabular-nums truncate transition-all ${c.cls} ${showBalances ? '' : 'blur-[6px]'}`}>{c.value}</div>
             </div>
           ))}
         </div>
@@ -1093,10 +1103,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* RAPORTET SIPAS ROBOTIT (Live) — kartë e veçantë për secilin robot me saktësinë në %,
           W/L dhe fitimin — nga historiku real i MT5 i 7 ditëve (kërkesa e pronarit). */}
       {metaConfigured && history.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3">
-            <History className="w-4 h-4 text-amber-400" />{t('Raportet sipas robotit (Live, 7 ditët e fundit)')}
-          </h3>
+        <TLFold k="reports" title={t('Raportet sipas robotit (Live, 7 ditët e fundit)')} icon={<History className="w-4 h-4 text-amber-400" />}>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {(() => {
               const order = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast', 'Sinjalet', 'Sinjalet-Scalp', 'FastT', 'Manuale'];
@@ -1126,15 +1133,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               });
             })()}
           </div>
-        </div>
+        </TLFold>
       )}
 
       {/* TREGTITË E MBYLLURA — TABELË E VEÇANTË PËR SECILIN ROBOT (kërkesa e pronarit):
           çdo robot ka tabelën e vet me totalet (tregtime, W/L, saktësi, bilanc) që të dihet
           saktë cili po fiton e cili po humb. Tregtimet manuale kanë tabelën e tyre në fund. */}
       {metaConfigured && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-3"><History className="w-4 h-4 text-amber-400" />{t('Tregtitë e mbyllura sipas robotit (7 ditët e fundit)')}</h3>
+        <TLFold k="closed" title={t('Tregtitë e mbyllura sipas robotit (7 ditët e fundit)')} icon={<History className="w-4 h-4 text-amber-400" />}>
           {history.length === 0 ? (
             <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë trade i mbyllur ende.')}</p>
           ) : (
@@ -1233,17 +1239,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               })()}
             </div>
           )}
-        </div>
+        </TLFold>
       )}
       </div>
 
       {/* 3) Sinjalet aktive (lista e plotë) — rrinë derisa të mbyllen (TP/SL/skadim), si te demo;
              klik për të mbushur formën. (Nuk fshihen pas 15 min si widget-i "Sinjali i fundit".) */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" />{t('Sinjalet')}</h3>
-          <button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300">{t('Të gjitha')}</button>
-        </div>
+      <TLFold k="signals" title={t('Sinjalet')} icon={<Zap className="w-4 h-4 text-amber-400" />}
+        right={<button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300 shrink-0">{t('Të gjitha')}</button>}>
         {signals.length === 0 ? (
           <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal aktiv tani.')}</p>
         ) : (
@@ -1282,13 +1285,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             })}
           </div>
         )}
-      </div>
+      </TLFold>
 
-      {/* 4) Sinjalet e vjetra (të përfunduara) */}
-      <CompletedSignals signals={doneSignals} variant="compact" />
-
-      {/* 5) Historiku diagnostik i skanimeve — pse hyn/s'hyn sinjali (s'prek logjikën) */}
-      <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
+      {/* 4+5) Analizat e sinjaleve — të grupuara e të palosshme (default të mbyllura, që faqja
+          kryesore të mbetet e pastër; hapen me një klik dhe zgjedhja mbahet mend). */}
+      <TLFold k="history" bare defaultOpen={false} title={t('Analiza e sinjaleve — të përfunduarat + historiku i skanimeve')} icon={<History className="w-4 h-4 text-amber-400" />}>
+        <CompletedSignals signals={doneSignals} variant="compact" />
+        <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
+      </TLFold>
     </div>
   );
 }
