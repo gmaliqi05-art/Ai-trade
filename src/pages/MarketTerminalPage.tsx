@@ -1117,7 +1117,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       )}
 
       {/* Porosi e re (majtas) + Trade-t e mbyllura (djathtas) — dy kolona në ekran të madh, stack në mobil */}
-      <div className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-5 lg:items-start">
+      {/* GRID 2-kolonësh (tablet/PC): majtas (28rem) Sinjali + Porosia; djathtas Raportet sipas
+          robotit — pa asnjë hapësirë të vdekur. Tabelat e mbyllura dalin MË POSHTË me gjerësi
+          të plotë (u shtypnin në 28rem kur ishin fëmija i tretë i grid-it). Në mobil: stack. */}
+      <div className="space-y-5 lg:space-y-0 lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-5 lg:items-start">
       <div>
         {/* Sinjali i fundit — i vendosur SIPËR formës "Porosi e re" (klik për ta tregtuar). */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 mb-3">
@@ -1312,6 +1315,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           </div>
         </TLFold>
       )}
+      </div>
 
       {/* TREGTITË E MBYLLURA — TABELË E VEÇANTË PËR SECILIN ROBOT (kërkesa e pronarit):
           çdo robot ka tabelën e vet me totalet (tregtime, W/L, saktësi, bilanc) që të dihet
@@ -1354,16 +1358,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
+                            {/* Kolonat SL/TP fshihen nën md (ekranet e ngushta) — daljet e tjera mjaftojnë
+                                pa tërheqje horizontale; në tablet/PC dalin të gjitha. */}
                             <tr className="text-gray-500 border-b border-gray-800">
-                              <th className="text-left font-medium py-2">{t('Simboli')}</th>
-                              <th className="text-left font-medium py-2">{t('Lloji')}</th>
-                              <th className="text-right font-medium py-2">{t('Lot')}</th>
-                              <th className="text-right font-medium py-2">{t('Hyrje')}</th>
-                              <th className="text-right font-medium py-2">SL</th>
-                              <th className="text-right font-medium py-2">TP</th>
-                              <th className="text-right font-medium py-2">{t('Dalja')}</th>
-                              <th className="text-right font-medium py-2">{t('Fitim/Humbje')}</th>
-                              <th className="text-right font-medium py-2">{t('Koha')}</th>
+                              <th className="text-left font-medium py-1.5 pr-2">{t('Simboli')}</th>
+                              <th className="text-left font-medium py-1.5 pr-2">{t('Lloji')}</th>
+                              <th className="text-right font-medium py-1.5 px-1">{t('Lot')}</th>
+                              <th className="text-right font-medium py-1.5 px-1">{t('Hyrje')}</th>
+                              <th className="text-right font-medium py-1.5 px-1 hidden md:table-cell">SL</th>
+                              <th className="text-right font-medium py-1.5 px-1 hidden md:table-cell">TP</th>
+                              <th className="text-right font-medium py-1.5 px-1">{t('Dalja')}</th>
+                              <th className="text-right font-medium py-1.5 px-1">{t('Fitim/Humbje')}</th>
+                              <th className="text-right font-medium py-1.5 pl-1">{t('Koha')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-800/60">
@@ -1372,22 +1378,22 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                               const ek = exitKind(d);
                               return (
                                 <tr key={d.id} className="hover:bg-gray-800/30">
-                                  <td className="py-2 text-white font-medium">{d.symbol || '—'}</td>
-                                  <td className="py-2"><span className={`font-bold ${isBuy ? 'text-green-400' : d.direction === 'SELL' ? 'text-red-400' : 'text-gray-400'}`}>{isBuy ? t('BLEJ') : d.direction === 'SELL' ? t('SHIT') : '—'}</span></td>
-                                  <td className="py-2 text-right text-gray-300">{d.volume || '—'}</td>
-                                  <td className="py-2 text-right text-gray-300">{d.entryPrice != null ? d.entryPrice.toFixed(2) : '—'}</td>
-                                  <td className="py-2 text-right text-red-400/70">{d.plannedSL != null ? d.plannedSL.toFixed(2) : '—'}</td>
-                                  <td className="py-2 text-right text-green-400/70">{d.plannedTP != null ? d.plannedTP.toFixed(2) : '—'}</td>
-                                  <td className="py-2 text-right whitespace-nowrap">
-                                    <span className="text-gray-300">{d.exitPrice != null ? d.exitPrice.toFixed(2) : '—'}</span>
+                                  <td className="py-1.5 pr-2 text-white font-medium whitespace-nowrap">{d.symbol || '—'}</td>
+                                  <td className="py-1.5 pr-2"><span className={`font-bold ${isBuy ? 'text-green-400' : d.direction === 'SELL' ? 'text-red-400' : 'text-gray-400'}`}>{isBuy ? t('BLEJ') : d.direction === 'SELL' ? t('SHIT') : '—'}</span></td>
+                                  <td className="py-1.5 px-1 text-right text-gray-300">{d.volume || '—'}</td>
+                                  <td className="py-1.5 px-1 text-right text-gray-300 tabular-nums">{d.entryPrice != null ? d.entryPrice.toFixed(2) : '—'}</td>
+                                  <td className="py-1.5 px-1 text-right text-red-400/70 tabular-nums hidden md:table-cell">{d.plannedSL != null ? d.plannedSL.toFixed(2) : '—'}</td>
+                                  <td className="py-1.5 px-1 text-right text-green-400/70 tabular-nums hidden md:table-cell">{d.plannedTP != null ? d.plannedTP.toFixed(2) : '—'}</td>
+                                  <td className="py-1.5 px-1 text-right whitespace-nowrap">
+                                    <span className="text-gray-300 tabular-nums">{d.exitPrice != null ? d.exitPrice.toFixed(2) : '—'}</span>
                                     {ek === 'tp' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-green-500/20 text-green-400">TP</span>}
                                     {ek === 'sl' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-400">SL</span>}
                                     {/* "Manual" (mbyllje jo në SL/TP) ka kuptim VETËM kur SL/TP e planifikuara dihen —
                                         përndryshe çdo mbyllje robotike etiketohej gabimisht "Manual". */}
                                     {ek === 'other' && d.exitPrice != null && (d.plannedSL != null || d.plannedTP != null) && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/40 text-gray-400">{t('Manual')}</span>}
                                   </td>
-                                  <td className={`py-2 text-right font-semibold ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
-                                  <td className="py-2 text-right text-gray-500">{d.closeTime ? new Date(d.closeTime).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                                  <td className={`py-1.5 px-1 text-right font-semibold tabular-nums ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
+                                  <td className="py-1.5 pl-1 text-right text-gray-500 whitespace-nowrap tabular-nums">{d.closeTime ? new Date(d.closeTime).toLocaleString(dtLocale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                                 </tr>
                               );
                             })}
@@ -1418,7 +1424,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           )}
         </TLFold>
       )}
-      </div>
 
       {/* 3) Sinjalet aktive (lista e plotë) — rrinë derisa të mbyllen (TP/SL/skadim), si te demo;
              klik për të mbushur formën. (Nuk fshihen pas 15 min si widget-i "Sinjali i fundit".) */}
