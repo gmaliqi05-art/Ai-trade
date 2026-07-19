@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import {
-  Activity, RefreshCw, Loader2, Zap, Brain,
+  Activity, RefreshCw, Loader2, Zap, Brain, Landmark,
   AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
   ArrowUp, ArrowDown, Clock, X,
 } from 'lucide-react';
@@ -180,6 +180,87 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [showSignalInfo, setShowSignalInfo] = useState(false);
   const [confirmNoSLTP, setConfirmNoSLTP] = useState(false);
   const [showBalances, setShowBalances] = useState(false); // privatësi: shifrat e fshehura (të turbullta) si default
+
+  // ---- INVESTITORËT E MËDHENJ (kërkesa e pronarit) ----
+  // Nivelet e mëdha në grafik (muret e porosive + zonat e likuiditetit) — çelës me kujtesë.
+  const [showBigLevels, setShowBigLevels] = useState<boolean>(() => { try { return localStorage.getItem('tl_biglvl') !== '0'; } catch { return true; } });
+  const toggleBigLevels = () => setShowBigLevels(v => { try { localStorage.setItem('tl_biglvl', v ? '0' : '1'); } catch { /* */ } return !v; });
+
+  // (1) COT: pozicionet javore REALE të fondeve/bankave në futures të arit (burim zyrtar: CFTC).
+  interface CotSide { long: number; short: number }
+  interface CotWeek { date: string; mm: CotSide; swap: CotSide }
+  const [cot, setCot] = useState<{ cur: CotWeek; prev: CotWeek | null } | null>(null);
+  useEffect(() => {
+    (async () => {
+      // Rreshtat vijnë për disa tregje ari — mbaj për çdo datë atë me interesin e hapur më të madh (COMEX).
+      const parse = (rows: Record<string, string>[]): CotWeek[] => {
+        const byDate = new Map<string, Record<string, string>>();
+        for (const r of rows) {
+          const d = (r.report_date_as_yyyy_mm_dd || '').slice(0, 10);
+          if (!d) continue;
+          const prev = byDate.get(d);
+          if (!prev || Number(r.open_interest_all) > Number(prev.open_interest_all)) byDate.set(d, r);
+        }
+        return [...byDate.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([d, r]) => ({
+          date: d,
+          mm: { long: Number(r.m_money_positions_long_all) || 0, short: Number(r.m_money_positions_short_all) || 0 },
+          // Fusha e short-it të dealer-ëve ka dy nënvija te CFTC (çudi historike) — provo të dyja.
+          swap: { long: Number(r.swap_positions_long_all) || 0, short: Number(r.swap__positions_short_all ?? r.swap_positions_short_all) || 0 },
+        }));
+      };
+      try {
+        const base = 'https://publicreporting.cftc.gov/resource/72hh-3qpy.json';
+        let rows: Record<string, string>[] = [];
+        try {
+          const r = await fetch(`${base}?commodity_name=GOLD&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=8`);
+          if (r.ok) rows = await r.json();
+        } catch { /* provo fallback-un */ }
+        if (!rows.length) {
+          const r = await fetch(`${base}?$where=${encodeURIComponent("market_and_exchange_names like 'GOLD -%'")}&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=8`);
+          if (r.ok) rows = await r.json();
+        }
+        const weeks = parse(rows);
+        if (weeks.length) setCot({ cur: weeks[0], prev: weeks[1] ?? null });
+      } catch { /* paneli thjesht s'shfaqet — pa shifra të shpikura */ }
+    })();
+  }, []);
+
+  // (2) MURET E POROSIVE: libri REAL i porosive të arit të tokenizuar (PAXG/Binance) — muret më të
+  // mëdha blerëse/shitëse pranë çmimit. Ruhen si DELTA nga mid-i, që në grafik të ndjekin
+  // automatikisht çmimin live të brokerit (pa offset të ngrirë). Rifreskohen çdo 30s.
+  const [obWalls, setObWalls] = useState<{ delta: number; qty: number; side: 'buy' | 'sell' }[]>([]);
+  const [obWallsAt, setObWallsAt] = useState(0);
+  useEffect(() => {
+    if (!/XAU|GOLD/i.test(selected)) { setObWalls([]); return; }
+    let stop = false;
+    const load = async () => {
+      try {
+        const r = await fetch('https://data-api.binance.vision/api/v3/depth?symbol=PAXGUSDT&limit=500');
+        if (!r.ok) return;
+        const d = await r.json() as { bids: [string, string][]; asks: [string, string][] };
+        if (stop || !d.bids?.length || !d.asks?.length) return;
+        const mid = (Number(d.bids[0][0]) + Number(d.asks[0][0])) / 2;
+        // Grupim në kova $1; mbaj 2 kovat më të mëdha për anë brenda ±35$ nga çmimi.
+        const bucket = (rows: [string, string][], lo: number, hi: number) => {
+          const m = new Map<number, number>();
+          for (const [p0, q0] of rows) {
+            const p = Number(p0), q = Number(q0);
+            if (p < lo || p > hi) continue;
+            const k = Math.round(p);
+            m.set(k, (m.get(k) || 0) + q);
+          }
+          return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
+        };
+        const bids = bucket(d.bids, mid - 35, mid - 0.5).map(([p, q]) => ({ delta: p - mid, qty: q, side: 'buy' as const }));
+        const asks = bucket(d.asks, mid + 0.5, mid + 35).map(([p, q]) => ({ delta: p - mid, qty: q, side: 'sell' as const }));
+        setObWalls([...bids, ...asks]);
+        setObWallsAt(Date.now());
+      } catch { /* mbaje leximin e fundit */ }
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => { stop = true; clearInterval(id); };
+  }, [selected]);
   const [preOpenOrders, setPreOpenOrders] = useState<PreOpenOrder[]>([]); // porositë para-hapjeje (radhë/pending te brokeri)
   const [nowTs, setNowTs] = useState(Date.now()); // tik për numëruesin e hapjes së tregut
 
@@ -684,6 +765,31 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Çaktivizo editimin e SL/TP kur pozicioni mbyllet ose ndërrohet simboli.
   const activeStillOpen = editables.some(e => e.positionId === activePosId);
   useEffect(() => { if (activePosId && !activeStillOpen) setActivePosId(null); }, [activePosId, activeStillOpen]);
+  // (3) ZONAT E LIKUIDITETIT nga qirinjtë realë: maja/funde që u prekën ≥2 herë — aty grumbullohen
+  // stop-et dhe porositë e mëdha. Top 2 mbi dhe nën çmimin aktual.
+  const liqZones = useMemo(() => {
+    const c = displayCandles;
+    if (!c || c.length < 60) return [] as { price: number; touches: number }[];
+    const hi: number[] = [], lo: number[] = [];
+    for (let i = 2; i < c.length - 2; i++) {
+      if (c[i].high >= c[i - 1].high && c[i].high >= c[i - 2].high && c[i].high >= c[i + 1].high && c[i].high >= c[i + 2].high) hi.push(c[i].high);
+      if (c[i].low <= c[i - 1].low && c[i].low <= c[i - 2].low && c[i].low <= c[i + 1].low && c[i].low <= c[i + 2].low) lo.push(c[i].low);
+    }
+    const px = c[c.length - 1].close;
+    const cluster = (xs: number[]) => {
+      const s = [...xs].sort((a, b) => a - b);
+      const out: { price: number; touches: number }[] = [];
+      let grp: number[] = [];
+      const flush = () => { if (grp.length >= 2) out.push({ price: grp.reduce((a, b) => a + b, 0) / grp.length, touches: grp.length }); grp = []; };
+      for (const x of s) { if (grp.length && x - grp[grp.length - 1] > 1.5) flush(); grp.push(x); }
+      flush();
+      return out;
+    };
+    const above = cluster(hi).filter(z => z.price > px).sort((a, b) => a.price - b.price).slice(0, 2);
+    const below = cluster(lo).filter(z => z.price < px).sort((a, b) => b.price - a.price).slice(0, 2);
+    return [...above, ...below];
+  }, [displayCandles]);
+
   // Ngjyra e linjës së Hyrjes sipas ROBOTIT (e njëjta paletë me raportet) — që në grafik të
   // dallohet menjëherë cili robot e hapi trade-in; blu = manual/i panjohur.
   const robotLineColor = (robot: string | null): string =>
@@ -710,6 +816,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           title: (pxFresh && totalLivePnl != null)
             ? `${t('Tani')} · ${totalLivePnl >= 0 ? '+' : ''}${r2(totalLivePnl)} ${fcur}`
             : `${t('Tani')} · ${t('çmim jo-live — mos mbyll')}` }]
+      : []),
+    // NIVELET E MËDHA (çelësi 🏦): muret reale të porosive (PAXG, ≤2 min të vjetra, ndjekin
+    // çmimin live të brokerit) + zonat e likuiditetit nga qirinjtë (maja/funde të prekura ≥2×).
+    ...((showBigLevels && /XAU|GOLD/i.test(selected) && brokerPx && pxFresh && Date.now() - obWallsAt < 120_000)
+      ? obWalls.map(w => ({
+          price: Math.round(((brokerPx!.bid + brokerPx!.ask) / 2 + w.delta) * 100) / 100,
+          color: w.side === 'buy' ? '#22d3ee' : '#fb923c',
+          title: `${w.side === 'buy' ? t('Mur blerësish') : t('Mur shitësish')} · ~${Math.round(w.qty)} oz`,
+        }))
+      : []),
+    ...(showBigLevels
+      ? liqZones.map(z => ({ price: Math.round(z.price * 100) / 100, color: '#64748b', title: `${t('Zonë likuiditeti')} · ${z.touches} ${t('prekje')}` }))
       : []),
   ];
 
@@ -897,10 +1015,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   </button>
                 ))}
               </div>
-              <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
-                {['1m', '5m', '15m', '1h', '4h', '1d'].map(t => (
-                  <button key={t} onClick={() => setTf(t)} className={`text-[11px] px-2 py-1 rounded-md font-medium transition-colors ${tf === t ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white'}`}>{t === '1d' ? '1D' : t}</button>
-                ))}
+              <div className="flex items-center gap-1.5">
+                <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
+                  {['1m', '5m', '15m', '1h', '4h', '1d'].map(t => (
+                    <button key={t} onClick={() => setTf(t)} className={`text-[11px] px-2 py-1 rounded-md font-medium transition-colors ${tf === t ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white'}`}>{t === '1d' ? '1D' : t}</button>
+                  ))}
+                </div>
+                {/* Çelësi 🏦 — muret e porosive + zonat e likuiditetit në grafik (me kujtesë). */}
+                <button onClick={toggleBigLevels} title={t('Muret e porosive (blerës/shitës të mëdhenj) + zonat e likuiditetit në grafik')}
+                  className={`text-[11px] px-2 py-1 rounded-lg font-semibold transition-colors border ${showBigLevels ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-gray-800 text-gray-500 border-transparent hover:text-white'}`}>
+                  🏦 {t('Nivelet')}
+                </button>
               </div>
             </div>
             <div className="px-2 pb-2">
@@ -938,6 +1063,42 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
       {/* Pozicionet e hapura (live) — VENDOSUR menjëherë nën grafikun e MetaTrader, që të shihen bashkë */}
       <OpenPositionsPanel configured={metaConfigured} section="positions" />
+
+      {/* INVESTITORËT E MËDHENJ — pozicionet javore REALE nga raporti zyrtar COT i CFTC
+          (futures të arit, COMEX): fondet e mëdha dhe bankat/dealer-ët, neto blerës apo shitës. */}
+      {cot && (
+        <TLFold k="cot" title={t('Investitorët e Mëdhenj (COT — futures të arit)')} icon={<Landmark className="w-4 h-4 text-amber-400" />}>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {[
+              { label: t('Fondet e mëdha (Managed Money)'), cur: cot.cur.mm, prev: cot.prev?.mm },
+              { label: t('Bankat/Dealer-ët (Swap Dealers)'), cur: cot.cur.swap, prev: cot.prev?.swap },
+            ].map(g => {
+              const net = g.cur.long - g.cur.short;
+              const prevNet = g.prev ? g.prev.long - g.prev.short : null;
+              const d = prevNet == null ? null : net - prevNet;
+              return (
+                <div key={g.label} className="bg-gray-800/40 rounded-xl p-3">
+                  <div className="text-[11px] text-gray-400 mb-1.5">{g.label}</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${net >= 0 ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
+                      {net >= 0 ? t('BLERËS neto') : t('SHITËS neto')} · {Math.abs(net).toLocaleString()} {t('kontrata')}
+                    </span>
+                    {d != null && d !== 0 && (
+                      <span className={`text-[11px] font-semibold ${d > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {d > 0 ? '▲ +' : '▼ '}{d.toLocaleString()} {t('nga java e kaluar')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-1.5">Long {g.cur.long.toLocaleString()} · Short {g.cur.short.toLocaleString()}</div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-gray-600 mt-2 leading-snug">
+            {t('Burimi: CFTC (raporti zyrtar COT) — pozicionet reale në futures të arit (COMEX); publikohet çdo të premte për të martën.')} · {cot.cur.date}
+          </p>
+        </TLFold>
+      )}
 
       {/* Porosi e re (majtas) + Trade-t e mbyllura (djathtas) — dy kolona në ekran të madh, stack në mobil */}
       <div className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-5 lg:items-start">
