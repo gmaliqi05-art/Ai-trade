@@ -33,6 +33,13 @@ export interface PriceLineDef {
   title: string;
 }
 
+/** BREZ SFONDI horizontal (p.sh. zonë likuiditeti): fill gjysmë-transparent mes top/bottom. */
+export interface BandDef {
+  top: number;
+  bottom: number;
+  fill: string; // rgba me alfa të ulët — qirinjtë mbeten të lexueshëm përmes tij
+}
+
 /** Pozicion i hapur me SL/TP të editueshëm mbi grafik (si te MetaTrader 5). */
 export interface EditableSlTp {
   positionId: string;
@@ -45,11 +52,13 @@ export interface EditableSlTp {
 }
 
 export default function Mt5Chart({
-  candles, lines = [], height = 380, fitKey, maxLineExpand,
+  candles, lines = [], bands = [], height = 380, fitKey, maxLineExpand,
   positions = [], activeId = null, onActiveChange, onCommitSlTp, markers = [],
 }: {
   candles: ChartCandle[];
   lines?: PriceLineDef[];
+  /** Breza sfondi të hijezuar (zona likuiditeti etj.) — vizatohen gjysmë-transparentë mbi grafik. */
+  bands?: BandDef[];
   /** Shënjime hyrje/dalje tregtimesh mbi qirinj (shigjeta + rrathë me tekst). */
   markers?: ChartMarkerDef[];
   height?: number;
@@ -73,6 +82,7 @@ export default function Mt5Chart({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const bandSeriesRef = useRef<ISeriesApi<'Baseline'>[]>([]);
   const linePricesRef = useRef<number[]>([]); // çmimet e Hyrje/SL/TP për auto-scale
   const maxExpandRef = useRef<number | undefined>(maxLineExpand);
   maxExpandRef.current = maxLineExpand;
@@ -214,7 +224,7 @@ export default function Mt5Chart({
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       chart.remove();
-      chartRef.current = null; seriesRef.current = null; priceLinesRef.current = []; labelEls.current = [];
+      chartRef.current = null; seriesRef.current = null; priceLinesRef.current = []; labelEls.current = []; bandSeriesRef.current = [];
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -255,6 +265,29 @@ export default function Mt5Chart({
       .map(m => ({ time: m.time as UTCTimestamp, position: m.position, shape: m.shape, color: m.color, text: m.text, size: 1 }));
     s.setMarkers(ms);
   }, [markers, candles]);
+
+  // BREZAT E SFONDIT (zonat e likuiditetit): fill gjysmë-transparent mes top/bottom — baseline
+  // series me vlerë konstante 'top' dhe bazë 'bottom'; NUK ndikon auto-scale dhe s'kap kursorin.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || candles.length === 0) return;
+    bandSeriesRef.current.forEach(s => { try { chart.removeSeries(s); } catch { /* u hoq me grafikun */ } });
+    bandSeriesRef.current = [];
+    const times = candles.map(c => c.time as UTCTimestamp);
+    for (const b of bands) {
+      if (!Number.isFinite(b.top) || !Number.isFinite(b.bottom) || b.top <= b.bottom) continue;
+      const s = chart.addBaselineSeries({
+        baseValue: { type: 'price', price: b.bottom },
+        topFillColor1: b.fill, topFillColor2: b.fill,
+        bottomFillColor1: 'rgba(0,0,0,0)', bottomFillColor2: 'rgba(0,0,0,0)',
+        topLineColor: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)',
+        lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        autoscaleInfoProvider: () => null, // brezat s'e zgjerojnë kurrë shkallën e çmimit
+      });
+      s.setData(times.map(t => ({ time: t, value: b.top })));
+      bandSeriesRef.current.push(s);
+    }
+  }, [bands, candles]);
 
   // Përditëso linjat Hyrje/SL/TP + etiketat e majta.
   useEffect(() => {
