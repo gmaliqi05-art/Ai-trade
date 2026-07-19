@@ -766,29 +766,44 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const activeStillOpen = editables.some(e => e.positionId === activePosId);
   useEffect(() => { if (activePosId && !activeStillOpen) setActivePosId(null); }, [activePosId, activeStillOpen]);
   // (3) ZONAT E LIKUIDITETIT nga qirinjtë realë: maja/funde që u prekën ≥2 herë — aty grumbullohen
-  // stop-et dhe porositë e mëdha. Top 2 mbi dhe nën çmimin aktual.
+  // stop-et dhe porositë e mëdha. Top 2 mbi dhe nën çmimin; secila si BREZ (lo–hi) për hijezim.
   const liqZones = useMemo(() => {
     const c = displayCandles;
-    if (!c || c.length < 60) return [] as { price: number; touches: number }[];
-    const hi: number[] = [], lo: number[] = [];
+    if (!c || c.length < 60) return [] as { lo: number; hi: number; edge: number; touches: number }[];
+    const hs: number[] = [], ls: number[] = [];
     for (let i = 2; i < c.length - 2; i++) {
-      if (c[i].high >= c[i - 1].high && c[i].high >= c[i - 2].high && c[i].high >= c[i + 1].high && c[i].high >= c[i + 2].high) hi.push(c[i].high);
-      if (c[i].low <= c[i - 1].low && c[i].low <= c[i - 2].low && c[i].low <= c[i + 1].low && c[i].low <= c[i + 2].low) lo.push(c[i].low);
+      if (c[i].high >= c[i - 1].high && c[i].high >= c[i - 2].high && c[i].high >= c[i + 1].high && c[i].high >= c[i + 2].high) hs.push(c[i].high);
+      if (c[i].low <= c[i - 1].low && c[i].low <= c[i - 2].low && c[i].low <= c[i + 1].low && c[i].low <= c[i + 2].low) ls.push(c[i].low);
     }
     const px = c[c.length - 1].close;
     const cluster = (xs: number[]) => {
       const s = [...xs].sort((a, b) => a - b);
-      const out: { price: number; touches: number }[] = [];
+      const out: { lo: number; hi: number; touches: number }[] = [];
       let grp: number[] = [];
-      const flush = () => { if (grp.length >= 2) out.push({ price: grp.reduce((a, b) => a + b, 0) / grp.length, touches: grp.length }); grp = []; };
+      const flush = () => {
+        if (grp.length >= 2) {
+          let lo = grp[0], hi = grp[grp.length - 1];
+          if (hi - lo < 0.6) { const m = (lo + hi) / 2; lo = m - 0.3; hi = m + 0.3; } // trashësi minimale e dukshme
+          out.push({ lo, hi, touches: grp.length });
+        }
+        grp = [];
+      };
       for (const x of s) { if (grp.length && x - grp[grp.length - 1] > 1.5) flush(); grp.push(x); }
       flush();
       return out;
     };
-    const above = cluster(hi).filter(z => z.price > px).sort((a, b) => a.price - b.price).slice(0, 2);
-    const below = cluster(lo).filter(z => z.price < px).sort((a, b) => b.price - a.price).slice(0, 2);
+    // 'edge' = skaji ku FILLON zona (ana më e afërt me çmimin) — aty vizatohet vija e kuqe e lehtë.
+    const above = cluster(hs).filter(z => z.lo > px).sort((a, b) => a.lo - b.lo).slice(0, 2)
+      .map(z => ({ ...z, edge: z.lo }));
+    const below = cluster(ls).filter(z => z.hi < px).sort((a, b) => b.hi - a.hi).slice(0, 2)
+      .map(z => ({ ...z, edge: z.hi }));
     return [...above, ...below];
   }, [displayCandles]);
+
+  // Brezat e hijezuar për grafikun (kuqe e lehtë në sfond) — memo që të mos rikrijohen çdo render.
+  const liqBands = useMemo(() =>
+    showBigLevels ? liqZones.map(z => ({ top: z.hi, bottom: z.lo, fill: 'rgba(239,68,68,0.12)' })) : [],
+  [liqZones, showBigLevels]);
 
   // Ngjyra e linjës së Hyrjes sipas ROBOTIT (e njëjta paletë me raportet) — që në grafik të
   // dallohet menjëherë cili robot e hapi trade-in; blu = manual/i panjohur.
@@ -826,8 +841,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           title: `${w.side === 'buy' ? t('Mur blerësish') : t('Mur shitësish')} · ~${Math.round(w.qty)} oz`,
         }))
       : []),
+    // Vija e kuqe e lehtë te SKAJI ku fillon zona (brezi vetë hijezon sfondin — shih liqBands).
     ...(showBigLevels
-      ? liqZones.map(z => ({ price: Math.round(z.price * 100) / 100, color: '#64748b', title: `${t('Zonë likuiditeti')} · ${z.touches} ${t('prekje')}` }))
+      ? liqZones.map(z => ({ price: Math.round(z.edge * 100) / 100, color: '#f87171', title: `${t('Zonë likuiditeti')} · ${z.touches} ${t('prekje')}` }))
       : []),
   ];
 
@@ -1032,7 +1048,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               {candles.length === 0 ? (
                 <div className="h-[460px] flex items-center justify-center text-gray-600 text-sm">{t('Po ngarkohet grafiku…')}</div>
               ) : (
-                <Mt5Chart candles={displayCandles} lines={chartLines} height={460} fitKey={`${selected}_${tf}`}
+                <Mt5Chart candles={displayCandles} lines={chartLines} bands={liqBands} height={460} fitKey={`${selected}_${tf}`}
                   positions={editables} activeId={activePosId} onActiveChange={setActivePosId} onCommitSlTp={onCommitSlTp} />
               )}
               {editables.length > 0 && candles.length > 0 && (
