@@ -1,7 +1,7 @@
 // Super Admin → "ProTrade Lab": Faza 3 (analiza e pikave kyçe → win-rate sipas kushteve)
 // + Faza 4 (Claude analizon statistikat dhe sugjeron rregullime). Vetëm super-admin.
 import { useEffect, useState, useCallback } from 'react';
-import { FlaskConical, Brain, RefreshCw, Loader2, TrendingUp, AlertTriangle, Lightbulb, Database, Bot, Cpu, Target, CheckCircle2, Eye } from 'lucide-react';
+import { FlaskConical, Brain, RefreshCw, Loader2, TrendingUp, AlertTriangle, Lightbulb, Database, Bot, Cpu, Target, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import IntelligenceMatrix from './IntelligenceMatrix';
 import MmtiRobot from './MmtiRobot';
@@ -16,9 +16,6 @@ interface Advice { insights?: string[]; suggestions?: { title: string; detail: s
 interface TIStat { n: number; wins: number; losses: number; winRate: number; net: number; avgWin: number; avgLoss: number; expectancy: number; profitFactor: number }
 interface TIGroup extends TIStat { label: string }
 interface TradeIntel { account: string; days: number; total: number; overall: TIStat; bySession: TIGroup[]; byStrategy: TIGroup[]; bySymbol: TIGroup[]; error?: string }
-
-// Faza C (shadow): përmbledhja e trade-ve virtuale të MMTI-së — pa para reale.
-interface ShadowStat { open: number; closed: number; wins: number; winRate: number; cumR: number; total: number }
 
 function rateColor(rate: number) {
   if (rate >= 60) return 'text-green-400';
@@ -45,8 +42,6 @@ export default function AdminProTradeLabPage() {
   const [mmtiActive, setMmtiActive] = useState(false);
   const [plan, setPlan] = useState<OptimizedPlan | null>(null);
   const [optimizing, setOptimizing] = useState(false);
-  const [shadow, setShadow] = useState<ShadowStat | null>(null);
-  const [liveEnabled, setLiveEnabled] = useState(false);
 
   // "Kodet reale" për matrix-in: tokena të shkurtër (shi) + rreshta të plotë (feed):
   // sinjale me Hyrje/SL/TP/conf, formula matematikore dhe rregulla — nga sinjalet reale.
@@ -124,27 +119,11 @@ export default function AdminProTradeLabPage() {
       .then(({ data }) => {
         if (!data) return;
         setMmtiActive(!!(data as { active?: boolean }).active);
-        setLiveEnabled(!!(data as { live_enabled?: boolean }).live_enabled);
         const op = (data as { optimized_params?: OptimizedPlan | null }).optimized_params;
         if (op) setPlan(op);
       });
   }, []);
 
-  // Faza C — performanca SHADOW (trade virtuale; pa para). Vetëm lexim nga mmti_shadow_trades.
-  const loadShadow = useCallback(async () => {
-    const { data } = await supabase.from('mmti_shadow_trades').select('status, pnl_r').limit(2000);
-    const rows = (data ?? []) as { status: string; pnl_r: number | null }[];
-    const open = rows.filter(r => r.status === 'open').length;
-    const closedRows = rows.filter(r => r.status !== 'open');
-    const wins = closedRows.filter(r => r.status === 'tp' || (r.pnl_r ?? 0) > 0).length;
-    const cumR = closedRows.reduce((s, r) => s + (Number(r.pnl_r) || 0), 0);
-    setShadow({
-      open, closed: closedRows.length, wins,
-      winRate: closedRows.length ? Math.round((wins / closedRows.length) * 100) : 0,
-      cumR: +cumR.toFixed(2), total: rows.length,
-    });
-  }, []);
-  useEffect(() => { loadShadow(); }, [loadShadow]);
   const toggleMmti = useCallback(async () => {
     const next = !mmtiActive; setMmtiActive(next);
     try { await supabase.from('mmti_state').update({ active: next, trades_learned: tradeIntel?.total ?? 0, updated_at: new Date().toISOString() }).eq('id', 1); } catch { /* injoro */ }
@@ -304,60 +283,6 @@ export default function AdminProTradeLabPage() {
             <p className="text-gray-600 text-[11px]">{t('MMTI ende NUK tregton (kjo është Faza C). Ky plan ruhet si rekomandim; aplikohet vetëm me miratimin tënd dhe në llogari të ndarë.')}</p>
           </div>
         )}
-      </div>
-
-      {/* ====== FAZA C — Shadow (MMTI provon strategjinë PA para, derisa të arrijë pragun) ====== */}
-      <div className="rounded-2xl border border-violet-500/25 bg-gradient-to-br from-violet-500/5 to-gray-900 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-400 to-fuchsia-500 flex items-center justify-center">
-              <Eye className="w-5 h-5 text-gray-950" />
-            </div>
-            <div>
-              <div className="text-white font-bold text-sm flex items-center gap-2">{t('Faza C — Shadow')}
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${liveEnabled ? 'bg-green-500/15 text-green-400 border-green-500/30' : 'bg-violet-500/15 text-violet-300 border-violet-500/30'}`}>
-                  {liveEnabled ? t('Live i lejuar') : t('Vetëm shadow')}
-                </span>
-              </div>
-              <div className="text-gray-500 text-[11px]">{t('Provon strategjinë mbi sinjalet reale — pa para, pa prekur robotin aktual.')}</div>
-            </div>
-          </div>
-          <button onClick={loadShadow} className="p-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-400 hover:text-white">
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {[
-            { k: t('Hapur tani'), v: String(shadow?.open ?? 0) },
-            { k: t('Të mbyllura'), v: String(shadow?.closed ?? 0) },
-            { k: t('Win-rate'), v: `${shadow?.winRate ?? 0}%`, c: rateColor(shadow?.winRate ?? 0) },
-            { k: t('R kumulative'), v: `${(shadow?.cumR ?? 0) >= 0 ? '+' : ''}${shadow?.cumR ?? 0}R`, c: (shadow?.cumR ?? 0) >= 0 ? 'text-green-400' : 'text-red-400' },
-          ].map((c) => (
-            <div key={c.k} className="bg-gray-950 border border-gray-800 rounded-xl p-2.5">
-              <div className="text-[9px] text-gray-500 uppercase tracking-wide">{c.k}</div>
-              <div className={`text-base font-bold mt-0.5 ${c.c ?? 'text-white'}`}>{c.v}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Progresi drejt aktivizimit: ~100 trade shadow + miratimi yt */}
-        <div>
-          <div className="flex items-center justify-between text-[11px] mb-1">
-            <span className="text-gray-400">{t('Drejt aktivizimit (shadow → live)')}</span>
-            <span className="text-violet-300 font-semibold">{Math.min(100, shadow?.total ?? 0)}/100</span>
-          </div>
-          <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-violet-400 to-fuchsia-500" style={{ width: `${Math.min(100, shadow?.total ?? 0)}%` }} />
-          </div>
-        </div>
-
-        <div className="flex items-start gap-2 text-[11px] bg-violet-500/10 border border-violet-500/20 text-violet-200 rounded-lg p-2.5">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          {(shadow?.total ?? 0) >= 100
-            ? t('Mostra shadow u plotësua. MMTI mund të aktivizohet si robot i NDARË (llogari veçmas) vetëm me miratimin tënd — roboti aktual mbetet i paprekur.')
-            : t('Motori shadow mat performancën në heshtje (çdo 5 min). Tregtimi real aktivizohet vetëm pas ~100 trade shadow + miratimit tënd, në llogari krejt të ndarë.')}
-        </div>
       </div>
 
       {/* Inteligjenca live — "matrix" me kodet reale + robot që endet gjatë analizës */}
