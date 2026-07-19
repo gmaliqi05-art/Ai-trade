@@ -889,8 +889,8 @@ Deno.serve(async (req: Request) => {
       if (!cfg.account_id || !cfg.token) continue;
 
       let positions: Position[] = [];
-      let dayPnl = 0; // P&L i ditës = equity_tani − equity_fillimi (përfshin realized + floating)
-      let grossLoss = 0; // humbja BRUTO e ditës (vetëm trade-t humbëse)
+      let dayPnl = 0; // P&L i DITËS i ROBOTIT të Sinjaleve (realized + floating i pozicioneve SIG/SCALP)
+      let grossLoss = 0; // humbja BRUTO ditore e robotit të Sinjaleve (vetëm tregtitë humbëse të tij)
       let equity = 0; // kapitali aktual (për position sizing 1%)
       try {
         positions = (await maGet(cfg, "/positions") as Position[]) ?? [];
@@ -901,21 +901,33 @@ Deno.serve(async (req: Request) => {
         // SAFE-MODE për kapital të vogël (< €50): detyro vetëm lot-in MINIMAL (0.01), pavarësisht
         // cilësimeve manuale → roboti vazhdon të tregtojë, por me rrezik minimal për trade.
         if (equity > 0 && equity < 50) { cfg.max_lot = 0.01; cfg.default_lot = 0.01; }
-        // LIMITI DITOR I HUMBJES — i bazuar te EKUITETI (i besueshëm; s'dështon në heshtje si
-        // thirrja history-deals). Ruajmë ekuitetin në fillim të ditës UTC; humbja = equity − fillimi.
+        // Regjistro ekuitetin e fillimit të ditës (raportim/diagnostikë) — s'përdoret më për ndalim.
         if (equity > 0) {
           const todayUtc = frankfurtDateStr();
-          let dayStartEq = Number((cfg as { day_start_equity?: number }).day_start_equity);
           const dsd = (cfg as { day_start_date?: string }).day_start_date
             ? String((cfg as { day_start_date?: string }).day_start_date).slice(0, 10) : "";
-          if (dsd !== todayUtc || !Number.isFinite(dayStartEq) || dayStartEq <= 0) {
-            dayStartEq = equity;
+          if (dsd !== todayUtc) {
             try { await db.from("metaapi_config").update({ day_start_equity: equity, day_start_date: todayUtc }).eq("user_id", cfg.user_id); } catch { /* */ }
           }
-          dayPnl = (Number.isFinite(dayStartEq) && dayStartEq > 0) ? equity - dayStartEq : 0;
         }
-        // Humbja BRUTO e ditës — ndalues më i rreptë (kur humbjet kalojnë limitin, pavarësisht fitimeve).
-        grossLoss = await grossLossToday(cfg);
+        // LIMITI DITOR — VETËM tregtitë e ROBOTIT të Sinjaleve (kërkesa e pronarit): humbjet
+        // MANUALE të pronarit dhe të robotëve MMT (që kanë frenat e veta te mmt_config) NUK e
+        // ndalin më këtë robot. Realized: nga regjistri i mbylljeve (robot='Sinjalet'/'Sinjalet-Scalp');
+        // floating: vetëm pozicionet e hapura me etiketën SIG/SCALP.
+        try {
+          const { data: sigCloses } = await db.from("position_closes").select("net")
+            .eq("user_id", cfg.user_id).in("robot", ["Sinjalet", "Sinjalet-Scalp"])
+            .gte("closed_at", frankfurtDayStart().toISOString());
+          for (const r of (sigCloses ?? []) as { net?: number }[]) {
+            const n = Number(r.net) || 0;
+            dayPnl += n;
+            if (n < 0) grossLoss += -n;
+          }
+        } catch { /* në dyshim, mos blloko robotin */ }
+        const sigFloating = positions
+          .filter((p) => /\bSIG\b|SCALP/i.test(`${(p as { comment?: string }).comment ?? ""} ${(p as { clientId?: string }).clientId ?? ""}`))
+          .reduce((s, p) => s + (Number((p as { profit?: number }).profit) || 0), 0);
+        dayPnl += sigFloating;
       } catch (e) {
         summary.push({ user: cfg.user_id, error: `metaapi: ${(e as Error).message}` });
         // DUKSHMËRI: skip-i i heshtur i përdoruesit (MetaApi s'u përgjigj) linte 0 gjurmë — dukej
@@ -933,7 +945,7 @@ Deno.serve(async (req: Request) => {
         } catch { /* njoftimi s'duhet të ndalë robotin */ }
         continue;
       }
-      // NDALUES DITOR: ndalon kur humbja NETO (ekuiteti) OSE humbja BRUTO kalon kufirin.
+      // NDALUES DITOR: ndalon kur humbja NETO ose BRUTO e VETË robotit të Sinjaleve kalon kufirin.
       // L1 (audit): max_daily_loss i munguar/0/NaN → default i SIGURT (100), JO "pa kufi".
       const maxDailyRisk = Number(cfg.max_daily_loss) > 0 ? Number(cfg.max_daily_loss) : 100;
       const dailyStop = (dayPnl <= -maxDailyRisk || grossLoss >= maxDailyRisk);
@@ -948,9 +960,9 @@ Deno.serve(async (req: Request) => {
             const which = grossLoss >= maxDailyRisk ? `bruto ${grossLoss.toFixed(2)}` : `neto ${dayPnl.toFixed(2)}`;
             await db.from("trade_executions").insert({
               user_id: cfg.user_id, symbol: "XAUUSD", action: "BUY", volume: 0.01, mode: cfg.mode, status: "info",
-              reason: `Roboti u ndal për sot — limiti ditor i humbjes (${maxDailyRisk}) u arrit (${which}). Tregtitë e reja u pauzuan deri nesër.`,
+              reason: `Roboti u ndal për sot — limiti ditor i humbjes së ROBOTIT të sinjaleve (${maxDailyRisk}) u arrit (${which}). Tregtitë manuale s'ndikojnë. Rifillon nesër.`,
             });
-            await pushNotify({ user_id: cfg.user_id, title: "Roboti u ndal për sot", body: `Limiti ditor i humbjes (${maxDailyRisk}€) u arrit (${which}). Tregtitë e reja u pauzuan deri nesër.`, url: "/", tag: "daily-stop" });
+            await pushNotify({ user_id: cfg.user_id, title: "Roboti u ndal për sot", body: `Limiti ditor i humbjes së robotit të sinjaleve (${maxDailyRisk}€) u arrit (${which}). Rifillon nesër.`, url: "/", tag: "daily-stop" });
           }
         } catch { /* njoftimi s'duhet të ndalë robotin */ }
       }
