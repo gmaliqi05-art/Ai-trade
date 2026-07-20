@@ -157,6 +157,10 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
     .not("closed_at", "is", null).gte("opened_at", since);
   const rows = (data ?? []) as { strategy: string; r_multiple: number | null; opened_at: string }[];
   const minN = Math.max(10, cfg.learn_min_trades);
+  // Strategjitë e NGADALTA (trend/range/momentum) bëjnë ~5-10 tregti në 14 ditë — pragu i plotë
+  // minN i linte PA mësim përgjithmonë (trend −0.52R me 10 tregti s'aktivizonte asgjë).
+  // Për to mjafton gjysma e mostrës: sinjali −0.3R..−0.5R mbi 8+ tregti është i fortë.
+  const minSlow = Math.max(6, Math.floor(minN / 2));
   const patch: Record<string, unknown> = { last_learned_at: new Date().toISOString() };
   const log = async (param: string, oldV: unknown, newV: unknown, reason: string, n: number, exp: number) => {
     await db.from("mmt_learning").insert({ param, old_value: String(oldV), new_value: String(newV), reason, sample_n: n, expectancy: Math.round(exp * 100) / 100 });
@@ -167,14 +171,14 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
   };
   // MOMENTUM: humb → ngre pastërtinë ER (më selektiv); humb rëndë → fike; fiton → lehtëso pak.
   const m = expOf("momentum");
-  if (m.n >= minN) {
+  if (m.n >= minSlow) {
     if (m.exp < -0.5 && cfg.momentum_on) { patch.momentum_on = false; await log("momentum_on", true, false, "momentum humbës i qëndrueshëm — u fik vetë", m.n, m.exp); }
     else if (m.exp < -0.2) { const v = Math.min(0.85, cfg.momentum_er + 0.05); if (v !== cfg.momentum_er) { patch.momentum_er = v; await log("momentum_er", cfg.momentum_er, v, "momentum nën pritshmëri — kërkohet lëvizje më e pastër", m.n, m.exp); } }
     else if (m.exp > 0.5) { const v = Math.max(0.5, cfg.momentum_er - 0.02); if (v !== cfg.momentum_er) { patch.momentum_er = v; await log("momentum_er", cfg.momentum_er, v, "momentum fitues — lehtësim i lehtë", m.n, m.exp); } }
   }
   // TREND: humb → kërko trend më të fortë (ADX/ER më lart); fiton qartë → kthehu ngadalë drejt 25.
   const t = expOf("trend");
-  if (t.n >= minN) {
+  if (t.n >= minSlow) {
     if (t.exp < -0.2) {
       const a = Math.min(30, cfg.adx_trend_min + 1), e = Math.min(0.4, Math.round((cfg.er_trend_min + 0.02) * 100) / 100);
       if (a !== cfg.adx_trend_min) { patch.adx_trend_min = a; await log("adx_trend_min", cfg.adx_trend_min, a, "trend humbës — kërkohet trend më i fortë", t.n, t.exp); }
@@ -186,7 +190,7 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
   }
   // RANGE: humb → kërko range më të qetë (ADX max më i ulët).
   const rg = expOf("range");
-  if (rg.n >= minN && rg.exp < -0.2) {
+  if (rg.n >= minSlow && rg.exp < -0.2) {
     const v = Math.max(15, cfg.adx_range_max - 2);
     if (v !== cfg.adx_range_max) { patch.adx_range_max = v; await log("adx_range_max", cfg.adx_range_max, v, "range humbës — kërkohet range më i qetë", rg.n, rg.exp); }
   }
@@ -251,6 +255,33 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
       if (next > cur) await log("rekomandim_lot", cur, next, `${allR.length} trade me mesatare +${expAll.toFixed(2)}R dhe ${Math.round(wr * 100)}% fitore — mund ta rrisësh lotin live te seksioni LIVE (vendimi YTI, s'ndryshohet vetë)`, allR.length, expAll);
     }
   }
+  // SINJALET (roboti i sinjaleve): mësim automatik i besueshmërisë minimale, për ÇDO përdorues
+  // me auto-trade mbi sinjalet e VETA 14-ditore. Saktësia e të vendosurve (TP/SL) <35% → ngre
+  // min_confidence +5 (max 85, vetëm sinjalet më të sigurta); ≥50% → ule −5 (min 70). Kërkon ≥10
+  // sinjale të vendosura — mostra të vogla s'lëvizin asgjë. Çdo ndryshim auditohet te mmt_learning.
+  try {
+    const { data: users } = await db.from("metaapi_config").select("user_id, min_confidence").eq("auto_trade", true);
+    for (const u of (users ?? []) as { user_id: string; min_confidence: number | null }[]) {
+      const { data: sigs } = await db.from("signals").select("status")
+        .eq("user_id", u.user_id).in("status", ["hit_tp", "hit_sl"]).gte("created_at", since);
+      const dec = (sigs ?? []).length;
+      if (dec < 10) continue;
+      const wins = ((sigs ?? []) as { status: string }[]).filter((s) => s.status === "hit_tp").length;
+      const wr = wins / dec;
+      const cur = Number(u.min_confidence) || 70;
+      let next = cur;
+      if (wr < 0.35) next = Math.min(85, cur + 5);
+      else if (wr >= 0.5) next = Math.max(70, cur - 5);
+      if (next !== cur) {
+        await db.from("metaapi_config").update({ min_confidence: next }).eq("user_id", u.user_id);
+        await log(`signals_min_confidence(${String(u.user_id).slice(0, 8)})`, cur, next,
+          wr < 0.35
+            ? `Sinjalet ${Math.round(wr * 100)}% saktësi (${wins}/${dec} TP) — roboti pranon vetëm sinjalet më të sigurta`
+            : `Sinjalet ${Math.round(wr * 100)}% saktësi — pragu lehtësohet drejt default-it`,
+          dec, Math.round(wr * 100) / 100);
+      }
+    }
+  } catch { /* mësimi i sinjaleve s'duhet të ndalë atë të MMT-së */ }
   await db.from("mmt_config").update(patch).eq("id", 1);
 }
 interface Trade {
