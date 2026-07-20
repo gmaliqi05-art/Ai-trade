@@ -1302,9 +1302,11 @@ Deno.serve(async (req: Request) => {
           // NAFTË: SL më i gjerë (ATR×2.0) — më volatile se ari; RR 1:2 ruhet.
           const stopMult = isOil(sig.symbol) ? 2.0 : 1.5;
           slDist = t1h.atr > 0 ? t1h.atr * stopMult : entryPx * (isOil(sig.symbol) ? 0.02 : 0.015);
-          // SL të paktën 8× spread-i aktual (freeze-level i brokerit) — mbrojtje shtesë ndaj 10016.
+          // SL të paktën 8× spread-i aktual (freeze-level i brokerit) — mbrojtje ndaj 10016.
+          // Kur spread-i është EKSTREM (hapja e së dielës / lajme, >0.30$): 12× — brokeri e ka
+          // stops-level-in të zgjeruar pikërisht atëherë (rasti real i 20 korrikut 02:01).
           const sp = lp ? Math.abs(lp.ask - lp.bid) : 0;
-          slDist = Math.max(slDist, sp * 8);
+          slDist = Math.max(slDist, sp * (sp > 0.30 ? 12 : 8));
           tpDist = slDist * 2;
           stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
           takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
@@ -1419,12 +1421,21 @@ Deno.serve(async (req: Request) => {
 
         try {
           let r = await maTrade(cfg, tradeBody);
-          // Gabimet KALIMTARE të serverit (NO_MONEY 10019 / PRICE_OFF 10021 / REQUOTE 10004) →
-          // riprovo deri 3× me 500ms: serveri demo i Vantage valëzon gjatë volatilitetit ekstrem.
+          // RIPROVAT: (a) gabime kalimtare serveri (NO_MONEY 10019 / PRICE_OFF 10021 / REQUOTE
+          // 10004) → riprovo njësoj; (b) INVALID STOPS 10016 (hapja e së dielës/lajme — brokeri e
+          // zgjeron stops-level-in) → ZGJERO SL/TP 1.5× dhe riprovo. Më parë një 10016 i vetëm e
+          // vriste sinjalin përfundimisht, sepse kontrolli i dublikatit i ndalonte riprovat pasuese.
           for (let a = 0; a < 3; a++) {
             const rb0 = r.body as { orderId?: string; numericCode?: number } | null;
             if (r.ok && rb0?.orderId) break;
-            if (rb0?.numericCode !== 10019 && rb0?.numericCode !== 10021 && rb0?.numericCode !== 10004) break;
+            const code0 = rb0?.numericCode;
+            if (code0 === 10016 && entryPx != null && slDist > 0) {
+              slDist = Math.round(slDist * 1.5 * 100) / 100;
+              tpDist = slDist * 2;
+              stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
+              takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
+              tradeBody.stopLoss = stopLoss; tradeBody.takeProfit = takeProfit;
+            } else if (code0 !== 10019 && code0 !== 10021 && code0 !== 10004) break;
             await new Promise((res) => setTimeout(res, 500));
             r = await maTrade(cfg, tradeBody);
           }
