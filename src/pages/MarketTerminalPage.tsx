@@ -1077,9 +1077,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             )}
       </div>
 
-      {/* Pozicionet e hapura (live) — VENDOSUR menjëherë nën grafikun e MetaTrader, që të shihen bashkë */}
-      <OpenPositionsPanel configured={metaConfigured} section="positions" />
-
       {/* INVESTITORËT E MËDHENJ — pozicionet javore REALE nga raporti zyrtar COT i CFTC
           (futures të arit, COMEX): fondet e mëdha dhe bankat/dealer-ët, neto blerës apo shitës. */}
       {cot && (
@@ -1116,12 +1113,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </TLFold>
       )}
 
-      {/* Porosi e re (majtas) + Trade-t e mbyllura (djathtas) — dy kolona në ekran të madh, stack në mobil */}
-      {/* GRID 2-kolonësh (tablet/PC): majtas (28rem) Sinjali + Porosia; djathtas Raportet sipas
-          robotit — pa asnjë hapësirë të vdekur. Tabelat e mbyllura dalin MË POSHTË me gjerësi
-          të plotë (u shtypnin në 28rem kur ishin fëmija i tretë i grid-it). Në mobil: stack. */}
-      <div className="space-y-5 lg:space-y-0 lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-5 lg:items-start">
-      <div>
+      {/* SINJALI + POROSIA E RE — të vendosura SIPËR pozicioneve të hapura (kërkesa e pronarit):
+          vepron këtu lart, pastaj sheh pozicionet e tua poshtë. Të dyja me gjerësi të plotë. */}
+      <div className="space-y-3">
         {/* Sinjali i fundit — i vendosur SIPËR formës "Porosi e re" (klik për ta tregtuar). */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 mb-3">
           <div className="text-[11px] text-gray-500 mb-1 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
@@ -1197,37 +1191,39 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showNewOrder ? 'rotate-180' : ''}`} />
           </button>
           {showNewOrder && (<>
-          <div className="flex rounded-lg overflow-hidden border border-gray-700">
-            <button onClick={() => setTradeType('buy')} className={`flex-1 py-2 text-sm font-semibold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('BLEJ')}</button>
-            <button onClick={() => setTradeType('sell')} className={`flex-1 py-2 text-sm font-semibold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('SHIT')}</button>
+          {/* RRESHTI 1 — BLEJ/SHIT + presetet e lotit (chips të vegjël), të gjitha në një rresht. */}
+          <div className="flex items-stretch gap-1.5">
+            <div className="flex rounded-lg overflow-hidden border border-gray-700 shrink-0">
+              <button onClick={() => setTradeType('buy')} className={`px-3 py-1.5 text-xs font-bold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('BLEJ')}</button>
+              <button onClick={() => setTradeType('sell')} className={`px-3 py-1.5 text-xs font-bold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('SHIT')}</button>
+            </div>
+            <div className="flex gap-1 flex-1">
+              {['0.01', '0.05', '0.10', '0.25'].map(v => (
+                <button key={v} onClick={() => setLot(v)} className={`flex-1 text-[11px] py-1.5 rounded-md transition-colors ${lot === v ? 'bg-amber-500 text-gray-950 font-semibold' : 'bg-gray-800 hover:bg-gray-700 text-gray-400'}`}>{v}</button>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-gray-400 text-xs shrink-0 w-8">{t('Lot')}</label>
-            <input type="number" value={lot} onChange={e => setLot(e.target.value)} min="0.01" step="0.01"
-              className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500" />
-          </div>
-          <div className="grid grid-cols-4 gap-1.5">
-            {['0.01', '0.05', '0.10', '0.25'].map(v => (
-              <button key={v} onClick={() => setLot(v)} className={`text-[11px] py-1.5 rounded-lg transition-colors ${lot === v ? 'bg-amber-500 text-gray-950 font-medium' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white'}`}>{v}</button>
-            ))}
-          </div>
-          {/* Çmimi i hyrjes — nëse çmimi s'është aty, vendoset porosi NË PRITJE (hyn automatik kur arrin) */}
-          <div>
-            <label className="block text-[10px] text-amber-400 mb-1">{t('Çmimi i hyrjes')} <span className="text-gray-600">{t('(bosh = tregu tani)')}</span></label>
-            <input type="number" step="0.01" value={newEntry} onChange={e => setNewEntry(e.target.value)} placeholder={t('hyrje tregu')}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-amber-500" />
-          </div>
-          {/* SL / TP për porosinë e re (si te sistemi automatik; opsionale, ndryshoji lirisht) */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* RRESHTI 2 — 4 fusha kompakte: Lot · Hyrje · SL · TP (2 kolona në telefon → 2 rreshta). */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
             <div>
-              <label className="block text-[10px] text-red-400 mb-1">{t('Stop Loss')}</label>
-              <input type="number" step="0.01" value={newSl} onChange={e => setNewSl(e.target.value)} placeholder={t('opsionale')}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-red-500" />
+              <label className="block text-[9px] text-gray-400 mb-0.5">{t('Lot')}</label>
+              <input type="number" value={lot} onChange={e => setLot(e.target.value)} min="0.01" step="0.01"
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-amber-500" />
             </div>
             <div>
-              <label className="block text-[10px] text-green-400 mb-1">{t('Take Profit')}</label>
-              <input type="number" step="0.01" value={newTp} onChange={e => setNewTp(e.target.value)} placeholder={t('opsionale')}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
+              <label className="block text-[9px] text-amber-400 mb-0.5">{t('Hyrje')} <span className="text-gray-600">{t('(tregu)')}</span></label>
+              <input type="number" step="0.01" value={newEntry} onChange={e => setNewEntry(e.target.value)} placeholder={t('tregu')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-amber-500" />
+            </div>
+            <div>
+              <label className="block text-[9px] text-red-400 mb-0.5">SL</label>
+              <input type="number" step="0.01" value={newSl} onChange={e => setNewSl(e.target.value)} placeholder={t('ops.')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-red-500" />
+            </div>
+            <div>
+              <label className="block text-[9px] text-green-400 mb-0.5">TP</label>
+              <input type="number" step="0.01" value={newTp} onChange={e => setNewTp(e.target.value)} placeholder={t('ops.')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
             </div>
           </div>
           {appliedSignalId && <p className="text-[10px] text-amber-400/80">{t("Hyrja, SL dhe TP u mbushën nga sinjali. Nëse çmimi s'është te hyrja, vendoset porosi në pritje që hyn automatik. Mund t'i ndryshosh para se të tregtosh.")}</p>}
@@ -1239,13 +1235,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               <ShieldCheck className="w-3.5 h-3.5" />{t('Vendos SL/TP default')}
             </button>
           )}
-          <button onClick={handleTrade} disabled={tradeLoading || !metaConfigured}
-            className={`w-full py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${tradeType === 'buy' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
-            {tradeLoading && <Loader2 className="w-4 h-4 animate-spin" />}{tradeType === 'buy' ? t('BLEJ') : t('SHIT')} {selected}
-          </button>
-          <button onClick={() => onNavigate('chart_analysis')} className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-xl py-1.5 text-xs font-medium transition-colors">
-            <Brain className="w-3.5 h-3.5" />{t('Analizë AI për {sym}', { sym: selected })}
-          </button>
+          {/* RRESHTI 3 — veprimi: BLEJ/SHIT + Analiza AI krah për krah (kompakte). */}
+          <div className="flex gap-1.5">
+            <button onClick={handleTrade} disabled={tradeLoading || !metaConfigured}
+              className={`flex-1 py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${tradeType === 'buy' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
+              {tradeLoading && <Loader2 className="w-4 h-4 animate-spin" />}{tradeType === 'buy' ? t('BLEJ') : t('SHIT')} {selected}
+            </button>
+            <button onClick={() => onNavigate('chart_analysis')} title={t('Analizë AI për {sym}', { sym: selected })}
+              className="shrink-0 flex items-center justify-center gap-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-xl px-3 py-2 text-xs font-medium transition-colors">
+              <Brain className="w-4 h-4" /><span className="hidden sm:inline">{t('Analizë AI')}</span>
+            </button>
+          </div>
 
           {/* Modifiko SL/TP për pozicionin e hapur të këtij simboli */}
           {posForSymbol && (
@@ -1279,6 +1279,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           </>)}
         </div>
       </div>
+
+      {/* Pozicionet e hapura (live) — POSHTË panelit të porosisë (kërkesa e pronarit). */}
+      <OpenPositionsPanel configured={metaConfigured} section="positions" />
 
       {/* RAPORTET SIPAS ROBOTIT (Live) — kartë e veçantë për secilin robot me saktësinë në %,
           W/L dhe fitimin — nga historiku real i MT5 i 7 ditëve (kërkesa e pronarit). */}
@@ -1315,7 +1318,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           </div>
         </TLFold>
       )}
-      </div>
 
       {/* TREGTITË E MBYLLURA — TABELË E VEÇANTË PËR SECILIN ROBOT (kërkesa e pronarit):
           çdo robot ka tabelën e vet me totalet (tregtime, W/L, saktësi, bilanc) që të dihet
