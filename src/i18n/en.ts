@@ -811,6 +811,10 @@ export const en: Record<string, string> = {
   "Sipas robotit": "By robot",
   "Fitimi": "Profit",
   "Ar · çmimi i brokerit (si Live)": "Gold · broker price (like Live)",
+  "(tregu)": "(mkt)",
+  "tregu": "mkt",
+  "ops.": "opt.",
+  "Analizë AI": "AI analysis",
   // Investitorët e mëdhenj (COT + muret e porosive + zonat e likuiditetit)
   "Investitorët e Mëdhenj (COT — futures të arit)": "Big Investors (COT — gold futures)",
   "Fondet e mëdha (Managed Money)": "Large funds (Managed Money)",
