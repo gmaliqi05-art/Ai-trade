@@ -1077,9 +1077,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             )}
       </div>
 
-      {/* INVESTITORËT E MËDHENJ — pozicionet javore REALE nga raporti zyrtar COT i CFTC
-          (futures të arit, COMEX): fondet e mëdha dhe bankat/dealer-ët, neto blerës apo shitës. */}
+      {/* RENDITJA (kërkesa e pronarit): Porosia e re (1) → Pozicionet e hapura (2) → Big Investors/COT
+          (3) → Sinjali i fundit (4). E realizuar me flex + 'order' pa lëvizur blloqet në kod. */}
+      <div className="flex flex-col gap-5">
+
+      {/* INVESTITORËT E MËDHENJ (COT) — order-3: poshtë pozicioneve të hapura. */}
       {cot && (
+        <div className="order-3">
         <TLFold k="cot" title={t('Investitorët e Mëdhenj (COT — futures të arit)')} icon={<Landmark className="w-4 h-4 text-amber-400" />}>
           <div className="grid sm:grid-cols-2 gap-3">
             {[
@@ -1111,13 +1115,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             {t('Burimi: CFTC (raporti zyrtar COT) — pozicionet reale në futures të arit (COMEX); publikohet çdo të premte për të martën.')} · {cot.cur.date}
           </p>
         </TLFold>
+        </div>
       )}
 
-      {/* SINJALI + POROSIA E RE — të vendosura SIPËR pozicioneve të hapura (kërkesa e pronarit):
-          vepron këtu lart, pastaj sheh pozicionet e tua poshtë. Të dyja me gjerësi të plotë. */}
-      <div className="space-y-3">
-        {/* Sinjali i fundit — i vendosur SIPËR formës "Porosi e re" (klik për ta tregtuar). */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 mb-3">
+      {/* Sinjali i fundit — order-4: POSHTË gjithçkaje (klik për ta tregtuar formën lart). */}
+      <div className="order-4 bg-gray-900 border border-gray-800 rounded-2xl p-3">
           <div className="text-[11px] text-gray-500 mb-1 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
           <p className="text-[10px] text-gray-600 mb-2 leading-snug">{t('Ky është sinjali aktual i motorit — pikërisht atë që tregton roboti i sinjaleve. Aktiv 5 min; pas 5 min shënohet I VJETËR; pas 15 min hiqet.')}</p>
           {latestSignal ? (
@@ -1183,9 +1185,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             </>
           )}
         </div>
-        {/* Porosia BLEJ/SHIT — VETËM manuale; e palosur si default. Klik mbi header → hapet bosh;
-            klik mbi sinjal → hapet automatik me të dhënat e mbushura. */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 space-y-2 h-fit">
+        {/* Porosia BLEJ/SHIT — order-1: MENJËHERË nën grafik. Vetëm manuale; e palosur si default. */}
+        <div className="order-1 bg-gray-900 border border-gray-800 rounded-2xl p-3 space-y-2 h-fit">
           <button onClick={() => setShowNewOrder(v => !v)} className="w-full flex items-center justify-between text-left">
             <h3 className="text-white font-semibold text-sm">{t('Porosi e re — {sym}', { sym: selected })} <span className="text-[10px] text-gray-500 font-normal">{t('(manual)')}</span></h3>
             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showNewOrder ? 'rotate-180' : ''}`} />
@@ -1278,10 +1279,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           )}
           </>)}
         </div>
-      </div>
 
-      {/* Pozicionet e hapura (live) — POSHTË panelit të porosisë (kërkesa e pronarit). */}
-      <OpenPositionsPanel configured={metaConfigured} section="positions" />
+      {/* Pozicionet e hapura (live) — order-2: midis Porosisë dhe COT-it (kërkesa e pronarit). */}
+      <div className="order-2">
+        <OpenPositionsPanel configured={metaConfigured} section="positions" />
+      </div>
+      </div>
 
       {/* RAPORTET SIPAS ROBOTIT (Live) — kartë e veçantë për secilin robot me saktësinë në %,
           W/L dhe fitimin — nga historiku real i MT5 i 7 ditëve (kërkesa e pronarit). */}
