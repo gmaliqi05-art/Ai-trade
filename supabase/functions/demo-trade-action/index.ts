@@ -24,7 +24,7 @@ function valuePerPrice(symbol: string): number {
   if (s.includes("OIL") || s.includes("WTI") || s.includes("BRENT")) return 1000;
   return 100000;
 }
-// Çmimi real-time i arit nga Binance (PAXGUSDT) — i njëjti feed si grafiku te klienti.
+// Çmimi real-time i arit nga Binance (PAXGUSDT) — REZERVË kur s'ka broker të lidhur.
 async function binancePaxg(): Promise<number | null> {
   try {
     const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT", { signal: AbortSignal.timeout(6000) });
@@ -32,6 +32,25 @@ async function binancePaxg(): Promise<number | null> {
     const j = await r.json() as { price?: string };
     const p = Number(j.price);
     return p > 0 ? p : null;
+  } catch { return null; }
+}
+// ÇMIMI REAL I BROKERIT (MT5) — që DEMO të jetë 100% si LIVE (kërkesa e pronarit). Përdor një
+// llogari referencë (preferon 'live'); çmimi i arit s'ndryshon mes llogarive të të njëjtit broker.
+function maHost(region: string): string { return `https://mt-client-api-v1.${(region || "new-york").trim()}.agiliumtrade.ai`; }
+async function brokerGold(db: ReturnType<typeof createClient>): Promise<number | null> {
+  try {
+    const { data: rows } = await db.from("metaapi_config").select("account_id, token, region, mode, symbol_map");
+    const valid = ((rows ?? []) as Record<string, unknown>[]).filter((c) => c.account_id && c.token);
+    const cfg = valid.find((c) => String(c.mode) === "live") ?? valid[0];
+    if (!cfg) return null;
+    const map = (cfg.symbol_map && typeof cfg.symbol_map === "object") ? cfg.symbol_map as Record<string, string> : {};
+    const sym = map["XAUUSD"] || map["XAU"] || "XAUUSD";
+    const r = await fetch(`${maHost(String(cfg.region))}/users/current/accounts/${cfg.account_id}/symbols/${encodeURIComponent(sym)}/current-price?keepSubscription=true`,
+      { headers: { "auth-token": String(cfg.token) }, signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null;
+    const j = await r.json() as { bid?: number; ask?: number };
+    const bid = Number(j?.bid), ask = Number(j?.ask);
+    return (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) ? (bid + ask) / 2 : null;
   } catch { return null; }
 }
 
@@ -58,9 +77,13 @@ Deno.serve(async (req: Request) => {
   for (const a of (assetRows ?? []) as { symbol: string; current_price: number | null }[]) {
     if (a.current_price != null) priceBy.set(normSym(a.symbol), Number(a.current_price));
   }
-  // Çmimi REAL: ar → Binance real-time; përndryshe → assets.
+  // Çmimi REAL: ar → çmimi i BROKERIT (MT5, si live); rezervë PAXG kur s'ka broker; përndryshe → assets.
   async function realPrice(symbol: string): Promise<number | null> {
-    if (isGold(symbol)) { const b = await binancePaxg(); if (b != null) return b; }
+    if (isGold(symbol)) {
+      const g = await brokerGold(db);
+      if (g != null) return g;
+      const b = await binancePaxg(); if (b != null) return b;
+    }
     return priceBy.get(normSym(symbol)) ?? null;
   }
 
