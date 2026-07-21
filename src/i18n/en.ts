@@ -810,6 +810,7 @@ export const en: Record<string, string> = {
   "Tregtitë e mbyllura sipas robotit (7 ditët e fundit)": "Closed trades by robot (last 7 days)",
   "Sipas robotit": "By robot",
   "Fitimi": "Profit",
+  "Ar · çmimi i brokerit (si Live)": "Gold · broker price (like Live)",
   // Investitorët e mëdhenj (COT + muret e porosive + zonat e likuiditetit)
   "Investitorët e Mëdhenj (COT — futures të arit)": "Big Investors (COT — gold futures)",
   "Fondet e mëdha (Managed Money)": "Large funds (Managed Money)",

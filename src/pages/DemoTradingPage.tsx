@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import Mt5Chart, { type ChartCandle, type PriceLineDef } from '../components/Mt5Chart';
 import { fetchBinanceCandles, type Timeframe } from '../ai-trader/market/candles';
+import { loadMetaApiConfig, loadCandles as loadMt5Candles, loadSymbolPrice } from '../services/metaapi';
 import CompletedSignals, { type DoneSignal } from '../components/CompletedSignals';
 import SignalScanLog from '../components/SignalScanLog';
 import { useI18n } from '../i18n/i18n';
@@ -65,7 +66,15 @@ export default function DemoTradingPage() {
   // Kontrollet LIVE (Roboti i Sinjaleve) + Tregtime të shkurta janë zhvendosur te Konfigurimi.
   const [trades, setTrades] = useState<DemoTrade[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
-  const [livePx, setLivePx] = useState<number | null>(null); // çmimi real-time i arit (Binance, ~2s)
+  const [livePx, setLivePx] = useState<number | null>(null); // çmimi real-time i arit
+  // A ka broker MT5 të lidhur? Atëherë DEMO përdor ÇMIMIN E BROKERIT (identik me Live) — kërkesa e
+  // pronarit: "demo duhet të jetë 100% si reale". Pa broker → rezervë PAXG (Binance), si më parë.
+  const [metaConfigured, setMetaConfigured] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    loadMetaApiConfig(user.id).then(c => setMetaConfigured(!!(c.account_id && c.token))).catch(() => setMetaConfigured(false));
+  }, [user]);
+  const goldFromBroker = metaConfigured; // ari nga MT5 kur je i lidhur
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [tf, setTf] = useState<Timeframe>('5m');
@@ -124,27 +133,41 @@ export default function DemoTradingPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  // Grafiku i arit për DEMO — PAXG (Binance), E NJËJTA kornizë me hyrjen që regjistron
-  // edge-function (demo-trade-action përdor PAXG) DHE me çmimin live. Kështu vija e hyrjes
-  // ulet SAKT mbi qirinj, jo ~$13 poshtë (mospërputhja e vjetër MT5-qirinj vs PAXG-hyrje).
+  // Grafiku i arit për DEMO — ÇMIMI I BROKERIT (MT5) kur je i lidhur, që korniza të jetë 100%
+  // si Live (qirinj + hyrje + P&L në të njëjtin çmim). Pa broker → rezervë PAXG (Binance).
   const loadCandles = useCallback(async () => {
+    if (goldFromBroker) {
+      try {
+        const r = await loadMt5Candles('XAUUSD', tf, 200);
+        if (!r.error && Array.isArray(r.candles) && r.candles.length) {
+          setCandles(r.candles.map((c) => ({ time: Math.floor(new Date(c.time).getTime() / 1000), open: c.open, high: c.high, low: c.low, close: c.close })));
+          return;
+        }
+      } catch { /* bie te PAXG */ }
+    }
     try {
       const raw = await fetchBinanceCandles('PAXGUSDT', tf, 200);
       setCandles(raw.map((c) => ({ time: Math.floor(c.time / 1000), open: c.open, high: c.high, low: c.low, close: c.close })));
     } catch { /* mban të fundit */ }
-  }, [tf]);
+  }, [tf, goldFromBroker]);
   useEffect(() => { loadCandles(); }, [loadCandles]);
   useEffect(() => {
     const t = setInterval(loadCandles, 5000); // real-time si Live/MMT (rifreskim çdo 5s)
     return () => clearInterval(t);
   }, [loadCandles]);
 
-  // Çmimi real-time i arit për DEMO — PAXG (Binance), E NJËJTA kornizë me qirinjtë e grafikut
-  // DHE me hyrjen që regjistron edge-function (demo-trade-action përdor PAXG). Kështu vija e
-  // hyrjes, vija "Tani", P&L dhe qirinjtë janë të gjitha në një kornizë → pa mospërputhje ~$13.
+  // Çmimi real-time i arit për DEMO — nga BROKERI (MT5, mid bid/ask) kur je i lidhur, ndryshe PAXG.
+  // Kështu vija e hyrjes, vija "Tani", P&L dhe qirinjtë janë të gjitha në kornizën e brokerit → identike me Live.
   useEffect(() => {
     let alive = true;
     const tick = async () => {
+      if (goldFromBroker) {
+        try {
+          const r = await loadSymbolPrice('XAUUSD');
+          const bid = Number(r?.price?.bid), ask = Number(r?.price?.ask);
+          if (alive && bid > 0 && ask > 0) { setLivePx((bid + ask) / 2); return; }
+        } catch { /* bie te PAXG */ }
+      }
       try {
         const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT', { signal: AbortSignal.timeout(5000) });
         if (!r.ok) return;
@@ -156,7 +179,7 @@ export default function DemoTradingPage() {
     tick();
     const id = setInterval(tick, 2000);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [goldFromBroker]);
 
   // Çmimi i përdorur për një simbol: ar → çmimi real-time i Binance; përndryshe → assets.
   const priceFor = useCallback((symbol: string): number | null => {
@@ -336,7 +359,7 @@ export default function DemoTradingPage() {
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold bg-amber-500/15 text-amber-400 px-2 py-1 rounded">XAUUSD</span>
-            <span className="text-[11px] text-gray-500">{t('Ar · çmim real (demo)')}</span>
+            <span className="text-[11px] text-gray-500">{goldFromBroker ? t('Ar · çmimi i brokerit (si Live)') : t('Ar · çmim real (demo)')}</span>
           </div>
           <div className="flex items-center gap-1">
             {TIMEFRAMES.map((x) => (
