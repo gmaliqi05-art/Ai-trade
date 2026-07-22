@@ -269,7 +269,8 @@ const RSI_EXTREME_HIGH = 75;  // refuzo BLEJ kur RSI > 75 (overbought ekstrem �
 // çdo kërcim brenda një range-i anësor (gjurma reale: 184 SELL : 38 BUY, ADX 14–17, besueshmëri 71–77%).
 // VETO i fortë: pa trend (ADX i ulët) OSE treg choppy (Efficiency Ratio i ulët) → S'KA sinjal.
 const ADX_TREND_MIN = 20;     // poshtë kësaj = pa trend (range/chop) → mos tregto fare
-const ER_RANGE_MIN = 0.30;    // Efficiency Ratio(1h,10) poshtë kësaj = lëvizje jo-efikase (chop) → mos tregto
+const ER_RANGE_MIN = 0.22;    // Efficiency Ratio(1h,10) poshtë kësaj = chop. U ul 0.30→0.22: lëvizjet e
+                              // shpejta (22 korr: rally +4% në 2 ditë) jepnin ER 0.24-0.28 dhe refuzoheshin.
 // advanced = aplikon filtrat Tier-1 (Efficiency Ratio + Supertrend + Funding). Default false:
 // logjika e thjeshtë e provuar (Multi-TF + EMA200 + ADX + volatilitet + trend ditor + confluence).
 async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = false): Promise<EngineResult | null> {
@@ -320,9 +321,9 @@ async function generateStrong(symbol: string, broker?: BrokerCreds, advanced = f
   let d1Boost = 0;
   if (c1d && c1d.length >= 60) {
     const dc = c1d.map((c) => c.close);
-    const e50d = ema(dc, 50)[dc.length - 1];
-    if (Number.isFinite(e50d)) {
-      const d1Up = price > e50d;
+    const e20d = ema(dc, 20)[dc.length - 1];   // U ul 50→20: EMA50 ditore ishte tepër e ngadaltë, bllokonte
+    if (Number.isFinite(e20d)) {               // BLE-t gjatë rally-t të shpejtë (175× "d1_down_vs_buy" më 22 korr).
+      const d1Up = price > e20d;
       if (isBuy && !d1Up) return null;
       if (!isBuy && d1Up) return null;
       d1Boost = 0.05;
@@ -479,9 +480,9 @@ async function generateGold(symbol: string, broker?: BrokerCreds): Promise<Engin
   let d1Boost = 0;
   if (c1d && c1d.length >= 60) {
     const dc = c1d.map((c) => c.close);
-    const e50d = ema(dc, 50)[dc.length - 1];
-    if (Number.isFinite(e50d)) {
-      const d1Up = price > e50d;
+    const e20d = ema(dc, 20)[dc.length - 1];   // U ul 50→20: EMA50 ditore ishte tepër e ngadaltë (laggy) dhe
+    if (Number.isFinite(e20d)) {               // bllokonte lëvizjet e reja; EMA20 kthehet më shpejt me trendin.
+      const d1Up = price > e20d;
       // VETO (formula fituese): tregto VETËM në harmoni me trendin ditor. Zbutja e 15 qershorit
       // (penallti në vend të veto-s) lejoi hyrje kundër trendit ditor → pikërisht "shet në fund, tregu kthehet lart".
       if (isBuy && !d1Up) return rejGold("d1_down_vs_buy");   // BLEJ kundër trendit ditor rënës
