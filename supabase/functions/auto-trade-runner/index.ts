@@ -183,11 +183,12 @@ function lotForConfidence(cfg: Cfg, conf: number): number {
 // mbetet e aktivizuar më poshtë, kështu që llogaritë e vogla s'e kalojnë kufirin.
 // Nëse përdoruesi ka zgjedhur QËLLIMISHT lot fiks (dynamic_lot=false), nderohet default_lot.
 function signalLotByConfidence(cfg: Cfg, conf: number): number {
-  if (cfg.dynamic_lot === false) return Number(cfg.default_lot) || 0.01;
+  const cap = Number(cfg.max_lot) > 0 ? Number(cfg.max_lot) : Infinity; // KURRË mbi max_lot (mbron marzhin)
+  if (cfg.dynamic_lot === false) return Math.min(Number(cfg.default_lot) || 0.01, cap);
   let lot = 0.01;
   if (conf >= 80) lot = 0.02;
   if (conf >= 90) lot = 0.03;
-  return lot;
+  return Math.min(lot, cap);
 }
 
 // RI-ANALIZË pas mbylljes — kthen arsyen e bllokimit nëse ri-hyrja në TË NJËJTIN drejtim duket
@@ -898,9 +899,12 @@ Deno.serve(async (req: Request) => {
         const info = await maGet(cfg, "/account-information") as { balance?: number; equity?: number };
         const bal = Number(info?.balance), eq = Number(info?.equity);
         equity = Number.isFinite(eq) ? eq : (Number.isFinite(bal) ? bal : 0);
-        // SAFE-MODE për kapital të vogël (< €50): detyro vetëm lot-in MINIMAL (0.01), pavarësisht
-        // cilësimeve manuale → roboti vazhdon të tregtojë, por me rrezik minimal për trade.
-        if (equity > 0 && equity < 50) { cfg.max_lot = 0.01; cfg.default_lot = 0.01; }
+        // SAFE-MODE për kapital të VOGËL (< €300): detyro lot-in MINIMAL (0.01) DHE VETËM 1 pozicion
+        // njëkohësisht — që marzhi të mos shterret e brokeri të mos refuzojë me "not enough money".
+        // Rasti real (22 korr, llogaria €50.97): u vendosën 3 porosi SELL @4115 (0.05+0.02+0.02 lot);
+        // kur çmimi arriti, brokeri s'i mbushi dot — marzh i pamjaftueshëm për 0.09 lot me €50.
+        const smallAccount = equity > 0 && equity < 300;
+        if (smallAccount) { cfg.max_lot = 0.01; cfg.default_lot = 0.01; cfg.dynamic_lot = false; cfg.max_open_trades = 1; }
         // Regjistro ekuitetin e fillimit të ditës (raportim/diagnostikë) — s'përdoret më për ndalim.
         if (equity > 0) {
           const todayUtc = frankfurtDateStr();
