@@ -1400,7 +1400,14 @@ Deno.serve(async (req: Request) => {
         if (reentryVeto) { await log("rejected", `Ri-analizë: ${reentryVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "reentry_cooldown", reason: reentryVeto }); continue; }
         // PRICE-ACTION — refuzim (rejection) ose sweep i freskët KUNDËR drejtimit → mos hyr, prit.
         // Tregu s'shkon përgjithmonë në një drejtim; kjo e ndal robotin të shesë te fundi i një refuzimi.
-        if (paVeto) { await log("rejected", `Price-action: ${paVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "price_action_veto", reason: paVeto }); continue; }
+        // PËRJASHTIM (22 korrik): gjatë një trendi të fortë, çdo tërheqje 1-minutëshe (sweep/refuzim) e
+        // bllokonte robotin edhe kur sinjali ishte 88–99% — pikërisht lëvizjet e mëdha që humbisnim.
+        // Për sinjale me besueshmëri të LARTË (≥85%, konfirmim multi-TF) zhurma 1m NUK e bllokon më hyrjen;
+        // logohet vetëm si "info". Për sinjale më të dobëta veto-ja mbetet aktive.
+        const PA_VETO_SKIP_CONF = 85;
+        const highConfPA = (Number(sig.confidence) || 0) >= PA_VETO_SKIP_CONF;
+        if (paVeto && !highConfPA) { await log("rejected", `Price-action: ${paVeto}`, null, null); summary.push({ user: cfg.user_id, signal: sig.id, status: "price_action_veto", reason: paVeto }); continue; }
+        if (paVeto && highConfPA) { summary.push({ user: cfg.user_id, signal: sig.id, status: "price_action_override", reason: `${paVeto} (anashkaluar: besueshmëri ${sig.confidence}%)` }); }
         // PORTFOLIO HEAT — rreziku total i hapur + ky trade s'duhet të kalojë MAX_HEAT_PCT të kapitalit.
         // PËRJASHTIM (si te scalp): lotin MINIMAL 0.01 e lejojmë sa kohë rreziku total mbetet brenda
         // kufirit DITOR (max_daily_loss) — mbrojtja reale për llogari të vogël, jo bllokim total i hyrjes.
