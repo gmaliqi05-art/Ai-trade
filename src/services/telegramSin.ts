@@ -94,6 +94,34 @@ export async function saveTelegramSinConfigPartial(userId: string, patch: Partia
   if (error) throw new Error(error.message);
 }
 
+// ---- Kontrolli i robotëve të tjerë (MMT + Sinjalet) nga faqja e Telegram Sin ----
+export interface OthersState {
+  signalsOn: boolean;      // roboti i Sinjaleve (auto-trade-runner) — për këtë përdorues
+  mmtOn: boolean;          // MMT (global)
+  mmtControllable: boolean; // a është ky përdorues pronari i llogarisë MMT (live_user_id)
+  othersOn: boolean;       // të paktën njëri prej tyre është aktiv
+}
+
+export async function loadOthersState(userId: string): Promise<OthersState> {
+  const { data: mc } = await supabase.from('metaapi_config').select('kill_switch').eq('user_id', userId).maybeSingle();
+  const signalsOn = !(mc?.kill_switch);
+  const { data: mmt } = await supabase.from('mmt_config').select('active, live_user_id').eq('id', 1).maybeSingle();
+  const mmtControllable = !!mmt && String(mmt.live_user_id) === String(userId);
+  const mmtOn = mmtControllable ? !!mmt?.active : false;
+  return { signalsOn, mmtOn, mmtControllable, othersOn: signalsOn || mmtOn };
+}
+
+/** Ndal (on=false) ose nis (on=true) robotët e tjerë. MMT preket VETËM nga pronari i live_user_id. */
+export async function setOthersEnabled(userId: string, on: boolean): Promise<void> {
+  const { error: e1 } = await supabase.from('metaapi_config')
+    .update({ kill_switch: !on, updated_at: new Date().toISOString() }).eq('user_id', userId);
+  if (e1) throw new Error(e1.message);
+  const { data: mmt } = await supabase.from('mmt_config').select('live_user_id').eq('id', 1).maybeSingle();
+  if (mmt && String(mmt.live_user_id) === String(userId)) {
+    await supabase.from('mmt_config').update({ active: on }).eq('id', 1);
+  }
+}
+
 export async function loadTelegramSignals(userId: string, limit = 50): Promise<TelegramSignalRow[]> {
   const { data } = await supabase
     .from('telegram_signals')

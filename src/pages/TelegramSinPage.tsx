@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Send, Power, Loader2, Copy, ExternalLink, CheckCircle2, XCircle,
-  TrendingUp, TrendingDown, Info, RefreshCw, Monitor,
+  Send, Power, PowerOff, Loader2, Copy, ExternalLink, CheckCircle2, XCircle,
+  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
@@ -10,7 +10,8 @@ import { checkMetaApiConnection, loadMetaApiConfig, type AccountInfo } from '../
 import {
   loadTelegramSinConfig, saveTelegramSinConfigPartial, loadTelegramSignals,
   generateWebhookSecret, webhookUrlFor, setWebhookUrl,
-  DEFAULT_TG_CONFIG, type TelegramSinConfig, type TelegramSignalRow, type TpMode,
+  loadOthersState, setOthersEnabled,
+  DEFAULT_TG_CONFIG, type TelegramSinConfig, type TelegramSignalRow, type TpMode, type OthersState,
 } from '../services/telegramSin';
 
 export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: ClientPage) => void }) {
@@ -27,13 +28,29 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
   const [accLoading, setAccLoading] = useState(true);
 
+  const [others, setOthers] = useState<OthersState | null>(null);
+  const [othersBusy, setOthersBusy] = useState(false);
+
   const flash = (type: 'success' | 'error', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 3500); };
 
   const refresh = useCallback(async () => {
     if (!user) return;
     try { const c = await loadTelegramSinConfig(user.id); setCfg(c); setLoaded(true); } catch { setLoaded(false); }
     try { setSignals(await loadTelegramSignals(user.id, 50)); } catch { /* */ }
+    try { setOthers(await loadOthersState(user.id)); } catch { /* */ }
   }, [user]);
+
+  const toggleOthers = async () => {
+    if (!user || !others) return;
+    const turnOn = !others.othersOn;
+    setOthersBusy(true);
+    try {
+      await setOthersEnabled(user.id, turnOn);
+      setOthers(await loadOthersState(user.id));
+      flash('success', turnOn ? t('Robotët e tjerë u ndezën.') : t('Robotët e tjerë u ndalën — vetëm Telegram Sin punon.'));
+    } catch (e) { flash('error', (e as Error).message); }
+    finally { setOthersBusy(false); }
+  };
 
   const refreshAccount = useCallback(async () => {
     if (!user) return;
@@ -106,6 +123,41 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           {msg.text}
         </div>
       )}
+
+      {/* Master: ndal/nis robotët e tjerë (MMT + Sinjalet) — që të punojë vetëm Telegram Sin */}
+      <div className={`rounded-xl border p-3 sm:p-4 ${others && !others.othersOn ? 'bg-red-500/[0.06] border-red-500/30' : 'bg-white/[0.03] border-white/10'}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {others && !others.othersOn
+              ? <PowerOff className="w-5 h-5 text-red-400" />
+              : <ShieldAlert className="w-5 h-5 text-amber-400" />}
+            <div>
+              <div className="text-sm font-semibold text-white">{t('Robotët e tjerë (MMT + Sinjalet)')}</div>
+              <div className="text-[11px] text-gray-400">
+                {others
+                  ? (others.othersOn
+                      ? t('Aktivë tani. Fike që të tregtojë VETËM Telegram Sin.')
+                      : t('Të ndalur — vetëm Telegram Sin po punon.'))
+                  : t('Po ngarkohet…')}
+              </div>
+              {others && (
+                <div className="text-[10px] text-gray-500 mt-0.5 flex flex-wrap gap-x-3">
+                  <span>{t('Sinjalet')}: {others.signalsOn ? t('ON') : t('OFF')}</span>
+                  <span>MMT: {others.mmtControllable ? (others.mmtOn ? t('ON') : t('OFF')) : t('s\'menaxhohet nga kjo llogari')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={toggleOthers}
+            disabled={othersBusy || !others}
+            className={`inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg font-semibold whitespace-nowrap disabled:opacity-40 ${others && others.othersOn ? 'bg-red-500/20 border border-red-500/40 text-red-200 hover:bg-red-500/30' : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/30'}`}
+          >
+            {othersBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : (others && others.othersOn ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />)}
+            {others && others.othersOn ? t('Ndal të tjerët') : t('Nis të tjerët')}
+          </button>
+        </div>
+      </div>
 
       {/* MetaTrader Live — llogaria ku tregton Telegram Sin (e njëjta si te Trade Live) */}
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
