@@ -375,6 +375,7 @@ function StatusBadge({ status, t }: { status: string; t: (k: string) => string }
     executed: { cls: 'text-emerald-300 bg-emerald-500/10', label: t('Ekzekutuar'), icon: 'ok' },
     pending: { cls: 'text-indigo-300 bg-indigo-500/10', label: t('Në pritje') },
     partial: { cls: 'text-amber-300 bg-amber-500/10', label: t('Pjesërisht'), icon: 'ok' },
+    modified: { cls: 'text-purple-300 bg-purple-500/10', label: t('Ndryshuar') },
     closed: { cls: 'text-sky-300 bg-sky-500/10', label: t('Mbyllur') },
     rejected: { cls: 'text-red-300 bg-red-500/10', label: t('Refuzuar'), icon: 'x' },
     ignored: { cls: 'text-gray-400 bg-white/5', label: t('Injoruar') },
