@@ -373,6 +373,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
 function StatusBadge({ status, t }: { status: string; t: (k: string) => string }) {
   const map: Record<string, { cls: string; label: string; icon?: 'ok' | 'x' }> = {
     executed: { cls: 'text-emerald-300 bg-emerald-500/10', label: t('Ekzekutuar'), icon: 'ok' },
+    pending: { cls: 'text-indigo-300 bg-indigo-500/10', label: t('Në pritje') },
     partial: { cls: 'text-amber-300 bg-amber-500/10', label: t('Pjesërisht'), icon: 'ok' },
     closed: { cls: 'text-sky-300 bg-sky-500/10', label: t('Mbyllur') },
     rejected: { cls: 'text-red-300 bg-red-500/10', label: t('Refuzuar'), icon: 'x' },
