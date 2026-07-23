@@ -95,14 +95,16 @@ async function resolveSymbol(cfg: Cfg, requested: string, db: ReturnType<typeof 
 }
 
 // ---------- Parser i mesazheve ----------
+interface TpUpdate { idx: number; price: number; }
 interface Parsed {
-  kind: "entry" | "exit" | "unknown";
+  kind: "entry" | "exit" | "modify" | "unknown";
   symbol: string | null;
   direction: "buy" | "sell" | null;
   entryType: "market" | "limit";
   entryPrice: number | null;
   stopLoss: number | null;
   tps: number[];
+  mod?: { sl?: number; breakeven?: boolean; tpUpdates?: TpUpdate[] };
 }
 const SYMBOL_ALIASES: Array<[RegExp, string]> = [
   [/\b(xauusd|xau\/usd|gold|ari|floriri)\b/i, "XAUUSD"],
@@ -123,48 +125,81 @@ function nums(re: RegExp, text: string): number[] {
 function parseSignal(raw: string, defaultSymbol: string): Parsed {
   const text = (raw || "").replace(/,/g, " ").replace(/\s+/g, " ").trim();
   const low = text.toLowerCase();
+  const none: Parsed = { kind: "unknown", symbol: null, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [] };
 
   // Simboli
   let symbol: string | null = null;
   for (const [re, name] of SYMBOL_ALIASES) { if (re.test(low)) { symbol = name; break; } }
 
-  // Dalje (exit)
-  const isExit = /\b(close|exit|mbyll|mbylle|dil|dil nga|closed|tp hit|sl hit)\b/i.test(low)
-    && !/\b(buy|sell|long|short|blej|shit)\b/i.test(low);
-  if (isExit) return { kind: "exit", symbol: symbol ?? defaultSymbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [] };
-
-  // Drejtimi
+  // Drejtimi (fjala) — VETËM tregues; NUK mjafton vetëm ai për të hapur trade (shmang komentet).
   let direction: "buy" | "sell" | null = null;
-  if (/\b(buy|long|blej)\b/i.test(low)) direction = "buy";
-  else if (/\b(sell|short|shit)\b/i.test(low)) direction = "sell";
-  if (!direction) return { kind: "unknown", symbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [] };
+  if (/\b(sell|short|shit)\b/i.test(low)) direction = "sell";
+  else if (/\b(buy|long|blej)\b/i.test(low)) direction = "buy";
 
-  if (!symbol) symbol = defaultSymbol;
+  // Stop-loss (numri pas SL / Stop Loss)
+  const slMatch = low.match(/(?:sl|s\/l|stop\s*loss|stoploss|ndalese)\s*:?\s*(\d{2,7}(?:\.\d+)?)/i);
+  const stopLoss = slMatch ? parseFloat(slMatch[1]) : null;
 
-  // Entry
-  let entryType: "market" | "limit" = "market";
-  let entryPrice: number | null = null;
-  if (/\b(now|market|current|menjehere|tani)\b/i.test(low)) entryType = "market";
-  const eMatch = low.match(/(?:entry|@|zone|hyrje|price)\s*:?\s*(\d{2,7}(?:\.\d+)?)/i)
-    || low.match(/\b(?:buy|sell|blej|shit|long|short)\s*(?:limit|stop)?\s*:?\s*@?\s*(\d{2,7}(?:\.\d+)?)/i);
-  if (eMatch) { entryPrice = parseFloat(eMatch[1]); if (/limit|stop/i.test(low)) entryType = "limit"; }
-
-  // Stop-loss
-  let stopLoss: number | null = null;
-  const slMatch = low.match(/(?:sl|s\/l|stop\s*loss|stoploss|stop|ndalese)\s*:?\s*(\d{2,7}(?:\.\d+)?)/i);
-  if (slMatch) stopLoss = parseFloat(slMatch[1]);
-
-  // Take-profit(s) — TP, TP1..TP4, target; mbledh të gjitha numrat pas fjalëve TP
-  const tpSet: number[] = [];
-  const tpRe = /(?:tp\s*\d?|take\s*profit|target|objektiv)\s*:?\s*((?:\d{2,7}(?:\.\d+)?\s*)+)/gi;
-  let tm: RegExpExecArray | null;
-  while ((tm = tpRe.exec(low)) !== null) {
-    for (const v of nums(/(\d{2,7}(?:\.\d+)?)/, tm[1])) if (!tpSet.includes(v)) tpSet.push(v);
+  // Take-profit(s) me INDEKS — "TP 1: 4112", "TP3 4060", "Change TP 4 to 4054"
+  const tpUpdates: TpUpdate[] = [];
+  const tpIdxRe = /tp\s*(\d)\s*(?:to\s*)?:?\s*(\d{2,7}(?:\.\d+)?)/gi;
+  let tu: RegExpExecArray | null;
+  while ((tu = tpIdxRe.exec(low)) !== null) {
+    const idx = parseInt(tu[1], 10), price = parseFloat(tu[2]);
+    if (idx >= 1 && Number.isFinite(price) && !tpUpdates.some((x) => x.idx === idx)) tpUpdates.push({ idx, price });
   }
-  // Rendit TP-t në drejtimin e trade-it (BUY rritës, SELL rënës)
-  const tps = tpSet.sort((a, b) => (direction === "buy" ? a - b : b - a));
+  // TP pa indeks (p.sh. "take profit 4112", "target 4112")
+  const tpNoIdx: number[] = [];
+  const tpGenRe = /(?:take\s*profit|target|objektiv)\s*:?\s*(\d{2,7}(?:\.\d+)?)/gi;
+  let tg: RegExpExecArray | null;
+  while ((tg = tpGenRe.exec(low)) !== null) { const v = parseFloat(tg[1]); if (Number.isFinite(v)) tpNoIdx.push(v); }
 
-  return { kind: "entry", symbol, direction, entryType, entryPrice, stopLoss, tps };
+  // Entry — "Entry zone 4115 - 4116" / "4080-4077" / "4145" / "@ 4150" / "entry 4150"
+  let entryPrice: number | null = null;
+  const zoneRe = low.match(/(?:entry\s*zone|entry|zone|hyrje|@|price)\s*:?\s*(\d{2,7}(?:\.\d+)?)\s*(?:[-–—to]+\s*(\d{2,7}(?:\.\d+)?))?/i)
+    || low.match(/\b(?:buy|sell|blej|shit|long|short)\s*(?:limit|stop)?\s*:?\s*@?\s*(\d{2,7}(?:\.\d+)?)/i);
+  if (zoneRe) {
+    const a = parseFloat(zoneRe[1]);
+    const b = zoneRe[2] != null ? parseFloat(zoneRe[2]) : NaN;
+    entryPrice = Number.isFinite(b) ? Math.round(((a + b) / 2) * 100) / 100 : a; // zonë → mesi
+  }
+  // Lloji: nëse ka çmim hyrjeje → "limit" (ekzekutimi vendos pending vs market sipas afërsisë me tregun);
+  // pa çmim → "market". SHËNIM: NUK përdorim fjalën "market" nga teksti (p.sh. "Market is very dangerous"
+  // e bënte gabimisht market). Vetëm "buy/sell now" pa çmim → market (mbulohet nga entryPrice == null).
+  const entryType: "market" | "limit" = entryPrice != null ? "limit" : "market";
+
+  // ===== KLASIFIKIM =====
+  // 1) HYRJE: kërkon drejtim + strukturë (SL ose TP me indeks) — jo thjesht fjalën "buy/sell" në koment.
+  const hasStructure = stopLoss != null || tpUpdates.length > 0 || tpNoIdx.length > 0;
+  // Koment "s'ka sinjal" (p.sh. "we didn't issue the buy signal", "no signal") → injoro edhe nëse ka fjalën buy/sell.
+  const noSignal = /\b(no (buy|sell|new)? ?signal|didn'?t issue|not issuing|no setup|no trade|s'ka sinjal)\b/i.test(low);
+  if (direction && hasStructure && !noSignal) {
+    if (!symbol) symbol = defaultSymbol;
+    const tpSet: number[] = [];
+    for (const u of tpUpdates.sort((x, y) => x.idx - y.idx)) if (!tpSet.includes(u.price)) tpSet.push(u.price);
+    for (const v of tpNoIdx) if (!tpSet.includes(v)) tpSet.push(v);
+    const tps = tpSet.sort((a, b) => (direction === "buy" ? a - b : b - a));
+    return { kind: "entry", symbol, direction, entryType, entryPrice, stopLoss, tps };
+  }
+
+  // 2) DALJE (mbyll gjithçka)
+  const isExit = /\b(close all|close everything|close the trade|close now|close|exit|mbyll|mbylle|dil|dil nga|closed)\b/i.test(low);
+  if (isExit && !hasStructure) {
+    return { kind: "exit", symbol: symbol ?? defaultSymbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [] };
+  }
+
+  // 3) MENAXHIM (modify): lëviz SL / breakeven / ndrysho TP-t — pa drejtim të ri.
+  const breakeven = /break\s*even|breakeven|to be\b/i.test(low) && /(sl|stop\s*loss)/i.test(low);
+  let modSl: number | undefined;
+  const moveSl = low.match(/(?:move|moving|change|changing|update|vendos|zhvendos)[^\d]{0,20}(?:sl|stop\s*loss)[^\d]{0,8}(\d{2,7}(?:\.\d+)?)/i)
+    || low.match(/(?:sl|stop\s*loss)\s*(?:to|=|:)\s*(\d{2,7}(?:\.\d+)?)/i);
+  if (moveSl) modSl = parseFloat(moveSl[1]);
+  if (breakeven || modSl != null || tpUpdates.length > 0) {
+    return { kind: "modify", symbol: symbol ?? defaultSymbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [],
+      mod: { sl: modSl, breakeven, tpUpdates: tpUpdates.length > 0 ? tpUpdates : undefined } };
+  }
+
+  return { ...none, symbol };
 }
 
 // ---------- Dërgo përgjigje te Telegram (konfirmim) ----------
@@ -230,7 +265,7 @@ Deno.serve(async (req: Request) => {
     if (signalId) await db.from("telegram_signals").update({ status, error }).eq("id", signalId);
   };
 
-  if (p.kind === "unknown") { await finish("ignored", "s'u njoh si sinjal (pa BUY/SELL)"); return json({ ok: true, kind: "unknown" }); }
+  if (p.kind === "unknown") { await finish("ignored", "koment/tekst — s'është sinjal me strukturë (Entry/SL/TP)"); return json({ ok: true, kind: "unknown" }); }
   if (!cfgRow.active) { await finish("ignored", "Telegram Sin joaktiv"); return json({ ok: true, skip: "inactive" }); }
 
   // Ngarko konfigurimin MetaApi të përdoruesit (tregton në llogarinë e tij — si te Trade Live)
@@ -239,14 +274,52 @@ Deno.serve(async (req: Request) => {
   const cfg = mcfg as unknown as Cfg;
 
   const tradeSym = await resolveSymbol(cfg, p.symbol || "XAUUSD", db);
+  const norm = (s: string) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const isGold = (s: string) => /XAU|GOLD|ARI/i.test(s || "");
+  const same = (a: string, b: string) => norm(a) === norm(b) || (isGold(a) && isGold(b));
+
+  // ===== MENAXHIM (modify): lëviz SL / breakeven / ndrysho TP — mbi pozicionet & porositë ekzistuese =====
+  if (p.kind === "modify") {
+    const { data: rows } = await db.from("telegram_trades").select("*")
+      .eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
+    const targets = (rows || []).filter((t) => same(t.symbol || "", tradeSym) || same(t.symbol || "", p.symbol || ""));
+    if (targets.length === 0) { await finish("ignored", "s'ka pozicione/porosi për të ndryshuar"); if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `ℹ️ Telegram Sin: s'ka pozicione aktive për të ndryshuar (${tradeSym}).`); return json({ ok: true, kind: "modify", changed: 0 }); }
+
+    const tpMap = new Map<number, number>();
+    for (const u of (p.mod?.tpUpdates || [])) tpMap.set(u.idx, u.price);
+    let changed = 0; const notes: string[] = [];
+
+    for (const t of targets) {
+      const newSl = p.mod?.breakeven ? Number(t.entry_price) : (p.mod?.sl != null ? p.mod.sl : Number(t.stop_loss));
+      const newTp = tpMap.has(Number(t.tp_index)) ? tpMap.get(Number(t.tp_index))! : Number(t.take_profit);
+      // Nëse ky rresht nuk preket nga asnjë ndryshim, kaloje.
+      const slChanged = (p.mod?.breakeven || p.mod?.sl != null) && Number.isFinite(newSl) && newSl !== Number(t.stop_loss);
+      const tpChanged = tpMap.has(Number(t.tp_index)) && Number.isFinite(newTp) && newTp !== Number(t.take_profit);
+      if (!slChanged && !tpChanged) continue;
+
+      let r;
+      if (t.status === "pending" && t.metaapi_order_id) {
+        r = await maTrade(cfg, { actionType: "ORDER_MODIFY", orderId: t.metaapi_order_id, openPrice: Number(t.entry_price), stopLoss: Math.round(newSl * 100) / 100, takeProfit: Math.round(newTp * 100) / 100 });
+      } else if (t.metaapi_position_id) {
+        r = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: t.metaapi_position_id, stopLoss: Math.round(newSl * 100) / 100, takeProfit: Math.round(newTp * 100) / 100 });
+      } else continue;
+      const br = brokerResult(r.body);
+      if (r.ok && br.ok) {
+        await db.from("telegram_trades").update({ stop_loss: Math.round(newSl * 100) / 100, take_profit: Math.round(newTp * 100) / 100, reason: `TG modify${p.mod?.breakeven ? " (breakeven)" : ""}` }).eq("id", t.id);
+        changed++;
+        if (slChanged) notes.push(`SL→${Math.round(newSl * 100) / 100}${p.mod?.breakeven ? " (BE)" : ""}`);
+        if (tpChanged) notes.push(`TP${t.tp_index}→${Math.round(newTp * 100) / 100}`);
+      }
+    }
+    await finish(changed > 0 ? "modified" : "ignored", changed > 0 ? null : "asnjë ndryshim s'u aplikua");
+    if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `🔧 Telegram Sin: ${changed} ndryshime (${tradeSym})${notes.length ? "\n" + [...new Set(notes)].join(", ") : ""}.`);
+    return json({ ok: true, kind: "modify", changed });
+  }
 
   // ===== DALJE: mbyll pozicionet HAPUR + anulo porositë NË PRITJE të Telegram Sin për këtë simbol =====
   if (p.kind === "exit") {
     const { data: openTrades } = await db.from("telegram_trades").select("*")
       .eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
-    const norm = (s: string) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const isGold = (s: string) => /XAU|GOLD|ARI/i.test(s || "");
-    const same = (a: string, b: string) => norm(a) === norm(b) || (isGold(a) && isGold(b));
     const toClose = (openTrades || []).filter((t) => same(t.symbol || "", tradeSym) || same(t.symbol || "", p.symbol || ""));
     let closed = 0, canceled = 0;
     for (const t of toClose) {

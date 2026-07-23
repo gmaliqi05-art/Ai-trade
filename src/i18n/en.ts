@@ -46,6 +46,7 @@ export const en: Record<string, string> = {
   "Dalje": "Exit",
   "Ekzekutuar": "Executed",
   "Në pritje": "Pending",
+  "Ndryshuar": "Modified",
   "Pjesërisht": "Partial",
   "Mbyllur": "Closed",
   "Refuzuar": "Rejected",
