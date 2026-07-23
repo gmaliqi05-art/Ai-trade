@@ -89,6 +89,15 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     catch (e) { flash('error', (e as Error).message); }
   };
 
+  // Krijon adresën e lidhjes (webhook_secret) pa pasur nevojë për bot token — për metodën abonues (kopjues).
+  const ensureSecret = async () => {
+    if (!user || cfg.webhook_secret) return;
+    const secret = generateWebhookSecret();
+    setCfg((p) => ({ ...p, webhook_secret: secret }));
+    try { await saveTelegramSinConfigPartial(user.id, { webhook_secret: secret }); flash('success', t('Adresa e lidhjes u krijua.')); }
+    catch (e) { flash('error', (e as Error).message); }
+  };
+
   const ensureSecretAndSaveToken = async (token: string) => {
     if (!user) return;
     let secret = cfg.webhook_secret;
@@ -271,45 +280,50 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         </div>
       </div>
 
-      {/* Lidhja me Telegram */}
+      {/* Lidhja me Telegram — metoda ABONUES (kopjues) */}
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-3">
         <h2 className="text-sm font-semibold text-white flex items-center gap-2"><Send className="w-4 h-4 text-sky-400" /> {t('Lidhja me Telegram')}</h2>
+        <p className="text-[11px] text-gray-400">{t('Ti je abonues i kanalit — përdorim "kopjuesin" që e lexon kanalin me llogarinë tënde (pa qenë admin).')}</p>
         <ol className="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
-          <li>{t('Hap @BotFather në Telegram, krijo një bot dhe kopjo token-in.')}</li>
-          <li>{t('Ngjite token-in këtu poshtë dhe ruaje.')}</li>
-          <li>{t('Kliko "Lidh me Telegram" (hap një tab — duhet të shohësh "ok":true).')}</li>
-          <li>{t('Shto botin në grupin ku trejderat dërgojnë sinjalet.')}</li>
+          <li>{t('Kopjo adresën e lidhjes më poshtë.')}</li>
+          <li>{t('Ndiq udhëzuesin e kopjuesit (dosja telegram-forwarder) për ta lidhur me kanalin.')}</li>
           <li>{t('Ndeze çelësin "Aktiv" lart.')}</li>
         </ol>
 
-        <div>
-          <label className="text-xs text-gray-400 block mb-1">{t('Bot token')}</label>
-          <input
-            type="text" defaultValue={cfg.bot_token} key={`tok-${loaded}`} placeholder="123456:ABC-DEF..."
-            onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== cfg.bot_token) ensureSecretAndSaveToken(v); }}
-            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
-          />
-        </div>
-
-        {hookUrl && (
+        {hookUrl ? (
           <div className="rounded-lg bg-black/20 border border-white/5 p-2 space-y-2">
-            <div className="text-[10px] text-gray-400">{t('URL-ja e webhook-ut (privat — mos e ndaj)')}</div>
+            <div className="text-[10px] text-gray-400">{t('Adresa e lidhjes (webhook — privat, mos e ndaj)')}</div>
             <div className="flex items-center gap-2">
               <code className="text-[10px] text-sky-300 truncate flex-1">{hookUrl}</code>
               <button onClick={() => copy(hookUrl)} className="p-1 text-gray-400 hover:text-white" title={t('Kopjo')}><Copy className="w-3.5 h-3.5" /></button>
             </div>
+            <div className="text-[10px] text-gray-500">{t('Kjo adresë shkon te kopjuesi (forwarder) — jo te @BotFather.')}</div>
           </div>
+        ) : (
+          <button onClick={ensureSecret} className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-200 hover:bg-sky-500/30">
+            <Send className="w-4 h-4" /> {t('Krijo adresën e lidhjes')}
+          </button>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            disabled={!cfg.bot_token || !cfg.webhook_secret}
-            onClick={() => window.open(setWebhookUrl(cfg.bot_token, cfg.webhook_secret), '_blank')}
-            className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-200 hover:bg-sky-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <ExternalLink className="w-4 h-4" /> {t('Lidh me Telegram')}
-          </button>
-        </div>
+        {/* Opsion dytësor: bot për një GRUP (vetëm nëse je admin i një grupi) */}
+        <details className="group">
+          <summary className="text-[11px] text-gray-400 cursor-pointer select-none hover:text-gray-300">{t('Opsion tjetër: ke një grup ku mund të shtosh një bot?')}</summary>
+          <div className="mt-2 space-y-2 pl-1">
+            <p className="text-[10px] text-gray-500">{t('Vetëm nëse ke një GRUP (jo kanal) ku je admin: krijo bot te @BotFather, ngjit token-in dhe kliko "Lidh me Telegram".')}</p>
+            <input
+              type="text" defaultValue={cfg.bot_token} key={`tok-${loaded}`} placeholder="123456:ABC-DEF..."
+              onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== cfg.bot_token) ensureSecretAndSaveToken(v); }}
+              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
+            />
+            <button
+              disabled={!cfg.bot_token || !cfg.webhook_secret}
+              onClick={() => window.open(setWebhookUrl(cfg.bot_token, cfg.webhook_secret), '_blank')}
+              className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-200 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ExternalLink className="w-4 h-4" /> {t('Lidh me Telegram')}
+            </button>
+          </div>
+        </details>
       </div>
 
       {/* Raportet e sinjaleve */}
