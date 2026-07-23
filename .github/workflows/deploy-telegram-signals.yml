@@ -1,0 +1,25 @@
+name: Deploy telegram-signals
+
+# Deploy i webhook-ut Telegram Sin. verify_jwt=false — Telegram e thërret pa JWT;
+# autentikimi bëhet me ?key=<webhook_secret> + header-i X-Telegram-Bot-Api-Secret-Token.
+# Nxitet manualisht (workflow_dispatch). Kërkon sekretin e repos: SUPABASE_ACCESS_TOKEN.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Deploy telegram-signals (verify_jwt=false)
+        run: supabase functions deploy telegram-signals --project-ref zwyuscgqacfpjafznybg --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

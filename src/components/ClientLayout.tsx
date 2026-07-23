@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -40,6 +40,7 @@ const navSections = [
     items: [
       { id: 'metatrader' as ClientPage, label: 'Lidhja & Konfigurimi', icon: Monitor },
       { id: 'mmt' as ClientPage, label: 'MMT — Super Roboti', icon: Brain },
+      { id: 'telegram_sin' as ClientPage, label: 'Telegram Sin', icon: Send },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
   },
@@ -70,6 +71,7 @@ const pageLabels: Record<ClientPage, string> = {
   protrade: 'ProTrade Intelligence',
   metatrader: 'Lidhja & Konfigurimi',
   mmt: 'MMT — Super Roboti',
+  telegram_sin: 'Telegram Sin',
   notifications: 'Njoftimet',
   reports: 'Raporte',
   settings: 'Cilësimet',

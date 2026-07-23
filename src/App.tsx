@@ -17,6 +17,7 @@ import SettingsPage from './pages/SettingsPage';
 import ProTradePage from './pages/ProTradePage';
 import ClientManualPage from './pages/ClientManualPage';
 import MmtPage from './pages/MmtPage';
+import TelegramSinPage from './pages/TelegramSinPage';
 
 import AdminOverviewPage from './admin/AdminOverviewPage';
 import AdminSettingsPage from './admin/AdminSettingsPage';
@@ -29,7 +30,7 @@ import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
   | 'dashboard' | 'market_prices' | 'demo_trading' | 'chart_analysis'
-  | 'signals' | 'protrade' | 'metatrader' | 'mmt' | 'notifications' | 'reports' | 'settings' | 'manual';
+  | 'signals' | 'protrade' | 'metatrader' | 'mmt' | 'telegram_sin' | 'notifications' | 'reports' | 'settings' | 'manual';
 
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_assets' | 'admin_signals'
@@ -38,7 +39,7 @@ export type AdminPage =
 
 export type Page = ClientPage | AdminPage;
 
-const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'demo_trading', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'mmt', 'notifications', 'reports', 'settings', 'manual'];
+const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'demo_trading', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'mmt', 'telegram_sin', 'notifications', 'reports', 'settings', 'manual'];
 const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_assets', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
@@ -96,6 +97,7 @@ function ClientApp() {
       {currentPage === 'protrade' && <ProTradePage onNavigate={setCurrentPage} />}
       {currentPage === 'metatrader' && <MetaTraderPage />}
       {currentPage === 'mmt' && <MmtPage />}
+      {currentPage === 'telegram_sin' && <TelegramSinPage onNavigate={setCurrentPage} />}
       {currentPage === 'notifications' && <NotificationsPage />}
       {currentPage === 'reports' && <ReportsPage />}
       {currentPage === 'settings' && <SettingsPage />}
