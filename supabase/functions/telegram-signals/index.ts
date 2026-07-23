@@ -240,34 +240,63 @@ Deno.serve(async (req: Request) => {
 
   const tradeSym = await resolveSymbol(cfg, p.symbol || "XAUUSD", db);
 
-  // ===== DALJE: mbyll pozicionet e Telegram Sin për këtë simbol =====
+  // ===== DALJE: mbyll pozicionet HAPUR + anulo porositë NË PRITJE të Telegram Sin për këtë simbol =====
   if (p.kind === "exit") {
     const { data: openTrades } = await db.from("telegram_trades").select("*")
-      .eq("user_id", cfgRow.user_id).eq("status", "open");
+      .eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
     const norm = (s: string) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     const isGold = (s: string) => /XAU|GOLD|ARI/i.test(s || "");
     const same = (a: string, b: string) => norm(a) === norm(b) || (isGold(a) && isGold(b));
     const toClose = (openTrades || []).filter((t) => same(t.symbol || "", tradeSym) || same(t.symbol || "", p.symbol || ""));
-    let closed = 0;
+    let closed = 0, canceled = 0;
     for (const t of toClose) {
-      if (!t.metaapi_position_id) continue;
-      const r = await maTrade(cfg, { actionType: "POSITION_CLOSE_ID", positionId: t.metaapi_position_id });
-      const br = brokerResult(r.body);
-      if (r.ok && (br.ok || /position.*not.*found/i.test(br.msg))) {
-        await db.from("telegram_trades").update({ status: "closed", closed_at: new Date().toISOString(), reason: "Telegram: exit" }).eq("id", t.id);
-        closed++;
+      if (t.status === "pending" && t.metaapi_order_id) {
+        // Anulo porosinë NË PRITJE (ende s'është mbushur)
+        const r = await maTrade(cfg, { actionType: "ORDER_CANCEL", orderId: t.metaapi_order_id });
+        const br = brokerResult(r.body);
+        if (r.ok && (br.ok || /order.*not.*found|already/i.test(br.msg))) {
+          await db.from("telegram_trades").update({ status: "closed", closed_at: new Date().toISOString(), reason: "Telegram: exit (anuluar pending)" }).eq("id", t.id);
+          canceled++;
+        }
+      } else if (t.metaapi_position_id) {
+        const r = await maTrade(cfg, { actionType: "POSITION_CLOSE_ID", positionId: t.metaapi_position_id });
+        const br = brokerResult(r.body);
+        if (r.ok && (br.ok || /position.*not.*found/i.test(br.msg))) {
+          await db.from("telegram_trades").update({ status: "closed", closed_at: new Date().toISOString(), reason: "Telegram: exit" }).eq("id", t.id);
+          closed++;
+        }
       }
     }
-    await finish(closed > 0 ? "closed" : "ignored", closed > 0 ? null : "asnjë pozicion i hapur për mbyllje");
-    if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `✅ Telegram Sin: u mbyllën <b>${closed}</b> pozicione (${tradeSym}).`);
-    return json({ ok: true, kind: "exit", closed });
+    const total = closed + canceled;
+    await finish(total > 0 ? "closed" : "ignored", total > 0 ? null : "asnjë pozicion/porosi për mbyllje");
+    if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `✅ Telegram Sin: u mbyllën <b>${closed}</b> pozicione dhe u anuluan <b>${canceled}</b> porosi në pritje (${tradeSym}).`);
+    return json({ ok: true, kind: "exit", closed, canceled });
   }
 
   // ===== HYRJE =====
   const isBuy = p.direction === "buy";
   const lp = await livePrice(cfg, tradeSym);
-  const ref = lp ? (isBuy ? lp.ask : lp.bid) : (p.entryPrice ?? 0);
-  if (!(ref > 0)) { await finish("rejected", "s'mora çmim live nga MetaApi"); return json({ ok: true, error: "no_price" }); }
+  const mkt = lp ? (isBuy ? lp.ask : lp.bid) : (p.entryPrice ?? 0);
+  if (!(mkt > 0)) { await finish("rejected", "s'mora çmim live nga MetaApi"); return json({ ok: true, error: "no_price" }); }
+
+  // PENDING vs MARKET: nëse trejderi dha një çmim hyrjeje TË SAKTË që tregu s'e ka arritur ende,
+  // vendos porosi NË PRITJE (limit/stop) — mbushet AUTOMATIKISHT kur çmimi arrin aty. Ndryshe: market.
+  //   BUY:  entry < treg → BUY_LIMIT  | entry > treg → BUY_STOP
+  //   SELL: entry > treg → SELL_LIMIT | entry < treg → SELL_STOP
+  let pending = false;
+  let pendingType = "";
+  let ref = mkt;
+  if (p.entryPrice != null && p.entryType !== "market") {
+    const diff = Math.abs(p.entryPrice - mkt);
+    const tol = mkt * 0.0005;              // shumë afër tregut → market (pending s'ka kuptim)
+    const tooFar = diff > mkt * 0.03;      // >3% larg → ka gjasë parse gabim → market (siguri)
+    if (diff > tol && !tooFar) {
+      pending = true;
+      ref = p.entryPrice;
+      if (isBuy) pendingType = p.entryPrice < mkt ? "ORDER_TYPE_BUY_LIMIT" : "ORDER_TYPE_BUY_STOP";
+      else pendingType = p.entryPrice > mkt ? "ORDER_TYPE_SELL_LIMIT" : "ORDER_TYPE_SELL_STOP";
+    }
+  }
 
   // SL: nga sinjali, ose fallback (entry ∓ fallback_sl_usd). Pa SL të vlefshëm → refuzo (siguri).
   let sl = p.stopLoss;
@@ -297,8 +326,8 @@ Deno.serve(async (req: Request) => {
     plan = validTps.map((tp, i) => ({ tp, vol: baseLot, idx: i + 1 }));
   }
 
-  // Kufizim pozicionesh të hapura
-  const { data: openNow } = await db.from("telegram_trades").select("id").eq("user_id", cfgRow.user_id).eq("status", "open");
+  // Kufizim pozicionesh të hapura (përfshi ato NË PRITJE)
+  const { data: openNow } = await db.from("telegram_trades").select("id").eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
   const openCount = (openNow || []).length;
   const room = Math.max(0, (Number(cfgRow.max_open) || 12) - openCount);
   if (room <= 0) { await finish("rejected", `Max pozicione të hapura (${cfgRow.max_open})`); return json({ ok: true, error: "max_open" }); }
@@ -310,9 +339,10 @@ Deno.serve(async (req: Request) => {
     const vol = Math.min(Math.round(leg.vol * 100) / 100, maxLot);
     const tp = Math.round(leg.tp * 100) / 100;
     const tradeBody: Record<string, unknown> = {
-      actionType: isBuy ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL",
+      actionType: pending ? pendingType : (isBuy ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL"),
       symbol: tradeSym, volume: vol, comment: `${TG_TAG}${leg.idx}`, stopLoss: sl, takeProfit: tp,
     };
+    if (pending) tradeBody.openPrice = Math.round(ref * 100) / 100; // çmimi ku pret të mbushet
     let r = await maTrade(cfg, tradeBody);
     // 10016 (invalid stops) → zgjero SL/TP 1.5×, provo edhe një herë
     const rb0 = r.body as { numericCode?: number } | null;
@@ -328,18 +358,20 @@ Deno.serve(async (req: Request) => {
     await db.from("telegram_trades").insert({
       signal_id: signalId, user_id: cfgRow.user_id, symbol: tradeSym, action: isBuy ? "BUY" : "SELL",
       volume: vol, tp_index: leg.idx, entry_price: ref, stop_loss: Number(tradeBody.stopLoss), take_profit: Number(tradeBody.takeProfit),
-      metaapi_order_id: br.orderId, metaapi_position_id: br.positionId, status: br.ok ? "open" : "rejected",
-      reason: br.ok ? `TG TP${leg.idx}` : `Brokeri: ${br.msg || br.code}`, raw_response: r.body ?? null,
+      metaapi_order_id: br.orderId, metaapi_position_id: pending ? null : br.positionId,
+      status: br.ok ? (pending ? "pending" : "open") : "rejected",
+      reason: br.ok ? `TG TP${leg.idx}${pending ? " (pending)" : ""}` : `Brokeri: ${br.msg || br.code}`, raw_response: r.body ?? null,
     });
-    if (br.ok) { executed++; details.push(`TP${leg.idx} @ ${tp} (${vol})`); }
+    if (br.ok) { executed++; details.push(`TP${leg.idx} @ ${tp} (${vol})${pending ? " ⏳" : ""}`); }
   }
 
-  await finish(executed > 0 ? (executed === plan.length ? "executed" : "partial") : "rejected", executed > 0 ? null : "asnjë leg s'u ekzekutua (shih telegram_trades)");
+  const kindWord = pending ? "porosi në pritje" : "pozicione";
+  await finish(executed > 0 ? (pending ? "pending" : (executed === plan.length ? "executed" : "partial")) : "rejected", executed > 0 ? null : "asnjë leg s'u ekzekutua (shih telegram_trades)");
   if (cfgRow.bot_token) {
     const emoji = executed > 0 ? "✅" : "⚠️";
     await tgReply(cfgRow.bot_token, chatId,
-      `${emoji} <b>Telegram Sin</b> — ${isBuy ? "BUY" : "SELL"} ${tradeSym}\n` +
-      (executed > 0 ? `Hyri në ${executed} pozicione:\n${details.join("\n")}\nSL: ${sl}` : `S'u hap dot: shih raportet në aplikacion.`));
+      `${emoji} <b>Telegram Sin</b> — ${isBuy ? "BUY" : "SELL"} ${tradeSym}` + (pending ? ` @ ${Math.round(ref * 100) / 100} ⏳` : "") + `\n` +
+      (executed > 0 ? `${pending ? "Vendosi" : "Hyri në"} ${executed} ${kindWord}:\n${details.join("\n")}\nSL: ${sl}` : `S'u hap dot: shih raportet në aplikacion.`));
   }
-  return json({ ok: true, kind: "entry", executed, legs: plan.length });
+  return json({ ok: true, kind: "entry", pending, executed, legs: plan.length });
 });
