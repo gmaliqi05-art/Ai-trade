@@ -520,46 +520,6 @@ export default function MmtPage() {
         </div>
       </Fold>
 
-      {/* MMT-FAST (Rruga A) — roboti tik-pas-tiku; ON/OFF nga pronari. */}
-      {(() => {
-        const fastBeat = scans.find(s => s.regime === 'FAST');
-        const fastAlive = fastBeat && (Date.now() - new Date(fastBeat.scanned_at).getTime()) < 12 * 60 * 1000;
-        return (
-          <Fold title={t('FAST (tik-pas-tiku) — roboti i sekondave')}
-            icon={<Activity className={`w-4 h-4 ${cfg.fast_on ? 'text-purple-400' : 'text-gray-500'}`} />}
-            badge={<>
-              {cfg.fast_on && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">ON</span>}
-              {fastAlive
-                ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">{t('WORKER GJALLË')}</span>
-                : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-500">{t('WORKER JO AKTIV')}</span>}
-            </>}
-            tint={cfg.fast_on ? 'bg-purple-500/5 border-purple-500/40' : undefined}>
-            <p className="text-[11px] text-gray-400 leading-snug">
-              {t('NDJEKËSI i lëvizjes: pa indikatorë (analizat i bëjnë Long/Scalp) — ndjek ÇDO TIK live (milisekonda), hyn sapo nis lëvizja (ngritje → BUY, rënie → SELL), në +$0.50 e çon mbrojtjen në 0, dhe DEL sapo çmimi kthehet nga kulmi — me fitim të kyçur ose në 0. SL i plotë vetëm si frenë fatkeqësie.')}
-            </p>
-            <p className="text-[11px] text-purple-300/90 leading-snug">
-              {t('I PAVARUR: e ndalin vetëm çelësi FAST më poshtë dhe kufijtë e tij — sesionet, blackout-i i lajmeve dhe kill-switch-i i përbashkët i MMT NUK e prekin. Gjuan pa ndalim sa herë tregu i arit është i hapur (mbyllet vetëm fundjavën).')}
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
-              <button type="button" onClick={() => save({ fast_on: !cfg.fast_on })}
-                className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.fast_on ? 'bg-purple-500/15 border-purple-500/40 text-purple-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
-                <Activity className="w-4 h-4" />{cfg.fast_on ? 'FAST: ON' : 'FAST: OFF'}
-              </button>
-              {num(t('Burst min ($/dritare)'), 'fast_move_usd', '0.1')}
-              {num(t('Dritarja (sek)'), 'fast_window_s', '1')}
-              {num('SL ($)', 'fast_sl_usd', '0.5')}
-              {num('TP (×SL)', 'fast_tp_rr', '0.1')}
-              {num(t('Ngecja: dil pas (sek)'), 'fast_stall_s', '5')}
-              {num(t('Maks. fast/ditë'), 'fast_max_day', '1')}
-              {num(t('Pushim pas daljes (sek)'), 'fast_cooldown_s', '10')}
-              {num(t('Kill FAST pas N SL/ditë'), 'fast_kill_after_sl', '1', t('vetëm SL-të e Fast'))}
-              {num(t('Stop ditor FAST ($)'), 'fast_daily_stop_usd', '1', t('vetëm humbjet e Fast'))}
-              {num(t('Dil kur kthehet ($ nga kulmi)'), 'fast_pullback_usd', '0.1', t('fitimi kyçet këtu'))}
-            </div>
-          </Fold>
-        );
-      })()}
-
       {/* LIVE — çelësi në dorën e pronarit (default OFF). Kur ndizet, MMT ekzekuton REALISHT te MT5. */}
       <Fold title={t('LIVE — para reale')}
         icon={<Power className={`w-4 h-4 ${cfg.live_enabled ? 'text-red-400' : 'text-gray-500'}`} />}
@@ -657,12 +617,12 @@ export default function MmtPage() {
                 veçantë me SAKTËSINË në %, fitimin total/sot, R dhe pozicionet — që të
                 krahasohet qartë se cili robot po sjell fitimet më të mira. */}
             {(() => {
-              const order: [string, string][] = [['MMT-Long', 'trend'], ['MMT-Scalp', 'scalp'], ['MMT-Fast', 'fast']];
+              const order: [string, string][] = [['MMT-Long', 'trend'], ['MMT-Scalp', 'scalp']];
               const stratOf = (s: string) => (s === 'scalp' ? 'scalp' : s === 'fast' ? 'fast' : 'trend');
               return (
                 <div className="mb-3">
                   <p className="text-[11px] text-gray-500 mb-1.5">{t('Raporti sipas robotit — krahaso kush po fiton më mirë')}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {order.map(([name, strat]) => {
                       const mine = trades.filter(x => stratOf(x.strategy) === strat);
                       const cl = mine.filter(x => x.closed_at);
