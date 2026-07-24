@@ -272,9 +272,12 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
               className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
           </div>
           <div className="flex items-end">
-            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
-              <input type="checkbox" checked={cfg.move_be_after_tp1} onChange={(e) => setAndSave('move_be_after_tp1', e.target.checked)} />
-              {t('SL në breakeven pas TP1')}
+            <label className="flex items-start gap-2 text-xs text-gray-300 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={cfg.move_be_after_tp1} onChange={(e) => setAndSave('move_be_after_tp1', e.target.checked)} />
+              <span>
+                {t('Mbrojtja shkallë-shkallë e TP-ve')}
+                <span className="block text-[10px] text-gray-500">{t('TP1 preket → SL në breakeven · TP2 preket → SL te TP2 (kurrë më lart — i lihet vend tregut për TP3/TP4)')}</span>
+              </span>
             </label>
           </div>
         </div>
