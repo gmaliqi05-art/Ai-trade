@@ -243,6 +243,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
               onChange={(e) => setAndSave('tp_mode', e.target.value as TpMode)}
               className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
             >
+              <option value="last">{t('TP më i larti — 1 pozicion, alarme për çdo TP')}</option>
               <option value="multi">{t('Multi — 1 pozicion për çdo TP (TP1..TP4)')}</option>
               <option value="first">{t('Vetëm TP1 — një pozicion i vetëm')}</option>
               <option value="split">{t('Ndaj lotin — 1 lot i ndarë mbi TP-të')}</option>
@@ -276,7 +277,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
               <input type="checkbox" className="mt-0.5" checked={cfg.move_be_after_tp1} onChange={(e) => setAndSave('move_be_after_tp1', e.target.checked)} />
               <span>
                 {t('Mbrojtja shkallë-shkallë e TP-ve')}
-                <span className="block text-[10px] text-gray-500">{t('TP1 preket → SL në breakeven · TP2 preket → SL te TP2 (kurrë më lart — i lihet vend tregut për TP3/TP4)')}</span>
+                <span className="block text-[10px] text-gray-500">{t('SL gjithmonë NJË TP mbrapa: TP1 preket → SL në breakeven · TP2 → SL te TP1 · TP3 → SL te TP2 …')}</span>
               </span>
             </label>
           </div>

@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 const PROJECT_REF = 'zwyuscgqacfpjafznybg';
 export const TELEGRAM_WEBHOOK_BASE = `https://${PROJECT_REF}.supabase.co/functions/v1/telegram-signals`;
 
-export type TpMode = 'multi' | 'first' | 'split';
+export type TpMode = 'multi' | 'first' | 'split' | 'last';
 
 export interface TelegramSinConfig {
   active: boolean;
