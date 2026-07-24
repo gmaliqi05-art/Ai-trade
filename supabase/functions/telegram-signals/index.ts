@@ -183,7 +183,7 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   }
 
   // 2) DALJE (mbyll gjithçka)
-  const isExit = /\b(close all|close everything|close the trade|close now|close|exit|mbyll|mbylle|dil|dil nga|closed)\b/i.test(low);
+  const isExit = /\b(close all|close everything|close the trade|close now|close|exit|cancel|cancelled|canceled|anulo|mbyll|mbylle|dil|dil nga|closed)\b/i.test(low);
   if (isExit && !hasStructure) {
     return { kind: "exit", symbol: symbol ?? defaultSymbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [] };
   }
