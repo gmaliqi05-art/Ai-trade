@@ -202,6 +202,18 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   return { ...none, symbol };
 }
 
+// ---------- Push notification te aplikacioni (web-push-send) ----------
+async function pushNotify(payload: { user_id: string; title: string; body: string; url?: string; tag?: string }) {
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch { /* jo-kritik */ }
+}
+
 // ---------- Dërgo përgjigje te Telegram (konfirmim) ----------
 async function tgReply(botToken: string, chatId: string | number, text: string) {
   try {
@@ -275,31 +287,61 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
     }
   }
 
-  // 3) SHKALLËT E SL — vetëm kur tiku është ON
-  if (!cfgRow.move_be_after_tp1) return { user: userId.slice(0, 8), changed, ladder: "off" };
-  let laddered = 0;
+  // 3) PREKJA E TP-ve (nga çmimi LIVE + legs të mbyllura) → push notification për çdo TP të ri;
+  //    dhe kur tiku është ON → SHKALLA E SL: gjithmonë NJË TP mbrapa çmimit:
+  //    TP1 preket → SL te HYRJA (BE) · TP2 preket → SL te TP1 · TP3 preket → SL te TP2 · ...
+  const ladderOn = !!cfgRow.move_be_after_tp1;
+  let laddered = 0, notified = 0;
+  const priceCache = new Map<string, { bid: number; ask: number } | null>();
   for (const [, legs] of bySignal) {
+    if (!legs[0].signal_id) continue;
     const alive = legs.filter((l) => l.status === "open" && l.metaapi_position_id && posIds.has(String(l.metaapi_position_id)));
-    if (alive.length === 0 || !legs[0].signal_id) continue;
-    const { data: closedLegsRaw } = await db.from("telegram_trades").select("tp_index, reason, take_profit")
-      .eq("user_id", userId).eq("signal_id", legs[0].signal_id).eq("status", "closed");
-    // deno-lint-ignore no-explicit-any
-    const closedLegs = (closedLegsRaw || []) as any[];
-    const hitIdx = closedLegs.filter((l) => /^TP\d+ u prek/.test(String(l.reason || ""))).map((l) => Number(l.tp_index) || 0);
-    const maxHit = hitIdx.length ? Math.max(...hitIdx) : 0;
-    if (maxHit < 1) continue;
-    // Caku: pas TP1 → hyrja (BE); pas TP2 e sipër → çmimi i TP2 (KUFIRI maksimal i SL).
-    let target: number | null = null;
-    if (maxHit === 1) target = Number(alive[0].entry_price) || null;
-    else {
-      const tp2 = closedLegs.find((l) => Number(l.tp_index) === 2)?.take_profit
-        ?? legs.find((l) => Number(l.tp_index) === 2)?.take_profit;
-      target = tp2 != null ? Number(tp2) : (Number(alive[0].entry_price) || null);
+    // Sinjali: nivelet e TP-ve + sa është prekur deri tani (kundër njoftimeve të dyfishta)
+    const { data: sig } = await db.from("telegram_signals")
+      .select("id, tps, tp_hit, symbol, direction").eq("id", legs[0].signal_id).maybeSingle();
+    if (!sig) continue;
+    const tps = (Array.isArray(sig.tps) ? sig.tps : []).map(Number).filter((v: number) => v > 0);
+    if (tps.length === 0) continue;
+    const prevHit = Number(sig.tp_hit) || 0;
+    const isBuy = String(legs[0].action).toUpperCase() === "BUY";
+    const sym = String(legs[0].symbol || sig.symbol || "XAUUSD");
+
+    // (a) nga legs e mbyllura ("TPn u prek" — mode multi/split)
+    const closedHit = Math.max(0, ...legs.filter((l) => /^TP\d+ u prek/.test(String(l.reason || ""))).map((l) => Number(l.tp_index) || 0));
+    // (b) nga çmimi LIVE (mbulon edhe mënyrën 'TP më i larti', ku s'ka legs të ndërmjetme)
+    let priceHit = 0;
+    if (alive.length > 0) {
+      if (!priceCache.has(sym)) priceCache.set(sym, await livePrice(cfg, sym));
+      const lp = priceCache.get(sym);
+      if (lp) for (let k = 1; k <= tps.length; k++) {
+        const touched = isBuy ? lp.bid >= tps[k - 1] : lp.ask <= tps[k - 1];
+        if (touched) priceHit = k;
+      }
     }
+    const maxHit = Math.max(closedHit, priceHit);
+    if (maxHit <= prevHit && maxHit < 1) continue;
+
+    // PUSH NOTIFICATION për çdo TP të RI të prekur (TP1, TP2, TP3...)
+    if (maxHit > prevHit) {
+      for (let k = prevHit + 1; k <= maxHit; k++) {
+        const nextSl = ladderOn ? (k === 1 ? "breakeven" : `TP${k - 1}`) : null;
+        await pushNotify({
+          user_id: userId,
+          title: `🎯 TP${k} u prek — ${sym} ${isBuy ? "BUY" : "SELL"}`,
+          body: `Çmimi preku TP${k} (${tps[k - 1]})${nextSl ? ` · SL kalon te ${nextSl}` : ""} — Telegram Sin`,
+          url: "/", tag: `tgsin-tp-${String(sig.id).slice(0, 8)}-${k}`,
+        });
+        notified++;
+      }
+      await db.from("telegram_signals").update({ tp_hit: maxHit }).eq("id", sig.id);
+    }
+
+    // SHKALLA E SL (vetëm me tik ON): caku = një TP mbrapa (TP1→BE, TPn→TP(n-1))
+    if (!ladderOn || maxHit < 1 || alive.length === 0) continue;
+    const target = maxHit === 1 ? (Number(alive[0].entry_price) || null) : tps[maxHit - 2];
     if (!(Number(target) > 0)) continue;
     const tgt = Math.round(Number(target) * 100) / 100;
     for (const leg of alive) {
-      const isBuy = String(leg.action).toUpperCase() === "BUY";
       const cur = Number(leg.stop_loss);
       // Lëviz VETËM në drejtim të fitimit (BUY: vetëm lart; SELL: vetëm poshtë) — kurrë mbrapsht.
       const better = Number.isFinite(cur) ? (isBuy ? tgt > cur : tgt < cur) : true;
@@ -312,7 +354,7 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
       }
     }
   }
-  return { user: userId.slice(0, 8), changed, laddered };
+  return { user: userId.slice(0, 8), changed, laddered, notified };
 }
 
 Deno.serve(async (req: Request) => {
@@ -511,6 +553,10 @@ Deno.serve(async (req: Request) => {
   const baseLot = Math.max(Number(cfgRow.lot) || 0.01, 0.01);
   if (mode === "first") {
     plan = [{ tp: validTps[0], vol: baseLot, idx: 1 }];
+  } else if (mode === "last") {
+    // NJË pozicion i vetëm me TP-në MË TË LARGËT (TP3/TP4). TP-të e ndërmjetme bëhen nivele
+    // alarmi: menaxheri (cron) dërgon push për çdo prekje dhe (me tik ON) ngjit SL-në shkallë-shkallë.
+    plan = [{ tp: validTps[validTps.length - 1], vol: baseLot, idx: validTps.length }];
   } else if (mode === "split") {
     const each = Math.max(Math.floor((baseLot / validTps.length) * 100) / 100, 0.01);
     plan = validTps.map((tp, i) => ({ tp, vol: each, idx: i + 1 }));
