@@ -142,7 +142,7 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
 
   // Take-profit(s) me INDEKS — "TP 1: 4112", "TP3 4060", "Change TP 4 to 4054"
   const tpUpdates: TpUpdate[] = [];
-  const tpIdxRe = /tp\s*(\d)\s*(?:to\s*)?:?\s*(\d{2,7}(?:\.\d+)?)/gi;
+  const tpIdxRe = /(?:tp|take\s*profit)\s*(\d)\s*(?:to\s*)?:?\s*(\d{2,7}(?:\.\d+)?)/gi;
   let tu: RegExpExecArray | null;
   while ((tu = tpIdxRe.exec(low)) !== null) {
     const idx = parseInt(tu[1], 10), price = parseFloat(tu[2]);
@@ -189,7 +189,7 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   }
 
   // 3) MENAXHIM (modify): lëviz SL / breakeven / ndrysho TP-t — pa drejtim të ri.
-  const breakeven = /break\s*even|breakeven|to be\b/i.test(low) && /(sl|stop\s*loss)/i.test(low);
+  const breakeven = /break\s*even|breakeven/i.test(low);
   let modSl: number | undefined;
   const moveSl = low.match(/(?:move|moving|change|changing|update|vendos|zhvendos)[^\d]{0,20}(?:sl|stop\s*loss)[^\d]{0,8}(\d{2,7}(?:\.\d+)?)/i)
     || low.match(/(?:sl|stop\s*loss)\s*(?:to|=|:)\s*(\d{2,7}(?:\.\d+)?)/i);
