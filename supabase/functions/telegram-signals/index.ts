@@ -213,14 +213,133 @@ async function tgReply(botToken: string, chatId: string | number, text: string) 
   } catch { /* jo-kritik */ }
 }
 
+// ===== MENAXHERI I SHKALLËVE TË TP (cron çdo 1 min) =====
+// Kur tiku 'move_be_after_tp1' është ON:
+//   TP1 preket → legs e mbetura (TP2/3/4) → SL te HYRJA (breakeven)
+//   TP2 preket → legs e mbetura → SL te ÇMIMI I TP2 — dhe KURRË më lart se TP2,
+//   që tregu të ketë hapësirë për uljet/ngritjet e veta para se të prekë TP3/TP4.
+// Kur tiku është OFF: asnjë ndërhyrje — mbeten vetëm SL/TP-të e vendosura në hyrje.
+// Gjithmonë (pavarësisht tikut): përditëson statuset — pending i mbushur → open; leg i mbyllur → closed.
+// deno-lint-ignore no-explicit-any
+async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
+  const userId = String(cfgRow.user_id);
+  const { data: rowsRaw } = await db.from("telegram_trades").select("*")
+    .eq("user_id", userId).in("status", ["open", "pending"]);
+  // deno-lint-ignore no-explicit-any
+  const rows = (rowsRaw || []) as any[];
+  if (rows.length === 0) return { user: userId.slice(0, 8), legs: 0 };
+
+  const { data: mcfg } = await db.from("metaapi_config").select("*").eq("user_id", userId).maybeSingle();
+  if (!mcfg || !mcfg.account_id || !mcfg.token) return { user: userId.slice(0, 8), error: "no_metaapi" };
+  const cfg = mcfg as unknown as Cfg;
+
+  // deno-lint-ignore no-explicit-any
+  const positions = (await maGet(cfg, "/positions").catch(() => [])) as any[];
+  // deno-lint-ignore no-explicit-any
+  const orders = (await maGet(cfg, "/orders").catch(() => [])) as any[];
+  const posIds = new Set((positions || []).map((p) => String(p.id)));
+  const ordIds = new Set((orders || []).map((o) => String(o.id)));
+  const now = new Date().toISOString();
+  let changed = 0;
+
+  // 1) PENDING → u mbush (u bë pozicion me të njëjtin id) ose u anulua/skadoi te brokeri.
+  for (const t of rows) {
+    if (t.status !== "pending") continue;
+    const oid = t.metaapi_order_id ? String(t.metaapi_order_id) : "";
+    if (oid && posIds.has(oid)) {
+      await db.from("telegram_trades").update({ status: "open", metaapi_position_id: oid }).eq("id", t.id);
+      t.status = "open"; t.metaapi_position_id = oid; changed++;
+    } else if (oid && !ordIds.has(oid)) {
+      await db.from("telegram_trades").update({ status: "closed", closed_at: now, reason: "Pending s'është më te brokeri" }).eq("id", t.id);
+      t.status = "closed"; changed++;
+    }
+  }
+
+  // 2) Grupim sipas sinjalit; leg i zhdukur ndërsa vëllezërit janë hapur ⇒ e preku TP-në e vet
+  //    (SL është i njëjtë për të gjitha legs — po të prekej SL, mbylleshin të gjitha njëherësh).
+  // deno-lint-ignore no-explicit-any
+  const bySignal = new Map<string, any[]>();
+  for (const t of rows) {
+    const k = String(t.signal_id || t.id);
+    if (!bySignal.has(k)) bySignal.set(k, []);
+    bySignal.get(k)!.push(t);
+  }
+  for (const [, legs] of bySignal) {
+    const openLegs = legs.filter((l) => l.status === "open" && l.metaapi_position_id);
+    const gone = openLegs.filter((l) => !posIds.has(String(l.metaapi_position_id)));
+    const alive = openLegs.filter((l) => posIds.has(String(l.metaapi_position_id)));
+    for (const g of gone) {
+      const reason = alive.length > 0 ? `TP${g.tp_index} u prek` : "U mbyll te brokeri";
+      await db.from("telegram_trades").update({ status: "closed", closed_at: now, reason }).eq("id", g.id);
+      g.status = "closed"; g.reason = reason; changed++;
+    }
+  }
+
+  // 3) SHKALLËT E SL — vetëm kur tiku është ON
+  if (!cfgRow.move_be_after_tp1) return { user: userId.slice(0, 8), changed, ladder: "off" };
+  let laddered = 0;
+  for (const [, legs] of bySignal) {
+    const alive = legs.filter((l) => l.status === "open" && l.metaapi_position_id && posIds.has(String(l.metaapi_position_id)));
+    if (alive.length === 0 || !legs[0].signal_id) continue;
+    const { data: closedLegsRaw } = await db.from("telegram_trades").select("tp_index, reason, take_profit")
+      .eq("user_id", userId).eq("signal_id", legs[0].signal_id).eq("status", "closed");
+    // deno-lint-ignore no-explicit-any
+    const closedLegs = (closedLegsRaw || []) as any[];
+    const hitIdx = closedLegs.filter((l) => /^TP\d+ u prek/.test(String(l.reason || ""))).map((l) => Number(l.tp_index) || 0);
+    const maxHit = hitIdx.length ? Math.max(...hitIdx) : 0;
+    if (maxHit < 1) continue;
+    // Caku: pas TP1 → hyrja (BE); pas TP2 e sipër → çmimi i TP2 (KUFIRI maksimal i SL).
+    let target: number | null = null;
+    if (maxHit === 1) target = Number(alive[0].entry_price) || null;
+    else {
+      const tp2 = closedLegs.find((l) => Number(l.tp_index) === 2)?.take_profit
+        ?? legs.find((l) => Number(l.tp_index) === 2)?.take_profit;
+      target = tp2 != null ? Number(tp2) : (Number(alive[0].entry_price) || null);
+    }
+    if (!(Number(target) > 0)) continue;
+    const tgt = Math.round(Number(target) * 100) / 100;
+    for (const leg of alive) {
+      const isBuy = String(leg.action).toUpperCase() === "BUY";
+      const cur = Number(leg.stop_loss);
+      // Lëviz VETËM në drejtim të fitimit (BUY: vetëm lart; SELL: vetëm poshtë) — kurrë mbrapsht.
+      const better = Number.isFinite(cur) ? (isBuy ? tgt > cur : tgt < cur) : true;
+      if (!better) continue;
+      const r = await maTrade(cfg, { actionType: "POSITION_MODIFY", positionId: String(leg.metaapi_position_id), stopLoss: tgt, takeProfit: Number(leg.take_profit) || undefined });
+      const br = brokerResult(r.body);
+      if (r.ok && br.ok) {
+        await db.from("telegram_trades").update({ stop_loss: tgt }).eq("id", leg.id);
+        laddered++; changed++;
+      }
+    }
+  }
+  return { user: userId.slice(0, 8), changed, laddered };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: cors });
   if (req.method !== "POST") return json({ ok: true, info: "Telegram Sin webhook" });
 
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  // 1) Identifiko përdoruesin nga ?key=<webhook_secret>
   const url = new URL(req.url);
+
+  // 0) DEGA E CRON-it (?manage=1 + x-cron-secret): menaxheri i shkallëve të TP + statuset.
+  if (url.searchParams.get("manage") === "1") {
+    try {
+      const { data: cs } = await db.from("app_config").select("value").eq("key", "cron_secret").maybeSingle();
+      const secret = (cs as { value?: string } | null)?.value;
+      if (!secret || req.headers.get("x-cron-secret") !== secret) return json({ error: "unauthorized" }, 401);
+    } catch { return json({ error: "unauthorized" }, 401); }
+    const managed: unknown[] = [];
+    const { data: cfgs } = await db.from("telegram_sin_config").select("*").eq("active", true);
+    for (const c of (cfgs || [])) {
+      try { managed.push(await manageUser(db, c)); }
+      catch (e) { managed.push({ user: String(c.user_id).slice(0, 8), error: (e as Error).message }); }
+    }
+    return json({ ok: true, managed });
+  }
+
+  // 1) Identifiko përdoruesin nga ?key=<webhook_secret>
   const key = url.searchParams.get("key") || "";
   if (!key) return json({ ok: false, error: "missing_key" }, 200); // 200 që Telegram të mos ri-provojë pafund
   const { data: cfgRow } = await db.from("telegram_sin_config").select("*").eq("webhook_secret", key).maybeSingle();
