@@ -114,8 +114,6 @@ interface Cfg {
   scalp_on: boolean; scalp_tp_rr: number; scalp_max_day: number; scalp_cooldown_min: number; scalp_time_stop_min: number;
   scalp_candle_confirm: boolean;
   smart_exit: boolean; tp_time_h: number; tp_time_usd: number;
-  // Fusha të Fast-it (menaxhohen nga mmt-fast-loop, por mësimi këtu i rregullon).
-  fast_move_usd: number; fast_cooldown_s: number; fast_max_day: number; fast_pullback_usd: number;
 }
 
 // ---------- FIGURAT E QIRINJVE (konfirmim opsional — konfluencë) ----------
@@ -194,30 +192,7 @@ async function learnPass(db: ReturnType<typeof createClient>, cfg: Cfg): Promise
     const v = Math.max(15, cfg.adx_range_max - 2);
     if (v !== cfg.adx_range_max) { patch.adx_range_max = v; await log("adx_range_max", cfg.adx_range_max, v, "range humbës — kërkohet range më i qetë", rg.n, rg.exp); }
   }
-  // FAST: analizon tregtitë e VETA. Humb → më selektiv (prag shpërthimi më i lartë + pushim
-  // më i gjatë + më pak/ditë = kundër bluarjes); fiton → lehtëson pak. Rreziku s'rritet kurrë.
-  // FAST ka frekuencë shumë të lartë (qindra tregtime): edhe pritshmëri pak nën zero =
-  // humbje e madhe totale nga kostot. Prandaj pragu është i ngushtë (−0.02R).
-  const f = expOf("fast");
-  if (f.n >= minN) {
-    if (f.exp < -0.02) {
-      const mv = Math.min(2.0, Math.round(((Number(cfg.fast_move_usd) || 0.6) + 0.2) * 100) / 100);
-      const cd = Math.min(120, (Number(cfg.fast_cooldown_s) || 15) + 15);
-      const md = Math.max(10, (Number(cfg.fast_max_day) || 40) - 20);
-      if (mv !== cfg.fast_move_usd) { patch.fast_move_usd = mv; await log("fast_move_usd", cfg.fast_move_usd, mv, `Fast humbës (${f.n} trade, ${f.exp.toFixed(2)}R) — kërkon shpërthim më të fortë, më pak hyrje false`, f.n, f.exp); }
-      if (cd !== cfg.fast_cooldown_s) { patch.fast_cooldown_s = cd; await log("fast_cooldown_s", cfg.fast_cooldown_s, cd, "Fast humbës — pushim më i gjatë mes hyrjeve (kundër mbi-tregtimit)", f.n, f.exp); }
-      if (md !== cfg.fast_max_day) { patch.fast_max_day = md; await log("fast_max_day", cfg.fast_max_day, md, "Fast humbës — më pak tregtime/ditë (cilësi mbi sasi)", f.n, f.exp); }
-    } else if (f.exp > 0.02) {
-      // FITUES (kërkesa e pronarit): Fast duhet të tregtojë PANDËRPRERË kur po fiton — mësimi
-      // liron gradualisht PO ATO çelësa që shtrëngon kur humb (simetrik), kurrë nën dyshemetë
-      // e sigurisë: prag ≥0.8$ (kundër zhurmës), pushim ≥30s (kundër bluarjes). Rreziku për
-      // tregti (SL/lot) NUK preket kurrë — lirohet vetëm frekuenca.
-      const mv = Math.max(0.8, Math.round(((Number(cfg.fast_move_usd) || 1.0) - 0.1) * 100) / 100);
-      const cd = Math.max(30, (Number(cfg.fast_cooldown_s) || 90) - 15);
-      if (mv !== cfg.fast_move_usd) { patch.fast_move_usd = mv; await log("fast_move_usd", cfg.fast_move_usd, mv, `Fast fitues (${f.n} trade, ${f.exp.toFixed(2)}R) — prag më i ulët shpërthimi, më shumë hyrje`, f.n, f.exp); }
-      if (cd !== cfg.fast_cooldown_s) { patch.fast_cooldown_s = cd; await log("fast_cooldown_s", cfg.fast_cooldown_s, cd, "Fast fitues — pushim më i shkurtër mes hyrjeve (tregtim më i vazhdueshëm)", f.n, f.exp); }
-    }
-  }
+  // (MMT-Fast u hoq nga platforma më 24 korrik — mësimi i tij u fshi bashkë me robotin.)
   // SCALP: analizon tregtitë e VETA. Humb → ndez konfirmimin me figurë qiriu (më selektiv) +
   // zgjat pushimin; fiton qartë → lehtëson pak pushimin. Rreziku s'rritet kurrë.
   const sc = expOf("scalp");
