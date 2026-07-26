@@ -588,12 +588,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     else {
       const dir = tradeType === 'buy' ? t('BLEJ') : t('SHIT');
       const extra = `${sl ? ` · SL ${sl}` : ''}${tp ? ` · TP ${tp}` : ''}`;
+      // Lot-i REAL i ekzekutuar nga serveri (mund të pritet nga "Lot maksimal" i konfigurimit) —
+      // trego atë, jo të kërkuarin, + paralajmërim kur pritet.
+      const srvVol = Number((r as { volume?: number }).volume);
+      const realVol = Number.isFinite(srvVol) && srvVol > 0 ? srvVol : vol;
+      const capNote = realVol < vol ? ` ⚠️ ${t('Lot-i u prit nga "Lot maksimal" ({req} → {real}) — rrite te Lidhja & Konfigurimi.', { req: vol, real: realVol })}` : '';
       if ((r as { queued?: boolean }).queued) {
-        setTradeMsg({ type: 'success', text: t('Porosia {dir} {sym} ({vol} lot){extra} u vendos në RADHË — hyn automatikisht kur hapet tregu.', { dir, sym: selected, vol, extra }) });
+        setTradeMsg({ type: 'success', text: t('Porosia {dir} {sym} ({vol} lot){extra} u vendos në RADHË — hyn automatikisht kur hapet tregu.', { dir, sym: selected, vol: realVol, extra }) + capNote });
       } else if (r.pending) {
-        setTradeMsg({ type: 'success', text: t('Porosi në pritje {dir} {sym} ({vol} lot) @ {price}{extra} — hyn automatik kur çmimi e arrin ({mode}).', { dir, sym: selected, vol, price: r.open_price ?? entry ?? '', extra, mode: r.mode ?? '' }) });
+        setTradeMsg({ type: 'success', text: t('Porosi në pritje {dir} {sym} ({vol} lot) @ {price}{extra} — hyn automatik kur çmimi e arrin ({mode}).', { dir, sym: selected, vol: realVol, price: r.open_price ?? entry ?? '', extra, mode: r.mode ?? '' }) + capNote });
       } else {
-        setTradeMsg({ type: 'success', text: t('Urdhër {dir} {sym} ({vol} lot){extra} dërguar ({mode}).', { dir, sym: selected, vol, extra, mode: r.mode ?? '' }) });
+        setTradeMsg({ type: 'success', text: t('Urdhër {dir} {sym} ({vol} lot){extra} dërguar ({mode}).', { dir, sym: selected, vol: realVol, extra, mode: r.mode ?? '' }) + capNote });
       }
       fetchMeta();
       loadPreOpen();
