@@ -968,67 +968,28 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
-      {/* Njoftimi për orarin u zhvendos te faqja "Lidhja & Konfigurimi" (zinte hapësirë këtu). */}
+      {/* Njoftimi për orarin u zhvendos te faqja "Lidhja & Konfigurimi" (zinte hapësirë këtu).
+          Banner-i i para-hapjes u zhvendos NË FUND të faqes (kërkesa e pronarit). */}
 
-      {/* PARA-HAPJEJE — tregu i mbyllur OSE i ngrirë (çmimi s'lëviz): numëruesi + porositë në radhë */}
-      {(() => {
-        const calOpen = isMktOpen(new Date(nowTs));
-        const tradingNow = calOpen && !marketFrozen; // hapur sipas kalendarit DHE çmimi po lëviz
-        return ((!tradingNow) || preOpenOrders.length > 0) && (
-        <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-gray-900 p-4 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <Clock className="w-5 h-5 text-amber-400 shrink-0" />
-            <div>
-              <div className="text-white font-bold text-sm">{tradingNow ? t('Tregu u hap — porositë po dërgohen') : t('Tregu i mbyllur — modë para-hapjeje')}</div>
-              <div className="text-gray-400 text-[11px]">
-                {tradingNow
-                  ? t('Porositë e radhës hyjnë automatikisht brenda pak çastesh.')
-                  : !calOpen
-                    ? <>{t('Hapet pas')} <span className="text-amber-400 font-semibold">{fmtCountdown(msToOpen(new Date(nowTs)))}</span> · {t('porosia që vendos tani rri në pritje dhe hyn automatikisht në hapje.')}</>
-                    : t('Çmimi s\'po lëviz — tregu duket i mbyllur tani (p.sh. festë/fundjavë e brokerit). Porosia që vendos rri në radhë dhe hyn automatik kur rikthehet çmimi.')}
-              </div>
-            </div>
-          </div>
-          {preOpenOrders.length > 0 && (
-            <div className="space-y-1.5">
-              {preOpenOrders.map((o) => (
-                <div key={o.id} className="flex items-center justify-between text-xs bg-gray-950/60 border border-gray-800 rounded-lg px-3 py-2 gap-2">
-                  <span className="flex items-center gap-2 flex-wrap min-w-0">
-                    <span className={`font-bold ${o.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.action === 'BUY' ? t('BLEJ') : t('SHIT')}</span>
-                    <span className="text-white">{o.symbol}</span>
-                    <span className="text-gray-400">{o.volume} {t('lot')}</span>
-                    {o.entry_price != null && <span className="text-gray-500">@ {o.entry_price}</span>}
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${o.status === 'placed' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-amber-500/15 text-amber-300 border-amber-500/30'}`}>
-                      {o.status === 'placed' ? t('pending te brokeri') : t('në radhë → hyn në hapje')}
-                    </span>
-                  </span>
-                  {o.status === 'queued' && (
-                    <button onClick={() => cancelPreOpen(o.id)} className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 px-2 py-1 rounded-lg transition-all shrink-0">
-                      <X className="w-3 h-3" />{t('Anulo')}
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        );
-      })()}
-
-      {/* TICKER LIVE — çmimi real-time i simbolit të zgjedhur (bid/ask/spread + drejtim + pulsim) */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
+      {/* TICKER LIVE — kompakt e i palosshëm (hamburger): titulli tregon çmimin e vogël live;
+          hapja shfaq Bid/Ask/Spread + gjendjen e lidhjes (kërkesa e pronarit — zinte shumë vend). */}
+      <details className="bg-gray-900 border border-gray-800 rounded-2xl group">
         <style>{`@keyframes mtPulse{0%,100%{opacity:1}50%{opacity:.25}}.mt-pulse{animation:mtPulse 1.2s ease-in-out infinite}@keyframes mtFlash{from{background-color:rgba(251,191,36,.16)}to{background-color:transparent}}.mt-flash{animation:mtFlash .5s ease-out}`}</style>
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-white font-bold text-base sm:text-lg shrink-0">{selected}</span>
-          <span key={pxTick} className="mt-flash rounded-md px-1 inline-flex items-center gap-1.5">
-            <span className={`text-xl sm:text-2xl font-black tabular-nums ${!pxFresh ? 'text-gray-500' : pxDir === 'up' ? 'text-green-400' : pxDir === 'down' ? 'text-red-400' : 'text-white'}`}>
-              {livePrice != null ? livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+        <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden px-4 py-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-white font-bold text-xs shrink-0">{selected}</span>
+            <span key={pxTick} className="mt-flash rounded-md px-1 inline-flex items-center gap-1">
+              <span className={`text-sm font-bold tabular-nums ${!pxFresh ? 'text-gray-500' : pxDir === 'up' ? 'text-green-400' : pxDir === 'down' ? 'text-red-400' : 'text-white'}`}>
+                {livePrice != null ? livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+              </span>
+              {pxDir === 'up' && <ArrowUp className="w-3 h-3 text-green-400" />}
+              {pxDir === 'down' && <ArrowDown className="w-3 h-3 text-red-400" />}
             </span>
-            {pxDir === 'up' && <ArrowUp className="w-4 h-4 text-green-400" />}
-            {pxDir === 'down' && <ArrowDown className="w-4 h-4 text-red-400" />}
-          </span>
-        </div>
-        <div className="flex items-center gap-3 sm:gap-4 text-[11px] sm:text-xs flex-wrap">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${pxFresh ? 'bg-green-400 mt-pulse' : brokerPx ? 'bg-amber-500 mt-pulse' : 'bg-gray-600'}`} />
+          </div>
+          <ChevronDown className="w-4 h-4 text-gray-500 shrink-0 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="px-4 pb-3 pt-1 flex items-center gap-3 sm:gap-4 text-[11px] sm:text-xs flex-wrap border-t border-gray-800/60">
           {brokerPx ? (
             <>
               <div><span className="text-gray-500">Bid </span><span className="text-red-400 font-semibold tabular-nums">{brokerPx.bid.toFixed(2)}</span></div>
@@ -1050,7 +1011,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               : null}
           </span>
         </div>
-      </div>
+      </details>
 
       {/* GRAFIK — full width (të dhëna reale nga MT5 kur je i lidhur) */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
@@ -1514,6 +1475,52 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
         </TLFold>
       )}
+
+      {/* PARA-HAPJEJE — tregu i mbyllur OSE i ngrirë (çmimi s'lëviz): numëruesi + porositë në radhë.
+          NË FUND të faqes (kërkesa e pronarit — mos e zërë hapësirën lart). */}
+      {(() => {
+        const calOpen = isMktOpen(new Date(nowTs));
+        const tradingNow = calOpen && !marketFrozen; // hapur sipas kalendarit DHE çmimi po lëviz
+        return ((!tradingNow) || preOpenOrders.length > 0) && (
+        <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-gray-900 p-4 space-y-3">
+          <div className="flex items-center gap-2.5">
+            <Clock className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <div className="text-white font-bold text-sm">{tradingNow ? t('Tregu u hap — porositë po dërgohen') : t('Tregu i mbyllur — modë para-hapjeje')}</div>
+              <div className="text-gray-400 text-[11px]">
+                {tradingNow
+                  ? t('Porositë e radhës hyjnë automatikisht brenda pak çastesh.')
+                  : !calOpen
+                    ? <>{t('Hapet pas')} <span className="text-amber-400 font-semibold">{fmtCountdown(msToOpen(new Date(nowTs)))}</span> · {t('porosia që vendos tani rri në pritje dhe hyn automatikisht në hapje.')}</>
+                    : t('Çmimi s\'po lëviz — tregu duket i mbyllur tani (p.sh. festë/fundjavë e brokerit). Porosia që vendos rri në radhë dhe hyn automatik kur rikthehet çmimi.')}
+              </div>
+            </div>
+          </div>
+          {preOpenOrders.length > 0 && (
+            <div className="space-y-1.5">
+              {preOpenOrders.map((o) => (
+                <div key={o.id} className="flex items-center justify-between text-xs bg-gray-950/60 border border-gray-800 rounded-lg px-3 py-2 gap-2">
+                  <span className="flex items-center gap-2 flex-wrap min-w-0">
+                    <span className={`font-bold ${o.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{o.action === 'BUY' ? t('BLEJ') : t('SHIT')}</span>
+                    <span className="text-white">{o.symbol}</span>
+                    <span className="text-gray-400">{o.volume} {t('lot')}</span>
+                    {o.entry_price != null && <span className="text-gray-500">@ {o.entry_price}</span>}
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${o.status === 'placed' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'bg-amber-500/15 text-amber-300 border-amber-500/30'}`}>
+                      {o.status === 'placed' ? t('pending te brokeri') : t('në radhë → hyn në hapje')}
+                    </span>
+                  </span>
+                  {o.status === 'queued' && (
+                    <button onClick={() => cancelPreOpen(o.id)} className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 px-2 py-1 rounded-lg transition-all shrink-0">
+                      <X className="w-3 h-3" />{t('Anulo')}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        );
+      })()}
     </div>
   );
 }
