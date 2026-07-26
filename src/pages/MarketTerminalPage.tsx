@@ -140,6 +140,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [allowedSymbols, setAllowedSymbols] = useState<string[]>(['XAUUSD']);
 
   const [metaConfigured, setMetaConfigured] = useState(false);
+  // Emrat REALË të simboleve te brokeri (symbol_map nga serveri, p.sh. XAUUSD → XAUUSD.s).
+  const [symMap, setSymMap] = useState<Record<string, string>>({});
   // Lidhja DIREKTE streaming (websocket) — kredencialet për ta nisur + snapshot-i live.
   const [streamCfg, setStreamCfg] = useState<{ token: string; accountId: string; region: string } | null>(null);
   const stream = useMetaStream();
@@ -369,6 +371,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const configured = !!(cfg.account_id && cfg.token);
     setMetaConfigured(configured);
     setMtMode(cfg.mode);
+    setSymMap(cfg.symbol_map || {});
     // Ushqe lidhjen direkte streaming (vetëm kur ndryshojnë kredencialet → shmang rinisjet e kota).
     if (configured) {
       setStreamCfg(prev => (prev && prev.token === cfg!.token && prev.accountId === cfg!.account_id && prev.region === cfg!.region)
@@ -477,9 +480,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   }, [streamCfg]);
 
   // Abono simbolin e zgjedhur te streaming-u (quotes + candles 1m) sapo lidhja është gati.
+  // I jepet emri REAL i brokerit (symbol_map) — te PU Prime 'XAUUSD' pa '.s' nuk jep çmime.
   useEffect(() => {
-    if (streamCfg && selected) void metaStream.subscribeSymbol(selected);
-  }, [streamCfg, selected, stream.status]);
+    if (streamCfg && selected) void metaStream.subscribeSymbol(selected, symMap[selected.toUpperCase()]);
+  }, [streamCfg, selected, stream.status, symMap]);
 
   // Ushqe çmimin nga streaming-u te e njëjta gjendje brokerPx/pxAt që përdor UI-ja (≈200ms, i shtyrë).
   useEffect(() => {

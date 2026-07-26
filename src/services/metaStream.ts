@@ -53,6 +53,7 @@ class MetaStream {
   private listeners = new Set<Listener>();
   private subsReq = new Set<string>();              // simbolet bazë të kërkuara (p.sh. 'XAUUSD')
   private subBroker = new Map<string, string>();    // bazë → emri REAL te brokeri (p.sh. 'XAUUSD+')
+  private hints = new Map<string, string>();        // bazë → emri REAL i mësuar nga serveri (symbol_map)
   private subscribedBrokers = new Set<string>();    // simbolet broker për të cilat kemi thirrur subscribe
   private specs: string[] = [];                     // lista e simboleve të brokerit nga terminalState
   private pollId: ReturnType<typeof setInterval> | null = null;
@@ -129,10 +130,13 @@ class MetaStream {
     }, delay);
   }
 
-  async subscribeSymbol(symbol: string): Promise<void> {
+  async subscribeSymbol(symbol: string, brokerHint?: string): Promise<void> {
     if (!symbol) return;
     // Çelësi mbahet SI Ç'KËRKOHET (faqja kërkon 'XAUUSD', paneli kërkon emrin e brokerit të pozicionit)
     // që të dy ta gjejnë çmimin te stream.prices me të njëjtin çelës që përdorën.
+    // brokerHint = emri REAL i verifikuar nga serveri (symbol_map, p.sh. 'XAUUSD.s') — ka përparësi
+    // ndaj përputhjes së saktë: te PU Prime 'XAUUSD' ekziston në listë por s'jep çmime për llogarinë.
+    if (brokerHint && brokerHint !== symbol) this.hints.set(symbol, brokerHint);
     this.subsReq.add(symbol);
     if (this.connection && (this.snap.status === 'live' || this.snap.status === 'reconnecting')) this.tryResolveAndSubscribe(symbol);
   }
@@ -155,8 +159,11 @@ class MetaStream {
     }
   }
 
-  // Përkthen simbolin bazë në emrin e brokerit duke përdorur specifikimet e llogarisë + alias-e.
+  // Përkthen simbolin bazë në emrin e brokerit duke përdorur symbol_map-in e serverit (përparësi),
+  // pastaj specifikimet e llogarisë + alias-e.
   private resolveBroker(base: string): string | null {
+    const hint = this.hints.get(base);
+    if (hint) return hint; // emër i VERIFIKUAR nga serveri → përdore direkt (s'pret specs)
     if (this.specs.length === 0) {
       try { this.specs = ((this.terminal?.specifications || []) as Array<{ symbol?: string }>).map(s => String(s.symbol || '')).filter(Boolean); } catch { this.specs = []; }
     }
@@ -253,7 +260,7 @@ class MetaStream {
     this.retries = 0;
     try { if (this.connection) await this.connection.close(); } catch { /* injoro */ }
     this.api = null; this.account = null; this.connection = null; this.terminal = null;
-    this.subsReq.clear(); this.subBroker.clear(); this.subscribedBrokers.clear(); this.specs = [];
+    this.subsReq.clear(); this.subBroker.clear(); this.subscribedBrokers.clear(); this.specs = []; this.hints.clear();
     this.cfgKey = ''; this.starting = false;
     this.set({ status: 'idle', connectedToBroker: false, prices: {}, positions: [], orders: [], account: null, lastTickAt: 0 });
   }
