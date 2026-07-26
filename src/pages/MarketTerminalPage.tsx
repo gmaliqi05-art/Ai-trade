@@ -710,7 +710,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const stepSec = tf === '1m' ? 60 : tf === '5m' ? 300 : tf === '15m' ? 900 : tf === '1h' ? 3600 : tf === '4h' ? 14400 : 86400;
     const nowBucket = Math.floor(Date.now() / 1000 / stepSec) * stepSec;
     const prev = out[out.length - 1];
-    if (nowBucket > prev.time) {
+    // Vetëm kur jemi BRENDA 1-3 hapave nga qiriri i fundit i brokerit — përndryshe (orë brokeri
+    // të ndryshme nga UTC, hapje e së dielës, boshllëk fundjave) MOS krijo qiri sintetik të gabuar.
+    if (nowBucket > prev.time && nowBucket - prev.time <= stepSec * 3) {
       out.push({ time: nowBucket, open: prev.close, high: Math.max(prev.close, brokerMid), low: Math.min(prev.close, brokerMid), close: brokerMid });
     }
     const last = out[out.length - 1];
