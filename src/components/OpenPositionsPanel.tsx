@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { loadOpenPositions, closePosition, loadExecutions, loadPendingOrders, cancelOrder, type OpenPosition, type PendingOrder, type TradeExecution } from '../services/metaapi';
 import { positionHorizon, robotOfPosition, robotBadgeCls } from '../services/closedTrades';
 import { useMetaStream } from '../hooks/useMetaStream';
+import { supabase } from '../lib/supabase';
 
 export default function OpenPositionsPanel({ configured, section = 'both' }: { configured: boolean; section?: 'positions' | 'executions' | 'both' }) {
   const { t } = useI18n();
@@ -25,6 +26,8 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const [posAt, setPosAt] = useState(0);              // koha (ms) e leximit të fundit të suksesshëm të pozicioneve
   const [posClock, setPosClock] = useState(Date.now()); // rrah çdo 2s për të rivlerësuar freskinë
   const [posErr, setPosErr] = useState(false);        // leximi i parë dështoi → trego gabim + Riprovo
+  // KANALI i sinjalit për pozicionet e Telegram Sin: positionId → emri i grupit (BESA/FX+...).
+  const [tgChan, setTgChan] = useState<Record<string, string>>({});
   // Lidhja DIREKTE streaming (websocket) — burimi parësor real-time; REST mbetet vetëm rezervë.
   const stream = useMetaStream();
   const streamLive = stream.status === 'live';
@@ -44,7 +47,30 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
     else setPosErr(true);
     if (!or.error && Array.isArray(or.orders)) setOrders(or.orders);
     setPosLoading(false);
+    void refreshTgChannels();
   }, [configured]);
+
+  const TG_CHAN_NAMES: Record<string, string> = {
+    '-1003603315504': 'BESA DIGITAL VIP',
+    '-1003278125980': 'FX+ | XNINE LEVEL 2',
+  };
+  const refreshTgChannels = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data } = await supabase.from('telegram_trades')
+        .select('metaapi_position_id, telegram_signals(tg_chat_id, tg_sender)')
+        .eq('user_id', user.id).in('status', ['open', 'pending']);
+      const m: Record<string, string> = {};
+      // deno-lint-ignore-file
+      for (const r of ((data ?? []) as unknown as { metaapi_position_id: string | null; telegram_signals: { tg_chat_id: string | null; tg_sender: string | null } | null }[])) {
+        const pid = r.metaapi_position_id; const sg = r.telegram_signals;
+        if (!pid || !sg) continue;
+        const cid = sg.tg_chat_id != null ? String(sg.tg_chat_id) : '';
+        m[String(pid)] = TG_CHAN_NAMES[cid] || sg.tg_sender || cid || 'Telegram';
+      }
+      setTgChan(m);
+    } catch { /* jo-kritike */ }
+  }, [user]);
 
   const refreshExecutions = useCallback(async () => {
     // 60 rreshta që klasifikimi afatgjatë/afatshkurtër i pozicioneve të ketë mjaft histori (FastT log).
@@ -193,7 +219,7 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
                       // s'e ruan komentin, bie te klasifikimi afatgjatë/afatshkurtër nga logu.
                       const robot = robotOfPosition(p);
                       if (robot) return (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${robotBadgeCls(robot)}`}>{robot}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${robotBadgeCls(robot)}`}>{robot === 'Telegram Sin' && tgChan[String(p.id)] ? `TG · ${tgChan[String(p.id)]}` : robot}</span>
                       );
                       const h = positionHorizon(p, executions);
                       return h ? (
