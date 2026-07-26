@@ -912,24 +912,23 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const cur = account?.currency || '$';
 
   return (
-    <div className="p-4 sm:p-6 space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
+    <div className="p-4 sm:p-6 space-y-3">
+      {/* Titulli + LIVE + rifreskimi NË NJË RRESHT — pa rresht më vete poshtë (pa zbrazëtira). */}
+      <div>
+        <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-1.5">
             <Activity className="w-4 h-4 text-amber-400" />{t('MetaTrader 5 — Live')}
           </h2>
-          <p className="text-gray-400 text-[11px] mt-0.5">
-            {t('Llogaria jote reale MT5, grafiku, tregtimi dhe trade-t — live')}
-            {lastUpdated && <span className="ml-2 text-gray-600">· {lastUpdated.toLocaleTimeString()}</span>}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
             !metaConfigured ? 'bg-gray-700/50 text-gray-400 border-gray-600'
             : mtMode === 'live' ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
           }`}>{!metaConfigured ? t('PA LIDHJE') : mtMode === 'live' ? t('● LIVE') : t('● DEMO')}</span>
-          <button onClick={refreshAll} disabled={refreshing} className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all disabled:opacity-60"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /></button>
+          <button onClick={refreshAll} disabled={refreshing} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all disabled:opacity-60"><RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /></button>
         </div>
+        <p className="text-gray-400 text-[11px] mt-0.5">
+          {t('Llogaria jote reale MT5, grafiku, tregtimi dhe trade-t — live')}
+          {lastUpdated && <span className="ml-2 text-gray-600">· {lastUpdated.toLocaleTimeString()}</span>}
+        </p>
       </div>
 
       {!metaConfigured && (
