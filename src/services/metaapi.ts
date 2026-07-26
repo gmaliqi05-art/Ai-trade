@@ -392,13 +392,15 @@ export interface PositionCloseRow {
   entry_price: number | null; exit_price: number | null; net: number | null;
   source: string | null; horizon: string | null; robot?: string | null; opened_at: string | null; closed_at: string;
 }
-export async function loadPositionCloses(userId: string, days = 8): Promise<PositionCloseRow[]> {
+export async function loadPositionCloses(userId: string, days = 8, accountId?: string): Promise<PositionCloseRow[]> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
-  const { data } = await supabase
+  let q = supabase
     .from('position_closes')
     .select('position_id, symbol, action, volume, entry_price, exit_price, net, source, horizon, robot, opened_at, closed_at')
-    .eq('user_id', userId).gte('closed_at', since)
-    .order('closed_at', { ascending: false }).limit(1000);
+    .eq('user_id', userId).gte('closed_at', since);
+  // Vetëm llogaria AKTUALE e MT5 — mbylljet e një llogarie të mëparshme (account_id tjetër) s'shfaqen.
+  if (accountId) q = q.eq('account_id', accountId);
+  const { data } = await q.order('closed_at', { ascending: false }).limit(1000);
   return (data as PositionCloseRow[]) ?? [];
 }
 

@@ -140,6 +140,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [allowedSymbols, setAllowedSymbols] = useState<string[]>(['XAUUSD']);
 
   const [metaConfigured, setMetaConfigured] = useState(false);
+  // Roboti i Sinjaleve aktiv? (kill_switch i fikur). I ndalur → tabelat e tij s'shfaqen në Trade Live.
+  const [signalsRobotOn, setSignalsRobotOn] = useState(false);
   // Emrat REALË të simboleve te brokeri (symbol_map nga serveri, p.sh. XAUUSD → XAUUSD.s).
   const [symMap, setSymMap] = useState<Record<string, string>>({});
   // Lidhja DIREKTE streaming (websocket) — kredencialet për ta nisur + snapshot-i live.
@@ -325,20 +327,25 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Trade-t "extra" nga historiku i rëndë i MT5 (manualet e vjetra jashtë regjistrit) — cache e
   // leximit të fundit të suksesshëm, që tabela të MOS varet nga një thirrje që dështon shpesh (429/502).
   const mt5RestRef = useRef<ClosedTrade[]>([]);
+  // account_id i llogarisë MT5 të konfiguruar — raportet nga DB filtrohen sipas tij (jo llogaritë e vjetra).
+  const accountIdRef = useRef<string>('');
 
   // TABELA E MBYLLURA VETËM NGA DB (position_closes + logu i ekzekutimeve) — e shpejtë (~100ms)
   // dhe e PAVARUR nga MetaApi: robotët i shkruajnë mbylljet aty në sekondë, kështu tabela
   // përditësohet çdo 10s edhe kur MetaApi është në rate-limit dhe historiku i rëndë ngec.
   const fetchCloses = useCallback(async () => {
     if (!user) return null;
-    const posCloseRows = await loadPositionCloses(user.id);
+    // Raportet vetëm për llogarinë AKTUALE të MT5 — pa të dhënat e një llogarie të mëparshme.
+    const accId = accountIdRef.current;
+    if (!accId) return null;
+    const posCloseRows = await loadPositionCloses(user.id, 8, accId);
     const posCloses = closesFromPositions(posCloseRows);
     const posCloseIds = new Set(posCloses.map(p => p.id));
     const sinceIso = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
     const { data: execsAll } = await supabase
       .from('trade_executions')
       .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
-      .eq('user_id', user.id)
+      .eq('user_id', user.id).eq('account_id', accId)
       .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(1000);
     const rows = (execsAll || []) as Array<FasttExecRow & ExecRow>;
     // PLOTËSIM EKZAKT për mbylljet e serverit (position_closes s'i ruan vetë SL/TP): rreshti i
@@ -369,7 +376,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     // Dështim kalimtar i ngarkimit (rrjet) → ruaj gjendjen e fundit, mos pulso te "i palidhur".
     try { cfg = await loadMetaApiConfig(user.id); } catch { return; }
     const configured = !!(cfg.account_id && cfg.token);
+    accountIdRef.current = cfg.account_id || '';
     setMetaConfigured(configured);
+    setSignalsRobotOn(configured && !cfg.kill_switch);
     setMtMode(cfg.mode);
     setSymMap(cfg.symbol_map || {});
     // Ushqe lidhjen direkte streaming (vetëm kur ndryshojnë kredencialet → shmang rinisjet e kota).
@@ -1497,12 +1506,14 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         )}
       </TLFold>
 
-      {/* 4+5) Analizat e sinjaleve — të grupuara e të palosshme (default të mbyllura, që faqja
-          kryesore të mbetet e pastër; hapen me një klik dhe zgjedhja mbahet mend). */}
-      <TLFold k="history" bare defaultOpen={false} title={t('Analiza e sinjaleve — të përfunduarat + historiku i skanimeve')} icon={<History className="w-4 h-4 text-amber-400" />}>
-        <CompletedSignals signals={doneSignals} variant="compact" />
-        <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
-      </TLFold>
+      {/* 4+5) Analizat e sinjaleve — VETËM kur roboti i Sinjaleve është aktiv: robot i ndalur =
+          pa tabela raportesh të tij në Trade Live (kërkesa e pronarit). */}
+      {signalsRobotOn && (
+        <TLFold k="history" bare defaultOpen={false} title={t('Analiza e sinjaleve — të përfunduarat + historiku i skanimeve')} icon={<History className="w-4 h-4 text-amber-400" />}>
+          <CompletedSignals signals={doneSignals} variant="compact" />
+          <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
+        </TLFold>
+      )}
     </div>
   );
 }
