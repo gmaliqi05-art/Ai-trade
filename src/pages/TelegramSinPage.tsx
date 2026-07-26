@@ -31,6 +31,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const [chParams, setChParams] = useState<Record<string, TgChannelRow>>({});
   const CHANNEL_NAMES: Record<string, string> = {
     '-1003603315504': 'BESA DIGITAL VIP',
+    '-1003278125980': 'FX+ | XNINE LEVEL 2',
   };
 
   const [account, setAccount] = useState<AccountInfo | null>(null);
