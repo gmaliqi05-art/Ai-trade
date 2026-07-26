@@ -285,6 +285,10 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
       await db.from("telegram_trades").update({ status: "closed", closed_at: now, reason }).eq("id", g.id);
       g.status = "closed"; g.reason = reason; changed++;
     }
+    // Të gjitha legs u mbyllën → shëno edhe SINJALIN 'closed' (raporti: tp_hit>0 = fitim deri te TPn; 0 = SL).
+    if (gone.length > 0 && alive.length === 0 && legs[0].signal_id) {
+      await db.from("telegram_signals").update({ status: "closed" }).eq("id", legs[0].signal_id).in("status", ["executed", "partial", "pending"]);
+    }
   }
 
   // 3) PREKJA E TP-ve (nga çmimi LIVE + legs të mbyllura) → push notification për çdo TP të ri;
