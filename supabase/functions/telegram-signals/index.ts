@@ -245,6 +245,9 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
   if (!mcfg || !mcfg.account_id || !mcfg.token) return { user: userId.slice(0, 8), error: "no_metaapi" };
   const cfg = mcfg as unknown as Cfg;
 
+  const { data: chansRaw } = await db.from("telegram_sin_channels").select("chat_id, move_be_after_tp1").eq("user_id", userId);
+  // deno-lint-ignore no-explicit-any
+  const chans = new Map<string, any>(((chansRaw || []) as any[]).map((c) => [String(c.chat_id), c]));
   // deno-lint-ignore no-explicit-any
   const positions = (await maGet(cfg, "/positions").catch(() => [])) as any[];
   // deno-lint-ignore no-explicit-any
@@ -302,7 +305,7 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
     const alive = legs.filter((l) => l.status === "open" && l.metaapi_position_id && posIds.has(String(l.metaapi_position_id)));
     // Sinjali: nivelet e TP-ve + sa është prekur deri tani (kundër njoftimeve të dyfishta)
     const { data: sig } = await db.from("telegram_signals")
-      .select("id, tps, tp_hit, symbol, direction").eq("id", legs[0].signal_id).maybeSingle();
+      .select("id, tps, tp_hit, symbol, direction, tg_chat_id").eq("id", legs[0].signal_id).maybeSingle();
     if (!sig) continue;
     const tps = (Array.isArray(sig.tps) ? sig.tps : []).map(Number).filter((v: number) => v > 0);
     if (tps.length === 0) continue;
@@ -328,7 +331,7 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
     // PUSH NOTIFICATION për çdo TP të RI të prekur (TP1, TP2, TP3...)
     if (maxHit > prevHit) {
       for (let k = prevHit + 1; k <= maxHit; k++) {
-        const nextSl = ladderOn ? (k === 1 ? "breakeven" : `TP${k - 1}`) : null;
+        const nextSl = ((chans.get(String(sig.tg_chat_id ?? ""))?.move_be_after_tp1 ?? cfgRow.move_be_after_tp1) === true) ? (k === 1 ? "breakeven" : `TP${k - 1}`) : null;
         await pushNotify({
           user_id: userId,
           title: `🎯 TP${k} u prek — ${sym} ${isBuy ? "BUY" : "SELL"}`,
@@ -341,7 +344,8 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
     }
 
     // SHKALLA E SL (vetëm me tik ON): caku = një TP mbrapa (TP1→BE, TPn→TP(n-1))
-    if (!ladderOn || maxHit < 1 || alive.length === 0) continue;
+    const ladderOnG = (chans.get(String(sig.tg_chat_id ?? ""))?.move_be_after_tp1 ?? cfgRow.move_be_after_tp1) === true;
+    if (!ladderOnG || maxHit < 1 || alive.length === 0) continue;
     const target = maxHit === 1 ? (Number(alive[0].entry_price) || null) : tps[maxHit - 2];
     if (!(Number(target) > 0)) continue;
     const tgt = Math.round(Number(target) * 100) / 100;
@@ -420,6 +424,33 @@ Deno.serve(async (req: Request) => {
     if (dup && dup.length > 0) return json({ ok: true, skip: "duplicate" });
   }
 
+  // 3.5) PARAMETRAT PËR KANAL: çdo kanal ka lot/TP-mode/SL/max/shkallët e VETA.
+  // Krijohet vetë me sinjalin e parë (kopjon parazgjedhjet e config-ut global).
+  // deno-lint-ignore no-explicit-any
+  let chRow: any = null;
+  if (chatId) {
+    const { data: ch0 } = await db.from("telegram_sin_channels").select("*")
+      .eq("user_id", cfgRow.user_id).eq("chat_id", chatId).maybeSingle();
+    chRow = ch0;
+    if (!chRow) {
+      const def = {
+        user_id: cfgRow.user_id, chat_id: chatId, name: sender || chatId, enabled: !chatDisabled,
+        lot: Number(cfgRow.lot) || 0.01, tp_mode: cfgRow.tp_mode || "multi",
+        fallback_sl_usd: Number(cfgRow.fallback_sl_usd) || 30,
+        move_be_after_tp1: !!cfgRow.move_be_after_tp1, max_open: Number(cfgRow.max_open) || 3,
+      };
+      const { data: chNew } = await db.from("telegram_sin_channels").insert(def).select("*").maybeSingle();
+      chRow = chNew ?? def;
+    }
+  }
+  const eff = {
+    lot: Number(chRow?.lot ?? cfgRow.lot) || 0.01,
+    tp_mode: String(chRow?.tp_mode ?? cfgRow.tp_mode ?? "multi"),
+    fallback_sl_usd: Number(chRow?.fallback_sl_usd ?? cfgRow.fallback_sl_usd) || 0,
+    max_open: Number(chRow?.max_open ?? cfgRow.max_open) || 3,
+  };
+  const channelOff = chatDisabled || (chRow ? chRow.enabled === false : false);
+
   // 4) Parso
   const p = parseSignal(text, cfgRow.symbol_default || "XAUUSD");
   const { data: sigRow } = await db.from("telegram_signals").insert({
@@ -434,7 +465,7 @@ Deno.serve(async (req: Request) => {
   };
 
   if (p.kind === "unknown") { await finish("ignored", "koment/tekst — s'është sinjal me strukturë (Entry/SL/TP)"); return json({ ok: true, kind: "unknown" }); }
-  if (chatDisabled) { await finish("ignored", "kanali është i çaktivizuar nga cilësimet"); return json({ ok: true, skip: "chat_disabled" }); }
+  if (channelOff) { await finish("ignored", "kanali është i çaktivizuar nga cilësimet"); return json({ ok: true, skip: "chat_disabled" }); }
   if (!cfgRow.active) { await finish("ignored", "Telegram Sin joaktiv"); return json({ ok: true, skip: "inactive" }); }
 
   // Ngarko konfigurimin MetaApi të përdoruesit (tregton në llogarinë e tij — si te Trade Live)
@@ -542,7 +573,7 @@ Deno.serve(async (req: Request) => {
 
   // SL: nga sinjali, ose fallback (entry ∓ fallback_sl_usd). Pa SL të vlefshëm → refuzo (siguri).
   let sl = p.stopLoss;
-  const fb = Number(cfgRow.fallback_sl_usd) || 0;
+  const fb = eff.fallback_sl_usd;
   if (!(Number(sl) > 0) && fb > 0) sl = isBuy ? ref - fb : ref + fb;
   if (!(Number(sl) > 0)) { await finish("rejected", "pa stop-loss (as nga sinjali as fallback) — refuzuar për siguri"); return json({ ok: true, error: "no_sl" }); }
   // Siguro që SL është në anën e duhur
@@ -556,9 +587,9 @@ Deno.serve(async (req: Request) => {
   if (validTps.length === 0) validTps = [Math.round((isBuy ? ref + slDist * 2 : ref - slDist * 2) * 100) / 100];
 
   // Mënyra e TP-ve
-  const mode = cfgRow.tp_mode || "multi";
+  const mode = eff.tp_mode;
   let plan: Array<{ tp: number; vol: number; idx: number }> = [];
-  const baseLot = Math.max(Number(cfgRow.lot) || 0.01, 0.01);
+  const baseLot = Math.max(eff.lot, 0.01);
   if (mode === "first") {
     plan = [{ tp: validTps[0], vol: baseLot, idx: 1 }];
   } else if (mode === "last") {
@@ -572,11 +603,14 @@ Deno.serve(async (req: Request) => {
     plan = validTps.map((tp, i) => ({ tp, vol: baseLot, idx: i + 1 }));
   }
 
-  // Kufizim pozicionesh të hapura (përfshi ato NË PRITJE)
-  const { data: openNow } = await db.from("telegram_trades").select("id").eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
-  const openCount = (openNow || []).length;
-  const room = Math.max(0, (Number(cfgRow.max_open) || 12) - openCount);
-  if (room <= 0) { await finish("rejected", `Max pozicione të hapura (${cfgRow.max_open})`); return json({ ok: true, error: "max_open" }); }
+  // Kufizim pozicionesh PËR KANAL (numëron vetëm trade-t e sinjaleve të KËTIJ kanali)
+  const { data: chSigIds } = await db.from("telegram_signals").select("id")
+    .eq("user_id", cfgRow.user_id).eq("tg_chat_id", chatId).limit(500);
+  const idSet = new Set((chSigIds || []).map((r) => r.id));
+  const { data: openNow } = await db.from("telegram_trades").select("id, signal_id").eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
+  const openCount = (openNow || []).filter((r) => r.signal_id && idSet.has(r.signal_id)).length;
+  const room = Math.max(0, eff.max_open - openCount);
+  if (room <= 0) { await finish("rejected", `Max pozicione të hapura për kanalin (${eff.max_open})`); return json({ ok: true, error: "max_open" }); }
   plan = plan.slice(0, room);
 
   const maxLot = Number(cfg.max_lot) > 0 ? Number(cfg.max_lot) : Infinity;
@@ -611,6 +645,15 @@ Deno.serve(async (req: Request) => {
     if (br.ok) { executed++; details.push(`TP${leg.idx} @ ${tp} (${vol})${pending ? " ⏳" : ""}`); }
   }
 
+  // PUSH: njofto në aplikacion kur hapet trade/porosi e re nga sinjali (kërkesa e pronarit)
+  if (executed > 0) {
+    await pushNotify({
+      user_id: cfgRow.user_id,
+      title: `📥 ${isBuy ? "BUY" : "SELL"} ${tradeSym} — sinjal i ri (${chRow?.name || sender || "Telegram"})`,
+      body: `${pending ? "Porosi në pritje" : "Hyri"} ${executed} pozicione · SL ${sl}${validTps.length ? ` · TP ${validTps.join("/")}` : ""}`,
+      url: "/", tag: `tgsin-entry-${signalId ?? messageId}`,
+    });
+  }
   const kindWord = pending ? "porosi në pritje" : "pozicione";
   await finish(executed > 0 ? (pending ? "pending" : (executed === plan.length ? "executed" : "partial")) : "rejected", executed > 0 ? null : "asnjë leg s'u ekzekutua (shih telegram_trades)");
   if (cfgRow.bot_token) {

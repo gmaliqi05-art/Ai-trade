@@ -146,3 +146,15 @@ export async function loadOpenTgTrades(userId: string): Promise<TgTradeRow[]> {
     .eq('user_id', userId).in('status', ['open', 'pending']);
   return (data ?? []) as TgTradeRow[];
 }
+
+/** Parametrat PËR KANAL — çdo grup ka lot/TP/SL/max/shkallët e veta. */
+export interface TgChannelRow { chat_id: string; name: string | null; enabled: boolean; lot: number; tp_mode: TpMode; fallback_sl_usd: number; move_be_after_tp1: boolean; max_open: number; }
+export async function loadTgChannels(userId: string): Promise<TgChannelRow[]> {
+  const { data } = await supabase.from('telegram_sin_channels').select('*').eq('user_id', userId);
+  return (data ?? []) as TgChannelRow[];
+}
+export async function upsertTgChannel(userId: string, chatId: string, patch: Partial<TgChannelRow>): Promise<void> {
+  const { error } = await supabase.from('telegram_sin_channels')
+    .upsert({ user_id: userId, chat_id: chatId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'user_id,chat_id' });
+  if (error) throw new Error(error.message);
+}

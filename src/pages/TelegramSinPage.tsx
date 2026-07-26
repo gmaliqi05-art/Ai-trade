@@ -11,6 +11,7 @@ import {
   loadTelegramSinConfig, saveTelegramSinConfigPartial, loadTelegramSignals,
   generateWebhookSecret, webhookUrlFor, setWebhookUrl,
   loadOthersState, setOthersEnabled, loadOpenTgTrades, type TgTradeRow,
+  loadTgChannels, upsertTgChannel, type TgChannelRow,
   DEFAULT_TG_CONFIG, type TelegramSinConfig, type TelegramSignalRow, type TpMode, type OthersState,
 } from '../services/telegramSin';
 
@@ -27,6 +28,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   // Pamja: 'home' (dy tabelat e kanaleve) ose 'detail' (raportet e plota të një kanali).
   const [view, setView] = useState<'home' | 'detail'>('home');
   const [openTrades, setOpenTrades] = useState<TgTradeRow[]>([]);
+  const [chParams, setChParams] = useState<Record<string, TgChannelRow>>({});
   const CHANNEL_NAMES: Record<string, string> = {
     '-1003603315504': 'BESA DIGITAL VIP',
   };
@@ -46,6 +48,12 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     try { const c = await loadTelegramSinConfig(user.id); setCfg(c); setLoaded(true); } catch { setLoaded(false); }
     try { setSignals(await loadTelegramSignals(user.id, 100)); } catch { /* */ }
     try { setOpenTrades(await loadOpenTgTrades(user.id)); } catch { /* */ }
+    try {
+      const rows = await loadTgChannels(user.id);
+      const m: Record<string, TgChannelRow> = {};
+      for (const r of rows) m[String(r.chat_id)] = r;
+      setChParams(m);
+    } catch { /* */ }
     try { setOthers(await loadOthersState(user.id)); } catch { /* */ }
   }, [user]);
 
@@ -130,6 +138,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     const id = s0.tg_chat_id != null ? String(s0.tg_chat_id) : '';
     if (id && !chanMap.has(id)) chanMap.set(id, s0.tg_sender || id);
   }
+  for (const [k, v] of chanMap) chanMapRef.set(k, v);
   const sigsOf = (id: string) => signals.filter((s0) => String(s0.tg_chat_id ?? '') === id);
   const statsOf = (list: TelegramSignalRow[]) => {
     const entries = list.filter((s0) => s0.kind === 'entry' && ['executed', 'partial', 'pending', 'closed'].includes(s0.status));
@@ -140,13 +149,28 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   };
   const sigIdsOf = (id: string) => new Set(sigsOf(id).map((s0) => s0.id));
   const activeOf = (id: string) => { const ids = sigIdsOf(id); return openTrades.filter((tr) => tr.signal_id && ids.has(tr.signal_id)).length; };
-  const chanOff = (id: string) => (cfg.disabled_chats || []).includes(id);
-  // Çelësi PËR KANAL: ndez/fik marrjen e sinjaleve VETËM nga ky kanal (tjetri s'preket).
-  const toggleChannel = (id: string) => {
-    const cur = cfg.disabled_chats || [];
-    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-    setAndSave('disabled_chats', next);
+  const chanOff = (id: string) => {
+    const ch = chParams[id];
+    return ch ? !ch.enabled : (cfg.disabled_chats || []).includes(id);
   };
+  // Çelësi PËR KANAL + parametrat e VETË kanalit (lot/TP/SL/max/shkallët) — kërkesa e pronarit.
+  const chDefaults = (id: string, name: string): TgChannelRow => ({
+    chat_id: id, name, enabled: true, lot: cfg.lot, tp_mode: cfg.tp_mode,
+    fallback_sl_usd: cfg.fallback_sl_usd, move_be_after_tp1: cfg.move_be_after_tp1, max_open: cfg.max_open,
+  });
+  const setChParam = async (id: string, name: string, patch: Partial<TgChannelRow>) => {
+    if (!user) return;
+    const base = chParams[id] ?? chDefaults(id, name);
+    const next = { ...base, ...patch };
+    setChParams((p0) => ({ ...p0, [id]: next }));
+    try { await upsertTgChannel(user.id, id, next); flash('success', t('U ruajt.')); }
+    catch (e) { flash('error', (e as Error).message); }
+  };
+  const toggleChannel = (id: string) => {
+    const name = chanMapRef.get(id) || id;
+    setChParam(id, name, { enabled: chanOff(id) });
+  };
+  const chanMapRef = new Map<string, string>();
 
   // Blloku i raporteve (stats + tabela e plotë) — përdoret nga pamja e detajuar e kanalit.
   const renderSignalsBlock = (list: TelegramSignalRow[]) => {
@@ -300,7 +324,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
 
       {/* Cilësimet kryesore: Aktivizim + Lot + Mënyra e TP */}
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-4">
-        <h2 className="text-sm font-semibold text-white">{t('Cilësimet')}</h2>
+        <h2 className="text-sm font-semibold text-white">{t('Parametrat e parazgjedhur (për kanale të reja)')}</h2>
 
         {/* Aktivizim */}
         <button
@@ -491,6 +515,47 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                   })}
                 </div>
               )}
+
+              {/* PARAMETRAT E KANALIT — secili grup i ka të VETAT (lot, TP, SL, max, shkallët) */}
+              {(() => {
+                const ch = chParams[id] ?? chDefaults(id, name);
+                return (
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5">
+                    <label className="block">
+                      <span className="text-[9px] text-gray-500">{t('Lot (për çdo TP)')}</span>
+                      <input type="number" step="0.01" min="0.01" defaultValue={ch.lot} key={`l-${id}-${ch.lot}`}
+                        onBlur={(e) => { const v = Math.max(Number(e.target.value) || 0.01, 0.01); if (v !== ch.lot) setChParam(id, name, { lot: v }); }}
+                        className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-white" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] text-gray-500">{t('Mënyra e TP-ve')}</span>
+                      <select value={ch.tp_mode} onChange={(e) => setChParam(id, name, { tp_mode: e.target.value as TpMode })}
+                        className="w-full bg-black/30 border border-white/10 rounded px-1.5 py-1 text-[11px] text-white">
+                        <option value="multi">Multi (1/TP)</option>
+                        <option value="last">{t('TP më i larti')}</option>
+                        <option value="first">TP1</option>
+                        <option value="split">{t('Ndaj lotin')}</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] text-gray-500">{t('SL rezervë ($)')}</span>
+                      <input type="number" step="1" min="0" defaultValue={ch.fallback_sl_usd} key={`f-${id}-${ch.fallback_sl_usd}`}
+                        onBlur={(e) => { const v = Math.max(Number(e.target.value) || 0, 0); if (v !== ch.fallback_sl_usd) setChParam(id, name, { fallback_sl_usd: v }); }}
+                        className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-white" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] text-gray-500">{t('Max pozicione')}</span>
+                      <input type="number" step="1" min="1" defaultValue={ch.max_open} key={`m-${id}-${ch.max_open}`}
+                        onBlur={(e) => { const v = Math.max(Number(e.target.value) || 1, 1); if (v !== ch.max_open) setChParam(id, name, { max_open: v }); }}
+                        className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-white" />
+                    </label>
+                    <label className="col-span-2 flex items-center gap-2 text-[10px] text-gray-300 cursor-pointer">
+                      <input type="checkbox" checked={ch.move_be_after_tp1} onChange={(e) => setChParam(id, name, { move_be_after_tp1: e.target.checked })} />
+                      {t('Mbrojtja shkallë-shkallë e TP-ve')}
+                    </label>
+                  </div>
+                );
+              })()}
 
               {/* → Raportet e plota të kanalit */}
               <button onClick={() => { setChannel(id); setView('detail'); }}
