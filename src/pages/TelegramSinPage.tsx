@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Send, Power, PowerOff, Loader2, Copy, ExternalLink, CheckCircle2, XCircle,
-  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert, BarChart3, ArrowLeft,
+  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert, BarChart3, ArrowLeft, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
@@ -321,87 +321,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         )}
       </div>
 
-      {/* Cilësimet kryesore: Aktivizim + Lot + Mënyra e TP */}
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-4">
-        <h2 className="text-sm font-semibold text-white">{t('Parametrat e parazgjedhur (për kanale të reja)')}</h2>
-
-        {/* Aktivizim */}
-        <button
-          onClick={toggleActive}
-          className={`w-full flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${cfg.active ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-black/20 border-white/10'}`}
-        >
-          <div className="flex items-center gap-3 text-left">
-            <Power className={`w-5 h-5 ${cfg.active ? 'text-emerald-400' : 'text-gray-500'}`} />
-            <div>
-              <div className="text-sm font-semibold text-white">{cfg.active ? t('Aktiv') : t('Joaktiv')}</div>
-              <div className="text-[11px] text-gray-400">{t('ON = roboti hyn në trade sapo vjen një sinjal nga Telegram.')}</div>
-            </div>
-          </div>
-          <div className={`w-12 h-6 rounded-full relative transition-all ${cfg.active ? 'bg-emerald-500' : 'bg-gray-700'}`}>
-            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${cfg.active ? 'left-7' : 'left-1'}`} />
-          </div>
-        </button>
-
-        {/* Parametrat (lot, TP, SL, max, shkallët) tani vendosen TE KARTA E SECILIT KANAL më lart.
-            Këtu mbetet vetëm simboli i parazgjedhur (për sinjalet pa simbol) — vlerat e ruajtura
-            përdoren si kopje fillestare kur lidhet një kanal i ri. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">{t('Simboli parazgjedhur')}</label>
-            <input type="text" defaultValue={cfg.symbol_default} key={`sym-${loaded}`}
-              onBlur={(e) => setAndSave('symbol_default', (e.target.value || 'XAUUSD').toUpperCase().trim())}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
-          </div>
-          <p className="text-[11px] text-gray-500">{t('Lot-i, TP-të, SL rezervë, max pozicionet dhe mbrojtja shkallë-shkallë rregullohen te karta e secilit kanal më lart.')}</p>
-        </div>
-      </div>
-
-      {/* Lidhja me Telegram — metoda ABONUES (kopjues) */}
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-white flex items-center gap-2"><Send className="w-4 h-4 text-sky-400" /> {t('Lidhja me Telegram')}</h2>
-        <p className="text-[11px] text-gray-400">{t('Ti je abonues i kanalit — përdorim "kopjuesin" që e lexon kanalin me llogarinë tënde (pa qenë admin).')}</p>
-        <ol className="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
-          <li>{t('Kopjo adresën e lidhjes më poshtë.')}</li>
-          <li>{t('Ndiq udhëzuesin e kopjuesit (dosja telegram-forwarder) për ta lidhur me kanalin.')}</li>
-          <li>{t('Ndeze çelësin "Aktiv" lart.')}</li>
-        </ol>
-
-        {hookUrl ? (
-          <div className="rounded-lg bg-black/20 border border-white/5 p-2 space-y-2">
-            <div className="text-[10px] text-gray-400">{t('Adresa e lidhjes (webhook — privat, mos e ndaj)')}</div>
-            <div className="flex items-center gap-2">
-              <code className="text-[10px] text-sky-300 truncate flex-1">{hookUrl}</code>
-              <button onClick={() => copy(hookUrl)} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-200 hover:bg-sky-500/25 whitespace-nowrap"><Copy className="w-3.5 h-3.5" />{t('Kopjo')}</button>
-            </div>
-            <div className="text-[10px] text-gray-500">{t('Kjo adresë shkon te kopjuesi (forwarder) — jo te @BotFather.')}</div>
-          </div>
-        ) : (
-          <button onClick={ensureSecret} className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-200 hover:bg-sky-500/30">
-            <Send className="w-4 h-4" /> {t('Krijo adresën e lidhjes')}
-          </button>
-        )}
-
-        {/* Opsion dytësor: bot për një GRUP (vetëm nëse je admin i një grupi) */}
-        <details className="group">
-          <summary className="text-[11px] text-gray-400 cursor-pointer select-none hover:text-gray-300">{t('Opsion tjetër: ke një grup ku mund të shtosh një bot?')}</summary>
-          <div className="mt-2 space-y-2 pl-1">
-            <p className="text-[10px] text-gray-500">{t('Vetëm nëse ke një GRUP (jo kanal) ku je admin: krijo bot te @BotFather, ngjit token-in dhe kliko "Lidh me Telegram".')}</p>
-            <input
-              type="text" defaultValue={cfg.bot_token} key={`tok-${loaded}`} placeholder="123456:ABC-DEF..."
-              onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== cfg.bot_token) ensureSecretAndSaveToken(v); }}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
-            />
-            <button
-              disabled={!cfg.bot_token || !cfg.webhook_secret}
-              onClick={() => window.open(setWebhookUrl(cfg.bot_token, cfg.webhook_secret), '_blank')}
-              className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-200 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ExternalLink className="w-4 h-4" /> {t('Lidh me Telegram')}
-            </button>
-          </div>
-        </details>
-      </div>
-
       {/* DY TABELAT E KANALEVE (kërkesa e pronarit): info + çelës ON/OFF për secilin kanal,
           sinjalet e fundit + aktivët + raporti i shkurtër, dhe butoni → raportet e plota. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -529,6 +448,109 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         )}
       </div>
 
+      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><Power className="w-4 h-4 text-emerald-400" />{t('Parametrat e parazgjedhur (për kanale të reja)')}</span>
+          <ChevronDown className="w-4 h-4 text-gray-500" />
+        </summary>
+        <div className="px-1 pb-1">
+      {/* Cilësimet kryesore: Aktivizim + Lot + Mënyra e TP */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-4">
+
+        {/* Aktivizim */}
+        <button
+          onClick={toggleActive}
+          className={`w-full flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${cfg.active ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-black/20 border-white/10'}`}
+        >
+          <div className="flex items-center gap-3 text-left">
+            <Power className={`w-5 h-5 ${cfg.active ? 'text-emerald-400' : 'text-gray-500'}`} />
+            <div>
+              <div className="text-sm font-semibold text-white">{cfg.active ? t('Aktiv') : t('Joaktiv')}</div>
+              <div className="text-[11px] text-gray-400">{t('ON = roboti hyn në trade sapo vjen një sinjal nga Telegram.')}</div>
+            </div>
+          </div>
+          <div className={`w-12 h-6 rounded-full relative transition-all ${cfg.active ? 'bg-emerald-500' : 'bg-gray-700'}`}>
+            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${cfg.active ? 'left-7' : 'left-1'}`} />
+          </div>
+        </button>
+
+        {/* Parametrat (lot, TP, SL, max, shkallët) tani vendosen TE KARTA E SECILIT KANAL më lart.
+            Këtu mbetet vetëm simboli i parazgjedhur (për sinjalet pa simbol) — vlerat e ruajtura
+            përdoren si kopje fillestare kur lidhet një kanal i ri. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">{t('Simboli parazgjedhur')}</label>
+            <input type="text" defaultValue={cfg.symbol_default} key={`sym-${loaded}`}
+              onBlur={(e) => setAndSave('symbol_default', (e.target.value || 'XAUUSD').toUpperCase().trim())}
+              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
+          </div>
+          <p className="text-[11px] text-gray-500">{t('Lot-i, TP-të, SL rezervë, max pozicionet dhe mbrojtja shkallë-shkallë rregullohen te karta e secilit kanal më lart.')}</p>
+        </div>
+      </div>
+
+        </div>
+      </details>
+
+      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><Send className="w-4 h-4 text-sky-400" />{t('Lidhja me Telegram')}</span>
+          <ChevronDown className="w-4 h-4 text-gray-500" />
+        </summary>
+        <div className="px-1 pb-1">
+      {/* Lidhja me Telegram — metoda ABONUES (kopjues) */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-3">
+        <p className="text-[11px] text-gray-400">{t('Ti je abonues i kanalit — përdorim "kopjuesin" që e lexon kanalin me llogarinë tënde (pa qenë admin).')}</p>
+        <ol className="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
+          <li>{t('Kopjo adresën e lidhjes më poshtë.')}</li>
+          <li>{t('Ndiq udhëzuesin e kopjuesit (dosja telegram-forwarder) për ta lidhur me kanalin.')}</li>
+          <li>{t('Ndeze çelësin "Aktiv" lart.')}</li>
+        </ol>
+
+        {hookUrl ? (
+          <div className="rounded-lg bg-black/20 border border-white/5 p-2 space-y-2">
+            <div className="text-[10px] text-gray-400">{t('Adresa e lidhjes (webhook — privat, mos e ndaj)')}</div>
+            <div className="flex items-center gap-2">
+              <code className="text-[10px] text-sky-300 truncate flex-1">{hookUrl}</code>
+              <button onClick={() => copy(hookUrl)} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-200 hover:bg-sky-500/25 whitespace-nowrap"><Copy className="w-3.5 h-3.5" />{t('Kopjo')}</button>
+            </div>
+            <div className="text-[10px] text-gray-500">{t('Kjo adresë shkon te kopjuesi (forwarder) — jo te @BotFather.')}</div>
+          </div>
+        ) : (
+          <button onClick={ensureSecret} className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-200 hover:bg-sky-500/30">
+            <Send className="w-4 h-4" /> {t('Krijo adresën e lidhjes')}
+          </button>
+        )}
+
+        {/* Opsion dytësor: bot për një GRUP (vetëm nëse je admin i një grupi) */}
+        <details className="group">
+          <summary className="text-[11px] text-gray-400 cursor-pointer select-none hover:text-gray-300">{t('Opsion tjetër: ke një grup ku mund të shtosh një bot?')}</summary>
+          <div className="mt-2 space-y-2 pl-1">
+            <p className="text-[10px] text-gray-500">{t('Vetëm nëse ke një GRUP (jo kanal) ku je admin: krijo bot te @BotFather, ngjit token-in dhe kliko "Lidh me Telegram".')}</p>
+            <input
+              type="text" defaultValue={cfg.bot_token} key={`tok-${loaded}`} placeholder="123456:ABC-DEF..."
+              onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== cfg.bot_token) ensureSecretAndSaveToken(v); }}
+              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
+            />
+            <button
+              disabled={!cfg.bot_token || !cfg.webhook_secret}
+              onClick={() => window.open(setWebhookUrl(cfg.bot_token, cfg.webhook_secret), '_blank')}
+              className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-200 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ExternalLink className="w-4 h-4" /> {t('Lidh me Telegram')}
+            </button>
+          </div>
+        </details>
+      </div>
+
+        </div>
+      </details>
+
+      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-400" />{t('Robotët e tjerë (MMT + Sinjalet)')}</span>
+          <ChevronDown className="w-4 h-4 text-gray-500" />
+        </summary>
+        <div className="px-1 pb-1">
       {/* Master: ndal/nis robotët e tjerë (MMT + Sinjalet) — që të punojë vetëm Telegram Sin */}
       <div className={`rounded-xl border p-3 sm:p-4 ${others && !others.othersOn ? 'bg-red-500/[0.06] border-red-500/30' : 'bg-white/[0.03] border-white/10'}`}>
         <div className="flex items-center justify-between gap-3">
@@ -563,6 +585,9 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           </button>
         </div>
       </div>
+
+        </div>
+      </details>
 
     </div>
   );
