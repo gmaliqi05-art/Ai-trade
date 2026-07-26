@@ -138,7 +138,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     const id = s0.tg_chat_id != null ? String(s0.tg_chat_id) : '';
     if (id && !chanMap.has(id)) chanMap.set(id, s0.tg_sender || id);
   }
-  for (const [k, v] of chanMap) chanMapRef.set(k, v);
   const sigsOf = (id: string) => signals.filter((s0) => String(s0.tg_chat_id ?? '') === id);
   const statsOf = (list: TelegramSignalRow[]) => {
     const entries = list.filter((s0) => s0.kind === 'entry' && ['executed', 'partial', 'pending', 'closed'].includes(s0.status));
@@ -167,10 +166,9 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     catch (e) { flash('error', (e as Error).message); }
   };
   const toggleChannel = (id: string) => {
-    const name = chanMapRef.get(id) || id;
+    const name = chanMap.get(id) || id;
     setChParam(id, name, { enabled: chanOff(id) });
   };
-  const chanMapRef = new Map<string, string>();
 
   // Blloku i raporteve (stats + tabela e plotë) — përdoret nga pamja e detajuar e kanalit.
   const renderSignalsBlock = (list: TelegramSignalRow[]) => {
