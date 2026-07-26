@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Send, Power, PowerOff, Loader2, Copy, ExternalLink, CheckCircle2, XCircle,
-  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert,
+  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert, BarChart3, ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
@@ -10,7 +10,7 @@ import { checkMetaApiConnection, loadMetaApiConfig, type AccountInfo } from '../
 import {
   loadTelegramSinConfig, saveTelegramSinConfigPartial, loadTelegramSignals,
   generateWebhookSecret, webhookUrlFor, setWebhookUrl,
-  loadOthersState, setOthersEnabled,
+  loadOthersState, setOthersEnabled, loadOpenTgTrades, type TgTradeRow,
   DEFAULT_TG_CONFIG, type TelegramSinConfig, type TelegramSignalRow, type TpMode, type OthersState,
 } from '../services/telegramSin';
 
@@ -24,6 +24,9 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const [signals, setSignals] = useState<TelegramSignalRow[]>([]);
   // NËN-FAQET sipas kanalit: 'all' ose tg_chat_id. Emrat e njohur të kanaleve → etiketa miqësore.
   const [channel, setChannel] = useState<string>('all');
+  // Pamja: 'home' (dy tabelat e kanaleve) ose 'detail' (raportet e plota të një kanali).
+  const [view, setView] = useState<'home' | 'detail'>('home');
+  const [openTrades, setOpenTrades] = useState<TgTradeRow[]>([]);
   const CHANNEL_NAMES: Record<string, string> = {
     '-1003603315504': 'BESA DIGITAL VIP',
   };
@@ -41,7 +44,8 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const refresh = useCallback(async () => {
     if (!user) return;
     try { const c = await loadTelegramSinConfig(user.id); setCfg(c); setLoaded(true); } catch { setLoaded(false); }
-    try { setSignals(await loadTelegramSignals(user.id, 50)); } catch { /* */ }
+    try { setSignals(await loadTelegramSignals(user.id, 100)); } catch { /* */ }
+    try { setOpenTrades(await loadOpenTgTrades(user.id)); } catch { /* */ }
     try { setOthers(await loadOthersState(user.id)); } catch { /* */ }
   }, [user]);
 
@@ -118,6 +122,127 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const money = (n?: number) => (n == null ? '—' : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const cur = account?.currency || '';
   const hookUrl = cfg.webhook_secret ? webhookUrlFor(cfg.webhook_secret) : '';
+
+  // ---- KANALET: regjistri (të njohurit + të parët nga sinjalet) dhe statistikat për secilin ----
+  const chanMap = new Map<string, string>();
+  for (const [id, name] of Object.entries(CHANNEL_NAMES)) chanMap.set(id, name);
+  for (const s0 of signals) {
+    const id = s0.tg_chat_id != null ? String(s0.tg_chat_id) : '';
+    if (id && !chanMap.has(id)) chanMap.set(id, s0.tg_sender || id);
+  }
+  const sigsOf = (id: string) => signals.filter((s0) => String(s0.tg_chat_id ?? '') === id);
+  const statsOf = (list: TelegramSignalRow[]) => {
+    const entries = list.filter((s0) => s0.kind === 'entry' && ['executed', 'partial', 'pending', 'closed'].includes(s0.status));
+    const hit = (n: number) => entries.filter((s0) => (s0.tp_hit ?? 0) >= n).length;
+    const sl = entries.filter((s0) => s0.status === 'closed' && (s0.tp_hit ?? 0) === 0).length;
+    const decided = hit(1) + sl;
+    return { n: entries.length, tp1: hit(1), tp2: hit(2), tp3: hit(3), sl, wr: decided ? Math.round((hit(1) / decided) * 100) : null };
+  };
+  const sigIdsOf = (id: string) => new Set(sigsOf(id).map((s0) => s0.id));
+  const activeOf = (id: string) => { const ids = sigIdsOf(id); return openTrades.filter((tr) => tr.signal_id && ids.has(tr.signal_id)).length; };
+  const chanOff = (id: string) => (cfg.disabled_chats || []).includes(id);
+  // Çelësi PËR KANAL: ndez/fik marrjen e sinjaleve VETËM nga ky kanal (tjetri s'preket).
+  const toggleChannel = (id: string) => {
+    const cur = cfg.disabled_chats || [];
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    setAndSave('disabled_chats', next);
+  };
+
+  // Blloku i raporteve (stats + tabela e plotë) — përdoret nga pamja e detajuar e kanalit.
+  const renderSignalsBlock = (list: TelegramSignalRow[]) => {
+    const st = statsOf(list);
+    return (
+      <>
+        {st.n > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+            {[
+              { l: t('Sinjale'), v: String(st.n), c: 'text-white' },
+              { l: '≥TP1', v: String(st.tp1), c: 'text-emerald-400' },
+              { l: '≥TP2', v: String(st.tp2), c: 'text-emerald-400' },
+              { l: '≥TP3', v: String(st.tp3), c: 'text-emerald-400' },
+              { l: 'SL', v: String(st.sl), c: 'text-red-400' },
+              { l: t('Sukses'), v: st.wr == null ? '—' : `${st.wr}%`, c: st.wr != null && st.wr >= 50 ? 'text-emerald-400' : 'text-amber-400' },
+            ].map((x) => (
+              <div key={x.l} className="rounded-lg bg-black/20 border border-white/5 px-2 py-1.5 text-center">
+                <div className="text-[10px] text-gray-500">{x.l}</div>
+                <div className={`text-sm font-bold ${x.c}`}>{x.v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {list.length === 0 ? (
+          <div className="text-xs text-gray-500 flex items-center gap-2 py-4"><Info className="w-4 h-4" /> {t('Ende s\'ka sinjale. Sapo trejderat të dërgojnë, do shfaqen këtu.')}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b border-white/10">
+                  <th className="text-left py-2 pr-3 font-medium">{t('Data / Ora')}</th>
+                  <th className="text-left py-2 pr-3 font-medium">{t('Simboli')}</th>
+                  <th className="text-left py-2 pr-3 font-medium">{t('Drejtimi')}</th>
+                  <th className="text-right py-2 pr-3 font-medium">Entry</th>
+                  <th className="text-right py-2 pr-3 font-medium">SL</th>
+                  <th className="text-right py-2 pr-3 font-medium">TP1</th>
+                  <th className="text-right py-2 pr-3 font-medium">TP2</th>
+                  <th className="text-right py-2 pr-3 font-medium">TP3</th>
+                  <th className="text-right py-2 pr-3 font-medium">TP4</th>
+                  <th className="text-left py-2 pr-3 font-medium">{t('Statusi')}</th>
+                  <th className="text-left py-2 font-medium">{t('Rezultati')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((s) => {
+                  const d = new Date(s.created_at);
+                  const tps = Array.isArray(s.tps) ? s.tps : [];
+                  const dir = s.direction === 'buy' ? 'buy' : s.direction === 'sell' ? 'sell' : null;
+                  return (
+                    <tr key={s.id} className="border-b border-white/5">
+                      <td className="py-2 pr-3 text-gray-300 whitespace-nowrap">{d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                      <td className="py-2 pr-3 text-white">{s.symbol || '—'}</td>
+                      <td className="py-2 pr-3">
+                        {s.kind === 'exit' ? <span className="text-amber-300">{t('Dalje')}</span>
+                          : dir === 'buy' ? <span className="inline-flex items-center gap-1 text-emerald-400"><TrendingUp className="w-3 h-3" />BUY</span>
+                          : dir === 'sell' ? <span className="inline-flex items-center gap-1 text-red-400"><TrendingDown className="w-3 h-3" />SELL</span>
+                          : <span className="text-gray-500">—</span>}
+                      </td>
+                      <td className="py-2 pr-3 text-right text-gray-300">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
+                      <td className="py-2 pr-3 text-right text-gray-300">{s.stop_loss ?? '—'}</td>
+                      {[0, 1, 2, 3].map((i) => <td key={i} className="py-2 pr-3 text-right text-gray-300">{tps[i] ?? '—'}</td>)}
+                      <td className="py-2 pr-3"><StatusBadge status={s.status} t={t} /></td>
+                      <td className="py-2">
+                        {(s.tp_hit ?? 0) > 0
+                          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">→ TP{s.tp_hit}</span>
+                          : s.status === 'closed' && s.kind === 'entry'
+                            ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300">SL</span>
+                            : <span className="text-gray-600 text-[10px]">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // ===== PAMJA E DETAJUAR E NJË KANALI: të gjitha raportet e tij =====
+  if (view === 'detail' && channel !== 'all') {
+    const name = chanMap.get(channel) || channel;
+    return (
+      <div className="max-w-5xl mx-auto p-3 sm:p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={() => setView('home')} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />{t('Kthehu')}</button>
+          <h1 className="text-sm sm:text-base font-bold text-white flex items-center gap-2"><BarChart3 className="w-4 h-4 text-sky-400" />{name} — {t('Raportet e plota')}</h1>
+          <button onClick={refresh} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}</button>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
+          {renderSignalsBlock(sigsOf(channel))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto p-3 sm:p-4 space-y-4">
@@ -300,115 +425,88 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         </details>
       </div>
 
-      {/* Raportet e sinjaleve */}
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-white">{t('Sinjalet e marra')}</h2>
-          <button onClick={refresh} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10"><RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}</button>
-        </div>
-        {/* NËN-FAQET: një tab për çdo kanal të lidhur (BESA, FX+ | XNINE LEVEL 2, ...) */}
-        {(() => {
-          const chans = new Map<string, string>();
-          for (const s0 of signals) {
-            const id = s0.tg_chat_id != null ? String(s0.tg_chat_id) : '';
-            if (!id) continue;
-            if (!chans.has(id)) chans.set(id, CHANNEL_NAMES[id] || s0.tg_sender || id);
-          }
-          if (chans.size === 0) return null;
+      {/* DY TABELAT E KANALEVE (kërkesa e pronarit): info + çelës ON/OFF për secilin kanal,
+          sinjalet e fundit + aktivët + raporti i shkurtër, dhe butoni → raportet e plota. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {[...chanMap.entries()].map(([id, name]) => {
+          const list = sigsOf(id);
+          const st = statsOf(list);
+          const off = chanOff(id);
+          const act = activeOf(id);
+          const last = list[0];
           return (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              <button onClick={() => setChannel('all')}
-                className={`text-xs px-3 py-1.5 rounded-lg border ${channel === 'all' ? 'bg-sky-500/20 border-sky-500/40 text-sky-200' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
-                {t('Të gjitha')}
-              </button>
-              {[...chans.entries()].map(([id, name]) => (
-                <button key={id} onClick={() => setChannel(id)}
-                  className={`text-xs px-3 py-1.5 rounded-lg border ${channel === id ? 'bg-sky-500/20 border-sky-500/40 text-sky-200' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
-                  {name}
-                </button>
-              ))}
-            </div>
-          );
-        })()}
-        {(() => {
-          const chSignals = channel === 'all' ? signals : signals.filter((s0) => String(s0.tg_chat_id ?? '') === channel);
-          const entries = chSignals.filter((s) => s.kind === 'entry' && ['executed', 'partial', 'pending', 'closed'].includes(s.status));
-          const hit = (n: number) => entries.filter((s) => (s.tp_hit ?? 0) >= n).length;
-          const slCount = entries.filter((s) => s.status === 'closed' && (s.tp_hit ?? 0) === 0).length;
-          const decided = hit(1) + slCount;
-          const wr = decided ? Math.round((hit(1) / decided) * 100) : null;
-          if (entries.length === 0) return null;
-          return (
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
-              {[
-                { l: t('Sinjale'), v: String(entries.length), c: 'text-white' },
-                { l: '≥TP1', v: String(hit(1)), c: 'text-emerald-400' },
-                { l: '≥TP2', v: String(hit(2)), c: 'text-emerald-400' },
-                { l: '≥TP3', v: String(hit(3)), c: 'text-emerald-400' },
-                { l: 'SL', v: String(slCount), c: 'text-red-400' },
-                { l: t('Sukses'), v: wr == null ? '—' : `${wr}%`, c: wr != null && wr >= 50 ? 'text-emerald-400' : 'text-amber-400' },
-              ].map((x) => (
-                <div key={x.l} className="rounded-lg bg-black/20 border border-white/5 px-2 py-1.5 text-center">
-                  <div className="text-[10px] text-gray-500">{x.l}</div>
-                  <div className={`text-sm font-bold ${x.c}`}>{x.v}</div>
+            <div key={id} className={`rounded-xl border p-3 sm:p-4 space-y-3 ${off ? 'border-white/10 bg-white/[0.02] opacity-80' : 'border-sky-500/25 bg-sky-500/[0.04]'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Send className={`w-4 h-4 flex-shrink-0 ${off ? 'text-gray-500' : 'text-sky-400'}`} />
+                  <span className="text-sm font-semibold text-white truncate">{name}</span>
                 </div>
-              ))}
+                {/* Çelësi PËR KANAL — fik/ndez marrjen e sinjaleve VETËM nga ky kanal */}
+                <button onClick={() => toggleChannel(id)}
+                  className={`flex items-center gap-2 flex-shrink-0 ${off ? '' : ''}`} title={off ? t('Aktivizo kanalin') : t('Çaktivizo kanalin')}>
+                  <span className={`text-[10px] font-bold ${off ? 'text-gray-500' : 'text-emerald-400'}`}>{off ? 'OFF' : 'ON'}</span>
+                  <span className={`w-10 h-5 rounded-full relative transition-all ${off ? 'bg-gray-700' : 'bg-emerald-500'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${off ? 'left-0.5' : 'left-5'}`} />
+                  </span>
+                </button>
+              </div>
+
+              {/* Raporti i shkurtër + aktivët */}
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { l: t('Sinjale'), v: String(st.n), c: 'text-white' },
+                  { l: t('Aktive'), v: String(act), c: act > 0 ? 'text-sky-300' : 'text-gray-400' },
+                  { l: '≥TP1/SL', v: `${st.tp1}/${st.sl}`, c: 'text-gray-200' },
+                  { l: t('Sukses'), v: st.wr == null ? '—' : `${st.wr}%`, c: st.wr != null && st.wr >= 50 ? 'text-emerald-400' : 'text-amber-400' },
+                ].map((x) => (
+                  <div key={x.l} className="rounded-lg bg-black/20 border border-white/5 px-1.5 py-1 text-center">
+                    <div className="text-[9px] text-gray-500">{x.l}</div>
+                    <div className={`text-xs font-bold ${x.c}`}>{x.v}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Sinjalet e fundit (3) */}
+              {list.length === 0 ? (
+                <p className="text-[11px] text-gray-500">{t('Ende s\'ka sinjale nga ky kanal.')}</p>
+              ) : (
+                <div className="space-y-1">
+                  {list.slice(0, 3).map((s0) => {
+                    const d = new Date(s0.created_at);
+                    return (
+                      <div key={s0.id} className="flex items-center justify-between text-[11px] bg-black/20 rounded-lg px-2 py-1">
+                        <span className="text-gray-500">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className={s0.direction === 'buy' ? 'text-emerald-400 font-semibold' : s0.direction === 'sell' ? 'text-red-400 font-semibold' : 'text-gray-400'}>
+                          {s0.kind === 'exit' ? t('Dalje') : s0.direction ? s0.direction.toUpperCase() : '—'}
+                        </span>
+                        <span>
+                          {(s0.tp_hit ?? 0) > 0
+                            ? <span className="text-emerald-300 font-bold">→TP{s0.tp_hit}</span>
+                            : s0.status === 'closed' && s0.kind === 'entry'
+                              ? <span className="text-red-300 font-bold">SL</span>
+                              : <StatusBadge status={s0.status} t={t} />}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* → Raportet e plota të kanalit */}
+              <button onClick={() => { setChannel(id); setView('detail'); }}
+                className="w-full inline-flex items-center justify-center gap-2 text-xs px-3 py-2 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-200 hover:bg-sky-500/25">
+                <BarChart3 className="w-3.5 h-3.5" />{t('Raportet e plota')} →
+              </button>
             </div>
           );
-        })()}
-        {(channel === 'all' ? signals : signals.filter((s0) => String(s0.tg_chat_id ?? '') === channel)).length === 0 ? (
-          <div className="text-xs text-gray-500 flex items-center gap-2 py-4"><Info className="w-4 h-4" /> {t('Ende s\'ka sinjale. Sapo trejderat të dërgojnë, do shfaqen këtu.')}</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-500 border-b border-white/10">
-                  <th className="text-left py-2 pr-3 font-medium">{t('Data / Ora')}</th>
-                  <th className="text-left py-2 pr-3 font-medium">{t('Simboli')}</th>
-                  <th className="text-left py-2 pr-3 font-medium">{t('Drejtimi')}</th>
-                  <th className="text-right py-2 pr-3 font-medium">Entry</th>
-                  <th className="text-right py-2 pr-3 font-medium">SL</th>
-                  <th className="text-right py-2 pr-3 font-medium">TP1</th>
-                  <th className="text-right py-2 pr-3 font-medium">TP2</th>
-                  <th className="text-right py-2 pr-3 font-medium">TP3</th>
-                  <th className="text-right py-2 pr-3 font-medium">TP4</th>
-                  <th className="text-left py-2 pr-3 font-medium">{t('Statusi')}</th>
-                  <th className="text-left py-2 font-medium">{t('Rezultati')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(channel === 'all' ? signals : signals.filter((s0) => String(s0.tg_chat_id ?? '') === channel)).map((s) => {
-                  const d = new Date(s.created_at);
-                  const tps = Array.isArray(s.tps) ? s.tps : [];
-                  const dir = s.direction === 'buy' ? 'buy' : s.direction === 'sell' ? 'sell' : null;
-                  return (
-                    <tr key={s.id} className="border-b border-white/5">
-                      <td className="py-2 pr-3 text-gray-300 whitespace-nowrap">{d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                      <td className="py-2 pr-3 text-white">{s.symbol || '—'}</td>
-                      <td className="py-2 pr-3">
-                        {s.kind === 'exit' ? <span className="text-amber-300">{t('Dalje')}</span>
-                          : dir === 'buy' ? <span className="inline-flex items-center gap-1 text-emerald-400"><TrendingUp className="w-3 h-3" />BUY</span>
-                          : dir === 'sell' ? <span className="inline-flex items-center gap-1 text-red-400"><TrendingDown className="w-3 h-3" />SELL</span>
-                          : <span className="text-gray-500">—</span>}
-                      </td>
-                      <td className="py-2 pr-3 text-right text-gray-300">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
-                      <td className="py-2 pr-3 text-right text-gray-300">{s.stop_loss ?? '—'}</td>
-                      {[0, 1, 2, 3].map((i) => <td key={i} className="py-2 pr-3 text-right text-gray-300">{tps[i] ?? '—'}</td>)}
-                      <td className="py-2 pr-3">
-                        <StatusBadge status={s.status} t={t} />
-                      </td>
-                      <td className="py-2">
-                        {(s.tp_hit ?? 0) > 0
-                          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">→ TP{s.tp_hit}</span>
-                          : s.status === 'closed' && s.kind === 'entry'
-                            ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300">SL</span>
-                            : <span className="text-gray-600 text-[10px]">—</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        })}
+
+        {/* Karta e kanalit të dytë NË PRITJE — derisa të lidhet kopjuesi i FX+ */}
+        {![...chanMap.values()].some((n) => /XNINE/i.test(n)) && (
+          <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-3 sm:p-4 flex flex-col items-center justify-center text-center gap-2 min-h-[160px]">
+            <Send className="w-5 h-5 text-gray-500" />
+            <p className="text-sm font-semibold text-gray-300">FX+ | XNINE LEVEL 2</p>
+            <p className="text-[11px] text-gray-500">{t('Në pritje të lidhjes — ndiq udhëzimet për kopjuesin e dytë (numri tjetër i telefonit). Tabela aktivizohet vetë me sinjalin e parë.')}</p>
           </div>
         )}
       </div>

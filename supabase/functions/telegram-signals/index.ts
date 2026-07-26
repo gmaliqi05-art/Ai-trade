@@ -404,6 +404,9 @@ Deno.serve(async (req: Request) => {
   const sender = String(msg.from?.username || msg.from?.id || msg.sender_chat?.title || "");
 
   // 2) Filtrim burimi (nëse konfiguruar)
+  // KANAL I ÇAKTIVIZUAR nga faqja (çelësi për-kanal): regjistro si 'ignored', mos tregto.
+  const disabledChats: string[] = cfgRow.disabled_chats || [];
+  const chatDisabled = disabledChats.includes(chatId);
   const allowChats: string[] = cfgRow.allowed_chat_ids || [];
   const allowSenders: string[] = cfgRow.allowed_senders || [];
   if (allowChats.length > 0 && !allowChats.includes(chatId)) return json({ ok: true, skip: "chat_not_allowed", chatId });
@@ -431,6 +434,7 @@ Deno.serve(async (req: Request) => {
   };
 
   if (p.kind === "unknown") { await finish("ignored", "koment/tekst — s'është sinjal me strukturë (Entry/SL/TP)"); return json({ ok: true, kind: "unknown" }); }
+  if (chatDisabled) { await finish("ignored", "kanali është i çaktivizuar nga cilësimet"); return json({ ok: true, skip: "chat_disabled" }); }
   if (!cfgRow.active) { await finish("ignored", "Telegram Sin joaktiv"); return json({ ok: true, skip: "inactive" }); }
 
   // Ngarko konfigurimin MetaApi të përdoruesit (tregton në llogarinë e tij — si te Trade Live)

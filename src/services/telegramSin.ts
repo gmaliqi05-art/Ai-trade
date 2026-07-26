@@ -19,6 +19,8 @@ export interface TelegramSinConfig {
   webhook_secret: string;
   allowed_chat_ids: string[];
   allowed_senders: string[];
+  /** Kanalet e ÇAKTIVIZUARA (tg_chat_id) — sinjalet e tyre injorohen. */
+  disabled_chats: string[];
 }
 
 export const DEFAULT_TG_CONFIG: TelegramSinConfig = {
@@ -33,6 +35,7 @@ export const DEFAULT_TG_CONFIG: TelegramSinConfig = {
   webhook_secret: '',
   allowed_chat_ids: [],
   allowed_senders: [],
+  disabled_chats: [],
 };
 
 export interface TelegramSignalRow {
@@ -86,6 +89,7 @@ export async function loadTelegramSinConfig(userId: string): Promise<TelegramSin
     webhook_secret: data.webhook_secret ?? '',
     allowed_chat_ids: data.allowed_chat_ids ?? [],
     allowed_senders: data.allowed_senders ?? [],
+    disabled_chats: data.disabled_chats ?? [],
   };
 }
 
@@ -132,4 +136,13 @@ export async function loadTelegramSignals(userId: string, limit = 50): Promise<T
     .order('created_at', { ascending: false })
     .limit(limit);
   return (data ?? []) as TelegramSignalRow[];
+}
+
+/** Pozicionet e hapura/pending të Telegram Sin (për numërimin "aktive" për kanal). */
+export interface TgTradeRow { id: string; signal_id: string | null; status: string; tp_index: number | null; symbol: string | null; action: string | null; }
+export async function loadOpenTgTrades(userId: string): Promise<TgTradeRow[]> {
+  const { data } = await supabase.from('telegram_trades')
+    .select('id, signal_id, status, tp_index, symbol, action')
+    .eq('user_id', userId).in('status', ['open', 'pending']);
+  return (data ?? []) as TgTradeRow[];
 }
