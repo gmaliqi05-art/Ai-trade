@@ -482,10 +482,9 @@ Deno.serve(async (req: Request) => {
       });
 
     // --- MBROJTJET E RREZIKUT (të detyrueshme) ---
-    if (config.kill_switch) {
-      await logExec("rejected", "Kill-switch aktiv — të gjitha tregtitë e bllokuara.", null, null);
-      return json({ error: "kill_switch", message: "Kill-switch aktiv. Çaktivizoje për të tregtuar." }, 403);
-    }
+    // Kill-switch-i NUK bllokon këtu: ky funksion thirret VETËM nga veprimet manuale të përdoruesit
+    // (forma "Porosi e re" + kliku mbi sinjal). Robotët automatikë e respektojnë kill_switch-in te
+    // runner-ët e tyre (auto-trade-runner etj.) — ndalja e robotëve s'duhet t'ia ndalojë dorën pronarit.
 
     // Gjendja aktuale e llogarisë nga MetaApi (pozicione + humbje e lëvizshme).
     let openTrades = 0;
