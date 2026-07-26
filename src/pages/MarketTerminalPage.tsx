@@ -838,6 +838,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         ...((p.takeProfit && !editing) ? [{ price: p.takeProfit, color: '#22c55e', title: `TP${tag}${reward != null ? ` · +${r2(reward)} ${fcur}` : ''}` }] : []),
       ];
     }),
+    // BID/ASK si në MetaTrader 5: vija me pika (e kuqe = Bid, blu = Ask) që lëvizin live.
+    ...((brokerPx && pxFresh)
+      ? [
+          { price: Math.round(brokerPx.bid * 100) / 100, color: '#ef5350', title: 'Bid', style: 'dotted' as const, width: 1 as const },
+          { price: Math.round(brokerPx.ask * 100) / 100, color: '#42a5f5', title: 'Ask', style: 'dotted' as const, width: 1 as const },
+        ]
+      : []),
     ...((livePrice != null && posnsForSymbol.length)
       ? [{ price: livePrice, color: pxFresh ? '#fbbf24' : '#6b7280',
           title: (pxFresh && totalLivePnl != null)
