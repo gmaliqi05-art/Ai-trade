@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, RefreshCw, TrendingUp, TrendingDown, Activity, Wallet, BarChart2, AlertCircle, Loader2, Calendar, Bot, Zap, Hand } from 'lucide-react';
-import { loadTradeHistory, checkMetaApiConnection, loadPositionCloses, type HistoryDeal, type AccountInfo } from '../services/metaapi';
+import { loadTradeHistory, checkMetaApiConnection, loadPositionCloses, loadMetaApiConfig, type HistoryDeal, type AccountInfo } from '../services/metaapi';
 import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, robotOf, type ClosedTrade, type ExecRow, type FasttExecRow } from '../services/closedTrades';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -105,12 +105,16 @@ export default function ReportsPage() {
       let posCloseIds = new Set<string>();
       if (user) {
         const sinceMs = (period === 'today' ? Date.now() - 2 * 86400000 : Date.now() - (fetchDays as number) * 86400000) - 6 * 3600 * 1000;
+        // Raportet vetëm për llogarinë AKTUALE të MT5 (account_id) — pa të dhënat e llogarive të vjetra.
+        let accId = '';
+        try { accId = (await loadMetaApiConfig(user.id)).account_id || ''; } catch { /* filtri thjesht s'aplikohet */ }
+        let execQ = supabase.from('trade_executions')
+          .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
+          .eq('user_id', user.id).gte('created_at', new Date(sinceMs).toISOString());
+        if (accId) execQ = execQ.eq('account_id', accId);
         const [{ data: execsAll }, posCloseRows] = await Promise.all([
-          supabase.from('trade_executions')
-            .select('status, action, symbol, volume, entry_price, stop_loss, take_profit, signal_id, reason, created_at, metaapi_order_id')
-            .eq('user_id', user.id).gte('created_at', new Date(sinceMs).toISOString())
-            .order('created_at', { ascending: false }).limit(1000),
-          loadPositionCloses(user.id, Math.max(2, fetchDays as number)),
+          execQ.order('created_at', { ascending: false }).limit(1000),
+          loadPositionCloses(user.id, Math.max(2, fetchDays as number), accId || undefined),
         ]);
         // Mbylljet e regjistruara nga serveri (close-tracker + manual) — burim i qëndrueshëm, S'varet nga MT5.
         posCloses = closesFromPositions(posCloseRows);
