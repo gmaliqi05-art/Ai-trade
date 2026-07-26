@@ -93,6 +93,16 @@ async function metaApiGet(cfg: MetaApiConfig, path: string, opts?: { timeoutMs?:
 // thirrja /symbols dështonte kalimtar (llogaria pa sinkronizuar), zgjidhja binte te emri i papërpunuar
 // (XAUUSD) që brokeri nuk e njeh. Tani: nëse e kemi mësuar njëherë emrin REAL → e përdorim drejtpërdrejt
 // (i shpejtë + imun ndaj dështimeve). Cache-i mbushet VETËM me emra të verifikuar te lista e brokerit.
+// PROVA E GJALLËRISË: te PU Prime "XAUUSD" figuron në listë por llogaria tregton "XAUUSD.s" —
+// kërkesat për emrin e gabuar NGECIN në timeout (çmim/qirinj/urdhra të gjithë të prishur). Prandaj
+// emri pranohet vetëm nëse /specification përgjigjet shpejt dhe tregtimi s'është i çaktivizuar.
+async function symbolAlive(cfg: MetaApiConfig, symbol: string): Promise<boolean> {
+  try {
+    const spec = await metaApiGet(cfg, `/symbols/${encodeURIComponent(symbol)}/specification`, { timeoutMs: 6000, attempts: 1 }) as { symbol?: string; tradeMode?: string } | null;
+    return !!spec && typeof spec === "object" && spec.tradeMode !== "SYMBOL_TRADE_MODE_DISABLED";
+  } catch { return false; }
+}
+
 async function resolveSymbol(cfg: MetaApiConfig, requested: string, db: ReturnType<typeof createClient>, userId: string): Promise<string> {
   const req = requested.toUpperCase();
   const map: Record<string, string> = (cfg.symbol_map && typeof cfg.symbol_map === "object") ? cfg.symbol_map as Record<string, string> : {};
@@ -105,15 +115,22 @@ async function resolveSymbol(cfg: MetaApiConfig, requested: string, db: ReturnTy
       const oilFam = /^(UKOIL|XBR|BRENT|UKO)/i.test(req)
         ? /^(UKOIL|XBRUSD|XBR|BRENT|UKO)/i
         : /^(USOIL|XTIUSD|XTI|WTI|CL|USO)/i;
-      const found = names.find(s => s.toUpperCase() === req)                                   // përputhje e saktë
-        || names.find(s => s.toUpperCase().startsWith(req))                                    // me prapashtesë: XAUUSD+, XAUUSD., XAUUSDm…
-        || (req.includes("XAU") ? (names.find(s => /xau.*usd/i.test(s)) || names.find(s => /^gold/i.test(s.trim()))) : undefined) // alias ari
-        || (oilReq ? names.find(s => oilFam.test(s)) : undefined);                             // familja e naftës
-      if (found) {
-        // Ruaj VETËM emra të VERIFIKUAR (kurrë fallback-un e papërpunuar) → cache i sigurt, i përhershëm.
-        try { await db.from("metaapi_config").update({ symbol_map: { ...map, [req]: found } }).eq("user_id", userId); } catch { /* best-effort */ }
-        return found;
+      const candidates = [...new Set([
+        ...names.filter(s => s.toUpperCase() === req),                                         // përputhje e saktë
+        ...names.filter(s => s.toUpperCase() !== req && s.toUpperCase().startsWith(req)),      // me prapashtesë: XAUUSD.s, XAUUSD+, XAUUSDm…
+        ...(req.includes("XAU") ? names.filter(s => /xau.*usd/i.test(s) || /^gold/i.test(s.trim())) : []), // alias ari
+        ...(oilReq ? names.filter(s => oilFam.test(s)) : []),                                  // familja e naftës
+      ])];
+      for (const cand of candidates) {
+        if (await symbolAlive(cfg, cand)) {
+          // Ruaj VETËM emra të VERIFIKUAR me provë të gjallë (kurrë fallback-un e papërpunuar).
+          try { await db.from("metaapi_config").update({ symbol_map: { ...map, [req]: cand } }).eq("user_id", userId); } catch { /* best-effort */ }
+          return cand;
+        }
       }
+      // Asnjë provë s'kaloi tani (kalimtar? — p.sh. llogaria pa sinkronizuar) → mos cache-o,
+      // përdor kandidatin e parë vetëm për këtë thirrje që të mos bllokohemi.
+      if (candidates.length > 0) return candidates[0];
     }
   } catch { /* /symbols dështoi kalimtar → bie te cache/të kërkuarit më poshtë */ }
   return map[req] || requested; // pa zgjidhje tani → cache (nëse ka) ose i kërkuari si zgjidhje e fundit

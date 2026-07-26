@@ -87,6 +87,9 @@ export interface MetaApiConfig {
   scalp_live_cut_usd: number;
   /** SL "katastrofe" i gjerë te brokeri (parashutë nëse funksioni bie). Default 1.50. */
   scalp_live_catastrophe_usd: number;
+  /** Emrat REALË të simboleve te brokeri (p.sh. {"XAUUSD":"XAUUSD.s"}), të mësuar e verifikuar
+   *  nga serveri. VETËM-LEXIM në front (shkruhet nga edge-functions); s'përfshihet në save. */
+  symbol_map?: Record<string, string>;
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
@@ -165,16 +168,19 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     scalp_live_giveback_usd: Number(data.scalp_live_giveback_usd ?? 0.25),
     scalp_live_cut_usd: Number(data.scalp_live_cut_usd ?? 0.60),
     scalp_live_catastrophe_usd: Number(data.scalp_live_catastrophe_usd ?? 1.50),
+    symbol_map: (data.symbol_map && typeof data.symbol_map === 'object') ? data.symbol_map as Record<string, string> : {},
     };
   }
   throw new Error(lastErr?.message || 'metaapi_config_load_failed');
 }
 
-/** Ruan (upsert) konfigurimin e MetaApi. */
+/** Ruan (upsert) konfigurimin e MetaApi. symbol_map hiqet — e shkruajnë vetëm edge-functions
+ *  (të mos fshihet cache-i i verifikuar i emrave nga një save i UI-së). */
 export async function saveMetaApiConfig(userId: string, cfg: MetaApiConfig): Promise<void> {
+  const { symbol_map: _sm, ...rest } = cfg;
   const { error } = await supabase
     .from('metaapi_config')
-    .upsert({ user_id: userId, ...cfg, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    .upsert({ user_id: userId, ...rest, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
   if (error) throw new Error(error.message);
 }
 

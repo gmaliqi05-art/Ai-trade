@@ -72,7 +72,20 @@ async function livePrice(cfg: Cfg, sym: string): Promise<{ bid: number; ask: num
   } catch { /* */ }
   return null;
 }
-// Zgjidh emrin REAL të simbolit te brokeri (XAUUSD → XAUUSD+), me cache te symbol_map.
+// Zgjidh emrin REAL të simbolit te brokeri (XAUUSD → XAUUSD.s / XAUUSD+), me cache te symbol_map.
+// PROVA E GJALLËRISË: te PU Prime "XAUUSD" figuron në listë por llogaria tregton "XAUUSD.s" —
+// kërkesat për emrin e gabuar NGECIN në timeout. Emri pranohet (dhe cache-ohet) vetëm nëse
+// /specification përgjigjet shpejt dhe tregtimi s'është i çaktivizuar.
+async function symbolAlive(cfg: Cfg, symbol: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`${host(cfg.region)}/users/current/accounts/${cfg.account_id}/symbols/${encodeURIComponent(symbol)}/specification`, {
+      headers: { "auth-token": cfg.token }, signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) return false;
+    const spec = await resp.json() as { tradeMode?: string };
+    return !!spec && typeof spec === "object" && spec.tradeMode !== "SYMBOL_TRADE_MODE_DISABLED";
+  } catch { return false; }
+}
 const symCache = new Map<string, string>();
 async function resolveSymbol(cfg: Cfg, requested: string, db: ReturnType<typeof createClient>): Promise<string> {
   const want = (requested || "").toUpperCase().trim();
@@ -83,15 +96,21 @@ async function resolveSymbol(cfg: Cfg, requested: string, db: ReturnType<typeof 
   let names: string[] = [];
   try { const arr = await maGet(cfg, "/symbols"); if (Array.isArray(arr)) names = arr.map((s) => String(s)); } catch { /* */ }
   const isGold = /XAU|GOLD|ARI/.test(want);
-  let pick = names.find((n) => n.toUpperCase() === want)
-    || names.find((n) => n.toUpperCase().startsWith(want))
-    || (isGold ? names.find((n) => /XAUUSD/i.test(n)) : undefined);
-  const chosen = pick || want;
-  symCache.set(ck, chosen);
-  if (chosen !== want) {
-    try { await db.from("metaapi_config").update({ symbol_map: { ...map, [want]: chosen } }).eq("user_id", cfg.user_id); } catch { /* */ }
+  const candidates = [...new Set([
+    ...names.filter((n) => n.toUpperCase() === want),
+    ...names.filter((n) => n.toUpperCase() !== want && n.toUpperCase().startsWith(want)),
+    ...(isGold ? names.filter((n) => /XAUUSD/i.test(n)) : []),
+  ])];
+  for (const cand of candidates) {
+    if (await symbolAlive(cfg, cand)) {
+      symCache.set(ck, cand);
+      try { await db.from("metaapi_config").update({ symbol_map: { ...map, [want]: cand } }).eq("user_id", cfg.user_id); } catch { /* */ }
+      return cand;
+    }
   }
-  return chosen;
+  // Asnjë provë s'kaloi (kalimtar?) → mos e ngurtëso në cache të DB-së; përdor kandidatin e parë
+  // ose të kërkuarin vetëm për këtë thirrje.
+  return candidates[0] || want;
 }
 
 // ---------- Parser i mesazheve ----------
