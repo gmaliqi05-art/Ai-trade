@@ -140,6 +140,10 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     if (id && !chanMap.has(id)) chanMap.set(id, s0.tg_sender || id);
   }
   const sigsOf = (id: string) => signals.filter((s0) => String(s0.tg_chat_id ?? '') === id);
+  // Ndarja: SINJALE të vërteta (shfaqen në karta/tabelën kryesore) vs mesazhe të INJORUARA
+  // (komente/tekste nga kanali — vetëm në nënfaqen e raporteve, në tabelën e tyre të palosshme).
+  const realSigsOf = (id: string) => sigsOf(id).filter((s0) => s0.status !== 'ignored');
+  const ignoredOf = (id: string) => sigsOf(id).filter((s0) => s0.status === 'ignored');
   const statsOf = (list: TelegramSignalRow[]) => {
     const entries = list.filter((s0) => s0.kind === 'entry' && ['executed', 'partial', 'pending', 'closed'].includes(s0.status));
     const hit = (n: number) => entries.filter((s0) => (s0.tp_hit ?? 0) >= n).length;
@@ -261,8 +265,44 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           <button onClick={refresh} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}</button>
         </div>
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
-          {renderSignalsBlock(sigsOf(channel))}
+          {renderSignalsBlock(realSigsOf(channel))}
         </div>
+
+        {/* MESAZHET E INJORUARA — tabelë e veçantë, e palosshme (hamburger): komente/tekste nga
+            kanali që s'ishin sinjale. Vetëm këtu, jo në kartat/tabelën kryesore. */}
+        {ignoredOf(channel).length > 0 && (
+          <details className="rounded-xl border border-white/10 bg-white/[0.02] group">
+            <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-gray-400 flex items-center gap-2">
+                <Info className="w-3.5 h-3.5" />{t('Mesazhe të injoruara (jo sinjale)')} · {ignoredOf(channel).length}
+              </span>
+              <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="px-3 sm:px-4 pb-3 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-500 border-b border-white/10">
+                    <th className="text-left py-2 pr-3 font-medium">{t('Data / Ora')}</th>
+                    <th className="text-left py-2 pr-3 font-medium">{t('Mesazhi')}</th>
+                    <th className="text-left py-2 font-medium">{t('Arsyeja')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ignoredOf(channel).map((s0) => {
+                    const d = new Date(s0.created_at);
+                    return (
+                      <tr key={s0.id} className="border-b border-white/5 align-top">
+                        <td className="py-2 pr-3 text-gray-400 whitespace-nowrap">{d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="py-2 pr-3 text-gray-300 max-w-[380px]"><span className="line-clamp-2">{s0.raw_text || '—'}</span></td>
+                        <td className="py-2 text-gray-500">{s0.error || t('koment/tekst')}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
       </div>
     );
   }
@@ -325,7 +365,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           sinjalet e fundit + aktivët + raporti i shkurtër, dhe butoni → raportet e plota. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {[...chanMap.entries()].map(([id, name]) => {
-          const list = sigsOf(id);
+          const list = realSigsOf(id); // vetëm sinjale të vërteta — të injoruarat s'shfaqen në karta
           const st = statsOf(list);
           const off = chanOff(id);
           const act = activeOf(id);
