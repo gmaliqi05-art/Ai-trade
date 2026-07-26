@@ -28,6 +28,10 @@ export interface ChartCandle {
 }
 
 export interface PriceLineDef {
+  /** Stili i vijës: 'dashed' (default), 'dotted' (Bid/Ask si MT5) ose 'solid'. */
+  style?: 'solid' | 'dashed' | 'dotted';
+  /** Gjerësia e vijës (default 2; Bid/Ask → 1). */
+  width?: 1 | 2 | 3 | 4;
   price: number;
   color: string;
   title: string;
@@ -155,10 +159,11 @@ export default function Mt5Chart({
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = createChart(containerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: '#111827' }, textColor: '#9ca3af', attributionLogo: false },
-      grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
-      rightPriceScale: { borderColor: '#374151' },
-      timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7, lockVisibleTimeRangeOnResize: true },
+      // PAMJA MT5: sfond gati i zi, grid me pika i heshtur — si terminali MetaTrader 5.
+      layout: { background: { type: ColorType.Solid, color: '#0b0e13' }, textColor: '#8b98a8', attributionLogo: false },
+      grid: { vertLines: { color: '#161d27', style: LineStyle.Dotted }, horzLines: { color: '#161d27', style: LineStyle.Dotted } },
+      rightPriceScale: { borderColor: '#242e3b' },
+      timeScale: { borderColor: '#242e3b', timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7, lockVisibleTimeRangeOnResize: true },
       crosshair: { mode: 1 },
       autoSize: true,
     });
@@ -298,7 +303,9 @@ export default function Mt5Chart({
     const valid = lines.filter(l => Number.isFinite(l.price) && l.price > 0);
 
     priceLinesRef.current = valid.map(l => series.createPriceLine({
-      price: l.price, color: l.color, lineWidth: 2, lineStyle: LineStyle.Dashed,
+      price: l.price, color: l.color,
+      lineWidth: (l.width ?? 2) as 1 | 2 | 3 | 4,
+      lineStyle: l.style === 'dotted' ? LineStyle.Dotted : l.style === 'solid' ? LineStyle.Solid : LineStyle.Dashed,
       axisLabelVisible: true, title: '',
     }));
 
