@@ -47,6 +47,7 @@ export interface TelegramSignalRow {
   tps: number[];
   status: string;
   tp_hit?: number;
+  tg_chat_id?: string | null;
   error: string | null;
   tg_sender: string | null;
   created_at: string;
@@ -126,7 +127,7 @@ export async function setOthersEnabled(userId: string, on: boolean): Promise<voi
 export async function loadTelegramSignals(userId: string, limit = 50): Promise<TelegramSignalRow[]> {
   const { data } = await supabase
     .from('telegram_signals')
-    .select('id, raw_text, kind, symbol, direction, entry_type, entry_price, stop_loss, tps, status, tp_hit, error, tg_sender, created_at')
+    .select('id, raw_text, kind, symbol, direction, entry_type, entry_price, stop_loss, tps, status, tp_hit, error, tg_sender, tg_chat_id, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);

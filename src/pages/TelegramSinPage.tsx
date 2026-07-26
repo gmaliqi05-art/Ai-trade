@@ -22,6 +22,11 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const [loaded, setLoaded] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [signals, setSignals] = useState<TelegramSignalRow[]>([]);
+  // NËN-FAQET sipas kanalit: 'all' ose tg_chat_id. Emrat e njohur të kanaleve → etiketa miqësore.
+  const [channel, setChannel] = useState<string>('all');
+  const CHANNEL_NAMES: Record<string, string> = {
+    '-1003603315504': 'BESA DIGITAL VIP',
+  };
 
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [metaConfigured, setMetaConfigured] = useState(false);
@@ -301,8 +306,33 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           <h2 className="text-sm font-semibold text-white">{t('Sinjalet e marra')}</h2>
           <button onClick={refresh} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10"><RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}</button>
         </div>
+        {/* NËN-FAQET: një tab për çdo kanal të lidhur (BESA, FX+ | XNINE LEVEL 2, ...) */}
         {(() => {
-          const entries = signals.filter((s) => s.kind === 'entry' && ['executed', 'partial', 'pending', 'closed'].includes(s.status));
+          const chans = new Map<string, string>();
+          for (const s0 of signals) {
+            const id = s0.tg_chat_id != null ? String(s0.tg_chat_id) : '';
+            if (!id) continue;
+            if (!chans.has(id)) chans.set(id, CHANNEL_NAMES[id] || s0.tg_sender || id);
+          }
+          if (chans.size === 0) return null;
+          return (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              <button onClick={() => setChannel('all')}
+                className={`text-xs px-3 py-1.5 rounded-lg border ${channel === 'all' ? 'bg-sky-500/20 border-sky-500/40 text-sky-200' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+                {t('Të gjitha')}
+              </button>
+              {[...chans.entries()].map(([id, name]) => (
+                <button key={id} onClick={() => setChannel(id)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border ${channel === id ? 'bg-sky-500/20 border-sky-500/40 text-sky-200' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+                  {name}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
+        {(() => {
+          const chSignals = channel === 'all' ? signals : signals.filter((s0) => String(s0.tg_chat_id ?? '') === channel);
+          const entries = chSignals.filter((s) => s.kind === 'entry' && ['executed', 'partial', 'pending', 'closed'].includes(s.status));
           const hit = (n: number) => entries.filter((s) => (s.tp_hit ?? 0) >= n).length;
           const slCount = entries.filter((s) => s.status === 'closed' && (s.tp_hit ?? 0) === 0).length;
           const decided = hit(1) + slCount;
@@ -326,7 +356,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
             </div>
           );
         })()}
-        {signals.length === 0 ? (
+        {(channel === 'all' ? signals : signals.filter((s0) => String(s0.tg_chat_id ?? '') === channel)).length === 0 ? (
           <div className="text-xs text-gray-500 flex items-center gap-2 py-4"><Info className="w-4 h-4" /> {t('Ende s\'ka sinjale. Sapo trejderat të dërgojnë, do shfaqen këtu.')}</div>
         ) : (
           <div className="overflow-x-auto">
@@ -347,7 +377,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                 </tr>
               </thead>
               <tbody>
-                {signals.map((s) => {
+                {(channel === 'all' ? signals : signals.filter((s0) => String(s0.tg_chat_id ?? '') === channel)).map((s) => {
                   const d = new Date(s.created_at);
                   const tps = Array.isArray(s.tps) ? s.tps : [];
                   const dir = s.direction === 'buy' ? 'buy' : s.direction === 'sell' ? 'sell' : null;
