@@ -168,13 +168,13 @@ export default function ReportsPage() {
   const sigWr = sigDecided ? Math.round((sigTp / sigDecided) * 100) : 0;
 
   // Përmbledhje + grupim sipas ROBOTIT — emërtimi i saktë, njësoj si te Trade Live.
-  const ROBOT_ORDER = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast', 'Sinjalet', 'Sinjalet-Scalp', 'FastT', 'Manuale'];
+  const ROBOT_ORDER = ['Telegram Sin', 'MMT-Long', 'MMT-Scalp', 'Sinjalet', 'Sinjalet-Scalp', 'Manuale'];
   const robotColor: Record<string, string> = {
-    'MMT-Long': 'text-sky-300', 'MMT-Scalp': 'text-amber-400', 'MMT-Fast': 'text-purple-300',
+    'Telegram Sin': 'text-sky-300', 'MMT-Long': 'text-sky-300', 'MMT-Scalp': 'text-amber-400',
     'Sinjalet': 'text-emerald-300', 'Sinjalet-Scalp': 'text-teal-300', 'FastT': 'text-rose-400', 'Manuale': 'text-green-400',
   };
   const robotIcon: Record<string, typeof Bot> = {
-    'MMT-Long': Bot, 'MMT-Scalp': Bot, 'MMT-Fast': Bot,
+    'Telegram Sin': Zap, 'MMT-Long': Bot, 'MMT-Scalp': Bot,
     'Sinjalet': Zap, 'Sinjalet-Scalp': Zap, 'FastT': Zap, 'Manuale': Hand,
   };
   const robotLabel = (k: string) => k === 'Manuale' ? t('Manuale (tregtimet e tua)') : k;
@@ -213,18 +213,61 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <FileText className="w-6 h-6 text-amber-400" />{t('Raporte tregtimi')}
-          </h2>
-          <p className="text-gray-400 text-sm mt-1">{t('Performanca reale e trade-ve të tua nga MT5 — fitime, humbje, raport ditor me total dhe përqindje.')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={load} className="p-2 text-gray-400 hover:text-white bg-gray-900 border border-gray-700 rounded-xl transition-all"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /></button>
-          <button onClick={exportCSV} disabled={shown.length === 0} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-gray-950 font-semibold px-4 py-2 rounded-xl text-sm transition-all"><Download className="w-4 h-4" />{t('Shkarko CSV')}</button>
-        </div>
+    <div className="w2k p-2 sm:p-3 space-y-2">
+      {/* LËKURA "WINDOWS 2000" (kërkesa e pronarit): panel klasik gri, buton me rrafshim 3D,
+          font Tahoma 11px, shirit titulli blu — pamje klasike "njerëzore", jo moderne. */}
+      <style>{`
+        .w2k { background:#d4d0c8; color:#000; font-family:Tahoma,'MS Sans Serif',Segoe UI,sans-serif; font-size:11px;
+               border:2px solid; border-color:#fff #404040 #404040 #fff; padding-bottom:8px; }
+        .w2k * { border-radius:0 !important; box-shadow:none !important; transition:none !important; }
+        .w2k [class*="bg-gray-9"], .w2k [class*="bg-gray-8"], .w2k [class*="bg-gray-7"],
+        .w2k [class*="bg-amber-500/"], .w2k [class*="bg-green-500/"], .w2k [class*="bg-red-500/"],
+        .w2k [class*="bg-sky-500/"], .w2k [class*="bg-emerald-500/"], .w2k [class*="bg-teal-500/"],
+        .w2k [class*="bg-purple-500/"], .w2k [class*="bg-rose-500/"] {
+          background:#d4d0c8 !important; border:2px solid; border-color:#fff #808080 #808080 #fff !important; color:#000; }
+        .w2k table, .w2k thead, .w2k tbody { background:#fff !important; }
+        .w2k thead th { background:#d4d0c8 !important; border:1px solid; border-color:#fff #808080 #808080 #fff !important;
+               color:#000 !important; font-weight:700; padding:2px 6px !important; }
+        .w2k tbody td { border-bottom:1px solid #e4e0d8 !important; color:#000 !important; padding:2px 6px !important; }
+        .w2k [class*="text-white"], .w2k [class*="text-gray-3"], .w2k [class*="text-gray-4"],
+        .w2k [class*="text-gray-5"], .w2k [class*="text-gray-6"] { color:#000 !important; }
+        .w2k [class*="text-green-4"], .w2k [class*="text-emerald-3"] { color:#008000 !important; }
+        .w2k [class*="text-red-4"], .w2k [class*="text-rose-4"] { color:#c00000 !important; }
+        .w2k [class*="text-amber-4"], .w2k [class*="text-sky-3"], .w2k [class*="text-teal-3"],
+        .w2k [class*="text-purple-3"] { color:#000080 !important; }
+        .w2k button, .w2k label[class*="cursor-pointer"] {
+          background:#d4d0c8 !important; color:#000 !important; border:2px solid;
+          border-color:#fff #404040 #404040 #fff !important; padding:2px 10px !important;
+          font-size:11px !important; font-weight:400 !important; min-height:22px; }
+        .w2k button:active { border-color:#404040 #fff #fff #404040 !important; }
+        .w2k button:disabled { color:#808080 !important; }
+        .w2k .w2k-titlebar { background:linear-gradient(90deg,#0a246a,#a6caf0); color:#fff; font-weight:700;
+               font-size:11px; padding:3px 6px; display:flex; align-items:center; justify-content:space-between;
+               border:2px solid; border-color:#fff #404040 #404040 #fff; }
+        .w2k .w2k-titlebar button { min-width:18px; min-height:16px; padding:0 4px !important; font-weight:700 !important; line-height:1; }
+        .w2k input[type="date"], .w2k input, .w2k select { background:#fff !important; color:#000 !important;
+               border:2px solid; border-color:#808080 #fff #fff #808080 !important; font-size:11px !important; padding:1px 4px !important; }
+        .w2k svg { width:12px !important; height:12px !important; }
+        .w2k h2, .w2k h3 { font-size:12px !important; font-weight:700 !important; }
+        .w2k [class*="p-4"], .w2k [class*="p-6"] { padding:6px !important; }
+        .w2k [class*="p-12"], .w2k [class*="py-16"] { padding:16px !important; }
+        .w2k [class*="gap-3"], .w2k [class*="gap-2"] { gap:4px !important; }
+        .w2k [class*="space-y-6"] > * + *, .w2k [class*="space-y-4"] > * + * { margin-top:6px !important; }
+        .w2k [class*="text-2xl"], .w2k [class*="text-lg"] { font-size:12px !important; }
+        .w2k [class*="text-sm"], .w2k [class*="text-xs"] { font-size:11px !important; }
+      `}</style>
+
+      {/* Shiriti i titullit — si dritare klasike */}
+      <div className="w2k-titlebar">
+        <span className="flex items-center gap-1.5"><FileText className="w-3 h-3" />{t('Raporte tregtimi')} — GoldTrade.exe</span>
+        <span className="flex gap-0.5">
+          <button onClick={load} title={t('Rifresko')}><RefreshCw className={loading ? 'animate-spin' : ''} /></button>
+          <button onClick={exportCSV} disabled={shown.length === 0} title={t('Shkarko CSV')}><Download /></button>
+        </span>
+      </div>
+      <p className="text-[11px]" style={{ color: '#000' }}>{t('Performanca reale e trade-ve të tua nga MT5 — fitime, humbje, raport ditor me total dhe përqindje.')}</p>
+      <div className="flex items-center gap-1">
+        <button onClick={exportCSV} disabled={shown.length === 0}><span className="flex items-center gap-1"><Download />{t('Shkarko CSV')}</span></button>
       </div>
 
       {/* Periudha */}

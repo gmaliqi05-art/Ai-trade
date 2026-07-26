@@ -28,6 +28,7 @@ export interface ClosedTrade {
 // Emri i SAKTË i robotit nga arsyeja e ekzekutimit (burimi autoritar i secilit robot).
 export function robotOf(reason: string | null, signalId: string | null): string {
   const r = reason || '';
+  if (/^TG/i.test(r)) return 'Telegram Sin';
   if (/^MMT-F/i.test(r)) return 'MMT-Fast';
   if (/^MMT-S/i.test(r)) return 'MMT-Scalp';
   if (/^MMT[ \-]/i.test(r) || /^MMT auto/i.test(r)) return 'MMT-Long';
@@ -40,6 +41,7 @@ export function robotOf(reason: string | null, signalId: string | null): string 
  *  MMT-F / MMT-S / MMT / SIG / SCALP / FastT). Pa etiketë → null (tregtim manual). */
 export function robotOfPosition(p: { comment?: string; clientId?: string }): string | null {
   const s = `${p.comment ?? ''} ${p.clientId ?? ''}`;
+  if (/\bTG\d?\b/i.test(s)) return 'Telegram Sin';
   if (/MMT-F/i.test(s)) return 'MMT-Fast';
   if (/MMT-S/i.test(s)) return 'MMT-Scalp';
   if (/MMT/i.test(s)) return 'MMT-Long';
@@ -56,6 +58,7 @@ export function robotBadgeCls(robot?: string): string {
     case 'MMT-Fast': return 'bg-purple-500/20 text-purple-300';
     case 'Sinjalet': return 'bg-emerald-500/20 text-emerald-300';
     case 'Sinjalet-Scalp': return 'bg-teal-500/20 text-teal-300';
+    case 'Telegram Sin': return 'bg-sky-500/20 text-sky-300';
     case 'FastT': return 'bg-rose-500/20 text-rose-400';
     default: return 'bg-gray-600/40 text-gray-400';
   }

@@ -703,6 +703,16 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const displayCandles = useMemo<ChartCandle[]>(() => {
     if (brokerMid == null || candles.length === 0) return candles;
     const out = candles.slice();
+    // KOHA REALE E VËRTETË: kur nis minuta/ora e re dhe MT5 s'e ka sjellë ende qiririn e ri (poll 5s),
+    // krijoje VETË qiririn e formimit në sekondën e parë — grafiku s'mbetet kurrë një kandil mbrapa MT5.
+    // (pxTick e rifreskon memo-n çdo ~1s edhe kur çmimi s'lëviz, që kalimi i minutës të kapet menjëherë.)
+    void pxTick;
+    const stepSec = tf === '1m' ? 60 : tf === '5m' ? 300 : tf === '15m' ? 900 : tf === '1h' ? 3600 : tf === '4h' ? 14400 : 86400;
+    const nowBucket = Math.floor(Date.now() / 1000 / stepSec) * stepSec;
+    const prev = out[out.length - 1];
+    if (nowBucket > prev.time) {
+      out.push({ time: nowBucket, open: prev.close, high: Math.max(prev.close, brokerMid), low: Math.min(prev.close, brokerMid), close: brokerMid });
+    }
     const last = out[out.length - 1];
     out[out.length - 1] = {
       ...last,
@@ -711,7 +721,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       low: Math.min(last.low, brokerMid),
     };
     return out;
-  }, [candles, brokerMid]);
+  }, [candles, brokerMid, tf, pxTick]);
   const livePrice = (() => {
     if (brokerMid != null) return brokerMid; // çmimi REAL i broker-it, real-time
     const a = assets.find(x => symMatch(selected, x.symbol));
@@ -1292,7 +1302,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         <TLFold k="reports" title={t('Raportet sipas robotit (Live, 7 ditët e fundit)')} icon={<History className="w-4 h-4 text-amber-400" />}>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {(() => {
-              const order = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast', 'Sinjalet', 'Sinjalet-Scalp', 'FastT', 'Manuale'];
+              const order = ['Telegram Sin', 'MMT-Long', 'MMT-Scalp', 'Sinjalet', 'Sinjalet-Scalp', 'Manuale'];
               const groups = new Map<string, ClosedTrade[]>();
               for (const d of history) {
                 const k = d.robot || 'Manuale';
@@ -1332,7 +1342,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           ) : (
             <div className="space-y-4">
               {(() => {
-                const order = ['MMT-Long', 'MMT-Scalp', 'MMT-Fast', 'Sinjalet', 'Sinjalet-Scalp', 'FastT', 'Manuale'];
+                const order = ['Telegram Sin', 'MMT-Long', 'MMT-Scalp', 'Sinjalet', 'Sinjalet-Scalp', 'Manuale'];
                 const groups = new Map<string, ClosedTrade[]>();
                 for (const d of history) {
                   const k = d.robot || 'Manuale';
