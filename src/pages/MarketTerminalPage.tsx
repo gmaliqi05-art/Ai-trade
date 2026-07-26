@@ -1069,46 +1069,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             )}
       </div>
 
-      {/* RENDITJA (kërkesa e pronarit): Porosia e re (1) → Pozicionet e hapura (2) → Big Investors/COT
-          (3) → Sinjali i fundit (4). E realizuar me flex + 'order' pa lëvizur blloqet në kod. */}
-      <div className="flex flex-col gap-5">
-
-      {/* INVESTITORËT E MËDHENJ (COT) — order-3: poshtë pozicioneve të hapura. */}
-      {cot && (
-        <div className="order-3">
-        <TLFold k="cot" title={t('Investitorët e Mëdhenj (COT — futures të arit)')} icon={<Landmark className="w-4 h-4 text-amber-400" />}>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {[
-              { label: t('Fondet e mëdha (Managed Money)'), cur: cot.cur.mm, prev: cot.prev?.mm },
-              { label: t('Bankat/Dealer-ët (Swap Dealers)'), cur: cot.cur.swap, prev: cot.prev?.swap },
-            ].map(g => {
-              const net = g.cur.long - g.cur.short;
-              const prevNet = g.prev ? g.prev.long - g.prev.short : null;
-              const d = prevNet == null ? null : net - prevNet;
-              return (
-                <div key={g.label} className="bg-gray-800/40 rounded-xl p-3">
-                  <div className="text-[11px] text-gray-400 mb-1.5">{g.label}</div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${net >= 0 ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
-                      {net >= 0 ? t('BLERËS neto') : t('SHITËS neto')} · {Math.abs(net).toLocaleString()} {t('kontrata')}
-                    </span>
-                    {d != null && d !== 0 && (
-                      <span className={`text-[11px] font-semibold ${d > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {d > 0 ? '▲ +' : '▼ '}{d.toLocaleString()} {t('nga java e kaluar')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-gray-500 mt-1.5">Long {g.cur.long.toLocaleString()} · Short {g.cur.short.toLocaleString()}</div>
-                </div>
-              );
-            })}
-          </div>
-          <p className="text-[10px] text-gray-600 mt-2 leading-snug">
-            {t('Burimi: CFTC (raporti zyrtar COT) — pozicionet reale në futures të arit (COMEX); publikohet çdo të premte për të martën.')} · {cot.cur.date}
-          </p>
-        </TLFold>
-        </div>
-      )}
+      {/* RENDITJA (kërkesa e pronarit): Porosia e re (1) → Pozicionet e hapura (2) → Sinjali i fundit.
+          Big Investors/COT u zhvendos NË FUND të faqes (te banner-i i tregut). */}
+      <div className="flex flex-col gap-3">
 
       {/* Sinjali i fundit — order-4: POSHTË gjithçkaje (klik për ta tregtuar formën lart). */}
       <div className="order-4 bg-gray-900 border border-gray-800 rounded-2xl p-3">
@@ -1472,6 +1435,41 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         <TLFold k="history" bare defaultOpen={false} title={t('Analiza e sinjaleve — të përfunduarat + historiku i skanimeve')} icon={<History className="w-4 h-4 text-amber-400" />}>
           <CompletedSignals signals={doneSignals} variant="compact" />
           <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
+        </TLFold>
+      )}
+
+      {/* INVESTITORËT E MËDHENJ (COT) — NË FUND të faqes (kërkesa e pronarit). */}
+      {cot && (
+        <TLFold k="cot" title={t('Investitorët e Mëdhenj (COT — futures të arit)')} icon={<Landmark className="w-4 h-4 text-amber-400" />}>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {[
+              { label: t('Fondet e mëdha (Managed Money)'), cur: cot.cur.mm, prev: cot.prev?.mm },
+              { label: t('Bankat/Dealer-ët (Swap Dealers)'), cur: cot.cur.swap, prev: cot.prev?.swap },
+            ].map(g => {
+              const net = g.cur.long - g.cur.short;
+              const prevNet = g.prev ? g.prev.long - g.prev.short : null;
+              const d = prevNet == null ? null : net - prevNet;
+              return (
+                <div key={g.label} className="bg-gray-800/40 rounded-xl p-3">
+                  <div className="text-[11px] text-gray-400 mb-1.5">{g.label}</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${net >= 0 ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
+                      {net >= 0 ? t('BLERËS neto') : t('SHITËS neto')} · {Math.abs(net).toLocaleString()} {t('kontrata')}
+                    </span>
+                    {d != null && d !== 0 && (
+                      <span className={`text-[11px] font-semibold ${d > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {d > 0 ? '▲ +' : '▼ '}{d.toLocaleString()} {t('nga java e kaluar')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-1.5">Long {g.cur.long.toLocaleString()} · Short {g.cur.short.toLocaleString()}</div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-gray-600 mt-2 leading-snug">
+            {t('Burimi: CFTC (raporti zyrtar COT) — pozicionet reale në futures të arit (COMEX); publikohet çdo të premte për të martën.')} · {cot.cur.date}
+          </p>
         </TLFold>
       )}
 
