@@ -341,63 +341,17 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           </div>
         </button>
 
-        {/* Lot */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">{t('Lot (për çdo TP)')}</label>
-            <input
-              type="number" step="0.01" min="0.01" defaultValue={cfg.lot}
-              key={`lot-${loaded}`}
-              onBlur={(e) => setAndSave('lot', Math.max(Number(e.target.value) || 0.01, 0.01))}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-            />
-            <p className="text-[10px] text-gray-500 mt-1">{t('Ata s\'e dërgojnë lotin — ti e cakton sa të rrezikosh.')}</p>
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">{t('Mënyra e TP-ve')}</label>
-            <select
-              value={cfg.tp_mode}
-              onChange={(e) => setAndSave('tp_mode', e.target.value as TpMode)}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-            >
-              <option value="last">{t('TP më i larti — 1 pozicion, alarme për çdo TP')}</option>
-              <option value="multi">{t('Multi — 1 pozicion për çdo TP (TP1..TP4)')}</option>
-              <option value="first">{t('Vetëm TP1 — një pozicion i vetëm')}</option>
-              <option value="split">{t('Ndaj lotin — 1 lot i ndarë mbi TP-të')}</option>
-            </select>
-            <p className="text-[10px] text-gray-500 mt-1">{t('Ata dërgojnë disa TP (TP1–TP4) — kështu i menaxhon të gjitha.')}</p>
-          </div>
-        </div>
-
-        {/* Të avancuara */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">{t('SL rezervë ($)')}</label>
-            <input type="number" step="1" min="0" defaultValue={cfg.fallback_sl_usd} key={`fb-${loaded}`}
-              onBlur={(e) => setAndSave('fallback_sl_usd', Math.max(Number(e.target.value) || 0, 0))}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">{t('Max pozicione')}</label>
-            <input type="number" step="1" min="1" defaultValue={cfg.max_open} key={`mo-${loaded}`}
-              onBlur={(e) => setAndSave('max_open', Math.max(Number(e.target.value) || 1, 1))}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
-          </div>
+        {/* Parametrat (lot, TP, SL, max, shkallët) tani vendosen TE KARTA E SECILIT KANAL më lart.
+            Këtu mbetet vetëm simboli i parazgjedhur (për sinjalet pa simbol) — vlerat e ruajtura
+            përdoren si kopje fillestare kur lidhet një kanal i ri. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
           <div>
             <label className="text-xs text-gray-400 block mb-1">{t('Simboli parazgjedhur')}</label>
             <input type="text" defaultValue={cfg.symbol_default} key={`sym-${loaded}`}
               onBlur={(e) => setAndSave('symbol_default', (e.target.value || 'XAUUSD').toUpperCase().trim())}
               className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
           </div>
-          <div className="flex items-end">
-            <label className="flex items-start gap-2 text-xs text-gray-300 cursor-pointer">
-              <input type="checkbox" className="mt-0.5" checked={cfg.move_be_after_tp1} onChange={(e) => setAndSave('move_be_after_tp1', e.target.checked)} />
-              <span>
-                {t('Mbrojtja shkallë-shkallë e TP-ve')}
-                <span className="block text-[10px] text-gray-500">{t('SL gjithmonë NJË TP mbrapa: TP1 preket → SL në breakeven · TP2 → SL te TP1 · TP3 → SL te TP2 …')}</span>
-              </span>
-            </label>
-          </div>
+          <p className="text-[11px] text-gray-500">{t('Lot-i, TP-të, SL rezervë, max pozicionet dhe mbrojtja shkallë-shkallë rregullohen te karta e secilit kanal më lart.')}</p>
         </div>
       </div>
 
