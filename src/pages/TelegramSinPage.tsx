@@ -133,41 +133,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         </div>
       )}
 
-      {/* Master: ndal/nis robotët e tjerë (MMT + Sinjalet) — që të punojë vetëm Telegram Sin */}
-      <div className={`rounded-xl border p-3 sm:p-4 ${others && !others.othersOn ? 'bg-red-500/[0.06] border-red-500/30' : 'bg-white/[0.03] border-white/10'}`}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {others && !others.othersOn
-              ? <PowerOff className="w-5 h-5 text-red-400" />
-              : <ShieldAlert className="w-5 h-5 text-amber-400" />}
-            <div>
-              <div className="text-sm font-semibold text-white">{t('Robotët e tjerë (MMT + Sinjalet)')}</div>
-              <div className="text-[11px] text-gray-400">
-                {others
-                  ? (others.othersOn
-                      ? t('Aktivë tani. Fike që të tregtojë VETËM Telegram Sin.')
-                      : t('Të ndalur — vetëm Telegram Sin po punon.'))
-                  : t('Po ngarkohet…')}
-              </div>
-              {others && (
-                <div className="text-[10px] text-gray-500 mt-0.5 flex flex-wrap gap-x-3">
-                  <span>{t('Sinjalet')}: {others.signalsOn ? t('ON') : t('OFF')}</span>
-                  <span>MMT: {others.mmtControllable ? (others.mmtOn ? t('ON') : t('OFF')) : t('s\'menaxhohet nga kjo llogari')}</span>
-                </div>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={toggleOthers}
-            disabled={othersBusy || !others}
-            className={`inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg font-semibold whitespace-nowrap disabled:opacity-40 ${others && others.othersOn ? 'bg-red-500/20 border border-red-500/40 text-red-200 hover:bg-red-500/30' : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/30'}`}
-          >
-            {othersBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : (others && others.othersOn ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />)}
-            {others && others.othersOn ? t('Ndal të tjerët') : t('Nis të tjerët')}
-          </button>
-        </div>
-      </div>
-
       {/* MetaTrader Live — llogaria ku tregton Telegram Sin (e njëjta si te Trade Live) */}
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
         <div className="flex items-center justify-between mb-3">
@@ -299,7 +264,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
             <div className="text-[10px] text-gray-400">{t('Adresa e lidhjes (webhook — privat, mos e ndaj)')}</div>
             <div className="flex items-center gap-2">
               <code className="text-[10px] text-sky-300 truncate flex-1">{hookUrl}</code>
-              <button onClick={() => copy(hookUrl)} className="p-1 text-gray-400 hover:text-white" title={t('Kopjo')}><Copy className="w-3.5 h-3.5" /></button>
+              <button onClick={() => copy(hookUrl)} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-200 hover:bg-sky-500/25 whitespace-nowrap"><Copy className="w-3.5 h-3.5" />{t('Kopjo')}</button>
             </div>
             <div className="text-[10px] text-gray-500">{t('Kjo adresë shkon te kopjuesi (forwarder) — jo te @BotFather.')}</div>
           </div>
@@ -334,8 +299,33 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-white">{t('Sinjalet e marra')}</h2>
-          <button onClick={refresh} className="text-gray-400 hover:text-white p-1" title={t('Rifresko')}><RefreshCw className="w-4 h-4" /></button>
+          <button onClick={refresh} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10"><RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}</button>
         </div>
+        {(() => {
+          const entries = signals.filter((s) => s.kind === 'entry' && ['executed', 'partial', 'pending', 'closed'].includes(s.status));
+          const hit = (n: number) => entries.filter((s) => (s.tp_hit ?? 0) >= n).length;
+          const slCount = entries.filter((s) => s.status === 'closed' && (s.tp_hit ?? 0) === 0).length;
+          const decided = hit(1) + slCount;
+          const wr = decided ? Math.round((hit(1) / decided) * 100) : null;
+          if (entries.length === 0) return null;
+          return (
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+              {[
+                { l: t('Sinjale'), v: String(entries.length), c: 'text-white' },
+                { l: '≥TP1', v: String(hit(1)), c: 'text-emerald-400' },
+                { l: '≥TP2', v: String(hit(2)), c: 'text-emerald-400' },
+                { l: '≥TP3', v: String(hit(3)), c: 'text-emerald-400' },
+                { l: 'SL', v: String(slCount), c: 'text-red-400' },
+                { l: t('Sukses'), v: wr == null ? '—' : `${wr}%`, c: wr != null && wr >= 50 ? 'text-emerald-400' : 'text-amber-400' },
+              ].map((x) => (
+                <div key={x.l} className="rounded-lg bg-black/20 border border-white/5 px-2 py-1.5 text-center">
+                  <div className="text-[10px] text-gray-500">{x.l}</div>
+                  <div className={`text-sm font-bold ${x.c}`}>{x.v}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         {signals.length === 0 ? (
           <div className="text-xs text-gray-500 flex items-center gap-2 py-4"><Info className="w-4 h-4" /> {t('Ende s\'ka sinjale. Sapo trejderat të dërgojnë, do shfaqen këtu.')}</div>
         ) : (
@@ -352,7 +342,8 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                   <th className="text-right py-2 pr-3 font-medium">TP2</th>
                   <th className="text-right py-2 pr-3 font-medium">TP3</th>
                   <th className="text-right py-2 pr-3 font-medium">TP4</th>
-                  <th className="text-left py-2 font-medium">{t('Statusi')}</th>
+                  <th className="text-left py-2 pr-3 font-medium">{t('Statusi')}</th>
+                  <th className="text-left py-2 font-medium">{t('Rezultati')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -373,8 +364,15 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                       <td className="py-2 pr-3 text-right text-gray-300">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
                       <td className="py-2 pr-3 text-right text-gray-300">{s.stop_loss ?? '—'}</td>
                       {[0, 1, 2, 3].map((i) => <td key={i} className="py-2 pr-3 text-right text-gray-300">{tps[i] ?? '—'}</td>)}
-                      <td className="py-2">
+                      <td className="py-2 pr-3">
                         <StatusBadge status={s.status} t={t} />
+                      </td>
+                      <td className="py-2">
+                        {(s.tp_hit ?? 0) > 0
+                          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">→ TP{s.tp_hit}</span>
+                          : s.status === 'closed' && s.kind === 'entry'
+                            ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300">SL</span>
+                            : <span className="text-gray-600 text-[10px]">—</span>}
                       </td>
                     </tr>
                   );
@@ -384,6 +382,42 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           </div>
         )}
       </div>
+
+      {/* Master: ndal/nis robotët e tjerë (MMT + Sinjalet) — që të punojë vetëm Telegram Sin */}
+      <div className={`rounded-xl border p-3 sm:p-4 ${others && !others.othersOn ? 'bg-red-500/[0.06] border-red-500/30' : 'bg-white/[0.03] border-white/10'}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {others && !others.othersOn
+              ? <PowerOff className="w-5 h-5 text-red-400" />
+              : <ShieldAlert className="w-5 h-5 text-amber-400" />}
+            <div>
+              <div className="text-sm font-semibold text-white">{t('Robotët e tjerë (MMT + Sinjalet)')}</div>
+              <div className="text-[11px] text-gray-400">
+                {others
+                  ? (others.othersOn
+                      ? t('Aktivë tani. Fike që të tregtojë VETËM Telegram Sin.')
+                      : t('Të ndalur — vetëm Telegram Sin po punon.'))
+                  : t('Po ngarkohet…')}
+              </div>
+              {others && (
+                <div className="text-[10px] text-gray-500 mt-0.5 flex flex-wrap gap-x-3">
+                  <span>{t('Sinjalet')}: {others.signalsOn ? t('ON') : t('OFF')}</span>
+                  <span>MMT: {others.mmtControllable ? (others.mmtOn ? t('ON') : t('OFF')) : t('s\'menaxhohet nga kjo llogari')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={toggleOthers}
+            disabled={othersBusy || !others}
+            className={`inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg font-semibold whitespace-nowrap disabled:opacity-40 ${others && others.othersOn ? 'bg-red-500/20 border border-red-500/40 text-red-200 hover:bg-red-500/30' : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/30'}`}
+          >
+            {othersBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : (others && others.othersOn ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />)}
+            {others && others.othersOn ? t('Ndal të tjerët') : t('Nis të tjerët')}
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 }
