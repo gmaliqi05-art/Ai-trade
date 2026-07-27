@@ -18,7 +18,7 @@ import {
   type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
-import { loadTelegramSignals, type TelegramSignalRow } from '../services/telegramSin';
+import { loadTelegramSignals, loadTgLegs, sigPnl, type TelegramSignalRow, type TgLegRow } from '../services/telegramSin';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
 import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, robotOfPosition, robotOf, type ClosedTrade, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
@@ -145,6 +145,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [signalsRobotOn, setSignalsRobotOn] = useState(false);
   // Telegram Sin në Trade Live: sinjalet + GJITHË mesazhet e grupeve (raport i shpejtë + feed).
   const [tgSigs, setTgSigs] = useState<TelegramSignalRow[]>([]);
+  const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
   // Emrat REALË të simboleve te brokeri (symbol_map nga serveri, p.sh. XAUUSD → XAUUSD.s).
   const [symMap, setSymMap] = useState<Record<string, string>>({});
   // Lidhja DIREKTE streaming (websocket) — kredencialet për ta nisur + snapshot-i live.
@@ -919,7 +920,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Sinjalet e Telegram Sin (rifreskohen çdo 30s) — për tabelën e shpejtë + feed-in e mesazheve.
   useEffect(() => {
     if (!user) return;
-    const load = () => loadTelegramSignals(user.id, 60).then(setTgSigs).catch(() => {});
+    const load = () => {
+      loadTelegramSignals(user.id, 60).then(setTgSigs).catch(() => {});
+      loadTgLegs(user.id).then(setTgLegs).catch(() => {});
+    };
     load();
     const id = setInterval(load, 30000);
     return () => clearInterval(id);
@@ -929,7 +933,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     '-1003278125980': 'FX+ | XNINE LEVEL 2',
   };
   // Sinjalet që kanë HYRË në trade (jo komentet/injoruarat) — për tabelën e shpejtë.
-  const tgSigEntries = tgSigs.filter((s) => s.kind === 'entry' && ['pending', 'executed', 'partial', 'closed'].includes(s.status));
+  const tgSigEntries = tgSigs.filter((s) => s.kind === 'entry' && ['pending', 'executed', 'partial', 'closed', 'canceled'].includes(s.status));
+  const tgLegsOf = (sigId: string) => tgLegs.filter((l) => l.signal_id === sigId);
 
   const money = (n?: number) => (n == null ? '—' : `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
   const cur = account?.currency || '$';
@@ -1278,6 +1283,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   <th className="text-right py-2 pr-3 font-medium">{t('Hyrja')}</th>
                   <th className="text-right py-2 pr-3 font-medium">SL</th>
                   <th className="text-left py-2 pr-3 font-medium">TP</th>
+                  <th className="text-right py-2 pr-3 font-medium">Pips</th>
+                  <th className="text-right py-2 pr-3 font-medium">{t('Fitimi')}</th>
                   <th className="text-left py-2 pr-3 font-medium">{t('Statusi')}</th>
                   <th className="text-left py-2 font-medium">{t('Rezultati')}</th>
                 </tr>
@@ -1286,6 +1293,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 {tgSigEntries.slice(0, 12).map((s) => {
                   const d = new Date(s.created_at);
                   const tps = Array.isArray(s.tps) ? s.tps : [];
+                  const pnl = sigPnl(tgLegsOf(s.id));
                   return (
                     <tr key={s.id} className="border-b border-gray-800/60">
                       <td className="py-2 pr-3 text-gray-400 whitespace-nowrap">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
@@ -1294,12 +1302,15 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                       <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
                       <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.stop_loss ?? '—'}</td>
                       <td className="py-2 pr-3 text-gray-300 tabular-nums whitespace-nowrap">{tps.length ? tps.join(' / ') : '—'}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : `${pnl.pips >= 0 ? '+' : ''}${pnl.pips}`}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.net == null ? 'text-gray-600' : pnl.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.net == null ? '—' : `${pnl.net >= 0 ? '+' : ''}${pnl.net.toFixed(2)}$`}</td>
                       <td className="py-2 pr-3">
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
                           s.status === 'pending' ? 'bg-blue-500/15 text-blue-300'
+                          : s.status === 'canceled' ? 'bg-amber-500/15 text-amber-300'
                           : s.status === 'closed' ? 'bg-gray-600/30 text-gray-300'
                           : 'bg-emerald-500/15 text-emerald-300'
-                        }`}>{s.status === 'pending' ? t('Në pritje') : s.status === 'closed' ? t('Mbyllur') : t('Në trade')}</span>
+                        }`}>{s.status === 'pending' ? t('Në pritje') : s.status === 'canceled' ? t('Anuluar') : s.status === 'closed' ? t('Mbyllur') : t('Në trade')}</span>
                       </td>
                       <td className="py-2">
                         {(s.tp_hit ?? 0) > 0

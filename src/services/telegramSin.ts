@@ -147,6 +147,29 @@ export async function loadOpenTgTrades(userId: string): Promise<TgTradeRow[]> {
   return (data ?? []) as TgTradeRow[];
 }
 
+/** Të gjitha legs e Telegram Sin (edhe të mbyllurat, ditët e fundit) — për pips + P&L në raporte. */
+export interface TgLegRow { signal_id: string | null; status: string; action: string | null; entry_price: number | null; exit_price: number | null; net: number | null; }
+export async function loadTgLegs(userId: string, days = 8): Promise<TgLegRow[]> {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const { data } = await supabase.from('telegram_trades')
+    .select('signal_id, status, action, entry_price, exit_price, net')
+    .eq('user_id', userId).gte('created_at', since).limit(1000);
+  return (data ?? []) as TgLegRow[];
+}
+
+/** Përmbledhje për sinjal nga legs: fitimi total ($) + pikët (pips; ari: 1 pikë = $0.01 lëvizje). */
+export function sigPnl(legs: TgLegRow[]): { net: number | null; pips: number | null } {
+  const closed = legs.filter((l) => l.net != null || (l.exit_price != null && l.entry_price != null));
+  if (closed.length === 0) return { net: null, pips: null };
+  const nets = closed.filter((l) => l.net != null);
+  const net = nets.length ? Math.round(nets.reduce((s, l) => s + Number(l.net), 0) * 100) / 100 : null;
+  const withPx = closed.find((l) => l.exit_price != null && l.entry_price != null);
+  const pips = withPx
+    ? Math.round((Number(withPx.exit_price) - Number(withPx.entry_price)) * (String(withPx.action).toUpperCase() === 'BUY' ? 1 : -1) * 100)
+    : null;
+  return { net, pips };
+}
+
 /** Parametrat PËR KANAL — çdo grup ka lot/TP/SL/max/shkallët e veta. */
 export interface TgChannelRow { chat_id: string; name: string | null; enabled: boolean; lot: number; tp_mode: TpMode; fallback_sl_usd: number; move_be_after_tp1: boolean; max_open: number; }
 export async function loadTgChannels(userId: string): Promise<TgChannelRow[]> {

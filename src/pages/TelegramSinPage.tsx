@@ -12,6 +12,7 @@ import {
   generateWebhookSecret, webhookUrlFor, setWebhookUrl,
   loadOthersState, setOthersEnabled, loadOpenTgTrades, type TgTradeRow,
   loadTgChannels, upsertTgChannel, type TgChannelRow,
+  loadTgLegs, sigPnl, type TgLegRow,
   DEFAULT_TG_CONFIG, type TelegramSinConfig, type TelegramSignalRow, type TpMode, type OthersState,
 } from '../services/telegramSin';
 
@@ -28,6 +29,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   // Pamja: 'home' (dy tabelat e kanaleve) ose 'detail' (raportet e plota të një kanali).
   const [view, setView] = useState<'home' | 'detail'>('home');
   const [openTrades, setOpenTrades] = useState<TgTradeRow[]>([]);
+  const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
   const [chParams, setChParams] = useState<Record<string, TgChannelRow>>({});
   const CHANNEL_NAMES: Record<string, string> = {
     '-1003603315504': 'BESA DIGITAL VIP',
@@ -49,6 +51,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     try { const c = await loadTelegramSinConfig(user.id); setCfg(c); setLoaded(true); } catch { setLoaded(false); }
     try { setSignals(await loadTelegramSignals(user.id, 100)); } catch { /* */ }
     try { setOpenTrades(await loadOpenTgTrades(user.id)); } catch { /* */ }
+    try { setTgLegs(await loadTgLegs(user.id)); } catch { /* */ }
     try {
       const rows = await loadTgChannels(user.id);
       const m: Record<string, TgChannelRow> = {};
@@ -222,6 +225,8 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                   <th className="text-right py-2 pr-3 font-medium">TP2</th>
                   <th className="text-right py-2 pr-3 font-medium">TP3</th>
                   <th className="text-right py-2 pr-3 font-medium">TP4</th>
+                  <th className="text-right py-2 pr-3 font-medium">Pips</th>
+                  <th className="text-right py-2 pr-3 font-medium">{t('Fitimi')}</th>
                   <th className="text-left py-2 pr-3 font-medium">{t('Statusi')}</th>
                   <th className="text-left py-2 font-medium">{t('Rezultati')}</th>
                 </tr>
@@ -231,6 +236,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                   const d = new Date(s.created_at);
                   const tps = Array.isArray(s.tps) ? s.tps : [];
                   const dir = s.direction === 'buy' ? 'buy' : s.direction === 'sell' ? 'sell' : null;
+                  const pnl = sigPnl(tgLegs.filter((l) => l.signal_id === s.id));
                   return (
                     <tr key={s.id} className="border-b border-white/5">
                       <td className="py-2 pr-3 text-gray-300 whitespace-nowrap">{d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
@@ -245,6 +251,8 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                       <td className="py-2 pr-3 text-right text-gray-300">{s.kind === 'modify' ? '—' : s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
                       <td className="py-2 pr-3 text-right text-gray-300">{s.stop_loss ?? '—'}</td>
                       {[0, 1, 2, 3].map((i) => <td key={i} className="py-2 pr-3 text-right text-gray-300">{tps[i] ?? '—'}</td>)}
+                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : `${pnl.pips >= 0 ? '+' : ''}${pnl.pips}`}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.net == null ? 'text-gray-600' : pnl.net >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl.net == null ? '—' : `${pnl.net >= 0 ? '+' : ''}${pnl.net.toFixed(2)}$`}</td>
                       <td className="py-2 pr-3"><StatusBadge status={s.status} t={t} /></td>
                       <td className="py-2">
                         {(s.tp_hit ?? 0) > 0
@@ -675,6 +683,7 @@ function StatusBadge({ status, t }: { status: string; t: (k: string) => string }
     modified: { cls: 'text-purple-300 bg-purple-500/10', label: t('Ndryshuar') },
     closed: { cls: 'text-sky-300 bg-sky-500/10', label: t('Mbyllur') },
     rejected: { cls: 'text-red-300 bg-red-500/10', label: t('Refuzuar'), icon: 'x' },
+    canceled: { cls: 'text-amber-300 bg-amber-500/10', label: t('Anuluar'), icon: 'x' },
     ignored: { cls: 'text-gray-400 bg-white/5', label: t('Injoruar') },
     received: { cls: 'text-gray-300 bg-white/5', label: t('Marrë') },
   };
