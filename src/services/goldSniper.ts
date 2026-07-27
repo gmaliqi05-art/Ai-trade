@@ -20,11 +20,13 @@ export interface GoldSniperConfig {
   channel_id: string;
   channel_name: string;
   active: boolean;
+  /** Dërgim AUTOMATIK: sinjalet e motorit të përdoruesit postohen vetë te kanali (pa klik). */
+  auto_send: boolean;
   header: string;
   footer: string;
 }
 export const DEFAULT_GS_CONFIG: GoldSniperConfig = {
-  bot_token: '', channel_id: '', channel_name: 'GoldSniper|FX', active: false,
+  bot_token: '', channel_id: '', channel_name: 'GoldSniper|FX', active: false, auto_send: false,
   header: '🎯 SINJAL I RI — GoldSniper|FX', footer: '',
 };
 
@@ -33,7 +35,7 @@ export async function loadGoldSniperConfig(userId: string): Promise<GoldSniperCo
   if (!data) return { ...DEFAULT_GS_CONFIG };
   return {
     bot_token: data.bot_token ?? '', channel_id: data.channel_id ?? '',
-    channel_name: data.channel_name ?? 'GoldSniper|FX', active: !!data.active,
+    channel_name: data.channel_name ?? 'GoldSniper|FX', active: !!data.active, auto_send: !!data.auto_send,
     header: data.header ?? DEFAULT_GS_CONFIG.header, footer: data.footer ?? '',
   };
 }
