@@ -284,8 +284,14 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
       await db.from("telegram_trades").update({ status: "open", metaapi_position_id: oid }).eq("id", t.id);
       t.status = "open"; t.metaapi_position_id = oid; changed++;
     } else if (oid && !ordIds.has(oid)) {
-      await db.from("telegram_trades").update({ status: "closed", closed_at: now, reason: "Pending s'është më te brokeri" }).eq("id", t.id);
+      // Porosia u zhduk te brokeri PA u mbushur (anuluar/skaduar) → edhe SINJALI shënohet 'canceled'
+      // (Anuluar/Cancel në raporte) kur s'ka legs të tjera aktive — jo "Në pritje" përgjithmonë.
+      await db.from("telegram_trades").update({ status: "closed", closed_at: now, reason: "Anuluar — porosia s'është më te brokeri (pa u mbushur)" }).eq("id", t.id);
       t.status = "closed"; changed++;
+      if (t.signal_id) {
+        const still = rows.some((x) => x.id !== t.id && String(x.signal_id) === String(t.signal_id) && ["open", "pending"].includes(x.status));
+        if (!still) await db.from("telegram_signals").update({ status: "canceled" }).eq("id", t.signal_id).in("status", ["executed", "partial", "pending"]);
+      }
     }
   }
 

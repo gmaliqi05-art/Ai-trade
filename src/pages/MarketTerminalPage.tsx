@@ -1162,7 +1162,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           Big Investors/COT u zhvendos NË FUND të faqes (te banner-i i tregut). */}
       <div className="flex flex-col gap-3">
 
-      {/* Sinjali i fundit — order-4: POSHTË gjithçkaje (klik për ta tregtuar formën lart). */}
+      {/* Sinjali i fundit — VETËM kur roboti i Sinjaleve është aktiv (i ndalur → karta e tij fshihet). */}
+      {signalsRobotOn && (
       <div className="order-4 bg-gray-900 border border-gray-800 rounded-2xl p-3">
           <div className="text-[11px] text-gray-500 mb-1 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
           <p className="text-[10px] text-gray-600 mb-2 leading-snug">{t('Ky është sinjali aktual i motorit — pikërisht atë që tregton roboti i sinjaleve. Aktiv 5 min; pas 5 min shënohet I VJETËR; pas 15 min hiqet.')}</p>
@@ -1229,6 +1230,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             </>
           )}
         </div>
+      )}
         {/* Porosia BLEJ/SHIT — order-1: MENJËHERË nën grafik. Vetëm manuale; e palosur si default. */}
         <div className="order-1 bg-gray-900 border border-gray-800 rounded-2xl p-3 space-y-2 h-fit">
           <button onClick={() => setShowNewOrder(v => !v)} className="w-full flex items-center justify-between text-left">
