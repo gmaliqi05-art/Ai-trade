@@ -375,30 +375,39 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
 
       {/* DY TABELAT E KANALEVE (kërkesa e pronarit): info + çelës ON/OFF për secilin kanal,
           sinjalet e fundit + aktivët + raporti i shkurtër, dhe butoni → raportet e plota. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {[...chanMap.entries()].map(([id, name]) => {
+      <div className="grid grid-cols-1 gap-3">
+        {[...chanMap.entries()]
+          // RENDITJA (kërkesa e pronarit): FX+ i PARI; BESA poshtë tij (kartë e palosshme).
+          .sort(([a], [b]) => (a === '-1003278125980' ? -1 : b === '-1003278125980' ? 1 : a === '-1003603315504' ? 1 : b === '-1003603315504' ? -1 : 0))
+          .map(([id, name]) => {
           const list = realSigsOf(id); // vetëm sinjale të vërteta — të injoruarat s'shfaqen në karta
           const st = statsOf(list);
           const off = chanOff(id);
           const act = activeOf(id);
-          const last = list[0];
-          return (
-            <div key={id} className={`rounded-xl border p-3 sm:p-4 space-y-3 ${off ? 'border-white/10 bg-white/[0.02] opacity-80' : 'border-sky-500/25 bg-sky-500/[0.04]'}`}>
+          const collapsed = id === '-1003603315504'; // BESA — model hamburger (e mbyllur si parazgjedhje)
+          const cardCls = `rounded-xl border p-3 sm:p-4 ${off ? 'border-white/10 bg-white/[0.02] opacity-80' : 'border-sky-500/25 bg-sky-500/[0.04]'}`;
+          const header = (
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <Send className={`w-4 h-4 flex-shrink-0 ${off ? 'text-gray-500' : 'text-sky-400'}`} />
                   <span className="text-sm font-semibold text-white truncate">{name}</span>
                 </div>
-                {/* Çelësi PËR KANAL — fik/ndez marrjen e sinjaleve VETËM nga ky kanal */}
-                <button onClick={() => toggleChannel(id)}
-                  className={`flex items-center gap-2 flex-shrink-0 ${off ? '' : ''}`} title={off ? t('Aktivizo kanalin') : t('Çaktivizo kanalin')}>
-                  <span className={`text-[10px] font-bold ${off ? 'text-gray-500' : 'text-emerald-400'}`}>{off ? 'OFF' : 'ON'}</span>
-                  <span className={`w-10 h-5 rounded-full relative transition-all ${off ? 'bg-gray-700' : 'bg-emerald-500'}`}>
-                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${off ? 'left-0.5' : 'left-5'}`} />
-                  </span>
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Çelësi PËR KANAL — fik/ndez marrjen e sinjaleve VETËM nga ky kanal.
+                      stopPropagation: klikimi i çelësit MOS e hap/mbyllë kartën e palosshme. */}
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleChannel(id); }}
+                    className="flex items-center gap-2" title={off ? t('Aktivizo kanalin') : t('Çaktivizo kanalin')}>
+                    <span className={`text-[10px] font-bold ${off ? 'text-gray-500' : 'text-emerald-400'}`}>{off ? 'OFF' : 'ON'}</span>
+                    <span className={`w-10 h-5 rounded-full relative transition-all ${off ? 'bg-gray-700' : 'bg-emerald-500'}`}>
+                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${off ? 'left-0.5' : 'left-5'}`} />
+                    </span>
+                  </button>
+                  {collapsed && <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-180" />}
+                </div>
               </div>
-
+          );
+          const body = (
+            <div className="space-y-3 mt-3">
               {/* Raporti i shkurtër + aktivët */}
               <div className="grid grid-cols-4 gap-1.5">
                 {[
@@ -487,6 +496,14 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                 <BarChart3 className="w-3.5 h-3.5" />{t('Raportet e plota')} →
               </button>
             </div>
+          );
+          return collapsed ? (
+            <details key={id} className={`${cardCls} group`}>
+              <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">{header}</summary>
+              {body}
+            </details>
+          ) : (
+            <div key={id} className={cardCls}>{header}{body}</div>
           );
         })}
 
