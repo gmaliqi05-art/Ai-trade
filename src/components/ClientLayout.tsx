@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2, Crosshair
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { verifyVipCode } from '../services/vipCodes';
@@ -42,6 +42,7 @@ const navSections = [
       { id: 'metatrader' as ClientPage, label: 'Lidhja & Konfigurimi', icon: Monitor },
       { id: 'mmt' as ClientPage, label: 'MMT — Super Roboti', icon: Brain },
       { id: 'telegram_sin' as ClientPage, label: 'Telegram Sin', icon: Send },
+      { id: 'gold_sniper' as ClientPage, label: 'GoldSniper|FX', icon: Crosshair },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
   },
@@ -79,6 +80,7 @@ const pageLabels: Record<ClientPage, string> = {
   metatrader: 'Lidhja & Konfigurimi',
   mmt: 'MMT — Super Roboti',
   telegram_sin: 'Telegram Sin',
+  gold_sniper: 'GoldSniper|FX',
   notifications: 'Njoftimet',
   reports: 'Raporte',
   settings: 'Cilësimet',
