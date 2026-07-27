@@ -932,9 +932,70 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     '-1003603315504': 'BESA DIGITAL VIP',
     '-1003278125980': 'FX+ | XNINE LEVEL 2',
   };
-  // Sinjalet që kanë HYRË në trade (jo komentet/injoruarat) — për tabelën e shpejtë.
+  // Sinjalet që kanë HYRË në trade (jo komentet/injoruarat) — të ndara në tri tabela:
+  // LIVE në trade · në pritje · raportet (të mbyllura/anuluara). (Kërkesa e pronarit.)
   const tgSigEntries = tgSigs.filter((s) => s.kind === 'entry' && ['pending', 'executed', 'partial', 'closed', 'canceled'].includes(s.status));
   const tgLegsOf = (sigId: string) => tgLegs.filter((l) => l.signal_id === sigId);
+  const tgLive = tgSigEntries.filter((s) => ['executed', 'partial'].includes(s.status));
+  const tgPending = tgSigEntries.filter((s) => s.status === 'pending');
+  const tgDone = tgSigEntries.filter((s) => ['closed', 'canceled'].includes(s.status));
+  // Tabela e përbashkët e sinjaleve të Telegram Sin (përdoret nga të tri seksionet).
+  const renderTgSinTable = (list: TelegramSignalRow[]) => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-500 border-b border-gray-800">
+            <th className="text-left py-2 pr-3 font-medium">{t('Data / Ora')}</th>
+            <th className="text-left py-2 pr-3 font-medium">{t('Kanali')}</th>
+            <th className="text-left py-2 pr-3 font-medium">{t('Drejtimi')}</th>
+            <th className="text-right py-2 pr-3 font-medium">{t('Hyrja')}</th>
+            <th className="text-right py-2 pr-3 font-medium">SL</th>
+            <th className="text-left py-2 pr-3 font-medium">TP</th>
+            <th className="text-right py-2 pr-3 font-medium">Pips</th>
+            <th className="text-right py-2 pr-3 font-medium">{t('Fitimi')}</th>
+            <th className="text-left py-2 pr-3 font-medium">{t('Statusi')}</th>
+            <th className="text-left py-2 font-medium">{t('Rezultati')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.slice(0, 15).map((s) => {
+            const d = new Date(s.created_at);
+            const tps = Array.isArray(s.tps) ? s.tps : [];
+            const pnl = sigPnl(tgLegsOf(s.id));
+            return (
+              <tr key={s.id} className="border-b border-gray-800/60">
+                <td className="py-2 pr-3 text-gray-400 whitespace-nowrap">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="py-2 pr-3 text-sky-300 whitespace-nowrap">{TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || '—'}</td>
+                <td className={`py-2 pr-3 font-semibold ${s.direction === 'buy' ? 'text-green-400' : s.direction === 'sell' ? 'text-red-400' : 'text-gray-400'}`}>{s.direction ? s.direction.toUpperCase() : '—'}</td>
+                <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
+                <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.stop_loss ?? '—'}</td>
+                <td className="py-2 pr-3 text-gray-300 tabular-nums whitespace-nowrap">{tps.length ? tps.join(' / ') : '—'}</td>
+                <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : pnl.pips}</td>
+                <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.net == null ? 'text-gray-600' : pnl.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.net == null ? '—' : `${pnl.net >= 0 ? '+' : ''}${pnl.net.toFixed(2)}$`}</td>
+                <td className="py-2 pr-3">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                    s.status === 'pending' ? 'bg-blue-500/15 text-blue-300'
+                    : s.status === 'canceled' ? 'bg-amber-500/15 text-amber-300'
+                    : s.status === 'closed' ? 'bg-gray-600/30 text-gray-300'
+                    : 'bg-emerald-500/15 text-emerald-300'
+                  }`}>{s.status === 'pending' ? t('Në pritje') : s.status === 'canceled' ? t('Anuluar') : s.status === 'closed' ? t('Mbyllur') : t('Në trade')}</span>
+                </td>
+                <td className="py-2">
+                  {(s.tp_hit ?? 0) > 0
+                    ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">→ TP{s.tp_hit}</span>
+                    : s.status === 'canceled'
+                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300">✕ Cancel</span>
+                      : s.status === 'closed'
+                        ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300">SL</span>
+                        : <span className="text-gray-600 text-[10px]">—</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 
   const money = (n?: number) => (n == null ? '—' : `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
   const cur = account?.currency || '$';
@@ -1269,252 +1330,24 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       </div>
       </div>
 
-      {/* TELEGRAM SIN — RAPORT I SHPEJTË (kërkesa e pronarit): sinjalet që kanë hyrë në trade,
-          me Hyrjen/SL/TP-të, statusin dhe rezultatin — direkt në Trade Live. */}
-      {metaConfigured && tgSigEntries.length > 0 && (
-        <TLFold k="tgsin" title={t('Telegram Sin — sinjalet në trade')} icon={<Zap className="w-4 h-4 text-sky-400" />}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-500 border-b border-gray-800">
-                  <th className="text-left py-2 pr-3 font-medium">{t('Data / Ora')}</th>
-                  <th className="text-left py-2 pr-3 font-medium">{t('Kanali')}</th>
-                  <th className="text-left py-2 pr-3 font-medium">{t('Drejtimi')}</th>
-                  <th className="text-right py-2 pr-3 font-medium">{t('Hyrja')}</th>
-                  <th className="text-right py-2 pr-3 font-medium">SL</th>
-                  <th className="text-left py-2 pr-3 font-medium">TP</th>
-                  <th className="text-right py-2 pr-3 font-medium">Pips</th>
-                  <th className="text-right py-2 pr-3 font-medium">{t('Fitimi')}</th>
-                  <th className="text-left py-2 pr-3 font-medium">{t('Statusi')}</th>
-                  <th className="text-left py-2 font-medium">{t('Rezultati')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tgSigEntries.slice(0, 12).map((s) => {
-                  const d = new Date(s.created_at);
-                  const tps = Array.isArray(s.tps) ? s.tps : [];
-                  const pnl = sigPnl(tgLegsOf(s.id));
-                  return (
-                    <tr key={s.id} className="border-b border-gray-800/60">
-                      <td className="py-2 pr-3 text-gray-400 whitespace-nowrap">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                      <td className="py-2 pr-3 text-sky-300 whitespace-nowrap">{TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || '—'}</td>
-                      <td className={`py-2 pr-3 font-semibold ${s.direction === 'buy' ? 'text-green-400' : s.direction === 'sell' ? 'text-red-400' : 'text-gray-400'}`}>{s.direction ? s.direction.toUpperCase() : '—'}</td>
-                      <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
-                      <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.stop_loss ?? '—'}</td>
-                      <td className="py-2 pr-3 text-gray-300 tabular-nums whitespace-nowrap">{tps.length ? tps.join(' / ') : '—'}</td>
-                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : pnl.pips}</td>
-                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.net == null ? 'text-gray-600' : pnl.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.net == null ? '—' : `${pnl.net >= 0 ? '+' : ''}${pnl.net.toFixed(2)}$`}</td>
-                      <td className="py-2 pr-3">
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                          s.status === 'pending' ? 'bg-blue-500/15 text-blue-300'
-                          : s.status === 'canceled' ? 'bg-amber-500/15 text-amber-300'
-                          : s.status === 'closed' ? 'bg-gray-600/30 text-gray-300'
-                          : 'bg-emerald-500/15 text-emerald-300'
-                        }`}>{s.status === 'pending' ? t('Në pritje') : s.status === 'canceled' ? t('Anuluar') : s.status === 'closed' ? t('Mbyllur') : t('Në trade')}</span>
-                      </td>
-                      <td className="py-2">
-                        {(s.tp_hit ?? 0) > 0
-                          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">→ TP{s.tp_hit}</span>
-                          : s.status === 'closed'
-                            ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300">SL</span>
-                            : <span className="text-gray-600 text-[10px]">—</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+      {/* TELEGRAM SIN — TRI TABELAT (kërkesa e pronarit): LIVE në trade · në pritje · raportet.
+          Tabelat e robotëve të tjerë u HOQËN nga Trade Live (i gjen te faqja Raporte). */}
+      {metaConfigured && tgLive.length > 0 && (
+        <TLFold k="tglive" title={t('Telegram Sin — LIVE në trade')} icon={<Zap className="w-4 h-4 text-emerald-400" />}>
+          {renderTgSinTable(tgLive)}
         </TLFold>
       )}
-
-      {/* RAPORTET SIPAS ROBOTIT (Live) — kartë e veçantë për secilin robot me saktësinë në %,
-          W/L dhe fitimin — nga historiku real i MT5 i 7 ditëve (kërkesa e pronarit). */}
-      {metaConfigured && history.length > 0 && (
-        <TLFold k="reports" title={t('Raportet sipas robotit (Live, 7 ditët e fundit)')} icon={<History className="w-4 h-4 text-amber-400" />}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {(() => {
-              const order = ['Telegram Sin', 'MMT-Long', 'MMT-Scalp', 'Sinjalet', 'Sinjalet-Scalp', 'Manuale'];
-              const groups = new Map<string, ClosedTrade[]>();
-              for (const d of history) {
-                const k = d.robot || 'Manuale';
-                if (!groups.has(k)) groups.set(k, []);
-                groups.get(k)!.push(d);
-              }
-              return order.filter(k => groups.has(k)).map(k => {
-                const rows = groups.get(k)!;
-                const w = rows.filter(r => r.net > 0).length;
-                const net = rows.reduce((a, r) => a + r.net, 0);
-                const wr = Math.round((w / rows.length) * 100);
-                return (
-                  <div key={k} className="bg-gray-800/40 rounded-xl p-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${robotBadgeCls(k)}`}>{k}</span>
-                      <span className={`text-sm font-bold ${wr >= 50 ? 'text-green-400' : 'text-amber-400'}`}>{wr}%</span>
-                    </div>
-                    <div className="space-y-0.5 text-[11px]">
-                      <div className="flex justify-between"><span className="text-gray-500">{t('Tregtime')}</span><span className="text-gray-300">{rows.length} · {w}W/{rows.length - w}L</span></div>
-                      <div className="flex justify-between"><span className="text-gray-500">{t('Fitimi')}</span><span className={`font-semibold ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{net >= 0 ? '+' : ''}{net.toFixed(2)}$</span></div>
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
+      {metaConfigured && tgPending.length > 0 && (
+        <TLFold k="tgpend" title={t('Telegram Sin — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
+          <p className="text-[10px] text-gray-500 mb-2">{t('Nëse çmimi s\'e arrin hyrjen brenda 5 minutash, porosia anulohet vetë dhe shfaqet te raportet si Anuluar (Cancel).')}</p>
+          {renderTgSinTable(tgPending)}
         </TLFold>
       )}
-
-      {/* TREGTITË E MBYLLURA — TABELË E VEÇANTË PËR SECILIN ROBOT (kërkesa e pronarit):
-          çdo robot ka tabelën e vet me totalet (tregtime, W/L, saktësi, bilanc) që të dihet
-          saktë cili po fiton e cili po humb. Tregtimet manuale kanë tabelën e tyre në fund. */}
-      {metaConfigured && (
-        <TLFold k="closed" title={t('Tregtitë e mbyllura sipas robotit (7 ditët e fundit)')} icon={<History className="w-4 h-4 text-amber-400" />}>
-          {history.length === 0 ? (
-            <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë trade i mbyllur ende.')}</p>
-          ) : (
-            <div className="space-y-4">
-              {(() => {
-                const order = ['Telegram Sin', 'MMT-Long', 'MMT-Scalp', 'Sinjalet', 'Sinjalet-Scalp', 'Manuale'];
-                const groups = new Map<string, ClosedTrade[]>();
-                for (const d of history) {
-                  const k = d.robot || 'Manuale';
-                  if (!groups.has(k)) groups.set(k, []);
-                  groups.get(k)!.push(d);
-                }
-                return order.filter(k => groups.has(k)).map(k => {
-                  const rows = groups.get(k)!;
-                  const w = rows.filter(r => r.net > 0).length;
-                  const net = rows.reduce((a, r) => a + r.net, 0);
-                  // Totalet BRUTO për rreshtin përmbledhës në fund: fitimet dhe humbjet veç e veç.
-                  const grossWin = rows.filter(r => r.net > 0).reduce((a, r) => a + r.net, 0);
-                  const grossLoss = rows.filter(r => r.net < 0).reduce((a, r) => a + r.net, 0);
-                  const wr = Math.round((w / rows.length) * 100);
-                  const expanded = !!expandedRobots[k];
-                  const shown = expanded ? rows : rows.slice(0, 5);
-                  return (
-                    <div key={k} className="bg-gray-800/30 border border-gray-800 rounded-xl p-3">
-                      {/* Koka e robotit: emri + totalet e tij (të ndara qartë nga robotët e tjerë). */}
-                      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${robotBadgeCls(k)}`}>{k === 'Manuale' ? t('Manuale (tregtimet e tua)') : k}</span>
-                        <span className="flex items-center gap-3 text-[11px]">
-                          <span className="text-gray-400">{rows.length} {t('tregtime')} · <span className="text-green-400">{w}W</span>/<span className="text-red-400">{rows.length - w}L</span></span>
-                          <span className={`font-bold ${wr >= 50 ? 'text-green-400' : 'text-amber-400'}`}>{wr}%</span>
-                          <span className={`font-bold tabular-nums ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{net >= 0 ? '+' : ''}{net.toFixed(2)}$</span>
-                        </span>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            {/* Kolonat SL/TP fshihen nën md (ekranet e ngushta) — daljet e tjera mjaftojnë
-                                pa tërheqje horizontale; në tablet/PC dalin të gjitha. */}
-                            <tr className="text-gray-500 border-b border-gray-800">
-                              <th className="text-left font-medium py-1.5 pr-2">{t('Simboli')}</th>
-                              <th className="text-left font-medium py-1.5 pr-2">{t('Lloji')}</th>
-                              <th className="text-right font-medium py-1.5 px-1">{t('Lot')}</th>
-                              <th className="text-right font-medium py-1.5 px-1">{t('Hyrje')}</th>
-                              <th className="text-right font-medium py-1.5 px-1 hidden md:table-cell">SL</th>
-                              <th className="text-right font-medium py-1.5 px-1 hidden md:table-cell">TP</th>
-                              <th className="text-right font-medium py-1.5 px-1">{t('Dalja')}</th>
-                              <th className="text-right font-medium py-1.5 px-1">{t('Fitim/Humbje')}</th>
-                              <th className="text-right font-medium py-1.5 pl-1">{t('Koha')}</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-800/60">
-                            {shown.map(d => {
-                              const isBuy = d.direction === 'BUY';
-                              const ek = exitKind(d);
-                              return (
-                                <tr key={d.id} className="hover:bg-gray-800/30">
-                                  <td className="py-1.5 pr-2 text-white font-medium whitespace-nowrap">{d.symbol || '—'}</td>
-                                  <td className="py-1.5 pr-2"><span className={`font-bold ${isBuy ? 'text-green-400' : d.direction === 'SELL' ? 'text-red-400' : 'text-gray-400'}`}>{isBuy ? t('BLEJ') : d.direction === 'SELL' ? t('SHIT') : '—'}</span></td>
-                                  <td className="py-1.5 px-1 text-right text-gray-300">{d.volume || '—'}</td>
-                                  <td className="py-1.5 px-1 text-right text-gray-300 tabular-nums">{d.entryPrice != null ? d.entryPrice.toFixed(2) : '—'}</td>
-                                  <td className="py-1.5 px-1 text-right text-red-400/70 tabular-nums hidden md:table-cell">{d.plannedSL != null ? d.plannedSL.toFixed(2) : '—'}</td>
-                                  <td className="py-1.5 px-1 text-right text-green-400/70 tabular-nums hidden md:table-cell">{d.plannedTP != null ? d.plannedTP.toFixed(2) : '—'}</td>
-                                  <td className="py-1.5 px-1 text-right whitespace-nowrap">
-                                    <span className="text-gray-300 tabular-nums">{d.exitPrice != null ? d.exitPrice.toFixed(2) : '—'}</span>
-                                    {ek === 'tp' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-green-500/20 text-green-400">TP</span>}
-                                    {ek === 'sl' && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-400">SL</span>}
-                                    {/* "Manual" (mbyllje jo në SL/TP) ka kuptim VETËM kur SL/TP e planifikuara dihen —
-                                        përndryshe çdo mbyllje robotike etiketohej gabimisht "Manual". */}
-                                    {ek === 'other' && d.exitPrice != null && (d.plannedSL != null || d.plannedTP != null) && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/40 text-gray-400">{t('Manual')}</span>}
-                                  </td>
-                                  <td className={`py-1.5 px-1 text-right font-semibold tabular-nums ${d.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d.net >= 0 ? '+' : ''}{d.net.toFixed(2)}</td>
-                                  <td className="py-1.5 pl-1 text-right text-gray-500 whitespace-nowrap tabular-nums">{d.closeTime ? new Date(d.closeTime).toLocaleString(dtLocale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                      {/* TOTALI në fund të tabelës së robotit (kërkesa e pronarit): fitimet bruto,
-                          humbjet bruto dhe bilanci neto — që të dihet saktë sa fiton e sa humb secili. */}
-                      <div className="mt-2 pt-2 border-t border-gray-700/60 flex items-center justify-between flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
-                        <span className="text-gray-400">{t('Totali')} · {rows.length} {t('tregtime')}</span>
-                        <span className="flex items-center gap-3 tabular-nums">
-                          <span className="text-green-400">{t('Fitime')}: +{grossWin.toFixed(2)}$</span>
-                          <span className="text-red-400">{t('Humbje')}: {grossLoss.toFixed(2)}$</span>
-                          <span className={net >= 0 ? 'text-green-400' : 'text-red-400'}>{t('Bilanci')}: {net >= 0 ? '+' : ''}{net.toFixed(2)}$</span>
-                        </span>
-                      </div>
-                      {rows.length > 5 && (
-                        <button onClick={() => setExpandedRobots(s => ({ ...s, [k]: !s[k] }))}
-                          className="mt-2 w-full text-xs text-amber-400 hover:text-amber-300 bg-gray-800/40 hover:bg-gray-800 rounded-lg py-1.5 transition-colors">
-                          {expanded ? t('Shfaq më pak') : t('Shfaq të gjitha ({n})', { n: rows.length })}
-                        </button>
-                      )}
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          )}
+      {metaConfigured && tgDone.length > 0 && (
+        <TLFold k="tgdone" title={t('Telegram Sin — raportet (të mbyllura & të anuluara)')} icon={<History className="w-4 h-4 text-sky-400" />}>
+          {renderTgSinTable(tgDone)}
         </TLFold>
       )}
-
-      {/* 3) Sinjalet aktive (lista e plotë) — rrinë derisa të mbyllen (TP/SL/skadim), si te demo;
-             klik për të mbushur formën. (Nuk fshihen pas 15 min si widget-i "Sinjali i fundit".) */}
-      <TLFold k="signals" title={t('Sinjalet')} icon={<Zap className="w-4 h-4 text-amber-400" />}
-        right={<button onClick={() => onNavigate('signals')} className="text-amber-400 text-xs hover:text-amber-300 shrink-0">{t('Të gjitha')}</button>}>
-        {signals.length === 0 ? (
-          <p className="text-gray-600 text-xs text-center py-3">{t('Asnjë sinjal aktiv tani.')}</p>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {signals.map(s => {
-              const fresh = signalIsFresh(s.created_at);
-              const isNew = signalIsNew(s.created_at);
-              return (
-              <button key={s.id} onClick={() => applySignal(s)} className={`text-left rounded-xl px-3 py-2 transition-colors border ${appliedSignalId === s.id ? 'bg-amber-500/10 border-amber-500/40' : isNew ? 'bg-green-500/10 border-green-500/40' : 'bg-gray-800/40 border-transparent hover:bg-gray-800'} ${fresh ? '' : 'opacity-60'}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="flex items-center gap-2">
-                    {isNew && (
-                      <span className="relative flex h-2.5 w-2.5" title={t('Sinjal i ri')}>
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-                      </span>
-                    )}
-                    <span className="text-white text-sm font-bold">{s.symbol}</span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.type === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.type === 'buy' ? t('BLEJ') : t('SHIT')}</span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isShortHorizon(s.timeframe) ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>{horizonLabel(s.timeframe)}</span>
-                    {isNew
-                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400">{t('I RI')}</span>
-                      : !fresh && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-600/40 text-gray-400">{t('I VJETËR')}</span>}
-                  </span>
-                  <span className="text-amber-400 text-xs font-semibold">{s.confidence}%</span>
-                </div>
-                <div className="flex gap-3 text-[11px] text-gray-200 flex-wrap">
-                  {s.entry_price && <span>{t('Hyrje:')} <span className="text-white font-semibold">{Number(s.entry_price).toLocaleString()}</span></span>}
-                  {s.target_price && <span><span className="text-green-400">{t('Objektiv:')}</span> <span className="text-white font-semibold">{Number(s.target_price).toLocaleString()}</span></span>}
-                  {s.stop_loss && <span><span className="text-red-400">{t('Stop:')}</span> <span className="text-white font-semibold">{Number(s.stop_loss).toLocaleString()}</span></span>}
-                  <span><span className="text-amber-400">{t('Lot:')}</span> <span className="text-white font-semibold">{signalLotByConfidence(Number(s.confidence)).toFixed(2)}</span></span>
-                </div>
-                <div className="text-[10px] text-gray-500 mt-1">🕒 {fmtTime(s.created_at)}{fresh ? '' : t(' · mos tregto')}</div>
-              </button>
-              );
-            })}
-          </div>
-        )}
-      </TLFold>
 
       {/* MESAZHET E GRUPEVE (kërkesa e pronarit): GJITHÇKA që dërgojnë trejderat në kanale —
           sinjale, komente, modifikime — si feed i plotë, i lexueshëm nga Trade Live. */}
