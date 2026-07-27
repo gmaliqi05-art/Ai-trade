@@ -157,7 +157,7 @@ export async function loadTgLegs(userId: string, days = 8): Promise<TgLegRow[]> 
   return (data ?? []) as TgLegRow[];
 }
 
-/** Përmbledhje për sinjal nga legs: fitimi total ($) + pikët (pips; ari: 1 pikë = $0.01 lëvizje). */
+/** Përmbledhje për sinjal nga legs: fitimi total ($) + pips REALË (ari: 1 pip = $0.10 lëvizje). */
 export function sigPnl(legs: TgLegRow[]): { net: number | null; pips: number | null } {
   const closed = legs.filter((l) => l.net != null || (l.exit_price != null && l.entry_price != null));
   if (closed.length === 0) return { net: null, pips: null };
@@ -165,7 +165,7 @@ export function sigPnl(legs: TgLegRow[]): { net: number | null; pips: number | n
   const net = nets.length ? Math.round(nets.reduce((s, l) => s + Number(l.net), 0) * 100) / 100 : null;
   const withPx = closed.find((l) => l.exit_price != null && l.entry_price != null);
   const pips = withPx
-    ? Math.round((Number(withPx.exit_price) - Number(withPx.entry_price)) * (String(withPx.action).toUpperCase() === 'BUY' ? 1 : -1) * 100)
+    ? Math.round((Number(withPx.exit_price) - Number(withPx.entry_price)) * (String(withPx.action).toUpperCase() === 'BUY' ? 1 : -1) * 10 * 10) / 10
     : null;
   return { net, pips };
 }
