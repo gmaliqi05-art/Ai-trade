@@ -28,7 +28,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   // NËN-FAQET sipas kanalit: 'all' ose tg_chat_id. Emrat e njohur të kanaleve → etiketa miqësore.
   const [channel, setChannel] = useState<string>('all');
   // Pamja: 'home' (dy tabelat e kanaleve) ose 'detail' (raportet e plota të një kanali).
-  const [view, setView] = useState<'home' | 'detail'>('home');
+  const [view, setView] = useState<'home' | 'detail' | 'feed'>('home');
   const [openTrades, setOpenTrades] = useState<TgTradeRow[]>([]);
   const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
   const [chParams, setChParams] = useState<Record<string, TgChannelRow>>({});
@@ -50,7 +50,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const refresh = useCallback(async () => {
     if (!user) return;
     try { const c = await loadTelegramSinConfig(user.id); setCfg(c); setLoaded(true); } catch { setLoaded(false); }
-    try { setSignals(await loadTelegramSignals(user.id, 100)); } catch { /* */ }
+    try { setSignals(await loadTelegramSignals(user.id, 300)); } catch { /* */ }
     try { setOpenTrades(await loadOpenTgTrades(user.id)); } catch { /* */ }
     try { setTgLegs(await loadTgLegs(user.id)); } catch { /* */ }
     try {
@@ -90,6 +90,11 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   }, [user]);
 
   useEffect(() => { refresh(); refreshAccount(); }, [refresh, refreshAccount]);
+  // Auto-rifreskim i sinjaleve çdo 30s — sinjalet e reja shfaqen vetë (edhe te lista e plotë).
+  useEffect(() => {
+    const id = setInterval(() => { refresh(); }, 30000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   const setAndSave = async <K extends keyof TelegramSinConfig>(k: K, v: TelegramSinConfig[K]) => {
     setCfg((p) => ({ ...p, [k]: v }));
@@ -276,6 +281,63 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   };
 
   // ===== PAMJA E DETAJUAR E NJË KANALI: të gjitha raportet e tij =====
+  // ===== NËN-FAQJA: LISTA E PLOTË E SINJALEVE (të gjitha kanalet, secili ndaras me datë/orë) =====
+  if (view === 'feed') {
+    const allSigs = signals
+      .filter((s0) => s0.kind === 'entry' && s0.status !== 'ignored')
+      .slice()
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return (
+      <div className="max-w-3xl mx-auto p-3 sm:p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={() => setView('home')} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />{t('Kthehu')}</button>
+          <h1 className="text-sm sm:text-base font-bold text-white flex items-center gap-2"><BarChart3 className="w-4 h-4 text-sky-400" />{t('Të gjitha sinjalet')} · {allSigs.length}</h1>
+          <button onClick={refresh} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}</button>
+        </div>
+
+        {allSigs.length === 0 ? (
+          <div className="text-sm text-gray-500 flex items-center gap-2 py-8 justify-center"><Info className="w-4 h-4" />{t('Ende s\'ka sinjale. Sapo trejderat të dërgojnë, do shfaqen këtu.')}</div>
+        ) : (
+          <div className="space-y-2">
+            {allSigs.map((s) => {
+              const d = new Date(s.created_at);
+              const tps = Array.isArray(s.tps) ? s.tps : [];
+              const dir = s.direction === 'buy' ? 'buy' : s.direction === 'sell' ? 'sell' : null;
+              const chName = chanMap.get(String(s.tg_chat_id ?? '')) || s.tg_sender || 'Telegram';
+              const result = (s.tp_hit ?? 0) > 0 ? `→ TP${s.tp_hit}` : (s.status === 'closed' ? 'SL' : s.status === 'canceled' ? 'Cancel' : null);
+              const resCls = (s.tp_hit ?? 0) > 0 ? 'bg-emerald-500/15 text-emerald-300' : s.status === 'closed' ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300';
+              return (
+                <div key={s.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  {/* Rreshti i sipërm: data/ora e plotë + kanali + rezultati */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-gray-400 font-mono">{d.toLocaleDateString()} · {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span className="text-[10px] text-sky-300 font-semibold">{chName}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {dir && <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${dir === 'buy' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{dir === 'buy' ? '🟢 BUY' : '🔴 SELL'}</span>}
+                      {result && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${resCls}`}>{result}</span>}
+                    </div>
+                  </div>
+                  {/* Vlerat: simboli, hyrja, SL, TP-të */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                    <span className="text-white font-semibold">{s.symbol || 'XAUUSD'}</span>
+                    <span className="text-gray-400">{t('Hyrja')}: <span className="text-white tabular-nums">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</span></span>
+                    <span className="text-gray-400">SL: <span className="text-red-300 tabular-nums">{s.stop_loss ?? '—'}</span></span>
+                    {tps.length > 0 && (
+                      <span className="text-gray-400">TP: <span className="text-emerald-300 tabular-nums">{tps.join(' / ')}</span></span>
+                    )}
+                    <span className="ml-auto"><StatusBadge status={s.status} t={t} /></span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (view === 'detail' && channel !== 'all') {
     const name = chanMap.get(channel) || channel;
     return (
@@ -381,6 +443,13 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           </div>
         )}
       </div>
+
+      {/* NËN-FAQJA: LISTA E PLOTË E SINJALEVE — hap faqe të re me të gjitha sinjalet, secili ndaras. */}
+      <button onClick={() => setView('feed')}
+        className="w-full flex items-center justify-between gap-2 rounded-xl border border-sky-500/30 bg-sky-500/[0.06] hover:bg-sky-500/[0.12] px-4 py-3 transition-colors">
+        <span className="flex items-center gap-2 text-sm font-semibold text-white"><BarChart3 className="w-4 h-4 text-sky-400" />{t('Të gjitha sinjalet (lista)')}</span>
+        <span className="flex items-center gap-2 text-xs text-sky-300">{signals.filter((s0) => s0.kind === 'entry' && s0.status !== 'ignored').length} {t('sinjale')} <ArrowLeft className="w-3.5 h-3.5 rotate-180" /></span>
+      </button>
 
       {/* DY TABELAT E KANALEVE (kërkesa e pronarit): info + çelës ON/OFF për secilin kanal,
           sinjalet e fundit + aktivët + raporti i shkurtër, dhe butoni → raportet e plota. */}
