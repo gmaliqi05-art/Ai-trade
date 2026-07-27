@@ -408,7 +408,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, managed });
   }
 
-  // 1) Identifiko përdoruesin nga ?key=<webhook_secret>
+  // 1) Autentiko burimin nga ?key=<webhook_secret> (çelësi i njërit prej përdoruesve)
   const key = url.searchParams.get("key") || "";
   if (!key) return json({ ok: false, error: "missing_key" }, 200); // 200 që Telegram të mos ri-provojë pafund
   const { data: cfgRow } = await db.from("telegram_sin_config").select("*").eq("webhook_secret", key).maybeSingle();
@@ -426,7 +426,32 @@ Deno.serve(async (req: Request) => {
   const messageId = Number(msg.message_id ?? 0);
   const sender = String(msg.from?.username || msg.from?.id || msg.sender_chat?.title || "");
 
-  // 2) Filtrim burimi (nëse konfiguruar)
+  // 2) BROADCAST (kërkesa e pronarit): sinjali përpunohet për TË GJITHË përdoruesit me Telegram Sin
+  // AKTIV — secili tregton në llogarinë e VET MetaApi me parametrat e VET për kanal (lot/TP/tik…),
+  // të cilët i rregullon vetë në faqen e tij. Çelësi vetëm autentikon burimin (kopjuesin).
+  const { data: allCfgs } = await db.from("telegram_sin_config").select("*").eq("active", true);
+  // deno-lint-ignore no-explicit-any
+  const cfgList: any[] = [...(allCfgs || [])];
+  // pronari i çelësit përfshihet edhe kur është joaktiv → mesazhi i regjistrohet si 'ignored' (si më parë)
+  if (!cfgList.some((c) => String(c.user_id) === String(cfgRow.user_id))) cfgList.push(cfgRow);
+  const results: Record<string, unknown>[] = [];
+  for (const c of cfgList) {
+    try { results.push({ user: String(c.user_id).slice(0, 8), ...(await processForUser(db, c, { text, chatId, messageId, sender })) }); }
+    catch (e) { results.push({ user: String(c.user_id).slice(0, 8), error: (e as Error).message }); }
+  }
+  return json({ ok: true, results });
+});
+
+// Përpunon një mesazh kanali për NJË përdorues: filtra → idempotencë → parametrat për kanal →
+// parse → modify/exit/entry — gjithçka në llogarinë dhe me cilësimet e ATIJ përdoruesi.
+// deno-lint-ignore no-explicit-any
+async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, m: { text: string; chatId: string; messageId: number; sender: string }): Promise<Record<string, unknown>> {
+  const { text, chatId, messageId, sender } = m;
+  // Brenda këtij funksioni 'json' kthen OBJEKT të thjeshtë (jo Response) — rezultatet e të gjithë
+  // përdoruesve mblidhen nga thirrësi (broadcast) dhe kthehen si NJË përgjigje e vetme.
+  const json = (x: Record<string, unknown>) => x;
+
+  // Filtrim burimi (nëse konfiguruar)
   // KANAL I ÇAKTIVIZUAR nga faqja (çelësi për-kanal): regjistro si 'ignored', mos tregto.
   const disabledChats: string[] = cfgRow.disabled_chats || [];
   const chatDisabled = disabledChats.includes(chatId);
@@ -693,4 +718,4 @@ Deno.serve(async (req: Request) => {
       (executed > 0 ? `${pending ? "Vendosi" : "Hyri në"} ${executed} ${kindWord}:\n${details.join("\n")}\nSL: ${sl}` : `S'u hap dot: shih raportet në aplikacion.`));
   }
   return json({ ok: true, kind: "entry", pending, executed, legs: plan.length });
-});
+}
