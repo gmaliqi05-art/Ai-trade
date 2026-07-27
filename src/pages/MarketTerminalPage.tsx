@@ -970,7 +970,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
                 <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.stop_loss ?? '—'}</td>
                 <td className="py-2 pr-3 text-gray-300 tabular-nums whitespace-nowrap">{tps.length ? tps.join(' / ') : '—'}</td>
-                <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : pnl.pips}</td>
+                <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : Math.abs(pnl.pips)}</td>
                 <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.net == null ? 'text-gray-600' : pnl.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.net == null ? '—' : `${pnl.net >= 0 ? '+' : ''}${pnl.net.toFixed(2)}$`}</td>
                 <td className="py-2 pr-3">
                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
@@ -1347,7 +1347,20 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       )}
       {metaConfigured && tgDone.length > 0 && (
         <TLFold k="tgdone" title={t('Telegram Sin — raportet (të mbyllura & të anuluara)')} icon={<History className="w-4 h-4 text-sky-400" />}>
-          {renderTgSinTable(tgDone)}
+          {/* TË NDARA SIPAS GRUPIT (kërkesa e pronarit): secili kanal me tabelën e vet. */}
+          <div className="space-y-4">
+            {[...new Set(tgDone.map((s) => String(s.tg_chat_id ?? '')))].map((cid) => {
+              const list = tgDone.filter((s) => String(s.tg_chat_id ?? '') === cid);
+              return (
+                <div key={cid} className="bg-gray-800/20 border border-gray-800 rounded-xl p-3">
+                  <span className="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 mb-1">
+                    {TG_CHAN_LABEL[cid] || list[0]?.tg_sender || 'Telegram'}
+                  </span>
+                  {renderTgSinTable(list)}
+                </div>
+              );
+            })}
+          </div>
         </TLFold>
       )}
 

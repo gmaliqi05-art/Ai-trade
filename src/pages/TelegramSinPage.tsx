@@ -251,7 +251,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                       <td className="py-2 pr-3 text-right text-gray-300">{s.kind === 'modify' ? '—' : s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
                       <td className="py-2 pr-3 text-right text-gray-300">{s.stop_loss ?? '—'}</td>
                       {[0, 1, 2, 3].map((i) => <td key={i} className="py-2 pr-3 text-right text-gray-300">{tps[i] ?? '—'}</td>)}
-                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : pnl.pips}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : Math.abs(pnl.pips)}</td>
                       <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.net == null ? 'text-gray-600' : pnl.net >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl.net == null ? '—' : `${pnl.net >= 0 ? '+' : ''}${pnl.net.toFixed(2)}$`}</td>
                       <td className="py-2 pr-3"><StatusBadge status={s.status} t={t} /></td>
                       <td className="py-2">
