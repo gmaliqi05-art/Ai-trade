@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -59,8 +59,15 @@ const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }
   { id: 'market_prices', label: 'Tregto Live', icon: Activity },
   { id: 'telegram_sin', label: 'Telegram Sin', icon: Send },
   { id: 'dashboard', label: 'Paneli', icon: LayoutDashboard },
-  { id: 'reports', label: 'Raporte', icon: FileText },
+  { id: 'manual', label: 'Manuali', icon: BookOpen },
 ];
+
+// FAQET E LIRA (regjistrim normal): shfaqen gjithmonë në meny. Të tjerat fshihen pas butonit VIP.
+const FREE_PAGES: ClientPage[] = ['market_prices', 'dashboard', 'telegram_sin', 'manual', 'settings'];
+// Kodi VIP — vetëm kush e ka mund të hapë faqet e tjera. (Mbrojtje e butë në anën e klientit;
+// ndryshoje këtu kur të duash një kod të ri.) Ruhet i zhbllokuar te localStorage pas futjes së saktë.
+const VIP_CODE = 'GOLD-VIP-2026';
+const VIP_STORAGE_KEY = 'gt_vip_unlocked';
 
 const pageLabels: Record<ClientPage, string> = {
   dashboard: 'Paneli',
@@ -85,6 +92,24 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
   const { profile, user, signOut } = useAuth();
   const { t } = useI18n();
 
+  // VIP: faqet e tjera (jo FREE_PAGES) fshihen derisa të futet kodi i saktë. Gjendja ruhet lokalisht.
+  const [vipUnlocked, setVipUnlocked] = useState(() => {
+    try { return localStorage.getItem(VIP_STORAGE_KEY) === '1'; } catch { return false; }
+  });
+  const [vipOpen, setVipOpen] = useState(false);
+  const [vipInput, setVipInput] = useState('');
+  const [vipErr, setVipErr] = useState(false);
+  const submitVip = () => {
+    if (vipInput.trim() === VIP_CODE) {
+      setVipUnlocked(true); setVipErr(false); setVipOpen(false); setVipInput('');
+      try { localStorage.setItem(VIP_STORAGE_KEY, '1'); } catch { /* */ }
+    } else { setVipErr(true); }
+  };
+  const lockVip = () => {
+    setVipUnlocked(false);
+    try { localStorage.removeItem(VIP_STORAGE_KEY); } catch { /* */ }
+  };
+
   const fetchUnread = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
@@ -99,6 +124,14 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
   }, [user]);
 
   useEffect(() => { fetchUnread(); }, [fetchUnread, currentPage]);
+
+  // Mbrojtje: nëse qasja VIP s'është e hapur dhe përdoruesi ndodhet në një faqe VIP, ktheje te Trade Live.
+  // Njoftimet lejohen gjithmonë (hapen nga zilja në krye — feature sistemi, jo faqe menuje).
+  useEffect(() => {
+    if (!vipUnlocked && currentPage !== 'notifications' && !FREE_PAGES.includes(currentPage)) {
+      onNavigate('market_prices');
+    }
+  }, [vipUnlocked, currentPage, onNavigate]);
 
   // Rifresko numrin sapo njoftimet ndryshojnë (klik "lexuar", "lexo të gjitha", fshirje).
   useEffect(() => {
@@ -146,16 +179,68 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
       </div>
 
       <nav className="flex-1 px-2 py-3 overflow-y-auto">
-        {navSections.map(section => (
-          <div key={section.label} className="mb-4">
-            {!collapsed && (
-              <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{t(section.label)}</div>
-            )}
-            <div className="space-y-0.5">
-              {section.items.map(item => <NavItem key={item.id} item={item} />)}
+        {/* FAQET E LIRA — gjithmonë të dukshme (Trade Live, Paneli, Telegram Sin, Manual, Cilësimet). */}
+        {navSections.map(section => {
+          const freeItems = section.items.filter(it => FREE_PAGES.includes(it.id));
+          if (freeItems.length === 0) return null;
+          return (
+            <div key={section.label} className="mb-4">
+              {!collapsed && (
+                <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{t(section.label)}</div>
+              )}
+              <div className="space-y-0.5">
+                {freeItems.map(item => <NavItem key={item.id} item={item} />)}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+
+        {/* BUTONI VIP — hap faqet e tjera me kod. I dukshëm gjithmonë; hapet me kod, pastaj mbahet mend. */}
+        <div className="mb-4">
+          {!collapsed && <div className="px-3 mb-1 text-[10px] text-amber-600 font-semibold tracking-[0.15em] uppercase">VIP</div>}
+          {!vipUnlocked ? (
+            <>
+              <button onClick={() => { setVipOpen(o => !o); setVipErr(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 to-amber-600/10 border border-amber-500/30 text-amber-300 hover:from-amber-500/25 transition-all">
+                <Crown className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span className="text-sm font-semibold truncate">{t('VIP — Fut kodin')}</span>}
+              </button>
+              {vipOpen && !collapsed && (
+                <div className="mt-2 px-1 space-y-2">
+                  <input type="password" value={vipInput} autoFocus
+                    onChange={e => { setVipInput(e.target.value); setVipErr(false); }}
+                    onKeyDown={e => { if (e.key === 'Enter') submitVip(); }}
+                    placeholder={t('Kodi VIP')}
+                    className={`w-full bg-black/30 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${vipErr ? 'border-red-500' : 'border-amber-500/40 focus:border-amber-500'}`} />
+                  {vipErr && <p className="text-[11px] text-red-400 px-1">{t('Kod i pasaktë.')}</p>}
+                  <button onClick={submitVip} className="w-full text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950">{t('Hap qasjen VIP')}</button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {navSections.map(section => {
+                const vipItems = section.items.filter(it => !FREE_PAGES.includes(it.id));
+                if (vipItems.length === 0) return null;
+                return (
+                  <div key={section.label} className="mb-2">
+                    {!collapsed && (
+                      <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{t(section.label)}</div>
+                    )}
+                    <div className="space-y-0.5">
+                      {vipItems.map(item => <NavItem key={item.id} item={item} />)}
+                    </div>
+                  </div>
+                );
+              })}
+              <button onClick={lockVip}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-gray-500 hover:bg-gray-800 hover:text-amber-400 transition-all mt-1">
+                <Crown className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span className="text-xs font-medium truncate">{t('Mbyll qasjen VIP')}</span>}
+              </button>
+            </>
+          )}
+        </div>
       </nav>
 
       <div className="p-2 border-t border-gray-800 flex-shrink-0">
