@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Send, Power, PowerOff, Loader2, Copy, ExternalLink, CheckCircle2, XCircle,
-  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert, BarChart3, ArrowLeft, ChevronDown,
+  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert, BarChart3, ArrowLeft, ChevronDown, Cloud,
 } from 'lucide-react';
+import Mt5ConnectCard from '../components/Mt5ConnectCard';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import { ClientPage } from '../App';
@@ -529,6 +530,18 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           </div>
         )}
       </div>
+
+      {/* LIDHJA ME MT5 (MetaApi) — pikë e vetme konfigurimi këtu te Telegram Sin (kërkesa e pronarit:
+          faqet e tjera do të mbyllen me kod, kjo mbetet e arritshme). Kartë e vetëmjaftueshme. */}
+      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><Cloud className="w-4 h-4 text-sky-400" />{t('Lidhja me MT5 (MetaApi)')}</span>
+          <ChevronDown className="w-4 h-4 text-gray-500" />
+        </summary>
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+          <Mt5ConnectCard />
+        </div>
+      </details>
 
       <details className="rounded-xl border border-white/10 bg-white/[0.02]">
         <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
