@@ -25,7 +25,7 @@ export default function GoldSniperPage() {
   const [symbol, setSymbol] = useState('XAUUSD');
   const [entry, setEntry] = useState('');
   const [sl, setSl] = useState('');
-  const [tp1, setTp1] = useState(''); const [tp2, setTp2] = useState(''); const [tp3, setTp3] = useState('');
+  const [tp1, setTp1] = useState(''); const [tp2, setTp2] = useState(''); const [tp3, setTp3] = useState(''); const [tp4, setTp4] = useState('');
   const [note, setNote] = useState('');
 
   const flash = (type: 'success' | 'error', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 4000); };
@@ -58,13 +58,13 @@ export default function GoldSniperPage() {
 
   const postSignal = async () => {
     setBusy('post'); setMsg(null);
-    const tps = [tp1, tp2, tp3].map(Number).filter(n => Number.isFinite(n) && n > 0);
+    const tps = [tp1, tp2, tp3, tp4].map(Number).filter(n => Number.isFinite(n) && n > 0);
     const r = await postGoldSniperSignal({
       symbol: symbol.toUpperCase().trim(), direction: dir,
       entry: Number(entry) || undefined, stop_loss: Number(sl) || undefined, tps,
       note: note.trim() || undefined,
     });
-    if (r.ok) { flash('success', t('Sinjali u postua te kanali ✅')); setEntry(''); setSl(''); setTp1(''); setTp2(''); setTp3(''); setNote(''); await refresh(); }
+    if (r.ok) { flash('success', t('Sinjali u postua te kanali ✅')); setEntry(''); setSl(''); setTp1(''); setTp2(''); setTp3(''); setTp4(''); setNote(''); await refresh(); }
     else flash('error', r.message || t('Postimi dështoi.'));
     setBusy(null);
   };
@@ -101,6 +101,7 @@ export default function GoldSniperPage() {
           <label className="block"><span className="text-[10px] text-emerald-400">TP1</span><input type="number" step="0.01" value={tp1} onChange={e => setTp1(e.target.value)} className={inp} /></label>
           <label className="block"><span className="text-[10px] text-emerald-400">TP2</span><input type="number" step="0.01" value={tp2} onChange={e => setTp2(e.target.value)} className={inp} /></label>
           <label className="block"><span className="text-[10px] text-emerald-400">TP3</span><input type="number" step="0.01" value={tp3} onChange={e => setTp3(e.target.value)} className={inp} /></label>
+          <label className="block"><span className="text-[10px] text-emerald-400">TP4</span><input type="number" step="0.01" value={tp4} onChange={e => setTp4(e.target.value)} className={inp} /></label>
         </div>
         <label className="block"><span className="text-[10px] text-gray-500">{t('Shënim (opsional) — p.sh. "Hyni tani", menaxhoni rrezikun…')}</span>
           <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} className={inp} /></label>

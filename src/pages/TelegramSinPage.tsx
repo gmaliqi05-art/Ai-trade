@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Send, Power, PowerOff, Loader2, Copy, ExternalLink, CheckCircle2, XCircle,
-  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert, BarChart3, ArrowLeft, ChevronDown, Cloud,
+  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert, BarChart3, ArrowLeft, ChevronDown, Cloud, Crosshair,
 } from 'lucide-react';
 import Mt5ConnectCard from '../components/Mt5ConnectCard';
+import GoldSniperPage from './GoldSniperPage';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import { ClientPage } from '../App';
@@ -28,7 +29,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   // NËN-FAQET sipas kanalit: 'all' ose tg_chat_id. Emrat e njohur të kanaleve → etiketa miqësore.
   const [channel, setChannel] = useState<string>('all');
   // Pamja: 'home' (dy tabelat e kanaleve) ose 'detail' (raportet e plota të një kanali).
-  const [view, setView] = useState<'home' | 'detail' | 'feed'>('home');
+  const [view, setView] = useState<'home' | 'detail' | 'feed' | 'gold_sniper'>('home');
   const [openTrades, setOpenTrades] = useState<TgTradeRow[]>([]);
   const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
   const [chParams, setChParams] = useState<Record<string, TgChannelRow>>({});
@@ -281,6 +282,18 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   };
 
   // ===== PAMJA E DETAJUAR E NJË KANALI: të gjitha raportet e tij =====
+  // ===== NËN-FAQJA: GoldSniper|FX (publikimi i sinjaleve te kanali i vetë përdoruesit) =====
+  if (view === 'gold_sniper') {
+    return (
+      <div>
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 pt-3">
+          <button onClick={() => setView('home')} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />{t('Kthehu te Telegram Sin')}</button>
+        </div>
+        <GoldSniperPage />
+      </div>
+    );
+  }
+
   // ===== NËN-FAQJA: LISTA E PLOTË E SINJALEVE (të gjitha kanalet, secili ndaras me datë/orë) =====
   if (view === 'feed') {
     const allSigs = signals
@@ -449,6 +462,13 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         className="w-full flex items-center justify-between gap-2 rounded-xl border border-sky-500/30 bg-sky-500/[0.06] hover:bg-sky-500/[0.12] px-4 py-3 transition-colors">
         <span className="flex items-center gap-2 text-sm font-semibold text-white"><BarChart3 className="w-4 h-4 text-sky-400" />{t('Të gjitha sinjalet (lista)')}</span>
         <span className="flex items-center gap-2 text-xs text-sky-300">{signals.filter((s0) => s0.kind === 'entry' && s0.status !== 'ignored').length} {t('sinjale')} <ArrowLeft className="w-3.5 h-3.5 rotate-180" /></span>
+      </button>
+
+      {/* NËN-FAQJA: GoldSniper|FX — publikimi i sinjaleve te kanali yt në Telegram. */}
+      <button onClick={() => setView('gold_sniper')}
+        className="w-full flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] hover:bg-amber-500/[0.12] px-4 py-3 transition-colors">
+        <span className="flex items-center gap-2 text-sm font-semibold text-white"><Crosshair className="w-4 h-4 text-amber-400" />GoldSniper|FX</span>
+        <span className="flex items-center gap-2 text-xs text-amber-300">{t('Publiko sinjale te kanali yt')} <ArrowLeft className="w-3.5 h-3.5 rotate-180" /></span>
       </button>
 
       {/* DY TABELAT E KANALEVE (kërkesa e pronarit): info + çelës ON/OFF për secilin kanal,
