@@ -1302,7 +1302,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                       <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
                       <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.stop_loss ?? '—'}</td>
                       <td className="py-2 pr-3 text-gray-300 tabular-nums whitespace-nowrap">{tps.length ? tps.join(' / ') : '—'}</td>
-                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : `${pnl.pips >= 0 ? '+' : ''}${pnl.pips}`}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.pips == null ? 'text-gray-600' : pnl.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.pips == null ? '—' : pnl.pips}</td>
                       <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${pnl.net == null ? 'text-gray-600' : pnl.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{pnl.net == null ? '—' : `${pnl.net >= 0 ? '+' : ''}${pnl.net.toFixed(2)}$`}</td>
                       <td className="py-2 pr-3">
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
