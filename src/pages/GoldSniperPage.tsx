@@ -88,6 +88,8 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
 
   const inp = 'w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500';
   const configured = !!(cfg.bot_token && cfg.channel_id);
+  // Kujtesa vizuale: kolonat kryesore (Hyrja + SL) të mbushura, i lidhur, dhe s'po poston.
+  const readyReminder = configured && busy !== 'post' && !!entry.trim() && !!sl.trim();
 
   return (
     <div className="max-w-4xl mx-auto p-3 sm:p-4 space-y-4">
@@ -122,7 +124,14 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
         </div>
         <label className="block"><span className="text-[10px] text-gray-500">{t('Shënim (opsional) — p.sh. "Hyni tani", menaxhoni rrezikun…')}</span>
           <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} className={inp} /></label>
-        <button onClick={postSignal} disabled={!configured || busy === 'post'} className="w-full inline-flex items-center justify-center gap-2 text-sm font-semibold px-3 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950 disabled:opacity-50">
+        {/* KUJTESA: kur kolonat janë të mbushura por s'është postuar ende — butoni pulson që të mos harrosh. */}
+        {readyReminder && (
+          <div className="flex items-center gap-2 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-1.5">
+            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" /></span>
+            {t('Kolonat janë të mbushura — mos harro të klikosh «Posto» për ta dërguar te kanali!')}
+          </div>
+        )}
+        <button onClick={postSignal} disabled={!configured || busy === 'post'} className={`w-full inline-flex items-center justify-center gap-2 text-sm font-semibold px-3 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950 disabled:opacity-50 ${readyReminder ? 'animate-pulse ring-2 ring-amber-300/60' : ''}`}>
           {busy === 'post' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}{t('Posto te GoldSniper|FX')}
         </button>
         {!configured && <p className="text-[11px] text-amber-400/80">{t('Lidh botin dhe kanalin më poshtë para se të postosh.')}</p>}
