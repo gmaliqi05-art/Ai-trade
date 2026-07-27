@@ -13,7 +13,7 @@ function fmtSignal(header: string, footer: string, s: any): string {
   const lines: string[] = [];
   if (header) lines.push(header, "");
   if (dirLabel || s.symbol) lines.push(`${dirLabel} <b>${s.symbol || "XAUUSD"}</b>`);
-  if (s.entry_price != null) lines.push(`📍 Hyrja: <b>${s.entry_price}</b>`);
+  if (s.entry_price != null) lines.push(`📍 Entry: <b>${s.entry_price}</b>`);
   if (s.stop_loss != null) lines.push(`🛑 SL: <b>${s.stop_loss}</b>`);
   if (s.target_price != null) lines.push(`🎯 TP: <b>${s.target_price}</b>`);
   lines.push("", "Good luck! 🥇");

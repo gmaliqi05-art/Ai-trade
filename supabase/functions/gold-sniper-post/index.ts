@@ -19,7 +19,7 @@ function fmtSignal(header: string, footer: string, p: {
   const lines: string[] = [];
   if (header) lines.push(header, "");
   if (dirLabel || p.symbol) lines.push(`${dirLabel} <b>${p.symbol || "XAUUSD"}</b>`);
-  if (p.entry != null) lines.push(`📍 Hyrja: <b>${p.entry}</b>`);
+  if (p.entry != null) lines.push(`📍 Entry: <b>${p.entry}</b>`);
   if (p.stop_loss != null) lines.push(`🛑 SL: <b>${p.stop_loss}</b>`);
   (p.tps || []).forEach((tp, i) => { if (tp != null) lines.push(`🎯 TP${i + 1}: <b>${tp}</b>`); });
   if (p.note) lines.push("", p.note);
@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
 
     let text: string;
     if (action === "test") {
-      text = `✅ GoldSniper|FX — lidhja funksionon. Ky është një mesazh prove.`;
+      text = `✅ GoldSniper|FX — connection works. This is a test message.`;
     } else {
       // Teksti: ose i dërguar gati (custom), ose i formatuar nga fushat e sinjalit.
       text = body.message

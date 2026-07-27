@@ -27,7 +27,7 @@ export interface GoldSniperConfig {
 }
 export const DEFAULT_GS_CONFIG: GoldSniperConfig = {
   bot_token: '', channel_id: '', channel_name: 'GoldSniper|FX', active: false, auto_send: false,
-  header: '🎯 SINJAL I RI — GoldSniper|FX', footer: '',
+  header: '🎯 NEW SIGNAL — GoldSniper|FX', footer: '',
 };
 
 export async function loadGoldSniperConfig(userId: string): Promise<GoldSniperConfig> {
