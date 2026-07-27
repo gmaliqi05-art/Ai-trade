@@ -18,6 +18,7 @@ import {
   type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
+import { loadTelegramSignals, type TelegramSignalRow } from '../services/telegramSin';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
 import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, robotOfPosition, robotOf, type ClosedTrade, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
@@ -142,6 +143,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [metaConfigured, setMetaConfigured] = useState(false);
   // Roboti i Sinjaleve aktiv? (kill_switch i fikur). I ndalur → tabelat e tij s'shfaqen në Trade Live.
   const [signalsRobotOn, setSignalsRobotOn] = useState(false);
+  // Telegram Sin në Trade Live: sinjalet + GJITHË mesazhet e grupeve (raport i shpejtë + feed).
+  const [tgSigs, setTgSigs] = useState<TelegramSignalRow[]>([]);
   // Emrat REALË të simboleve te brokeri (symbol_map nga serveri, p.sh. XAUUSD → XAUUSD.s).
   const [symMap, setSymMap] = useState<Record<string, string>>({});
   // Lidhja DIREKTE streaming (websocket) — kredencialet për ta nisur + snapshot-i live.
@@ -913,6 +916,21 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setModifyBusy(false);
   };
 
+  // Sinjalet e Telegram Sin (rifreskohen çdo 30s) — për tabelën e shpejtë + feed-in e mesazheve.
+  useEffect(() => {
+    if (!user) return;
+    const load = () => loadTelegramSignals(user.id, 60).then(setTgSigs).catch(() => {});
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, [user]);
+  const TG_CHAN_LABEL: Record<string, string> = {
+    '-1003603315504': 'BESA DIGITAL VIP',
+    '-1003278125980': 'FX+ | XNINE LEVEL 2',
+  };
+  // Sinjalet që kanë HYRË në trade (jo komentet/injoruarat) — për tabelën e shpejtë.
+  const tgSigEntries = tgSigs.filter((s) => s.kind === 'entry' && ['pending', 'executed', 'partial', 'closed'].includes(s.status));
+
   const money = (n?: number) => (n == null ? '—' : `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
   const cur = account?.currency || '$';
 
@@ -1246,6 +1264,59 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       </div>
       </div>
 
+      {/* TELEGRAM SIN — RAPORT I SHPEJTË (kërkesa e pronarit): sinjalet që kanë hyrë në trade,
+          me Hyrjen/SL/TP-të, statusin dhe rezultatin — direkt në Trade Live. */}
+      {metaConfigured && tgSigEntries.length > 0 && (
+        <TLFold k="tgsin" title={t('Telegram Sin — sinjalet në trade')} icon={<Zap className="w-4 h-4 text-sky-400" />}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-800">
+                  <th className="text-left py-2 pr-3 font-medium">{t('Data / Ora')}</th>
+                  <th className="text-left py-2 pr-3 font-medium">{t('Kanali')}</th>
+                  <th className="text-left py-2 pr-3 font-medium">{t('Drejtimi')}</th>
+                  <th className="text-right py-2 pr-3 font-medium">{t('Hyrja')}</th>
+                  <th className="text-right py-2 pr-3 font-medium">SL</th>
+                  <th className="text-left py-2 pr-3 font-medium">TP</th>
+                  <th className="text-left py-2 pr-3 font-medium">{t('Statusi')}</th>
+                  <th className="text-left py-2 font-medium">{t('Rezultati')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tgSigEntries.slice(0, 12).map((s) => {
+                  const d = new Date(s.created_at);
+                  const tps = Array.isArray(s.tps) ? s.tps : [];
+                  return (
+                    <tr key={s.id} className="border-b border-gray-800/60">
+                      <td className="py-2 pr-3 text-gray-400 whitespace-nowrap">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                      <td className="py-2 pr-3 text-sky-300 whitespace-nowrap">{TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || '—'}</td>
+                      <td className={`py-2 pr-3 font-semibold ${s.direction === 'buy' ? 'text-green-400' : s.direction === 'sell' ? 'text-red-400' : 'text-gray-400'}`}>{s.direction ? s.direction.toUpperCase() : '—'}</td>
+                      <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
+                      <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.stop_loss ?? '—'}</td>
+                      <td className="py-2 pr-3 text-gray-300 tabular-nums whitespace-nowrap">{tps.length ? tps.join(' / ') : '—'}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                          s.status === 'pending' ? 'bg-blue-500/15 text-blue-300'
+                          : s.status === 'closed' ? 'bg-gray-600/30 text-gray-300'
+                          : 'bg-emerald-500/15 text-emerald-300'
+                        }`}>{s.status === 'pending' ? t('Në pritje') : s.status === 'closed' ? t('Mbyllur') : t('Në trade')}</span>
+                      </td>
+                      <td className="py-2">
+                        {(s.tp_hit ?? 0) > 0
+                          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">→ TP{s.tp_hit}</span>
+                          : s.status === 'closed'
+                            ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300">SL</span>
+                            : <span className="text-gray-600 text-[10px]">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </TLFold>
+      )}
+
       {/* RAPORTET SIPAS ROBOTIT (Live) — kartë e veçantë për secilin robot me saktësinë në %,
           W/L dhe fitimin — nga historiku real i MT5 i 7 ditëve (kërkesa e pronarit). */}
       {metaConfigured && history.length > 0 && (
@@ -1433,6 +1504,36 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           </div>
         )}
       </TLFold>
+
+      {/* MESAZHET E GRUPEVE (kërkesa e pronarit): GJITHÇKA që dërgojnë trejderat në kanale —
+          sinjale, komente, modifikime — si feed i plotë, i lexueshëm nga Trade Live. */}
+      {metaConfigured && tgSigs.length > 0 && (
+        <TLFold k="tgmsgs" defaultOpen={false} title={t('Mesazhet e grupeve — gjithçka që dërgojnë trejderat')} icon={<Zap className="w-4 h-4 text-sky-400" />}>
+          <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
+            {tgSigs.slice(0, 40).map((s) => {
+              const d = new Date(s.created_at);
+              const isSig = s.kind === 'entry' && s.status !== 'ignored';
+              return (
+                <div key={s.id} className={`rounded-lg border px-3 py-2 ${isSig ? 'border-sky-500/25 bg-sky-500/[0.05]' : 'border-gray-800 bg-gray-900/60'}`}>
+                  <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                    <span className="text-[10px] text-sky-300 font-semibold">{TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || 'Telegram'}</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
+                        isSig ? 'bg-emerald-500/15 text-emerald-300'
+                        : s.kind === 'modify' ? 'bg-sky-500/15 text-sky-300'
+                        : s.kind === 'exit' ? 'bg-amber-500/15 text-amber-300'
+                        : 'bg-gray-700/50 text-gray-400'
+                      }`}>{isSig ? t('SINJAL') : s.kind === 'modify' ? t('Modifikim') : s.kind === 'exit' ? t('Dalje') : t('Koment')}</span>
+                      <span className="text-[10px] text-gray-500 whitespace-nowrap">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-300 whitespace-pre-wrap break-words leading-snug">{s.raw_text || '—'}</p>
+                </div>
+              );
+            })}
+          </div>
+        </TLFold>
+      )}
 
       {/* 4+5) Analizat e sinjaleve — VETËM kur roboti i Sinjaleve është aktiv: robot i ndalur =
           pa tabela raportesh të tij në Trade Live (kërkesa e pronarit). */}
