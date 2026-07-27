@@ -175,6 +175,15 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     setChParam(id, name, { enabled: chanOff(id) });
   };
 
+  // Përshkrim i lexueshëm i veprimit për rreshtat MODIFIKIM (jo hyrje) — "çfarë u bë" në tabelë.
+  const modLabel = (s0: TelegramSignalRow) => {
+    const x = (s0.raw_text || '').toLowerCase();
+    if (/break\s*even|breakeven/.test(x)) return t('SL → Breakeven');
+    if (/stop\s*loss|\bsl\b/.test(x)) return t('Lëvizje SL');
+    if (/take\s*profit|\btp\b/.test(x)) return t('Ndryshim TP');
+    return t('Modifikim');
+  };
+
   // Blloku i raporteve (stats + tabela e plotë) — përdoret nga pamja e detajuar e kanalit.
   const renderSignalsBlock = (list: TelegramSignalRow[]) => {
     const st = statsOf(list);
@@ -228,11 +237,12 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                       <td className="py-2 pr-3 text-white">{s.symbol || '—'}</td>
                       <td className="py-2 pr-3">
                         {s.kind === 'exit' ? <span className="text-amber-300">{t('Dalje')}</span>
+                          : s.kind === 'modify' ? <span className="text-sky-300 whitespace-nowrap">🔧 {modLabel(s)}</span>
                           : dir === 'buy' ? <span className="inline-flex items-center gap-1 text-emerald-400"><TrendingUp className="w-3 h-3" />BUY</span>
                           : dir === 'sell' ? <span className="inline-flex items-center gap-1 text-red-400"><TrendingDown className="w-3 h-3" />SELL</span>
                           : <span className="text-gray-500">—</span>}
                       </td>
-                      <td className="py-2 pr-3 text-right text-gray-300">{s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
+                      <td className="py-2 pr-3 text-right text-gray-300">{s.kind === 'modify' ? '—' : s.entry_type === 'market' ? 'MKT' : (s.entry_price ?? '—')}</td>
                       <td className="py-2 pr-3 text-right text-gray-300">{s.stop_loss ?? '—'}</td>
                       {[0, 1, 2, 3].map((i) => <td key={i} className="py-2 pr-3 text-right text-gray-300">{tps[i] ?? '—'}</td>)}
                       <td className="py-2 pr-3"><StatusBadge status={s.status} t={t} /></td>
@@ -241,7 +251,9 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                           ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">→ TP{s.tp_hit}</span>
                           : s.status === 'closed' && s.kind === 'entry'
                             ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300">SL</span>
-                            : <span className="text-gray-600 text-[10px]">—</span>}
+                            : s.kind === 'modify' && s.status === 'modified'
+                              ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300">✓ {t('U zbatua')}</span>
+                              : <span className="text-gray-600 text-[10px]">—</span>}
                       </td>
                     </tr>
                   );
@@ -412,8 +424,8 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                     return (
                       <div key={s0.id} className="flex items-center justify-between text-[11px] bg-black/20 rounded-lg px-2 py-1">
                         <span className="text-gray-500">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        <span className={s0.direction === 'buy' ? 'text-emerald-400 font-semibold' : s0.direction === 'sell' ? 'text-red-400 font-semibold' : 'text-gray-400'}>
-                          {s0.kind === 'exit' ? t('Dalje') : s0.direction ? s0.direction.toUpperCase() : '—'}
+                        <span className={s0.direction === 'buy' ? 'text-emerald-400 font-semibold' : s0.direction === 'sell' ? 'text-red-400 font-semibold' : s0.kind === 'modify' ? 'text-sky-300' : 'text-gray-400'}>
+                          {s0.kind === 'exit' ? t('Dalje') : s0.kind === 'modify' ? `🔧 ${modLabel(s0)}` : s0.direction ? s0.direction.toUpperCase() : '—'}
                         </span>
                         <span>
                           {(s0.tp_hit ?? 0) > 0
