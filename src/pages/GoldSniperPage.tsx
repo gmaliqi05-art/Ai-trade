@@ -50,6 +50,8 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
     setTp2(tps[1] != null ? String(tps[1]) : '');
     setTp3(tps[2] != null ? String(tps[2]) : '');
     setTp4(tps[3] != null ? String(tps[3]) : '');
+    // Shënimi urues automatik (anglisht + ikona e artë). Mund ta ndryshosh para postimit.
+    setNote('Good luck! 🥇');
   }, [prefill]);
 
   const set = <K extends keyof GoldSniperConfig>(k: K, v: GoldSniperConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
