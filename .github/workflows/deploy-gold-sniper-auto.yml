@@ -1,0 +1,24 @@
+name: Deploy gold-sniper-auto
+
+# Dërgim automatik i sinjaleve të motorit te kanali GoldSniper|FX (cron ~1 min).
+# verify_jwt=false — thirret nga pg_cron me x-cron-secret. Nxitet manualisht.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Deploy gold-sniper-auto (verify_jwt=false)
+        run: supabase functions deploy gold-sniper-auto --no-verify-jwt --project-ref zwyuscgqacfpjafznybg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
