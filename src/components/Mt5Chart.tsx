@@ -334,17 +334,22 @@ export default function Mt5Chart({
 
       {/* Linja e HYRJES e prekshme për çdo pozicion (gjithë gjerësia) — prek për të hapur/mbyllur
           editimin e SL/TP. Pilula djathtas tregon gjendjen. Prekja kudo te linja e aktivizon. */}
-      {positions.map(p => {
+      {positions.map((p, i) => {
         const on = p.positionId === activeId;
         return (
           <div key={p.positionId}
             ref={el => { if (el) entryEls.current[p.positionId] = el; else delete entryEls.current[p.positionId]; }}
-            onPointerDown={e => e.stopPropagation()}
-            onClick={() => onActiveChange?.(on ? null : p.positionId)}
             className="absolute left-0 right-0 z-30 flex items-center justify-end select-none"
-            style={{ height: '26px', display: 'none', transform: 'translateY(-50%)', touchAction: 'none', cursor: 'pointer', pointerEvents: 'auto' }}
-            title={on ? 'Mbyll editimin e SL/TP' : 'Prek linjën e hyrjes për të vendosur/lëvizur SL & TP'}>
-            <span className={`mr-[60px] flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full shadow-md border ${on ? 'bg-blue-600 text-white border-blue-300 ring-2 ring-blue-300/50' : 'bg-blue-500 text-white border-blue-300/60'}`}>
+            style={{ height: '20px', display: 'none', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+            {/* VETËM pilula është e klikueshme (jo gjithë rreshti) — dy hyrje afër njëra-tjetrës nuk
+                bllokohen më; pilulat shkallëzohen horizontalisht sipas indeksit që të mos mbivendosen,
+                janë më të vogla dhe me prapavijë gjysmë të tejdukshme (shihet grafiku poshtë). */}
+            <span
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => onActiveChange?.(on ? null : p.positionId)}
+              title={on ? 'Mbyll editimin e SL/TP' : 'Prek pilulën për të vendosur/lëvizur SL & TP'}
+              style={{ marginRight: `${56 + i * 84}px`, pointerEvents: 'auto', touchAction: 'none', cursor: 'pointer' }}
+              className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border backdrop-blur-[2px] shadow ${on ? 'bg-blue-600/80 text-white border-blue-300/70 ring-1 ring-blue-300/40' : 'bg-blue-500/55 text-white border-blue-300/40'}`}>
               {on ? '✓ Mbyll' : '✎ SL/TP'}
             </span>
           </div>
