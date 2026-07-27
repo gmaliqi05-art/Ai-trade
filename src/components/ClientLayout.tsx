@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { verifyVipCode } from '../services/vipCodes';
 import { supabase } from '../lib/supabase';
 import { ClientPage } from '../App';
 import { useI18n } from '../i18n/i18n';
@@ -64,9 +65,8 @@ const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }
 
 // FAQET E LIRA (regjistrim normal): shfaqen gjithmonë në meny. Të tjerat fshihen pas butonit VIP.
 const FREE_PAGES: ClientPage[] = ['market_prices', 'dashboard', 'telegram_sin', 'manual', 'settings'];
-// Kodi VIP — vetëm kush e ka mund të hapë faqet e tjera. (Mbrojtje e butë në anën e klientit;
-// ndryshoje këtu kur të duash një kod të ri.) Ruhet i zhbllokuar te localStorage pas futjes së saktë.
-const VIP_CODE = 'GOLD-VIP-2026';
+// Kodet VIP menaxhohen nga super admini dhe verifikohen NË SERVER (edge function 'vip-verify').
+// Këtu ruhet vetëm gjendja e zhbllokimit lokal pas verifikimit të suksesshëm.
 const VIP_STORAGE_KEY = 'gt_vip_unlocked';
 
 const pageLabels: Record<ClientPage, string> = {
@@ -99,8 +99,12 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
   const [vipOpen, setVipOpen] = useState(false);
   const [vipInput, setVipInput] = useState('');
   const [vipErr, setVipErr] = useState(false);
-  const submitVip = () => {
-    if (vipInput.trim() === VIP_CODE) {
+  const [vipBusy, setVipBusy] = useState(false);
+  const submitVip = async () => {
+    setVipBusy(true); setVipErr(false);
+    const ok = await verifyVipCode(vipInput.trim());
+    setVipBusy(false);
+    if (ok) {
       setVipUnlocked(true); setVipErr(false); setVipOpen(false); setVipInput('');
       try { localStorage.setItem(VIP_STORAGE_KEY, '1'); } catch { /* */ }
     } else { setVipErr(true); }
@@ -213,7 +217,9 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
                     placeholder={t('Kodi VIP')}
                     className={`w-full bg-black/30 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none ${vipErr ? 'border-red-500' : 'border-amber-500/40 focus:border-amber-500'}`} />
                   {vipErr && <p className="text-[11px] text-red-400 px-1">{t('Kod i pasaktë.')}</p>}
-                  <button onClick={submitVip} className="w-full text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950">{t('Hap qasjen VIP')}</button>
+                  <button onClick={submitVip} disabled={vipBusy} className="w-full flex items-center justify-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950 disabled:opacity-50">
+                    {vipBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{t('Hap qasjen VIP')}
+                  </button>
                 </div>
               )}
             </>

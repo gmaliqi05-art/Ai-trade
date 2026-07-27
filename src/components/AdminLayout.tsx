@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
-  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound
+  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -29,6 +29,7 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_cost', label: 'Kostot & API', icon: Coins, section: 'Platforma' },
   { id: 'admin_broadcast', label: 'Broadcast', icon: Megaphone, section: 'Platforma' },
   { id: 'admin_metatrader', label: 'MetaTrader', icon: Monitor, section: 'Platforma' },
+  { id: 'admin_vip_codes', label: 'Kodet VIP', icon: Crown, section: 'Siguria' },
   { id: 'admin_howitworks', label: 'Si funksionon', icon: BookOpen, section: 'Siguria' },
   { id: 'admin_settings', label: 'Cilësimet', icon: Settings, section: 'Siguria' },
 ];
@@ -46,6 +47,7 @@ const pageLabels: Record<AdminPage, string> = {
   admin_howitworks: 'Si funksionon sistemi',
   admin_protrade_lab: 'ProTrade Lab — mësimi',
   admin_expert_room: 'Dhoma e Ekspertëve',
+  admin_vip_codes: 'Kodet VIP',
   admin_settings: 'Cilësimet e platformës',
 };
 
