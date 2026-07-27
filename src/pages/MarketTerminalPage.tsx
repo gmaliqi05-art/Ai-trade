@@ -1101,9 +1101,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       </details>
 
-      {/* GRAFIK — full width (të dhëna reale nga MT5 kur je i lidhur) */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 flex-wrap gap-2">
+      {/* GRAFIK — pamje TradingView (sfond #131722), të dhëna reale nga MT5 + funksionet tona (linjat). */}
+      <div className="border border-[#2a2e39] rounded-2xl overflow-hidden" style={{ background: '#131722' }}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2a2e39] flex-wrap gap-2">
               <div className="flex gap-1.5 flex-wrap">
                 {assets.filter(a => allowedSymbols.includes(a.symbol)).map(a => (
                   <button key={a.id} onClick={() => pickSymbol(a.symbol)}

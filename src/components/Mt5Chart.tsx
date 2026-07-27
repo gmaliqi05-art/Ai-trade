@@ -159,18 +159,20 @@ export default function Mt5Chart({
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = createChart(containerRef.current, {
-      // PAMJA MT5: sfond gati i zi, grid me pika i heshtur — si terminali MetaTrader 5.
-      layout: { background: { type: ColorType.Solid, color: '#0b0e13' }, textColor: '#8b98a8', attributionLogo: false },
-      grid: { vertLines: { color: '#161d27', style: LineStyle.Dotted }, horzLines: { color: '#161d27', style: LineStyle.Dotted } },
-      rightPriceScale: { borderColor: '#242e3b' },
-      timeScale: { borderColor: '#242e3b', timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7, lockVisibleTimeRangeOnResize: true },
-      crosshair: { mode: 1 },
+      // PAMJA TRADINGVIEW: sfond blu-nate #131722, grid i imët #1e222d, teksti #d1d4dc — identik me
+      // temën e errët të TradingView-it. (lightweight-charts është bërë nga vetë TradingView-i.)
+      layout: { background: { type: ColorType.Solid, color: '#131722' }, textColor: '#d1d4dc', attributionLogo: false },
+      grid: { vertLines: { color: '#1e222d', style: LineStyle.Solid }, horzLines: { color: '#1e222d', style: LineStyle.Solid } },
+      rightPriceScale: { borderColor: '#2a2e39' },
+      timeScale: { borderColor: '#2a2e39', timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7, lockVisibleTimeRangeOnResize: true },
+      crosshair: { mode: 1, vertLine: { color: '#758696', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#2a2e39' }, horzLine: { color: '#758696', labelBackgroundColor: '#2a2e39' } },
       autoSize: true,
     });
     const series = chart.addCandlestickSeries({
-      upColor: '#22c55e', downColor: '#ef4444',
-      borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+      // Ngjyrat e TradingView-it: teal #26a69a (rritje), red #ef5350 (rënie).
+      upColor: '#26a69a', downColor: '#ef5350',
+      borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+      wickUpColor: '#26a69a', wickDownColor: '#ef5350',
       // Shtri auto-scale-in që linjat Hyrje/SL/TP të jenë GJITHMONË brenda pamjes.
       autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
         const res = original();
