@@ -6,11 +6,12 @@ import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import {
   loadGoldSniperConfig, saveGoldSniperConfig, loadGoldSniperPosts, testGoldSniper, postGoldSniperSignal,
-  DEFAULT_GS_CONFIG, type GoldSniperConfig, type GoldSniperPost,
+  DEFAULT_GS_CONFIG, type GoldSniperConfig, type GoldSniperPost, type GoldSniperPrefill,
 } from '../services/goldSniper';
 
 // GoldSniper|FX — faqja e publikimit të sinjaleve te kanali i vetë përdoruesit (bot Telegram).
-export default function GoldSniperPage() {
+// prefill: kur vjen nga një sinjal i klikuar te lista, mbush automatikisht fushat.
+export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefill | null }) {
   const { t } = useI18n();
   const { user } = useAuth();
   const [cfg, setCfg] = useState<GoldSniperConfig>(DEFAULT_GS_CONFIG);
@@ -36,6 +37,20 @@ export default function GoldSniperPage() {
     try { setPosts(await loadGoldSniperPosts(user.id)); } catch { /* */ }
   }, [user]);
   useEffect(() => { refresh(); }, [refresh]);
+
+  // PARA-MBUSHJA nga një sinjal i klikuar te lista — secila vlerë në pozicionin e vet.
+  useEffect(() => {
+    if (!prefill) return;
+    setDir(prefill.direction === 'sell' ? 'sell' : 'buy');
+    if (prefill.symbol) setSymbol(String(prefill.symbol).toUpperCase());
+    setEntry(prefill.entry != null ? String(prefill.entry) : '');
+    setSl(prefill.sl != null ? String(prefill.sl) : '');
+    const tps = prefill.tps || [];
+    setTp1(tps[0] != null ? String(tps[0]) : '');
+    setTp2(tps[1] != null ? String(tps[1]) : '');
+    setTp3(tps[2] != null ? String(tps[2]) : '');
+    setTp4(tps[3] != null ? String(tps[3]) : '');
+  }, [prefill]);
 
   const set = <K extends keyof GoldSniperConfig>(k: K, v: GoldSniperConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
 

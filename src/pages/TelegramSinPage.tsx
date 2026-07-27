@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import Mt5ConnectCard from '../components/Mt5ConnectCard';
 import GoldSniperPage from './GoldSniperPage';
+import { type GoldSniperPrefill } from '../services/goldSniper';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import { ClientPage } from '../App';
@@ -30,6 +31,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const [channel, setChannel] = useState<string>('all');
   // Pamja: 'home' (dy tabelat e kanaleve) ose 'detail' (raportet e plota të një kanali).
   const [view, setView] = useState<'home' | 'detail' | 'feed' | 'gold_sniper'>('home');
+  const [gsPrefill, setGsPrefill] = useState<GoldSniperPrefill | null>(null);
   const [openTrades, setOpenTrades] = useState<TgTradeRow[]>([]);
   const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
   const [chParams, setChParams] = useState<Record<string, TgChannelRow>>({});
@@ -289,7 +291,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         <div className="max-w-4xl mx-auto px-3 sm:px-4 pt-3">
           <button onClick={() => setView('home')} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />{t('Kthehu te Telegram Sin')}</button>
         </div>
-        <GoldSniperPage />
+        <GoldSniperPage prefill={gsPrefill} />
       </div>
     );
   }
@@ -319,8 +321,21 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
               const chName = chanMap.get(String(s.tg_chat_id ?? '')) || s.tg_sender || 'Telegram';
               const result = (s.tp_hit ?? 0) > 0 ? `→ TP${s.tp_hit}` : (s.status === 'closed' ? 'SL' : s.status === 'canceled' ? 'Cancel' : null);
               const resCls = (s.tp_hit ?? 0) > 0 ? 'bg-emerald-500/15 text-emerald-300' : s.status === 'closed' ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300';
+              // KLIK → dërgo të dhënat te GoldSniper|FX (secila në pozicionin e vet) dhe hape atë nën-faqe.
+              const openInGoldSniper = () => {
+                if (!dir) return;
+                setGsPrefill({
+                  direction: dir, symbol: s.symbol || 'XAUUSD',
+                  entry: s.entry_type === 'market' ? null : (s.entry_price ?? null),
+                  sl: s.stop_loss ?? null,
+                  tps: (Array.isArray(s.tps) ? s.tps : []).map(Number).filter((n) => Number.isFinite(n) && n > 0),
+                });
+                setView('gold_sniper');
+              };
               return (
-                <div key={s.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div key={s.id} onClick={openInGoldSniper}
+                  className="rounded-xl border border-white/10 bg-white/[0.03] p-3 cursor-pointer hover:border-amber-500/40 hover:bg-amber-500/[0.04] transition-colors"
+                  title={t('Kliko për ta çuar te GoldSniper|FX')}>
                   {/* Rreshti i sipërm: data/ora e plotë + kanali + rezultati */}
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                     <div className="flex items-center gap-2">
@@ -340,7 +355,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                     {tps.length > 0 && (
                       <span className="text-gray-400">TP: <span className="text-emerald-300 tabular-nums">{tps.join(' / ')}</span></span>
                     )}
-                    <span className="ml-auto"><StatusBadge status={s.status} t={t} /></span>
+                    <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-400/80"><Crosshair className="w-3 h-3" />{t('Posto te GoldSniper')}</span>
                   </div>
                 </div>
               );

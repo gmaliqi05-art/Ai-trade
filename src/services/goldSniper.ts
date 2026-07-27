@@ -6,6 +6,15 @@ import { supabase } from '../lib/supabase';
 const PROJECT_REF = 'zwyuscgqacfpjafznybg';
 const POST_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/gold-sniper-post`;
 
+/** Të dhëna për të para-mbushur formularin e GoldSniper nga një sinjal i klikuar. */
+export interface GoldSniperPrefill {
+  direction: 'buy' | 'sell';
+  symbol?: string | null;
+  entry?: number | null;
+  sl?: number | null;
+  tps?: number[];
+}
+
 export interface GoldSniperConfig {
   bot_token: string;
   channel_id: string;
