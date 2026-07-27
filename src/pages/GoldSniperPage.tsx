@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Crosshair, Send, Loader2, Save, Eye, EyeOff, ChevronDown, RefreshCw, TrendingUp, TrendingDown, CheckCircle2, XCircle,
+  Crosshair, Send, Loader2, Save, Eye, EyeOff, ChevronDown, RefreshCw, TrendingUp, TrendingDown, CheckCircle2, XCircle, Cloud, Copy,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import {
   loadGoldSniperConfig, saveGoldSniperConfig, loadGoldSniperPosts, testGoldSniper, postGoldSniperSignal,
-  DEFAULT_GS_CONFIG, type GoldSniperConfig, type GoldSniperPost, type GoldSniperPrefill,
+  goldSniperIngestUrl, DEFAULT_GS_CONFIG, type GoldSniperConfig, type GoldSniperPost, type GoldSniperPrefill,
 } from '../services/goldSniper';
 
 // GoldSniper|FX — faqja e publikimit të sinjaleve te kanali i vetë përdoruesit (bot Telegram).
@@ -20,6 +20,7 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
+  const [showIngest, setShowIngest] = useState(false);
 
   // Formulari i sinjalit
   const [dir, setDir] = useState<'buy' | 'sell'>('buy');
@@ -89,6 +90,7 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
 
   const inp = 'w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500';
   const configured = !!(cfg.bot_token && cfg.channel_id);
+  const ingestUrl = cfg.ingest_secret ? goldSniperIngestUrl(cfg.ingest_secret) : '';
   // Kujtesa vizuale: kolonat kryesore (Hyrja + SL) të mbushura, i lidhur, dhe s'po poston.
   const readyReminder = configured && busy !== 'post' && !!entry.trim() && !!sl.trim();
 
@@ -185,6 +187,41 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
             <li><span className="text-amber-400 font-bold">2.</span> {t('Shto botin si ADMIN te kanali GoldSniper|FX (me të drejtë "Post messages").')}</li>
             <li><span className="text-amber-400 font-bold">3.</span> {t('Vendos @username-in e kanalit (ose id-në -100…) këtu, ruaj dhe testo.')}</li>
           </ol>
+        </div>
+      </details>
+
+      {/* WEBHOOK HYRËS — lidh platformën TËNDE të gjenerimit të sinjaleve (auto-post te kanali). */}
+      <details className="rounded-2xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><Cloud className="w-4 h-4 text-emerald-400" />{t('Lidh platformën tënde (webhook)')}</span>
+          <ChevronDown className="w-4 h-4 text-gray-500" />
+        </summary>
+        <div className="px-3 sm:px-4 pb-4 space-y-3">
+          <p className="text-[11px] text-gray-400">{t('Platforma jote e sinjaleve (ku bën analizat) dërgon një POST te ky URL dhe sinjali postohet vetë te kanali. Çelësi është privat — mos ia trego askujt.')}</p>
+          {ingestUrl ? (
+            <>
+              <div className="flex items-center gap-2">
+                <input readOnly value={showIngest ? ingestUrl : ingestUrl.replace(/key=.*/, 'key=••••••••')} className={`${inp} font-mono text-[11px]`} />
+                <button onClick={() => setShowIngest(s => !s)} className="shrink-0 p-2 rounded-lg bg-white/5 border border-white/10 text-gray-400 hover:text-white">{showIngest ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                <button onClick={() => { navigator.clipboard?.writeText(ingestUrl); flash('success', t('U kopjua.')); }} className="shrink-0 p-2 rounded-lg bg-white/5 border border-white/10 text-gray-400 hover:text-white" title={t('Kopjo')}><Copy className="w-4 h-4" /></button>
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-500 mb-1">{t('Trupi i kërkesës (JSON) që dërgon platforma jote:')}</p>
+                <pre className="text-[11px] text-gray-300 bg-black/40 border border-white/10 rounded-lg p-3 overflow-x-auto">{`POST  (Content-Type: application/json)
+{
+  "direction": "buy",      // ose "sell"
+  "symbol": "XAUUSD",
+  "entry": 4082,
+  "sl": 4076,
+  "tps": [4090, 4097, 4107, 4125],
+  "note": "Good luck! 🥇"   // opsional
+}`}</pre>
+              </div>
+              <p className="text-[10px] text-gray-500">{t('Mund të dërgosh edhe tekst gati me fushën "message" (do të postohet ashtu siç është).')}</p>
+            </>
+          ) : (
+            <p className="text-[11px] text-gray-500">{t('Ruaj konfigurimin një herë që të gjenerohet çelësi i webhook-ut.')}</p>
+          )}
         </div>
       </details>
 

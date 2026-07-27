@@ -24,6 +24,13 @@ export interface GoldSniperConfig {
   auto_send: boolean;
   header: string;
   footer: string;
+  /** Çelësi i webhook-ut hyrës (VETËM-LEXIM): platforma jote e dërgon sinjalin te ?key=<ky>. */
+  ingest_secret?: string;
+}
+
+/** URL-ja e webhook-ut ku platforma jote dërgon sinjale → postohen te kanali. */
+export function goldSniperIngestUrl(secret: string): string {
+  return `https://${PROJECT_REF}.supabase.co/functions/v1/gold-sniper-ingest?key=${encodeURIComponent(secret)}`;
 }
 export const DEFAULT_GS_CONFIG: GoldSniperConfig = {
   bot_token: '', channel_id: '', channel_name: 'GoldSniper|FX', active: false, auto_send: false,
@@ -37,12 +44,15 @@ export async function loadGoldSniperConfig(userId: string): Promise<GoldSniperCo
     bot_token: data.bot_token ?? '', channel_id: data.channel_id ?? '',
     channel_name: data.channel_name ?? 'GoldSniper|FX', active: !!data.active, auto_send: !!data.auto_send,
     header: data.header ?? DEFAULT_GS_CONFIG.header, footer: data.footer ?? '',
+    ingest_secret: data.ingest_secret ?? '',
   };
 }
 
 export async function saveGoldSniperConfig(userId: string, patch: Partial<GoldSniperConfig>): Promise<void> {
+  // ingest_secret është VETËM-LEXIM (menaxhohet nga DB) — s'e mbishkruajmë kurrë nga UI.
+  const { ingest_secret: _s, ...rest } = patch;
   const { error } = await supabase.from('gold_sniper_config')
-    .upsert({ user_id: userId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    .upsert({ user_id: userId, ...rest, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
   if (error) throw new Error(error.message);
 }
 
