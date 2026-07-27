@@ -289,6 +289,56 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
     }
   }
 
+  // 1.5) TOLERANCA E HYRJES (kërkesa e pronarit): çmimi iu afrua hyrjes së pending-ut brenda ±$1
+  // (ari; të tjerat 0.025%) por s'e preku ekzaktësisht dhe po kthehet — mos e humb trade-in:
+  // anulo porosinë në pritje dhe hyr MENJËHERË market me të njëjtin SL/TP/lot.
+  const tolPx = new Map<string, { bid: number; ask: number } | null>();
+  const tolConv = new Map<string, { sym: string; action: string; n: number }>();
+  for (const t of rows) {
+    if (t.status !== "pending" || !t.metaapi_order_id || !ordIds.has(String(t.metaapi_order_id))) continue;
+    const entry = Number(t.entry_price);
+    if (!(entry > 0)) continue;
+    const sym = String(t.symbol || "XAUUSD");
+    if (!tolPx.has(sym)) tolPx.set(sym, await livePrice(cfg, sym));
+    const lp = tolPx.get(sym);
+    if (!lp) continue;
+    const isBuy = String(t.action).toUpperCase() === "BUY";
+    const mkt = isBuy ? lp.ask : lp.bid;
+    const tol = /XAU|GOLD/i.test(sym) ? 1.0 : mkt * 0.00025;
+    if (!(Math.abs(mkt - entry) <= tol)) continue;
+    // Anulo pending-un TË PARIN; vetëm nëse anulimi kalon hyjmë market (pa dyfishim nëse sapo u mbush).
+    const rc = await maTrade(cfg, { actionType: "ORDER_CANCEL", orderId: String(t.metaapi_order_id) });
+    const bc = brokerResult(rc.body);
+    if (!(rc.ok && bc.ok)) continue;
+    const rm = await maTrade(cfg, {
+      actionType: isBuy ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL", symbol: sym,
+      volume: Number(t.volume) || 0.01, comment: `${TG_TAG}${t.tp_index}`,
+      stopLoss: Number(t.stop_loss) || undefined, takeProfit: Number(t.take_profit) || undefined,
+    });
+    const bm = brokerResult(rm.body);
+    if (rm.ok && bm.ok) {
+      await db.from("telegram_trades").update({
+        status: "open", metaapi_order_id: bm.orderId, metaapi_position_id: bm.positionId ?? bm.orderId,
+        reason: `TG TP${t.tp_index} (hyrje me tolerancë — çmimi ${Math.round(mkt * 100) / 100} afër ${entry})`,
+      }).eq("id", t.id);
+      t.status = "open"; t.metaapi_position_id = String(bm.positionId ?? bm.orderId ?? ""); changed++;
+      const k = String(t.signal_id || t.id);
+      const cur = tolConv.get(k) || { sym, action: isBuy ? "BUY" : "SELL", n: 0 };
+      cur.n++; tolConv.set(k, cur);
+    } else {
+      await db.from("telegram_trades").update({ status: "closed", closed_at: now, reason: `Toleranca: pending u anulua por market s'u hap (${bm.msg || bm.code})` }).eq("id", t.id);
+      t.status = "closed"; changed++;
+    }
+  }
+  for (const [k, v] of tolConv) {
+    await pushNotify({
+      user_id: userId,
+      title: `📥 ${v.action} ${v.sym} — hyri me tolerancë (±$1)`,
+      body: `Çmimi iu afrua hyrjes pa e prekur ekzaktësisht — ${v.n} pozicione u hapën market. — Telegram Sin`,
+      url: "/", tag: `tgsin-tol-${k.slice(0, 8)}`,
+    });
+  }
+
   // 2) Grupim sipas sinjalit; leg i zhdukur ndërsa vëllezërit janë hapur ⇒ e preku TP-në e vet
   //    (SL është i njëjtë për të gjitha legs — po të prekej SL, mbylleshin të gjitha njëherësh).
   // deno-lint-ignore no-explicit-any
