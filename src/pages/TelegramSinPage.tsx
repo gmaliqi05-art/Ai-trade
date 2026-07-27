@@ -384,6 +384,9 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           const st = statsOf(list);
           const off = chanOff(id);
           const act = activeOf(id);
+          // Në kartë shfaqen VETËM sinjalet aktive (në pritje / të hapura / pjesërisht);
+          // të përfunduarat (mbyllur/SL/TP, refuzuar, modifikime) vetëm te Raportet e plota.
+          const activeCardList = list.filter((s0) => s0.kind === 'entry' && ['pending', 'executed', 'partial', 'received'].includes(s0.status));
           const collapsed = id === '-1003603315504'; // BESA — model hamburger (e mbyllur si parazgjedhje)
           const cardCls = `rounded-xl border p-3 sm:p-4 ${off ? 'border-white/10 bg-white/[0.02] opacity-80' : 'border-sky-500/25 bg-sky-500/[0.04]'}`;
           const header = (
@@ -423,12 +426,14 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                 ))}
               </div>
 
-              {/* Sinjalet e fundit (3) */}
+              {/* Sinjalet AKTIVE (në pritje / të hapura) — të përfunduarat vetëm te Raportet e plota */}
               {list.length === 0 ? (
                 <p className="text-[11px] text-gray-500">{t('Ende s\'ka sinjale nga ky kanal.')}</p>
+              ) : activeCardList.length === 0 ? (
+                <p className="text-[11px] text-gray-500">{t('S\'ka sinjale aktive tani — të përfunduarat i gjen te Raportet e plota.')}</p>
               ) : (
                 <div className="space-y-1">
-                  {list.slice(0, 3).map((s0) => {
+                  {activeCardList.slice(0, 3).map((s0) => {
                     const d = new Date(s0.created_at);
                     return (
                       <div key={s0.id} className="flex items-center justify-between text-[11px] bg-black/20 rounded-lg px-2 py-1">
