@@ -14,8 +14,8 @@ import SignalScanLog from '../components/SignalScanLog';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
   loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice, loadPositionCloses, recordClose,
-  loadPreOpenOrders, cancelPreOpenOrder, loadPendingOrders, cancelOrder,
-  type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder,
+  loadPreOpenOrders, cancelPreOpenOrder, loadPendingOrders, cancelOrder, closePosition,
+  type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder, type PendingOrder,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
 import { loadTelegramSignals, loadTgLegs, sigPnl, type TelegramSignalRow, type TgLegRow } from '../services/telegramSin';
@@ -274,6 +274,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   }, [selected]);
   const [preOpenOrders, setPreOpenOrders] = useState<PreOpenOrder[]>([]); // porositë para-hapjeje (radhë/pending te brokeri)
   const [nowTs, setNowTs] = useState(Date.now()); // tik për numëruesin e hapjes së tregut
+  // Ekran i plotë: paneli "Mbyll" — lista e pozicioneve të hapura + porosive në pritje, secili me buton.
+  const [closePanel, setClosePanel] = useState(false);
+  const [pendingList, setPendingList] = useState<PendingOrder[]>([]);
+  const [closingId, setClosingId] = useState<string | null>(null);
 
   // Plotëson SL/TP default rreth çmimit aktual (gold: SL $3, TP $6), sipas drejtimit.
   const fillDefaultProtection = () => {
@@ -639,25 +643,35 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setTradeLoading(false);
   };
 
-  // ANULO POROSITË në pritje (limit/stop te brokeri + radha para-hapjes) për simbolin e zgjedhur.
-  const quickCancel = async () => {
+
+  // Hap panelin "Mbyll": rifreskon pozicionet e hapura + porositë në pritje (që të shfaqen për mbyllje/anulim).
+  const openClosePanel = async () => {
     if (!metaConfigured) { setTradeMsg({ type: 'error', text: errText(t, 'metaapi_not_configured') }); return; }
-    setTradeLoading(true); setTradeMsg(null);
-    let canceled = 0;
+    setClosePanel(true); setTradeMsg(null);
+    fetchPositions();
     try {
       const r = await loadPendingOrders();
-      const orders = Array.isArray((r as { orders?: unknown[] }).orders) ? (r as { orders: Array<{ id?: string | number; symbol?: string }> }).orders : [];
-      const isGold = (s?: string) => /XAU|GOLD/i.test(s || '');
-      const mine = orders.filter(o => (o.symbol || '').toUpperCase().replace(/[^A-Z0-9]/g, '').startsWith(selected.toUpperCase()) || (isGold(o.symbol) && isGold(selected)));
-      for (const o of mine) { if (o.id != null) { const c = await cancelOrder(String(o.id)); if (!c.error) canceled++; } }
-    } catch { /* */ }
-    // Anulo edhe porositë e radhës para-hapjes për këtë simbol.
-    for (const o of preOpenOrders) { try { await cancelPreOpenOrder(o.id); canceled++; } catch { /* */ } }
-    setTradeMsg(canceled > 0
-      ? { type: 'success', text: t('U anuluan {n} porosi në pritje.', { n: canceled }) }
-      : { type: 'error', text: t('S\'ka porosi në pritje për të anuluar.') });
-    fetchMeta(); loadPreOpen();
-    setTradeLoading(false);
+      const orders = Array.isArray((r as { orders?: PendingOrder[] }).orders) ? (r as { orders: PendingOrder[] }).orders : [];
+      setPendingList(orders);
+    } catch { setPendingList([]); }
+  };
+
+  // Mbyll një pozicion të hapur (buton për secilin te paneli).
+  const closeOnePosition = async (id: string) => {
+    setClosingId(id); setTradeMsg(null);
+    const r = await closePosition(id);
+    if (r.error) setTradeMsg({ type: 'error', text: r.message || t('Mbyllja dështoi.') });
+    else { setTradeMsg({ type: 'success', text: t('Pozicioni u mbyll.') }); await fetchPositions(); }
+    setClosingId(null);
+  };
+
+  // Anulo një porosi në pritje (buton për secilën te paneli).
+  const cancelOnePending = async (id: string) => {
+    setClosingId(id); setTradeMsg(null);
+    const r = await cancelOrder(id);
+    if (r.error) setTradeMsg({ type: 'error', text: r.message || t('Anulimi dështoi.') });
+    else { setTradeMsg({ type: 'success', text: t('Porosia u anulua.') }); setPendingList(list => list.filter(o => String(o.id) !== id)); }
+    setClosingId(null);
   };
 
   // Horizonti: periudha të shkurtra (1m/5m/15m) = afat-shkurt; përndryshe afat-gjatë (swing).
@@ -1252,13 +1266,69 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-xs disabled:opacity-50">
               {tradeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingDown className="w-3.5 h-3.5" />}SELL
             </button>
-            <button onClick={quickCancel} disabled={tradeLoading}
+            <button onClick={openClosePanel} disabled={tradeLoading}
               className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 font-bold text-xs disabled:opacity-50">
-              <Ban className="w-3.5 h-3.5" />{t('Anulo')}
+              <X className="w-3.5 h-3.5" />{t('Mbyll')}
             </button>
           </div>
           {tradeMsg && (
             <div className={`px-3 py-1.5 text-[11px] ${tradeMsg.type === 'success' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}`}>{tradeMsg.text}</div>
+          )}
+          {/* PANELI "MBYLL": lista e pozicioneve të hapura + porosive në pritje — secili me butonin e vet. */}
+          {closePanel && (
+            <div className="absolute inset-0 z-10 flex flex-col justify-end bg-black/60" onClick={() => setClosePanel(false)}>
+              <div className="bg-[#1a1e27] border-t border-[#2a2e39] rounded-t-2xl max-h-[70%] flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2e39]">
+                  <span className="text-white font-semibold text-sm">{t('Pozicionet e hapura')}</span>
+                  <button onClick={() => setClosePanel(false)} className="p-1 rounded-lg text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+                </div>
+                <div className="overflow-y-auto p-3 space-y-2">
+                  {positions.length === 0 && pendingList.length === 0 && (
+                    <div className="text-[12px] text-gray-500 text-center py-6">{t('Asnjë pozicion i hapur apo porosi në pritje.')}</div>
+                  )}
+                  {positions.map((p) => {
+                    const isBuy = (p.type || '').includes('BUY');
+                    const profit = Number(p.profit ?? 0);
+                    return (
+                      <div key={p.id} className="flex items-center justify-between gap-2 bg-black/30 rounded-xl px-3 py-2.5">
+                        <span className="flex items-center gap-2 min-w-0 flex-wrap text-xs">
+                          {isBuy ? <TrendingUp className="w-4 h-4 text-green-400 shrink-0" /> : <TrendingDown className="w-4 h-4 text-red-400 shrink-0" />}
+                          <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
+                          <span className="text-white">{p.symbol}</span>
+                          <span className="text-gray-400">{p.volume} {t('lot')}</span>
+                          {p.openPrice != null && <span className="text-gray-500">@ {p.openPrice}</span>}
+                          <span className={`font-semibold tabular-nums ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)}</span>
+                        </span>
+                        <button onClick={() => closeOnePosition(String(p.id))} disabled={closingId === String(p.id)}
+                          className="shrink-0 inline-flex items-center gap-1 bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/40 px-3 py-1.5 rounded-lg font-bold text-xs disabled:opacity-50">
+                          {closingId === String(p.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}{t('Mbyll')}
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {pendingList.length > 0 && (
+                    <div className="pt-1 text-[11px] text-gray-400 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-amber-400" />{t('Porositë në pritje')}</div>
+                  )}
+                  {pendingList.map((o) => {
+                    const isBuy = (o.type || '').includes('BUY');
+                    return (
+                      <div key={o.id} className="flex items-center justify-between gap-2 bg-amber-500/5 border border-amber-500/15 rounded-xl px-3 py-2.5">
+                        <span className="flex items-center gap-2 text-xs">
+                          <span className={`font-bold ${isBuy ? 'text-green-400' : 'text-red-400'}`}>{isBuy ? t('BLEJ') : t('SHIT')}</span>
+                          <span className="text-white">{o.symbol}</span>
+                          <span className="text-gray-500">{o.volume} {t('lot')}</span>
+                          {o.openPrice != null && <span className="text-amber-400">@ {o.openPrice}</span>}
+                        </span>
+                        <button onClick={() => cancelOnePending(String(o.id))} disabled={closingId === String(o.id)}
+                          className="shrink-0 inline-flex items-center gap-1 bg-gray-700/60 hover:bg-gray-700 text-gray-200 border border-gray-600 px-3 py-1.5 rounded-lg font-bold text-xs disabled:opacity-50">
+                          {closingId === String(o.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}{t('Anulo')}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}
