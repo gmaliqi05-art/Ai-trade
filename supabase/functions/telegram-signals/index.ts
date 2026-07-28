@@ -298,29 +298,11 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
   // (Toleranca e hyrjes ±$1 u HOQ me kërkesë të pronarit — dërguesit e sinjaleve thanë që hyrja
   // pa e arritur çmimi SAKTËSISHT nivelin e tyre nuk vlen. Pending mbushet vetëm me prekje të saktë.)
 
-  // 1.6) SKADIMI I PENDING-ut (kërkesa e pronarit): nëse çmimi s'e arrin hyrjen brenda 5 MINUTASH,
-  // tregu ka marrë kah tjetër → anulo porosinë; sinjali shënohet 'canceled' dhe raporti tregon Anuluar.
-  for (const t of rows) {
-    if (t.status !== "pending" || !t.metaapi_order_id || !ordIds.has(String(t.metaapi_order_id))) continue;
-    const ageMs = Date.now() - new Date(t.created_at).getTime();
-    if (!(Number.isFinite(ageMs) && ageMs > 5 * 60 * 1000)) continue;
-    const rc = await maTrade(cfg, { actionType: "ORDER_CANCEL", orderId: String(t.metaapi_order_id) });
-    const bc = brokerResult(rc.body);
-    if (rc.ok && (bc.ok || /not.*found|already/i.test(bc.msg))) {
-      await db.from("telegram_trades").update({ status: "closed", closed_at: now, reason: "Anuluar: çmimi s'e arriti hyrjen për 5 min" }).eq("id", t.id);
-      t.status = "closed"; changed++;
-      if (t.signal_id) {
-        const still = rows.some((x) => x.id !== t.id && String(x.signal_id) === String(t.signal_id) && ["open", "pending"].includes(x.status));
-        if (!still) await db.from("telegram_signals").update({ status: "canceled" }).eq("id", t.signal_id).in("status", ["executed", "partial", "pending"]);
-      }
-      await pushNotify({
-        user_id: userId,
-        title: `⏳ Porosia u anulua — ${t.symbol || "XAUUSD"}`,
-        body: `Çmimi s'e arriti hyrjen (${t.entry_price}) për 5 min — sinjali u anulua (Cancel). — Telegram Sin`,
-        url: "/", tag: `tgsin-exp-${String(t.id).slice(0, 8)}`,
-      });
-    }
-  }
+  // 1.6) SKADIMI I PENDING-ut pas 5 min u HOQ me kërkesë të pronarit.
+  // Arsyeja: dërguesit e sinjaleve zakonisht dërgojnë vetë një mesazh "mbylleni/anulojeni" kur
+  // çmimi s'e prek hyrjen — dhe atë e trajton dega e mbylljes (exit). Porosia në pritje mbetet
+  // aktive derisa: (a) çmimi ta prekë hyrjen, (b) të vijë urdhri "mbyll" nga kanali, ose
+  // (c) ta anulosh vetë nga tabela e porosive në pritje (Trade Live / ekran i plotë).
 
   // 2) Grupim sipas sinjalit; leg i zhdukur ndërsa vëllezërit janë hapur ⇒ e preku TP-në e vet
   //    (SL është i njëjtë për të gjitha legs — po të prekej SL, mbylleshin të gjitha njëherësh).
