@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo, type ReactNode } fro
 import {
   Activity, RefreshCw, Loader2, Zap, Brain, Landmark,
   AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
-  ArrowUp, ArrowDown, Clock, X,
+  ArrowUp, ArrowDown, Clock, X, Maximize2, Minimize2, TrendingUp, TrendingDown, Ban,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -14,7 +14,7 @@ import SignalScanLog from '../components/SignalScanLog';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
   loadCandles, loadOpenPositions, modifyPosition, loadSymbolPrice, loadPositionCloses, recordClose,
-  loadPreOpenOrders, cancelPreOpenOrder,
+  loadPreOpenOrders, cancelPreOpenOrder, loadPendingOrders, cancelOrder,
   type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
@@ -173,6 +173,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [activePosId, setActivePosId] = useState<string | null>(null); // pozicioni në modë editimi SL/TP mbi grafik
 
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
+  // Grafiku në EKRAN TË PLOTË (me butona Buy/Sell/Cancel) — i përshtatshëm horizontal & vertikal.
+  const [chartFull, setChartFull] = useState(false);
+  const [vh, setVh] = useState<number>(typeof window !== 'undefined' ? window.innerHeight : 800);
   const [lot, setLot] = useState('0.01');
   const [showNewOrder, setShowNewOrder] = useState(false); // forma manuale e palosur si default; hapet me klik ose nga sinjali
   const [newEntry, setNewEntry] = useState('');   // Çmimi i hyrjes (porosi në pritje nëse s'është aty)
@@ -607,6 +610,53 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       fetchMeta();
       loadPreOpen();
     }
+    setTradeLoading(false);
+  };
+
+  // Rimat lartësinë e ekranit të plotë (edhe kur rrotullohet telefoni horizontal/vertikal).
+  useEffect(() => {
+    if (!chartFull) return;
+    const onResize = () => setVh(window.innerHeight);
+    onResize();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => { window.removeEventListener('resize', onResize); window.removeEventListener('orientationchange', onResize); };
+  }, [chartFull]);
+
+  // TREGTIM I SHPEJTË (butonat Buy/Sell në ekran të plotë) — porosi tregu me lot-in aktual.
+  const quickTrade = async (dir: 'buy' | 'sell') => {
+    const vol = parseFloat(lot);
+    if (isNaN(vol) || vol <= 0) { setTradeMsg({ type: 'error', text: t('Vendos një lot të vlefshëm (p.sh. 0.01).') }); return; }
+    if (!metaConfigured) { setTradeMsg({ type: 'error', text: errText(t, 'metaapi_not_configured') }); return; }
+    setTradeType(dir); setTradeLoading(true); setTradeMsg(null);
+    const r = await executeTrade({ action: dir === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: vol });
+    if (r.error) setTradeMsg({ type: 'error', text: errText(t, r.error, r.message) });
+    else {
+      const d = dir === 'buy' ? t('BLEJ') : t('SHIT');
+      setTradeMsg({ type: 'success', text: t('Urdhër {dir} {sym} ({vol} lot){extra} dërguar ({mode}).', { dir: d, sym: selected, vol, extra: '', mode: r.mode ?? '' }) });
+      fetchMeta(); loadPreOpen();
+    }
+    setTradeLoading(false);
+  };
+
+  // ANULO POROSITË në pritje (limit/stop te brokeri + radha para-hapjes) për simbolin e zgjedhur.
+  const quickCancel = async () => {
+    if (!metaConfigured) { setTradeMsg({ type: 'error', text: errText(t, 'metaapi_not_configured') }); return; }
+    setTradeLoading(true); setTradeMsg(null);
+    let canceled = 0;
+    try {
+      const r = await loadPendingOrders();
+      const orders = Array.isArray((r as { orders?: unknown[] }).orders) ? (r as { orders: Array<{ id?: string | number; symbol?: string }> }).orders : [];
+      const isGold = (s?: string) => /XAU|GOLD/i.test(s || '');
+      const mine = orders.filter(o => (o.symbol || '').toUpperCase().replace(/[^A-Z0-9]/g, '').startsWith(selected.toUpperCase()) || (isGold(o.symbol) && isGold(selected)));
+      for (const o of mine) { if (o.id != null) { const c = await cancelOrder(String(o.id)); if (!c.error) canceled++; } }
+    } catch { /* */ }
+    // Anulo edhe porositë e radhës para-hapjes për këtë simbol.
+    for (const o of preOpenOrders) { try { await cancelPreOpenOrder(o.id); canceled++; } catch { /* */ } }
+    setTradeMsg(canceled > 0
+      ? { type: 'success', text: t('U anuluan {n} porosi në pritje.', { n: canceled }) }
+      : { type: 'error', text: t('S\'ka porosi në pritje për të anuluar.') });
+    fetchMeta(); loadPreOpen();
     setTradeLoading(false);
   };
 
@@ -1123,6 +1173,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                   className={`text-[11px] px-2 py-1 rounded-lg font-semibold transition-colors border ${showBigLevels ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-gray-800 text-gray-500 border-transparent hover:text-white'}`}>
                   🏦 {t('Nivelet')}
                 </button>
+                {/* EKRAN I PLOTË — zmadho grafikun në gjithë ekranin me butona Buy/Sell/Cancel. */}
+                <button onClick={() => setChartFull(true)} title={t('Ekran i plotë')}
+                  className="text-[11px] px-2 py-1 rounded-lg font-semibold bg-gray-800 text-gray-400 hover:text-white border border-transparent">
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
             <div className="px-2 pb-2">
@@ -1157,6 +1212,57 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               </div>
             )}
       </div>
+
+      {/* ===== EKRAN I PLOTË — grafiku në gjithë ekranin + butona Buy/Sell/Cancel (horizontal & vertikal) ===== */}
+      {chartFull && (
+        <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: '#131722', paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          {/* Shiriti i sipërm: simboli, çmimi, periudhat, dalja */}
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[#2a2e39] flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-white font-bold text-sm">{selected}</span>
+              {livePrice != null && <span className={`text-sm font-black tabular-nums ${!pxFresh ? 'text-gray-500' : pxDir === 'up' ? 'text-green-400' : pxDir === 'down' ? 'text-red-400' : 'text-white'}`}>{livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
+                {['1m', '5m', '15m', '1h', '4h', '1d'].map(tt => (
+                  <button key={tt} onClick={() => setTf(tt)} className={`text-[11px] px-2 py-1 rounded-md font-medium ${tf === tt ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white'}`}>{tt === '1d' ? '1D' : tt}</button>
+                ))}
+              </div>
+              <button onClick={() => setChartFull(false)} className="p-1.5 rounded-lg bg-gray-800 text-gray-300 hover:text-white" title={t('Dil nga ekrani i plotë')}><Minimize2 className="w-4 h-4" /></button>
+            </div>
+          </div>
+          {/* Grafiku — mbush gjithë hapësirën e mbetur */}
+          <div className="flex-1 min-h-0">
+            {candles.length > 0 && (
+              <Mt5Chart candles={displayCandles} lines={chartLines} bands={liqBands} height={Math.max(220, vh - 150)} fitKey={`full_${selected}_${tf}`}
+                positions={editables} activeId={activePosId} onActiveChange={setActivePosId} onCommitSlTp={onCommitSlTp} />
+            )}
+          </div>
+          {/* Shiriti i tregtimit: lot + BUY / SELL / CANCEL — një rresht, punon horizontal & vertikal */}
+          <div className="border-t border-[#2a2e39] px-3 py-2 flex items-center gap-2 flex-wrap">
+            <label className="flex items-center gap-1.5 text-[11px] text-gray-400">
+              <span>{t('Lot')}</span>
+              <input type="number" step="0.01" min="0.01" value={lot} onChange={e => setLot(e.target.value)}
+                className="w-20 bg-black/40 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500" />
+            </label>
+            <button onClick={() => quickTrade('buy')} disabled={tradeLoading}
+              className="flex-1 min-w-[90px] inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-green-500 hover:bg-green-400 text-white font-bold text-sm disabled:opacity-50">
+              {tradeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}BUY
+            </button>
+            <button onClick={() => quickTrade('sell')} disabled={tradeLoading}
+              className="flex-1 min-w-[90px] inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-sm disabled:opacity-50">
+              {tradeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingDown className="w-4 h-4" />}SELL
+            </button>
+            <button onClick={quickCancel} disabled={tradeLoading}
+              className="flex-1 min-w-[90px] inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 font-bold text-sm disabled:opacity-50">
+              <Ban className="w-4 h-4" />{t('Anulo')}
+            </button>
+          </div>
+          {tradeMsg && (
+            <div className={`px-3 py-1.5 text-[11px] ${tradeMsg.type === 'success' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}`}>{tradeMsg.text}</div>
+          )}
+        </div>
+      )}
 
       {/* RENDITJA (kërkesa e pronarit): Porosia e re (1) → Pozicionet e hapura (2) → Sinjali i fundit.
           Big Investors/COT u zhvendos NË FUND të faqes (te banner-i i tregut). */}
