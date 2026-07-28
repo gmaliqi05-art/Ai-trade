@@ -1238,24 +1238,23 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 positions={editables} activeId={activePosId} onActiveChange={setActivePosId} onCommitSlTp={onCommitSlTp} />
             )}
           </div>
-          {/* Shiriti i tregtimit: lot + BUY / SELL / CANCEL — një rresht, punon horizontal & vertikal */}
-          <div className="border-t border-[#2a2e39] px-3 py-2 flex items-center gap-2 flex-wrap">
-            <label className="flex items-center gap-1.5 text-[11px] text-gray-400">
-              <span>{t('Lot')}</span>
-              <input type="number" step="0.01" min="0.01" value={lot} onChange={e => setLot(e.target.value)}
-                className="w-20 bg-black/40 border border-gray-700 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-amber-500" />
-            </label>
+          {/* Shiriti i tregtimit: lot + BUY / SELL / CANCEL — NJË RRESHT (pa mbështjellje), butona
+              kompaktë që të rrinë të gjithë brenda edhe në telefon vertikal. */}
+          <div className="border-t border-[#2a2e39] px-2 py-1.5 flex items-center gap-1.5">
+            <input type="number" step="0.01" min="0.01" value={lot} onChange={e => setLot(e.target.value)}
+              title={t('Lot')} aria-label={t('Lot')}
+              className="w-14 shrink-0 bg-black/40 border border-gray-700 rounded-lg px-1.5 py-1.5 text-white text-xs text-center focus:outline-none focus:border-amber-500" />
             <button onClick={() => quickTrade('buy')} disabled={tradeLoading}
-              className="flex-1 min-w-[90px] inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-green-500 hover:bg-green-400 text-white font-bold text-sm disabled:opacity-50">
-              {tradeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}BUY
+              className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-green-500 hover:bg-green-400 text-white font-bold text-xs disabled:opacity-50">
+              {tradeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}BUY
             </button>
             <button onClick={() => quickTrade('sell')} disabled={tradeLoading}
-              className="flex-1 min-w-[90px] inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-sm disabled:opacity-50">
-              {tradeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingDown className="w-4 h-4" />}SELL
+              className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-xs disabled:opacity-50">
+              {tradeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingDown className="w-3.5 h-3.5" />}SELL
             </button>
             <button onClick={quickCancel} disabled={tradeLoading}
-              className="flex-1 min-w-[90px] inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 font-bold text-sm disabled:opacity-50">
-              <Ban className="w-4 h-4" />{t('Anulo')}
+              className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 font-bold text-xs disabled:opacity-50">
+              <Ban className="w-3.5 h-3.5" />{t('Anulo')}
             </button>
           </div>
           {tradeMsg && (
