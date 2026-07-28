@@ -472,6 +472,8 @@ Deno.serve(async (req: Request) => {
   const chatId = String(msg.chat?.id ?? "");
   const messageId = Number(msg.message_id ?? 0);
   const sender = String(msg.from?.username || msg.from?.id || msg.sender_chat?.title || "");
+  // history=true (rilexim nga forwarder-i): regjistro/shfaq mesazhin, por MOS hap tregti.
+  const history = update.history === true;
 
   // 2) BROADCAST (kërkesa e pronarit): sinjali përpunohet për TË GJITHË përdoruesit me Telegram Sin
   // AKTIV — secili tregton në llogarinë e VET MetaApi me parametrat e VET për kanal (lot/TP/tik…),
@@ -483,7 +485,7 @@ Deno.serve(async (req: Request) => {
   if (!cfgList.some((c) => String(c.user_id) === String(cfgRow.user_id))) cfgList.push(cfgRow);
   const results: Record<string, unknown>[] = [];
   for (const c of cfgList) {
-    try { results.push({ user: String(c.user_id).slice(0, 8), ...(await processForUser(db, c, { text, chatId, messageId, sender })) }); }
+    try { results.push({ user: String(c.user_id).slice(0, 8), ...(await processForUser(db, c, { text, chatId, messageId, sender, history })) }); }
     catch (e) { results.push({ user: String(c.user_id).slice(0, 8), error: (e as Error).message }); }
   }
   return json({ ok: true, results });
@@ -492,8 +494,9 @@ Deno.serve(async (req: Request) => {
 // Përpunon një mesazh kanali për NJË përdorues: filtra → idempotencë → parametrat për kanal →
 // parse → modify/exit/entry — gjithçka në llogarinë dhe me cilësimet e ATIJ përdoruesi.
 // deno-lint-ignore no-explicit-any
-async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, m: { text: string; chatId: string; messageId: number; sender: string }): Promise<Record<string, unknown>> {
+async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, m: { text: string; chatId: string; messageId: number; sender: string; history?: boolean }): Promise<Record<string, unknown>> {
   const { text, chatId, messageId, sender } = m;
+  const history = m.history === true;
   // Brenda këtij funksioni 'json' kthen OBJEKT të thjeshtë (jo Response) — rezultatet e të gjithë
   // përdoruesve mblidhen nga thirrësi (broadcast) dhe kthehen si NJË përgjigje e vetme.
   const json = (x: Record<string, unknown>) => x;
@@ -554,6 +557,9 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
   const finish = async (status: string, error: string | null) => {
     if (signalId) await db.from("telegram_signals").update({ status, error }).eq("id", signalId);
   };
+
+  // RILEXIM HISTORIK (backfill): regjistro/shfaq mesazhin, por MOS ekzekto asnjë tregti.
+  if (history) { await finish("ignored", "📥 histori (rilexim) — pa tregti"); return json({ ok: true, kind: "history" }); }
 
   if (p.kind === "unknown") { await finish("ignored", "koment/tekst — s'është sinjal me strukturë (Entry/SL/TP)"); return json({ ok: true, kind: "unknown" }); }
   if (channelOff) { await finish("ignored", "kanali është i çaktivizuar nga cilësimet"); return json({ ok: true, skip: "chat_disabled" }); }

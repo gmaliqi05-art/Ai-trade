@@ -12,6 +12,9 @@ Env variablat e nevojshme:
   TG_SOURCE      — kanali/kanalet: @username ose id numerik (-100...), ndaj me presje.
                    Bosh = VETËM XNINE (parazgjedhje e sigurt, shih DEFAULT_SOURCES).
   WEBHOOK_URL    — URL-ja e plotë e webhook-ut me ?key=... (nga faqja Telegram Sin)
+  BACKFILL_HOURS — (opsionale) rilexo mesazhet e X orëve të fundit VETËM PËR SHIKIM
+                   (shfaqen në platformë me flamurin history=true → NUK hapin tregti).
+                   Vendose një herë (p.sh. 24) → ridezo → hiqe/0 që të mos rilexojë sërish.
 
 RREGULLI I ARTË: i njëjti TG_SESSION guxon të përdoret VETËM në një instancë
 (një service në Railway). Nëse e nis dy herë njëkohësisht (p.sh. service i dytë),
@@ -30,6 +33,10 @@ API_HASH = os.environ["TG_API_HASH"]
 SESSION = os.environ["TG_SESSION"]
 WEBHOOK = os.environ["WEBHOOK_URL"]
 _raw_sources = os.environ.get("TG_SOURCE", "").strip()
+try:
+    BACKFILL_HOURS = float(os.environ.get("BACKFILL_HOURS", "0") or "0")
+except ValueError:
+    BACKFILL_HOURS = 0.0
 
 # Parazgjedhja: VETËM "FX+ | XNINE LEVEL 2" — që feed-i të mos dëgjojë kurrë "të gjitha"
 # bisedat dhe të mos përzihet me kanale të tjera nëse TG_SOURCE lihet bosh.
@@ -54,8 +61,9 @@ SOURCES = _parse_sources(_raw_sources) or DEFAULT_SOURCES
 client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
 
 
-async def post_to_webhook(text: str, chat_id: int, message_id: int, title: str):
+async def post_to_webhook(text: str, chat_id: int, message_id: int, title: str, history: bool = False):
     # Formati përputhet me atë që pret edge function-i (update.channel_post).
+    # history=True → mesazhi vetëm regjistrohet/shfaqet, NUK hap tregti (rilexim historik).
     payload = {
         "channel_post": {
             "text": text,
@@ -64,6 +72,8 @@ async def post_to_webhook(text: str, chat_id: int, message_id: int, title: str):
             "sender_chat": {"title": title},
         }
     }
+    if history:
+        payload["history"] = True
     async with aiohttp.ClientSession() as s:
         try:
             async with s.post(WEBHOOK, json=payload, timeout=aiohttp.ClientTimeout(total=15)) as r:
@@ -86,6 +96,40 @@ async def handler(event):
         title = ""
     print(f"⇢ sinjal ({title}): {text[:70].replace(chr(10), ' ')}", flush=True)
     await post_to_webhook(text, event.chat_id, msg.id, title)
+
+
+async def backfill():
+    """Rilexon mesazhet e BACKFILL_HOURS orëve të fundit VETËM PËR SHIKIM (history=True).
+    Nuk hap tregti; dublikatat shmangen nga edge function-i (tg_message_id)."""
+    if BACKFILL_HOURS <= 0:
+        return
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=BACKFILL_HOURS)
+    print(f"↺ Backfill: po rilexoj {BACKFILL_HOURS}h të fundit (vetëm shikim)…", flush=True)
+    total = 0
+    for src in SOURCES:
+        try:
+            ent = await client.get_entity(src)
+            title = getattr(ent, "title", "") or ""
+        except Exception:
+            title = ""
+        batch = []
+        try:
+            async for m in client.iter_messages(src):  # nga i riu te i vjetri
+                if m.date < cutoff:
+                    break
+                if (m.message or "").strip():
+                    batch.append(m)
+        except Exception as e:
+            print(f"! backfill s'lexoi dot {src}: {e}", flush=True)
+            continue
+        batch.reverse()  # dërgoji nga i vjetri te i riu (renditje kronologjike)
+        for m in batch:
+            await post_to_webhook(m.message, m.chat_id, m.id, title, history=True)
+            total += 1
+            await asyncio.sleep(0.3)  # i butë me webhook-un
+        print(f"↺ Backfill {src}: {len(batch)} mesazhe", flush=True)
+    print(f"↺ Backfill përfundoi: {total} mesazhe (pa tregti). Hiqe BACKFILL_HOURS që të mos përsëritet.", flush=True)
 
 
 def _print_dead_session_help():
@@ -123,6 +167,10 @@ async def main():
     who = me.username or me.first_name or me.id
     print(f"✓ Kyçur si: {who}", flush=True)
     print(f"✓ Dëgjon: {SOURCES}", flush=True)
+    try:
+        await backfill()
+    except Exception as e:
+        print(f"! backfill dështoi (vazhdoj live): {e}", flush=True)
     print("✓ Në pritje të sinjaleve… (24/7)", flush=True)
     try:
         await client.run_until_disconnected()
