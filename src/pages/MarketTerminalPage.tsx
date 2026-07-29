@@ -10,6 +10,7 @@ import { ClientPage } from '../App';
 import Mt5Chart, { type ChartCandle, type PriceLineDef, type EditableSlTp } from '../components/Mt5Chart';
 import OpenPositionsPanel from '../components/OpenPositionsPanel';
 import CompletedSignals from '../components/CompletedSignals';
+import ReportBook, { type ReportRow } from '../components/ReportBook';
 import SignalScanLog from '../components/SignalScanLog';
 import {
   loadMetaApiConfig, checkMetaApiConnection, executeTrade, loadTradeHistory,
@@ -1003,6 +1004,35 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const tgLive = tgSigEntries.filter((s) => ['executed', 'partial'].includes(s.status));
   const tgPending = tgSigEntries.filter((s) => s.status === 'pending');
   const tgDone = tgSigEntries.filter((s) => ['closed', 'canceled'].includes(s.status));
+
+  // Rreshtat e raportit (Telegram Sin) — të gjitha kanalet bashkë; kanali shfaqet te kolona "Burimi".
+  const tgReportRows: ReportRow[] = tgDone.map((s) => {
+    const pnl = sigPnl(tgLegsOf(s.id));
+    return {
+      id: s.id, date: new Date(s.created_at),
+      label: TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || 'Telegram',
+      direction: (s.direction as 'buy' | 'sell' | null) ?? null,
+      entry: s.entry_price ?? null, market: s.entry_type === 'market',
+      sl: s.stop_loss ?? null, tps: Array.isArray(s.tps) ? s.tps : [],
+      pips: pnl.pips, net: pnl.net, status: s.status, tpHit: s.tp_hit ?? 0,
+    };
+  });
+
+  // Hyrjet MANUALE (nga historiku i MT5): trade të mbyllura pa robot (tregtim i drejtpërdrejtë yti).
+  const manualReportRows: ReportRow[] = history
+    .filter((h) => h.robot === 'Manuale' || h.source === 'manual')
+    .map((h) => {
+      const isGold = /XAU|GOLD/i.test(h.symbol || '');
+      const dir = h.direction === 'BUY' ? 1 : -1;
+      const pips = (isGold && h.entryPrice != null && h.exitPrice != null)
+        ? Math.round((h.exitPrice - h.entryPrice) * dir * 10 * 10) / 10 : null;
+      return {
+        id: h.id, date: new Date(h.closeTime || h.openTime || 0),
+        label: h.symbol, direction: h.direction === 'BUY' ? 'buy' : h.direction === 'SELL' ? 'sell' : null,
+        entry: h.entryPrice ?? null, market: false, sl: h.plannedSL ?? null,
+        tps: h.plannedTP != null ? [h.plannedTP] : [], pips, net: h.net, status: 'closed', tpHit: 0,
+      } as ReportRow;
+    });
   // Tabela e përbashkët e sinjaleve të Telegram Sin (përdoret nga të tri seksionet).
   const renderTgSinTable = (list: TelegramSignalRow[]) => (
     <div className="overflow-x-auto">
@@ -1520,22 +1550,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           {renderTgSinTable(tgPending)}
         </TLFold>
       )}
-      {metaConfigured && tgDone.length > 0 && (
+      {metaConfigured && tgReportRows.length > 0 && (
         <TLFold k="tgdone" title={t('Telegram Sin — raportet (të mbyllura & të anuluara)')} icon={<History className="w-4 h-4 text-sky-400" />}>
-          {/* TË NDARA SIPAS GRUPIT (kërkesa e pronarit): secili kanal me tabelën e vet. */}
-          <div className="space-y-4">
-            {[...new Set(tgDone.map((s) => String(s.tg_chat_id ?? '')))].map((cid) => {
-              const list = tgDone.filter((s) => String(s.tg_chat_id ?? '') === cid);
-              return (
-                <div key={cid} className="bg-gray-800/20 border border-gray-800 rounded-xl p-3">
-                  <span className="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 mb-1">
-                    {TG_CHAN_LABEL[cid] || list[0]?.tg_sender || 'Telegram'}
-                  </span>
-                  {renderTgSinTable(list)}
-                </div>
-              );
-            })}
-          </div>
+          {/* NDARJE DITORE + përmbledhje ditore & e përgjithshme + filtër date (ditë/interval). */}
+          <ReportBook rows={tgReportRows} lossLabel="SL" />
+        </TLFold>
+      )}
+
+      {/* HYRJET MANUALE (kërkesa e pronarit): raport i veçantë, model hamburger, me ndarje ditore
+          + përmbledhje (sa hyrje, sa profit, sa humbje, bilanci) + filtër date. */}
+      {metaConfigured && manualReportRows.length > 0 && (
+        <TLFold k="tgmanual" title={t('Hyrjet manuale — raportet')} icon={<History className="w-4 h-4 text-amber-400" />}>
+          <ReportBook rows={manualReportRows} />
         </TLFold>
       )}
 
