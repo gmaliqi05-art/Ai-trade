@@ -53,6 +53,7 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   const TG_CHAN_NAMES: Record<string, string> = {
     '-1003603315504': 'BESA DIGITAL VIP',
     '-1003278125980': 'FX+ | XNINE LEVEL 2',
+    'platform': 'GoldSniper|FX',
   };
   const refreshTgChannels = useCallback(async () => {
     if (!user) return;

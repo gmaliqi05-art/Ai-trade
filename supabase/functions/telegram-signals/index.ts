@@ -253,6 +253,51 @@ function structuredToText(p: any): string {
   return lines.join("\n");
 }
 
+// Teksti i sinjalit për kanalin GoldSniper (anglisht, HTML) — sinjalet e platformës janë të pronarit.
+// deno-lint-ignore no-explicit-any
+function fmtChannelSignal(header: string, footer: string, p: any): string {
+  const dir = String(p.direction || p.side || "").toLowerCase();
+  const dirLabel = dir === "sell" ? "🔴 SELL" : "🟢 BUY";
+  const sym = String(p.symbol || "XAUUSD").toUpperCase();
+  const entry = p.entry ?? p.entry_price ?? p.price;
+  const sl = p.sl ?? p.stop_loss;
+  const tps: number[] = Array.isArray(p.tps) ? p.tps : (p.tp != null ? [p.tp] : []);
+  const lines: string[] = [];
+  if (header) lines.push(header, "");
+  lines.push(`${dirLabel} <b>${sym}</b>`);
+  if (entry != null) lines.push(`📍 Entry: <b>${entry}</b>`);
+  if (sl != null) lines.push(`🛑 SL: <b>${sl}</b>`);
+  tps.forEach((tp, i) => lines.push(`🎯 TP${i + 1}: <b>${tp}</b>`));
+  lines.push("", p.note ? String(p.note) : "Good luck! 🥇");
+  if (footer) lines.push("", footer);
+  return lines.join("\n");
+}
+
+// AUTO-FORWARD: poston sinjalin e platformës te kanali GoldSniper i PRONARIT (idempotent).
+// deno-lint-ignore no-explicit-any
+async function postToOwnerChannel(db: ReturnType<typeof createClient>, userId: string, messageId: number, ps: any): Promise<Record<string, unknown>> {
+  const { data: gs } = await db.from("gold_sniper_config").select("*").eq("user_id", userId).maybeSingle();
+  if (!gs || !gs.auto_send || !gs.bot_token || !gs.channel_id) return { skip: "no_channel" };
+  const srcId = `platform-${messageId}`;
+  const { data: dup } = await db.from("gold_sniper_posts").select("id").eq("user_id", userId).eq("source_signal_id", srcId).limit(1);
+  if (dup && dup.length > 0) return { skip: "duplicate" };
+  const text = fmtChannelSignal(gs.header || "", gs.footer || "", ps);
+  const resp = await fetch(`https://api.telegram.org/bot${gs.bot_token}/sendMessage`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: gs.channel_id, text, parse_mode: "HTML", disable_web_page_preview: true }),
+  });
+  const tg = await resp.json().catch(() => ({}));
+  const ok = !!tg.ok;
+  const tps: number[] = Array.isArray(ps.tps) ? ps.tps : (ps.tp != null ? [ps.tp] : []);
+  await db.from("gold_sniper_posts").insert({
+    user_id: userId, symbol: ps.symbol ?? "XAUUSD", direction: (ps.direction ?? ps.side) ?? null,
+    entry: (ps.entry ?? ps.entry_price) ?? null, stop_loss: (ps.sl ?? ps.stop_loss) ?? null, tps,
+    note: ps.note ?? null, message: text, telegram_message_id: ok ? (tg.result?.message_id ?? null) : null,
+    status: ok ? "sent" : "failed", error: ok ? null : (tg.description || "dërgimi dështoi"), source_signal_id: srcId,
+  });
+  return ok ? { ok: true, message_id: tg.result?.message_id } : { ok: false, error: tg.description };
+}
+
 // ---------- Push notification te aplikacioni (web-push-send) ----------
 async function pushNotify(payload: { user_id: string; title: string; body: string; url?: string; tag?: string }) {
   try {
@@ -489,7 +534,7 @@ Deno.serve(async (req: Request) => {
     text = structuredToText(ps);
     chatId = String(ps.source_id || PLATFORM_CHAT_ID);
     messageId = Number(ps.id ?? Date.now());
-    sender = String(ps.source || "Platforma ime");
+    sender = String(ps.source || "GoldSniper|FX");
   } else {
     const msg = update.message || update.channel_post || update.edited_message || null;
     if (!msg) return json({ ok: true, skip: "no_message" });
@@ -514,7 +559,14 @@ Deno.serve(async (req: Request) => {
     try { results.push({ user: String(c.user_id).slice(0, 8), ...(await processForUser(db, c, { text, chatId, messageId, sender, history })) }); }
     catch (e) { results.push({ user: String(c.user_id).slice(0, 8), error: (e as Error).message }); }
   }
-  return json({ ok: true, results });
+
+  // AUTO-FORWARD te kanali GoldSniper i PRONARIT: sinjalet e platformës janë 100% të tijat →
+  // postohen automatik te kanali (nëse auto_send + bot + kanal). Vetëm hyrje e re, jo histori.
+  let channel: Record<string, unknown> | null = null;
+  if (ps && !history && String(ps.action || "signal").toLowerCase() === "signal") {
+    channel = await postToOwnerChannel(db, cfgRow.user_id, messageId, ps).catch((e) => ({ error: (e as Error).message }));
+  }
+  return json({ ok: true, results, channel });
 });
 
 // Përpunon një mesazh kanali për NJË përdorues: filtra → idempotencë → parametrat për kanal →
