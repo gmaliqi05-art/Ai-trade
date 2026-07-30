@@ -12,16 +12,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 //
 // Cron: çdo 2 min. Portë sigurie x-cron-secret (fail-safe: lejo nëse s'ka sekret).
 
-// Njoftim Web Push (best-effort) — thërret web-push-send me service-role. S'duhet të ndalë robotin.
-async function pushNotify(payload: Record<string, unknown>): Promise<void> {
-  try {
-    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch { /* njoftimi s'duhet të ndalë robotin */ }
+// Njoftimet Web Push nga DEMO janë ÇAKTIVIZUAR me kërkesë të pronarit (s'na duhen më).
+// Funksioni mbetet si no-op që thirrjet ekzistuese të mos prishen.
+// deno-lint-ignore no-unused-vars
+async function pushNotify(_payload: Record<string, unknown>): Promise<void> {
+  return; // pa njoftime nga demo
 }
 
 const corsHeaders = {
