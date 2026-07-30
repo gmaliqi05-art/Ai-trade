@@ -885,9 +885,18 @@ Deno.serve(async (req: Request) => {
     const { data: configs } = await db
       .from("metaapi_config").select("*").eq("auto_trade", true).eq("kill_switch", false);
 
+    // VIP-GATE (kërkesa e pronarit): sinjalet e MMT/motorit tregtojnë VETËM për përdorues VIP ose admin.
+    // Përdoruesit normalë s'marrin tregti/push nga këto — atyre u punon vetëm GoldSniperFX (telegram-signals).
+    const vipAllowed = new Set<string>();
+    try {
+      const { data: vips } = await db.from("profiles").select("id").or("is_vip.eq.true,is_admin.eq.true");
+      for (const p of (vips ?? []) as { id: string }[]) vipAllowed.add(String(p.id));
+    } catch { /* në dështim, mos tregto për askënd nga motori (fail-safe) */ }
+
     for (const raw of (configs ?? [])) {
       const cfg = raw as Cfg;
       if (!cfg.account_id || !cfg.token) continue;
+      if (!vipAllowed.has(String(cfg.user_id))) continue; // jo-VIP → asnjë tregti/push nga MMT/motori
 
       let positions: Position[] = [];
       let dayPnl = 0; // P&L i DITËS i ROBOTIT të Sinjaleve (realized + floating i pozicioneve SIG/SCALP)
