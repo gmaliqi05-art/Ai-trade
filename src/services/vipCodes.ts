@@ -58,3 +58,29 @@ export async function deleteVipCode(id: string): Promise<void> {
   const { error } = await supabase.from('vip_access_codes').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+// ---- Anëtarët VIP (privilegji jepet direkt nga admin — pa kod) ----
+export interface VipMember { id: string; email: string; is_vip: boolean; is_admin: boolean; }
+
+async function callAdminVip(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const resp = await fetch(`https://${PROJECT_REF}.supabase.co/functions/v1/admin-vip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+    body: JSON.stringify(payload),
+  });
+  const j = await resp.json().catch(() => ({}));
+  if (!resp.ok || j.error) throw new Error(j.error || 'Kërkesa dështoi.');
+  return j;
+}
+
+/** Liston përdoruesit me statusin VIP (vetëm admin). */
+export async function loadVipMembers(): Promise<VipMember[]> {
+  const j = await callAdminVip({ action: 'list' });
+  return (j.users as VipMember[]) ?? [];
+}
+
+/** I jep ose i heq privilegjin VIP një përdoruesi (vetëm admin). */
+export async function setVipMember(userId: string, isVip: boolean): Promise<void> {
+  await callAdminVip({ action: 'set', user_id: userId, is_vip: isVip });
+}

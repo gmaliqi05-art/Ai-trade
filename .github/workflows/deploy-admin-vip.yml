@@ -1,0 +1,24 @@
+name: Deploy admin-vip
+
+# Menaxhim VIP nga super-admin (liston përdoruesit + jep/heq is_vip). Nxitet manualisht.
+# verify_jwt=true — kërkon JWT; funksioni kontrollon edhe që thirrësi është admin.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Deploy admin-vip
+        run: supabase functions deploy admin-vip --project-ref zwyuscgqacfpjafznybg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
