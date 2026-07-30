@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // web-push-send — dërgon njoftime Web Push (web + PWA) me VAPID + enkriptim aes128gcm (RFC 8291/8188),
 // vetëm me Web Crypto native (pa varësi të jashtme). Thirret:
 //  - INTERNE (me service-role bearer): nga auto-trade-runner (hap/mbyll trade) & engine-scan (sinjale).
-//    Body: { title, body, url?, tag?, user_id?  |  audience:'all' }
+//    Body: { title, body, url?, tag?, user_id?  |  audience:'all'|'vip' }
 //  - PËRDORUES (me JWT): butoni "Provo" te Cilësimet → { self:true, title, body, url? } (vetëm te vetja).
 
 const corsHeaders = {
@@ -115,6 +115,12 @@ Deno.serve(async (req: Request) => {
       if (body.audience === "all") {
         const { data } = await db.from("push_tokens").select("user_id").eq("is_active", true);
         userIds = [...new Set((data ?? []).map((r) => (r as { user_id: string }).user_id))];
+      } else if (body.audience === "vip") {
+        // VETËM përdoruesit VIP (ose admin) — sinjalet e motorit/MMT s'shkojnë te përdoruesit normalë.
+        const { data: vipRows } = await db.from("profiles").select("id").or("is_vip.eq.true,is_admin.eq.true");
+        const vipSet = new Set((vipRows ?? []).map((r) => (r as { id: string }).id));
+        const { data } = await db.from("push_tokens").select("user_id").eq("is_active", true);
+        userIds = [...new Set((data ?? []).map((r) => (r as { user_id: string }).user_id))].filter((id) => vipSet.has(id));
       } else if (body.user_id) {
         userIds = [String(body.user_id)];
       }

@@ -144,6 +144,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [metaConfigured, setMetaConfigured] = useState(false);
   // Roboti i Sinjaleve aktiv? (kill_switch i fikur). I ndalur → tabelat e tij s'shfaqen në Trade Live.
   const [signalsRobotOn, setSignalsRobotOn] = useState(false);
+  // VIP? Sinjalet e motorit/MMT shfaqen VETËM për VIP (ose admin) — përdoruesit normalë shohin
+  // vetëm GoldSniperFX Algorithm. Burimi i vërtetë = profiles.is_vip/is_admin (jo localStorage).
+  const [isVip, setIsVip] = useState(false);
   // Telegram Sin në Trade Live: sinjalet + GJITHË mesazhet e grupeve (raport i shpejtë + feed).
   const [tgSigs, setTgSigs] = useState<TelegramSignalRow[]>([]);
   const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
@@ -416,6 +419,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     }
     setLastUpdated(new Date());
   }, [user, fetchCloses]);
+
+  // A është përdoruesi VIP (ose admin)? Vetëm atëherë shfaqen sinjalet e motorit/MMT në Trade Live.
+  useEffect(() => {
+    if (!user) { setIsVip(false); return; }
+    let alive = true;
+    supabase.from('profiles').select('is_vip, is_admin').eq('id', user.id).maybeSingle()
+      .then(({ data }) => {
+        const p = data as { is_vip?: boolean; is_admin?: boolean } | null;
+        if (alive) setIsVip(!!(p?.is_vip || p?.is_admin));
+      });
+    return () => { alive = false; };
+  }, [user]);
 
   // Rifreskim i SHPEJTË i tabelës së mbyllura (vetëm DB, çdo 10s) — i pavarur nga MetaApi.
   useEffect(() => {
@@ -1368,8 +1383,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           Big Investors/COT u zhvendos NË FUND të faqes (te banner-i i tregut). */}
       <div className="flex flex-col gap-3">
 
-      {/* Sinjali i fundit — VETËM kur roboti i Sinjaleve është aktiv (i ndalur → karta e tij fshihet). */}
-      {signalsRobotOn && (
+      {/* Sinjali i fundit (motori/MMT) — VETËM kur roboti i Sinjaleve është aktiv DHE përdoruesi është VIP.
+          Përdoruesit normalë s'e shohin fare — ata marrin vetëm GoldSniperFX Algorithm (kërkesa e pronarit). */}
+      {signalsRobotOn && isVip && (
       <div className="order-4 bg-gray-900 border border-gray-800 rounded-2xl p-3">
           <div className="text-[11px] text-gray-500 mb-1 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" />{t('Sinjali i fundit (klik për ta tregtuar)')}</div>
           <p className="text-[10px] text-gray-600 mb-2 leading-snug">{t('Ky është sinjali aktual i motorit — pikërisht atë që tregton roboti i sinjaleve. Aktiv 5 min; pas 5 min shënohet I VJETËR; pas 15 min hiqet.')}</p>
@@ -1596,9 +1612,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </TLFold>
       )}
 
-      {/* 4+5) Analizat e sinjaleve — VETËM kur roboti i Sinjaleve është aktiv: robot i ndalur =
-          pa tabela raportesh të tij në Trade Live (kërkesa e pronarit). */}
-      {signalsRobotOn && (
+      {/* 4+5) Analizat e sinjaleve (motori/MMT) — VETËM kur roboti i Sinjaleve është aktiv DHE VIP.
+          Përdoruesit normalë s'i shohin — vetëm GoldSniperFX Algorithm (kërkesa e pronarit). */}
+      {signalsRobotOn && isVip && (
         <TLFold k="history" bare defaultOpen={false} title={t('Analiza e sinjaleve — të përfunduarat + historiku i skanimeve')} icon={<History className="w-4 h-4 text-amber-400" />}>
           <CompletedSignals signals={doneSignals} variant="compact" />
           <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
