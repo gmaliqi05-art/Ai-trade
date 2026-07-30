@@ -1541,18 +1541,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* TELEGRAM SIN — TRI TABELAT (kërkesa e pronarit): LIVE në trade · në pritje · raportet.
           Tabelat e robotëve të tjerë u HOQËN nga Trade Live (i gjen te faqja Raporte). */}
       {metaConfigured && tgLive.length > 0 && (
-        <TLFold k="tglive" title={t('Sinjalet e platformës — LIVE në trade')} icon={<Zap className="w-4 h-4 text-emerald-400" />}>
+        <TLFold k="tglive" title={t('GoldSniperFX Algorithm — LIVE në trade')} icon={<Zap className="w-4 h-4 text-emerald-400" />}>
           {renderTgSinTable(tgLive)}
         </TLFold>
       )}
       {metaConfigured && tgPending.length > 0 && (
-        <TLFold k="tgpend" title={t('Sinjalet e platformës — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
-          <p className="text-[10px] text-gray-500 mb-2">{t('Nëse çmimi s\'e arrin hyrjen brenda 5 minutash, porosia anulohet vetë dhe shfaqet te raportet si Anuluar (Cancel).')}</p>
+        <TLFold k="tgpend" title={t('GoldSniperFX Algorithm — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
+          <p className="text-[10px] text-gray-500 mb-2">{t('Porosia rri në pritje derisa çmimi të arrijë hyrjen (ose derisa të mbyllet nga sinjali/ti).')}</p>
           {renderTgSinTable(tgPending)}
         </TLFold>
       )}
       {metaConfigured && tgReportRows.length > 0 && (
-        <TLFold k="tgdone" title={t('Sinjalet e platformës — raportet (të mbyllura & të anuluara)')} icon={<History className="w-4 h-4 text-sky-400" />}>
+        <TLFold k="tgdone" title={t('GoldSniperFX Algorithm — raportet (të mbyllura & të anuluara)')} icon={<History className="w-4 h-4 text-sky-400" />}>
           {/* NDARJE DITORE + përmbledhje ditore & e përgjithshme + filtër date (ditë/interval). */}
           <ReportBook rows={tgReportRows} lossLabel="SL" />
         </TLFold>
