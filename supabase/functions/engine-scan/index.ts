@@ -778,8 +778,9 @@ async function platformPass(
     });
     created++;
     out.push({ platform: symbol, action: sig.action, confidence: Math.round(sig.confidence * 100), created: true });
-    // Push te të gjithë përdoruesit e abonuar: sinjal i ri.
-    await pushNotify({ audience: "all", title: "Sinjal i ri", body: `${symbol} ${sig.action} • besueshmëri ${Math.round(sig.confidence * 100)}%`, url: "/", tag: "signal" });
+    // Push VETËM te përdoruesit VIP (kërkesë e pronarit): sinjalet e motorit s'i dërgohen përdoruesve
+    // normalë — ata marrin vetëm sinjalet e GoldSniperFX Algorithm. VIP-i menaxhohet nga admin (profiles.is_vip).
+    await pushNotify({ audience: "vip", title: "Sinjal i ri", body: `${symbol} ${sig.action} • besueshmëri ${Math.round(sig.confidence * 100)}%`, url: "/", tag: "signal" });
   }
 }
 
@@ -836,9 +837,15 @@ Deno.serve(async (req: Request) => {
       .eq("auto_trade", true)
       .eq("kill_switch", false);
 
+    // VIP-gate (kërkesë e pronarit): sinjalet per-përdorues të motorit gjenerohen/njoftohen VETËM për
+    // përdoruesit VIP (ose admin). Përdoruesit normalë s'marrin sinjale motori — vetëm GoldSniperFX Algorithm.
+    const { data: vipRows } = await db.from("profiles").select("id").or("is_vip.eq.true,is_admin.eq.true");
+    const vipAllowed = new Set((vipRows ?? []).map((r) => (r as { id: string }).id));
+
     // Simbol → lista e përdoruesve (me pragun e tyre).
     const symbolUsers = new Map<string, CfgRow[]>();
     for (const c of (configs ?? []) as CfgRow[]) {
+      if (!vipAllowed.has(String(c.user_id))) continue; // jo-VIP → pa sinjale motori
       for (const s of (c.auto_symbols || "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean)) {
         if (!isSupported(s)) continue; // FOKUS: vetëm ar + naftë; injoro crypto/forex/aksione
         if (!symbolUsers.has(s)) symbolUsers.set(s, []);
