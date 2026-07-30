@@ -289,7 +289,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     return (
       <div>
         <div className="max-w-4xl mx-auto px-3 sm:px-4 pt-3">
-          <button onClick={() => setView('home')} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />{t('Kthehu te Telegram Sin')}</button>
+          <button onClick={() => setView('home')} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />{t('Kthehu te Sinjalet e platformës')}</button>
         </div>
         <GoldSniperPage prefill={gsPrefill} />
       </div>
@@ -426,7 +426,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           <Send className="w-5 h-5 text-sky-400" />
         </div>
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-white">Telegram Sin</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-white">Sinjalet e platformës</h1>
           <p className="text-xs text-gray-400">{t('Roboti që hyn në trade sipas sinjaleve nga Telegram — 24/7.')}</p>
         </div>
       </div>

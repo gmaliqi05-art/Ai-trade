@@ -41,7 +41,7 @@ const navSections = [
     items: [
       { id: 'metatrader' as ClientPage, label: 'Lidhja & Konfigurimi', icon: Monitor },
       { id: 'mmt' as ClientPage, label: 'MMT — Super Roboti', icon: Brain },
-      { id: 'telegram_sin' as ClientPage, label: 'Telegram Sin', icon: Send },
+      { id: 'telegram_sin' as ClientPage, label: 'Sinjalet e platformës', icon: Send },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
   },
@@ -58,7 +58,7 @@ const navSections = [
 // Shiriti i navigimit poshtë për celular/tablet (pamje si-app). E 5-ta ("Më shumë") hap menynë e plotë.
 const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }[] = [
   { id: 'market_prices', label: 'Tregto Live', icon: Activity },
-  { id: 'telegram_sin', label: 'Telegram Sin', icon: Send },
+  { id: 'telegram_sin', label: 'Sinjalet', icon: Send },
   { id: 'dashboard', label: 'Paneli', icon: LayoutDashboard },
   { id: 'manual', label: 'Manuali', icon: BookOpen },
 ];
@@ -78,7 +78,7 @@ const pageLabels: Record<ClientPage, string> = {
   protrade: 'ProTrade Intelligence',
   metatrader: 'Lidhja & Konfigurimi',
   mmt: 'MMT — Super Roboti',
-  telegram_sin: 'Telegram Sin',
+  telegram_sin: 'Sinjalet e platformës',
   gold_sniper: 'GoldSniper|FX',
   notifications: 'Njoftimet',
   reports: 'Raporte',

@@ -996,7 +996,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const TG_CHAN_LABEL: Record<string, string> = {
     '-1003603315504': 'BESA DIGITAL VIP',
     '-1003278125980': 'FX+ | XNINE LEVEL 2',
-    'platform': 'Platforma ime',
+    'platform': 'GoldSniper|FX',
   };
   // Sinjalet që kanë HYRË në trade (jo komentet/injoruarat) — të ndara në tri tabela:
   // LIVE në trade · në pritje · raportet (të mbyllura/anuluara). (Kërkesa e pronarit.)
@@ -1541,18 +1541,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* TELEGRAM SIN — TRI TABELAT (kërkesa e pronarit): LIVE në trade · në pritje · raportet.
           Tabelat e robotëve të tjerë u HOQËN nga Trade Live (i gjen te faqja Raporte). */}
       {metaConfigured && tgLive.length > 0 && (
-        <TLFold k="tglive" title={t('Telegram Sin — LIVE në trade')} icon={<Zap className="w-4 h-4 text-emerald-400" />}>
+        <TLFold k="tglive" title={t('Sinjalet e platformës — LIVE në trade')} icon={<Zap className="w-4 h-4 text-emerald-400" />}>
           {renderTgSinTable(tgLive)}
         </TLFold>
       )}
       {metaConfigured && tgPending.length > 0 && (
-        <TLFold k="tgpend" title={t('Telegram Sin — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
+        <TLFold k="tgpend" title={t('Sinjalet e platformës — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
           <p className="text-[10px] text-gray-500 mb-2">{t('Nëse çmimi s\'e arrin hyrjen brenda 5 minutash, porosia anulohet vetë dhe shfaqet te raportet si Anuluar (Cancel).')}</p>
           {renderTgSinTable(tgPending)}
         </TLFold>
       )}
       {metaConfigured && tgReportRows.length > 0 && (
-        <TLFold k="tgdone" title={t('Telegram Sin — raportet (të mbyllura & të anuluara)')} icon={<History className="w-4 h-4 text-sky-400" />}>
+        <TLFold k="tgdone" title={t('Sinjalet e platformës — raportet (të mbyllura & të anuluara)')} icon={<History className="w-4 h-4 text-sky-400" />}>
           {/* NDARJE DITORE + përmbledhje ditore & e përgjithshme + filtër date (ditë/interval). */}
           <ReportBook rows={tgReportRows} lossLabel="SL" />
         </TLFold>
