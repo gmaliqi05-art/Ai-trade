@@ -22,6 +22,15 @@ Deno.serve(async (req: Request) => {
     if (!data || !data.active) return json({ valid: false });
     // Rrit numëruesin (best-effort — s'e bllokon përgjigjen).
     try { await db.rpc("increment_vip_use", { p_id: data.id }); } catch { /* */ }
+    // Shëno përdoruesin si VIP në server (nga JWT-ja e tij) — kështu robotët MMT/Sinjalet
+    // tregtojnë e njoftojnë VETËM për të. Mbetet derisa ta heqësh nga super-admin.
+    try {
+      const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+      if (jwt) {
+        const { data: u } = await db.auth.getUser(jwt);
+        if (u?.user?.id) await db.from("profiles").update({ is_vip: true }).eq("id", u.user.id);
+      }
+    } catch { /* jo-kritike për verifikimin */ }
     return json({ valid: true, label: data.label ?? null });
   } catch (e) {
     return json({ valid: false, error: (e as Error).message }, 500);
