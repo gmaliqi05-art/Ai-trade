@@ -996,6 +996,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const TG_CHAN_LABEL: Record<string, string> = {
     '-1003603315504': 'BESA DIGITAL VIP',
     '-1003278125980': 'FX+ | XNINE LEVEL 2',
+    'platform': 'Platforma ime',
   };
   // Sinjalet që kanë HYRË në trade (jo komentet/injoruarat) — të ndara në tri tabela:
   // LIVE në trade · në pritje · raportet (të mbyllura/anuluara). (Kërkesa e pronarit.)
