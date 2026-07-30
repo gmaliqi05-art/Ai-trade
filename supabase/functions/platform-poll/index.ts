@@ -72,8 +72,8 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ---- B) MESAZHET (info/chat) → tekst te kanali (pa trade) ----
-  if (gs?.auto_send && gs?.bot_token && gs?.channel_id) {
+  // ---- B) MESAZHET (info/chat) → ROBOTI i lexon (lëviz SL / breakeven / dil) + tekst te kanali ----
+  {
     const messages = await fetchList(FEED_MESSAGES, "messages");
     for (const m of messages) {
       const mid = String(m.id ?? "");
@@ -85,18 +85,35 @@ Deno.serve(async (req: Request) => {
       if (type === "signal") continue; // sinjalet trajtohen nga /signals (trade)
       const text = String(m.text ?? "").trim();
       if (!text) continue;
-      const resp = await fetch(`https://api.telegram.org/bot${gs.bot_token}/sendMessage`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: gs.channel_id, text, disable_web_page_preview: true }),
-      });
-      const tg = await resp.json().catch(() => ({}));
-      await db.from("gold_sniper_posts").insert({
-        user_id: ownerId, message: text, note: null,
-        telegram_message_id: tg.ok ? (tg.result?.message_id ?? null) : null,
-        status: tg.ok ? "sent" : "failed", error: tg.ok ? null : (tg.description || "dërgimi dështoi"),
-        source_signal_id: `msg-${mid}`,
-      });
-      if (tg.ok) msgSent++;
+
+      // 1) ROBOTI: mesazhi shkon te telegram-signals ku parseSignal e klasifikon —
+      //    modify (lëviz SL / breakeven / ndrysho TP), exit (dil/mbyll), ose koment → injorohet.
+      //    Vepron te MT5 për të gjithë përdoruesit (si sinjalet). Formatimi markdown hiqet.
+      if (secret) {
+        const clean = text.replace(/[`*_]/g, "");
+        try {
+          await fetch(`${SELF}/functions/v1/telegram-signals?key=${encodeURIComponent(secret)}`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ signal: { action: "message", message: clean, symbol: "XAUUSD", id: uuidToNum(mid), source: m.source ?? "GoldSniperFX" } }),
+          });
+        } catch { /* mos e ndal poller-in */ }
+      }
+
+      // 2) KANALI: posto tekstin origjinal te kanali (nëse auto_send + bot + kanal).
+      if (gs?.auto_send && gs?.bot_token && gs?.channel_id) {
+        const resp = await fetch(`https://api.telegram.org/bot${gs.bot_token}/sendMessage`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: gs.channel_id, text, disable_web_page_preview: true }),
+        });
+        const tg = await resp.json().catch(() => ({}));
+        await db.from("gold_sniper_posts").insert({
+          user_id: ownerId, message: text, note: null,
+          telegram_message_id: tg.ok ? (tg.result?.message_id ?? null) : null,
+          status: tg.ok ? "sent" : "failed", error: tg.ok ? null : (tg.description || "dërgimi dështoi"),
+          source_signal_id: `msg-${mid}`,
+        });
+        if (tg.ok) msgSent++;
+      }
     }
   }
 
