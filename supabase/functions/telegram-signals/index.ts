@@ -201,8 +201,12 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
     return { kind: "entry", symbol, direction, entryType, entryPrice, stopLoss, tps };
   }
 
-  // 2) DALJE (mbyll gjithçka)
-  const isExit = /\b(close all|close everything|close the trade|close now|close|exit|cancel|cancelled|canceled|anulo|mbyll|mbylle|dil|dil nga|closed)\b/i.test(low);
+  // 2) DALJE (mbyll gjithçka) — kërkon URDHËR të qartë, jo thjesht fjalën "close/exit" të përmendur
+  // brenda një sqarimi (p.sh. "gold closed above 4100" ose "close to support" NUK duhet të mbyllin).
+  const isExit =
+    /\b(?:close|exit|cancel)\s+(?:all|everything|now|out|it|them|pending|positions?|orders?|(?:the|this|our|my)\s+(?:trade|position|order|setup|entry)s?)\b/i.test(low)
+    || /\b(?:closing\s+now|book\s+(?:the\s+)?profits?|get\s+out\s+now)\b/i.test(low)
+    || /\b(?:mbyll(?:e|eni)?|anulo(?:je|jeni)?|dil\s+(?:nga\s+trade|tani))\b/i.test(low);
   if (isExit && !hasStructure) {
     return { kind: "exit", symbol: symbol ?? defaultSymbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [] };
   }
