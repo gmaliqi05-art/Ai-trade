@@ -420,6 +420,19 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
     // Të gjitha legs u mbyllën → shëno edhe SINJALIN 'closed' (raporti: tp_hit>0 = fitim deri te TPn; 0 = SL).
     if (gone.length > 0 && alive.length === 0 && legs[0].signal_id) {
       await db.from("telegram_signals").update({ status: "closed" }).eq("id", legs[0].signal_id).in("status", ["executed", "partial", "pending"]);
+      // PUSH: mbyllja FINALE e trade-it (fitim total / SL / mbyllje manuale te brokeri).
+      try {
+        const { data: sumRows } = await db.from("telegram_trades").select("net").eq("signal_id", legs[0].signal_id);
+        const totalNet = Math.round((sumRows ?? []).reduce((s, r) => s + (Number((r as { net?: number }).net) || 0), 0) * 100) / 100;
+        const sym0 = legs[0].symbol || "XAUUSD";
+        const win = totalNet >= 0;
+        await pushNotify({
+          user_id: userId,
+          title: `${win ? "✅ Trade mbyllur në fitim" : "🛑 Trade mbyllur"} — ${sym0}`,
+          body: `${win ? "Fitim" : "Humbje"} ${totalNet >= 0 ? "+" : ""}${totalNet.toFixed(2)}$ — GoldSniperFX`,
+          url: "/", tag: `tgsin-closed-${String(legs[0].signal_id).slice(0, 8)}`,
+        });
+      } catch { /* push jo-kritik */ }
     }
   }
 
@@ -732,6 +745,15 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
     }
     const total = closed + canceled;
     await finish(total > 0 ? "closed" : "ignored", total > 0 ? null : "asnjë pozicion/porosi për mbyllje");
+    // PUSH: dalje me urdhër (mbyll pozicionet / anulo pending).
+    if (total > 0) {
+      await pushNotify({
+        user_id: cfgRow.user_id,
+        title: `🚪 Dolëm nga trade — ${tradeSym}`,
+        body: `${closed} pozicione u mbyllën${canceled > 0 ? ` · ${canceled} porosi u anuluan` : ""} (urdhër dalje) — GoldSniperFX`,
+        url: "/", tag: `tgsin-exit-${signalId ?? messageId}`,
+      });
+    }
     if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `✅ Telegram Sin: u mbyllën <b>${closed}</b> pozicione dhe u anuluan <b>${canceled}</b> porosi në pritje (${tradeSym}).`);
     return json({ ok: true, kind: "exit", closed, canceled });
   }
