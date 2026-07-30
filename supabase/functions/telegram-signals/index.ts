@@ -221,6 +221,38 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   return { ...none, symbol };
 }
 
+// Chat-id sintetik për sinjalet që vijnë nga PLATFORMA e vetë përdoruesit (jo Telegram).
+const PLATFORM_CHAT_ID = "platform";
+
+// ---------- SINJAL I STRUKTURUAR nga platforma e VETË përdoruesit ----------
+// Platforma jote e analizave/sinjaleve dërgon JSON të pastër → e kthejmë në tekstin kanonik që
+// parseSignal e kupton, dhe kalon nëpër TË NJËJTIN zinxhir si Telegrami (trade + tabela + raporte).
+// deno-lint-ignore no-explicit-any
+function structuredToText(p: any): string {
+  const action = String(p.action || "signal").toLowerCase();
+  const sym = String(p.symbol || "XAUUSD").toUpperCase();
+  if (action === "close" || action === "exit") return `close ${sym}`;
+  if (action === "modify") {
+    const parts: string[] = [sym];
+    if (p.breakeven) parts.push("breakeven");
+    if (p.sl_to != null) parts.push(`move SL to ${p.sl_to}`);
+    const tps: number[] = Array.isArray(p.tps) ? p.tps : [];
+    tps.forEach((t, i) => parts.push(`TP${i + 1} ${t}`));
+    return parts.join("\n");
+  }
+  if (action === "message" && p.message) return String(p.message);
+  // "signal" (parazgjedhje): hyrje e re
+  const dir = String(p.direction || p.side || "").toLowerCase() === "sell" ? "SELL" : "BUY";
+  const lines: string[] = [`${dir} ${sym}`];
+  const entry = p.entry ?? p.entry_price ?? p.price;
+  if (entry != null) lines.push(`Entry ${entry}`);
+  const sl = p.sl ?? p.stop_loss;
+  if (sl != null) lines.push(`SL ${sl}`);
+  const tps: number[] = Array.isArray(p.tps) ? p.tps : (p.tp != null ? [p.tp] : (p.target_price != null ? [p.target_price] : []));
+  tps.forEach((t, i) => lines.push(`TP${i + 1} ${t}`));
+  return lines.join("\n");
+}
+
 // ---------- Push notification te aplikacioni (web-push-send) ----------
 async function pushNotify(payload: { user_id: string; title: string; body: string; url?: string; tag?: string }) {
   try {
@@ -448,12 +480,24 @@ Deno.serve(async (req: Request) => {
   if (hdr && cfgRow.webhook_secret && hdr !== cfgRow.webhook_secret) return json({ ok: false, error: "bad_secret" }, 200);
 
   const update = await req.json().catch(() => ({}));
-  const msg = update.message || update.channel_post || update.edited_message || null;
-  if (!msg) return json({ ok: true, skip: "no_message" });
-  const text: string = msg.text || msg.caption || "";
-  const chatId = String(msg.chat?.id ?? "");
-  const messageId = Number(msg.message_id ?? 0);
-  const sender = String(msg.from?.username || msg.from?.id || msg.sender_chat?.title || "");
+  // SINJAL I STRUKTURUAR nga platforma jote (jo Telegram): { signal: {...} } ose { action/direction, ... }
+  // deno-lint-ignore no-explicit-any
+  const ps: any = (update.signal && typeof update.signal === "object") ? update.signal
+    : (update.action || update.direction || update.side) ? update : null;
+  let text: string, chatId: string, messageId: number, sender: string;
+  if (ps) {
+    text = structuredToText(ps);
+    chatId = String(ps.source_id || PLATFORM_CHAT_ID);
+    messageId = Number(ps.id ?? Date.now());
+    sender = String(ps.source || "Platforma ime");
+  } else {
+    const msg = update.message || update.channel_post || update.edited_message || null;
+    if (!msg) return json({ ok: true, skip: "no_message" });
+    text = msg.text || msg.caption || "";
+    chatId = String(msg.chat?.id ?? "");
+    messageId = Number(msg.message_id ?? 0);
+    sender = String(msg.from?.username || msg.from?.id || msg.sender_chat?.title || "");
+  }
   // history=true (rilexim nga forwarder-i): regjistro/shfaq mesazhin, por MOS hap tregti.
   const history = update.history === true;
 
