@@ -36,8 +36,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
   const [chParams, setChParams] = useState<Record<string, TgChannelRow>>({});
   const CHANNEL_NAMES: Record<string, string> = {
-    '-1003603315504': 'BESA DIGITAL VIP',
-    '-1003278125980': 'FX+ | XNINE LEVEL 2',
+    'platform': 'GoldSniperFX Algorithm',
   };
 
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -490,8 +489,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           sinjalet e fundit + aktivët + raporti i shkurtër, dhe butoni → raportet e plota. */}
       <div className="grid grid-cols-1 gap-3">
         {[...chanMap.entries()]
-          // RENDITJA (kërkesa e pronarit): FX+ i PARI; BESA poshtë tij (kartë e palosshme).
-          .sort(([a], [b]) => (a === '-1003278125980' ? -1 : b === '-1003278125980' ? 1 : a === '-1003603315504' ? 1 : b === '-1003603315504' ? -1 : 0))
           .map(([id, name]) => {
           const list = realSigsOf(id); // vetëm sinjale të vërteta — të injoruarat s'shfaqen në karta
           const st = statsOf(list);
@@ -500,7 +497,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           // Në kartë shfaqen VETËM sinjalet aktive (në pritje / të hapura / pjesërisht);
           // të përfunduarat (mbyllur/SL/TP, refuzuar, modifikime) vetëm te Raportet e plota.
           const activeCardList = list.filter((s0) => s0.kind === 'entry' && ['pending', 'executed', 'partial', 'received'].includes(s0.status));
-          const collapsed = id === '-1003603315504'; // BESA — model hamburger (e mbyllur si parazgjedhje)
           const cardCls = `rounded-xl border p-3 sm:p-4 ${off ? 'border-white/10 bg-white/[0.02] opacity-80' : 'border-sky-500/25 bg-sky-500/[0.04]'}`;
           const header = (
               <div className="flex items-center justify-between gap-2">
@@ -518,7 +514,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                       <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${off ? 'left-0.5' : 'left-5'}`} />
                     </span>
                   </button>
-                  {collapsed && <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-180" />}
+                  <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-180" />
                 </div>
               </div>
           );
@@ -615,24 +611,14 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
               </button>
             </div>
           );
-          return collapsed ? (
-            <details key={id} className={`${cardCls} group`}>
+          // Kartë e palosshme (hamburger) — hapur si parazgjedhje, mund të mbyllet nga koka.
+          return (
+            <details key={id} className={`${cardCls} group`} open>
               <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">{header}</summary>
               {body}
             </details>
-          ) : (
-            <div key={id} className={cardCls}>{header}{body}</div>
           );
         })}
-
-        {/* Karta e kanalit të dytë NË PRITJE — derisa të lidhet kopjuesi i FX+ */}
-        {![...chanMap.values()].some((n) => /XNINE/i.test(n)) && (
-          <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-3 sm:p-4 flex flex-col items-center justify-center text-center gap-2 min-h-[160px]">
-            <Send className="w-5 h-5 text-gray-500" />
-            <p className="text-sm font-semibold text-gray-300">FX+ | XNINE LEVEL 2</p>
-            <p className="text-[11px] text-gray-500">{t('Në pritje të lidhjes — ndiq udhëzimet për kopjuesin e dytë (numri tjetër i telefonit). Tabela aktivizohet vetë me sinjalin e parë.')}</p>
-          </div>
-        )}
       </div>
 
       {/* LIDHJA ME MT5 (MetaApi) — pikë e vetme konfigurimi këtu te Telegram Sin (kërkesa e pronarit:
