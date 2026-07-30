@@ -114,6 +114,21 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
     setVipUnlocked(false);
     try { localStorage.removeItem(VIP_STORAGE_KEY); } catch { /* */ }
   };
+  // VIP NGA ADMIN: nëse admin-i ia ka dhënë privilegjin (profiles.is_vip) ose je admin,
+  // faqet VIP hapen VETË — pa kod (useri është tashmë i loguar dhe i autorizuar).
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    supabase.from('profiles').select('is_vip, is_admin').eq('id', user.id).maybeSingle()
+      .then(({ data }) => {
+        const p = data as { is_vip?: boolean; is_admin?: boolean } | null;
+        if (alive && (p?.is_vip || p?.is_admin)) {
+          setVipUnlocked(true);
+          try { localStorage.setItem(VIP_STORAGE_KEY, '1'); } catch { /* */ }
+        }
+      });
+    return () => { alive = false; };
+  }, [user]);
 
   const fetchUnread = useCallback(async () => {
     if (!user) return;

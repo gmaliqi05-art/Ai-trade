@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Crown, Plus, Trash2, Loader2, Check, X, RefreshCw, Power } from 'lucide-react';
+import { Crown, Plus, Trash2, Loader2, Check, X, RefreshCw, Power, Users } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import {
   loadVipCodes, createVipCode, updateVipCode, deleteVipCode, type VipCodeRow,
+  loadVipMembers, setVipMember, type VipMember,
 } from '../services/vipCodes';
 
 // Menaxhimi i kodeve VIP nga super admini: një kod global + kode të veçanta për përdorues të veçantë.
@@ -16,6 +17,10 @@ export default function AdminVipCodesPage() {
   const [newCode, setNewCode] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newNote, setNewNote] = useState('');
+  const [members, setMembers] = useState<VipMember[]>([]);
+  const [memLoading, setMemLoading] = useState(true);
+  const [memBusy, setMemBusy] = useState<string | null>(null);
+  const [memQuery, setMemQuery] = useState('');
 
   const flash = (type: 'success' | 'error', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 3500); };
 
@@ -24,7 +29,19 @@ export default function AdminVipCodesPage() {
     try { setRows(await loadVipCodes()); } catch (e) { flash('error', (e as Error).message); }
     setLoading(false);
   }, []);
-  useEffect(() => { refresh(); }, [refresh]);
+  const refreshMembers = useCallback(async () => {
+    setMemLoading(true);
+    try { setMembers(await loadVipMembers()); } catch (e) { flash('error', (e as Error).message); }
+    setMemLoading(false);
+  }, []);
+  useEffect(() => { refresh(); refreshMembers(); }, [refresh, refreshMembers]);
+
+  const toggleMember = async (m: VipMember) => {
+    setMemBusy(m.id);
+    try { await setVipMember(m.id, !m.is_vip); await refreshMembers(); flash('success', !m.is_vip ? t('VIP u dha.') : t('VIP u hoq.')); }
+    catch (e) { flash('error', (e as Error).message); }
+    setMemBusy(null);
+  };
 
   const add = async () => {
     if (!newCode.trim()) { flash('error', t('Shkruaj një kod.')); return; }
@@ -71,6 +88,37 @@ export default function AdminVipCodesPage() {
       <p className="text-xs text-gray-500">{t('Kodet zhbllokojnë faqet VIP në menu. Verifikohen në server — nuk ekspozohen kurrë te klienti. Krijo një kod global ose kode të veçanta për përdorues të veçantë (te "Etiketa" shkruaj kujt i takon).')}</p>
 
       {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.type === 'success' ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>{msg.text}</div>}
+
+      {/* ANËTARËT VIP — jepi/hiqi privilegjin direkt (pa kod; useri është i loguar). */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-sm font-semibold text-white flex items-center gap-2"><Users className="w-4 h-4 text-amber-400" />{t('Anëtarët VIP')}</div>
+          <button onClick={refreshMembers} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white"><RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}</button>
+        </div>
+        <p className="text-xs text-gray-500">{t('Kliko për t\'i dhënë ose hequr VIP-in një përdoruesi. Kur ka VIP, atij i shfaqet butoni VIP në menu dhe faqet VIP hapen vetë — pa kod.')}</p>
+        <input value={memQuery} onChange={e => setMemQuery(e.target.value)} placeholder={t('Kërko me email…')} className={`${inp} w-full text-xs`} />
+        {memLoading ? (
+          <div className="h-24 bg-gray-800 rounded-xl animate-pulse" />
+        ) : (
+          <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
+            {members.filter(m => !memQuery.trim() || m.email.toLowerCase().includes(memQuery.trim().toLowerCase())).map(m => (
+              <div key={m.id} className="flex items-center justify-between gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
+                <span className="flex items-center gap-2 min-w-0 text-sm">
+                  <span className="text-white truncate">{m.email}</span>
+                  {m.is_admin && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 shrink-0">ADMIN</span>}
+                  {m.is_vip && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 shrink-0">VIP</span>}
+                </span>
+                <button onClick={() => toggleMember(m)} disabled={memBusy === m.id || m.is_admin} title={m.is_admin ? t('Admin — gjithmonë ka qasje') : m.is_vip ? t('Hiq VIP') : t('Jep VIP')}
+                  className={`shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40 ${m.is_vip ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25' : 'bg-gray-700/50 text-gray-300 border border-gray-600 hover:bg-gray-700'}`}>
+                  {memBusy === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : m.is_vip ? <X className="w-3.5 h-3.5" /> : <Crown className="w-3.5 h-3.5" />}
+                  {m.is_vip ? t('Hiq VIP') : t('Jep VIP')}
+                </button>
+              </div>
+            ))}
+            {members.length === 0 && <p className="text-gray-600 text-sm text-center py-4">{t('S\'ka përdorues.')}</p>}
+          </div>
+        )}
+      </div>
 
       {/* Shto kod të ri */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
