@@ -112,7 +112,7 @@ export default function AdminVipCodesPage() {
           <RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}
         </button>
       </div>
-      <p className="text-xs text-gray-500">{t('Kodet zhbllokojnë faqet VIP në menu. Verifikohen në server — nuk ekspozohen kurrë te klienti. Krijo një kod global ose kode të veçanta për përdorues të veçantë (te "Etiketa" shkruaj kujt i takon).')}</p>
+      <p className="text-xs text-gray-500">{t('Kodet zhbllokojnë faqet VIP në menu. Verifikohen në server — nuk ekspozohen kurrë te klienti. KUJDES: një kod punon VETËM për përdoruesin të cilit ia cakton te "I takon" — kod i pacaktuar nuk hap asgjë.')}</p>
 
       {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.type === 'success' ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>{msg.text}</div>}
 
@@ -244,9 +244,15 @@ export default function AdminVipCodesPage() {
                   </button>
                 </div>
               </div>
-              <div className="grid sm:grid-cols-2 gap-2 mt-2">
+              <div className="grid sm:grid-cols-3 gap-2 mt-2">
+                {/* CAKTIMI — kodi punon VETËM për këtë përdorues (zbatohet në server te vip-verify). */}
+                <select value={r.user_id ?? ''} onChange={e => saveField(r.id, { user_id: e.target.value || null })}
+                  className={`${inp} text-xs ${!r.user_id ? 'border-red-500/60' : ''}`}>
+                  <option value="">{t('⚠ I pacaktuar — kodi s\'punon')}</option>
+                  {members.filter(m => !m.is_admin).map(m => <option key={m.id} value={m.id}>{m.email}</option>)}
+                </select>
                 <input defaultValue={r.label ?? ''} key={`l-${r.id}-${r.label}`} onBlur={e => { const v = e.target.value.trim(); if (v !== (r.label ?? '')) saveField(r.id, { label: v || null }); }}
-                  placeholder={t('Etiketa (kujt i takon)')} className={`${inp} text-xs`} />
+                  placeholder={t('Etiketa')} className={`${inp} text-xs`} />
                 <input defaultValue={r.note ?? ''} key={`n-${r.id}-${r.note}`} onBlur={e => { const v = e.target.value.trim(); if (v !== (r.note ?? '')) saveField(r.id, { note: v || null }); }}
                   placeholder={t('Shënim')} className={`${inp} text-xs`} />
               </div>

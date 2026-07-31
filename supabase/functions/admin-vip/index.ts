@@ -37,11 +37,12 @@ Deno.serve(async (req: Request) => {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "list");
 
-  // Vendos/hiq VIP për një përdorues.
+  // Vendos/hiq VIP për një përdorues. Burimi 'admin' → i hapet vetë, pa kod (deri sa admini ta heqë).
   if (action === "set") {
     const userId = String(body.user_id || "");
     if (!userId) return json({ error: "no_user" }, 400);
-    const { error } = await db.from("profiles").update({ is_vip: !!body.is_vip }).eq("id", userId);
+    const { error } = await db.from("profiles")
+      .update({ is_vip: !!body.is_vip, vip_source: body.is_vip ? "admin" : null }).eq("id", userId);
     if (error) return json({ error: error.message }, 500);
     return json({ ok: true });
   }
@@ -96,14 +97,14 @@ Deno.serve(async (req: Request) => {
     const { error: e1 } = await db.from("vip_requests").update({ status, resolved_at: new Date().toISOString() }).eq("id", id);
     if (e1) return json({ error: e1.message }, 500);
     if (decision === "approve") {
-      const { error: e2 } = await db.from("profiles").update({ is_vip: true }).eq("id", rr.user_id);
+      const { error: e2 } = await db.from("profiles").update({ is_vip: true, vip_source: "admin" }).eq("id", rr.user_id);
       if (e2) return json({ error: e2.message }, 500);
     }
     return json({ ok: true });
   }
 
   // Listo përdoruesit (email + is_vip + is_admin + is_verified + access_code).
-  const { data: profs } = await db.from("profiles").select("id, is_vip, is_admin, is_verified, access_code, full_name, username, created_at");
+  const { data: profs } = await db.from("profiles").select("id, is_vip, is_admin, is_verified, access_code, vip_source, full_name, username, created_at");
   const emailById = new Map<string, string>();
   try {
     // deno-lint-ignore no-explicit-any
@@ -118,6 +119,7 @@ Deno.serve(async (req: Request) => {
     is_admin: !!p.is_admin,
     is_verified: !!p.is_verified,
     access_code: p.access_code || null,
+    vip_source: p.vip_source || null,
     created_at: p.created_at || null,
   })).sort((a, b) => (a.is_admin === b.is_admin ? String(a.email).localeCompare(String(b.email)) : a.is_admin ? -1 : 1));
   return json({ ok: true, users });

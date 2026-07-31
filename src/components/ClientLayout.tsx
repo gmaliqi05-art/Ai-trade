@@ -5,7 +5,7 @@ import {
   Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { verifyVipCode, requestVip } from '../services/vipCodes';
+import { verifyVipCode, requestVip, lockVipAccess } from '../services/vipCodes';
 import { supabase } from '../lib/supabase';
 import { ClientPage } from '../App';
 import { useI18n } from '../i18n/i18n';
@@ -112,6 +112,9 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
     } else { setVipErr(true); }
   };
   const lockVip = () => {
+    // Mbyllje REALE: hiqet edhe në server (is_vip=false kur burimi është 'code') — rihyrja
+    // kërkon sërish kodin. Pa këtë, refresh-i e rihapte vetë qasjen nga profiles.is_vip.
+    lockVipAccess();
     setVipUnlocked(false);
     try { localStorage.removeItem(VIP_STORAGE_KEY); } catch { /* */ }
   };
@@ -126,18 +129,27 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
     else if (r.ok) setVipReqMsg(r.pending ? t('Kërkesa është dërguar — pritet aprovimi nga Admini.') : t('Kërkesa u dërgua! Admini do ta shqyrtojë.'));
     else setVipReqMsg(t('Dështoi dërgimi. Provo sërish.'));
   };
-  // VIP NGA ADMIN: nëse admin-i ia ka dhënë privilegjin (profiles.is_vip) ose je admin,
-  // faqet VIP hapen VETË — pa kod (useri është tashmë i loguar dhe i autorizuar).
+  // BURIMI I VËRTETË I QASJES VIP është SERVERI (profiles.is_vip + vip_source), jo localStorage:
+  //  - admin ose VIP nga admini ('admin') → hapet VETË, pa kod;
+  //  - VIP me kod ('code') → mbetet siç e ka lënë përdoruesi në KËTË pajisje (hapur me kodin e vet);
+  //  - JO VIP → mbyllet ME FORCË (pastron edhe gjurmën localStorage) — kështu një qasje e vjetër
+  //    e marrë me kodin e dikujt tjetër NUK rikthehet më në refresh.
   useEffect(() => {
     if (!user) return;
     let alive = true;
-    supabase.from('profiles').select('is_vip, is_admin').eq('id', user.id).maybeSingle()
+    supabase.from('profiles').select('is_vip, is_admin, vip_source').eq('id', user.id).maybeSingle()
       .then(({ data }) => {
-        const p = data as { is_vip?: boolean; is_admin?: boolean } | null;
-        if (alive && (p?.is_vip || p?.is_admin)) {
+        if (!alive) return;
+        const p = data as { is_vip?: boolean; is_admin?: boolean; vip_source?: string | null } | null;
+        if (!p) return; // profili s'u lexua dot — mos ndrysho asgjë
+        if (p.is_admin || (p.is_vip && p.vip_source === 'admin')) {
           setVipUnlocked(true);
           try { localStorage.setItem(VIP_STORAGE_KEY, '1'); } catch { /* */ }
+        } else if (!p.is_vip) {
+          setVipUnlocked(false);
+          try { localStorage.removeItem(VIP_STORAGE_KEY); } catch { /* */ }
         }
+        // is_vip && vip_source==='code' → lëre gjendjen lokale siç është (e hapur me kodin e vet).
       });
     return () => { alive = false; };
   }, [user]);
