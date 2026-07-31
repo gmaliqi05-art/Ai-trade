@@ -5,7 +5,7 @@ import {
   Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { verifyVipCode } from '../services/vipCodes';
+import { verifyVipCode, requestVip } from '../services/vipCodes';
 import { supabase } from '../lib/supabase';
 import { ClientPage } from '../App';
 import { useI18n } from '../i18n/i18n';
@@ -113,6 +113,17 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
   const lockVip = () => {
     setVipUnlocked(false);
     try { localStorage.removeItem(VIP_STORAGE_KEY); } catch { /* */ }
+  };
+  // Kërkesa për abonim VIP → i shkon Adminit (vip_requests).
+  const [vipReqBusy, setVipReqBusy] = useState(false);
+  const [vipReqMsg, setVipReqMsg] = useState('');
+  const sendVipRequest = async () => {
+    setVipReqBusy(true); setVipReqMsg('');
+    const r = await requestVip();
+    setVipReqBusy(false);
+    if (r.already_vip) setVipReqMsg(t('Je tashmë VIP.'));
+    else if (r.ok) setVipReqMsg(r.pending ? t('Kërkesa është dërguar — pritet aprovimi nga Admini.') : t('Kërkesa u dërgua! Admini do ta shqyrtojë.'));
+    else setVipReqMsg(t('Dështoi dërgimi. Provo sërish.'));
   };
   // VIP NGA ADMIN: nëse admin-i ia ka dhënë privilegjin (profiles.is_vip) ose je admin,
   // faqet VIP hapen VETË — pa kod (useri është tashmë i loguar dhe i autorizuar).
@@ -236,6 +247,15 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
                   <button onClick={submitVip} disabled={vipBusy} className="w-full flex items-center justify-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950 disabled:opacity-50">
                     {vipBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{t('Hap qasjen VIP')}
                   </button>
+                  {/* Nuk ke kod? Dërgo kërkesë te Admini për abonim VIP. */}
+                  <div className="pt-2 border-t border-amber-500/15">
+                    <p className="text-[10px] text-gray-500 mb-1.5 px-1">{t('Nuk ke kod? Kërko abonimin VIP nga Admini.')}</p>
+                    <button onClick={sendVipRequest} disabled={vipReqBusy}
+                      className="w-full flex items-center justify-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50">
+                      {vipReqBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}<Crown className="w-3.5 h-3.5" />{t('Dërgo kërkesën për abonim VIP')}
+                    </button>
+                    {vipReqMsg && <p className="text-[11px] text-emerald-400 mt-1.5 px-1">{vipReqMsg}</p>}
+                  </div>
                 </div>
               )}
             </>

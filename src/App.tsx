@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './i18n/i18n';
 import AuthPage from './pages/AuthPage';
+import AccountVerifyGate from './pages/AccountVerifyGate';
 import AdminLayout from './components/AdminLayout';
 import ClientLayout from './components/ClientLayout';
 
@@ -134,6 +135,12 @@ function AppContent() {
 
   if (profile?.is_admin) {
     return <AdminApp />;
+  }
+
+  // VERIFIKIM: përdoruesi i kyçur por i PAVERIFIKUAR (regjistrim i ri) → ekrani i kodit 6-shifror.
+  // Vetëm kur profili u ngarkua dhe is_verified është SHPREHIMISHT false (mos blloko nëse s'lexohet dot profili).
+  if (profile && profile.is_verified === false) {
+    return <AccountVerifyGate />;
   }
 
   return <ClientApp />;

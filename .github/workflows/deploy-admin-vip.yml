@@ -1,10 +1,16 @@
 name: Deploy admin-vip
 
-# Menaxhim VIP nga super-admin (liston përdoruesit + jep/heq is_vip). Nxitet manualisht.
+# Menaxhim VIP nga super-admin (liston përdoruesit + jep/heq is_vip + kodet e qasjes + kërkesat VIP).
 # verify_jwt=true — kërkon JWT; funksioni kontrollon edhe që thirrësi është admin.
+# Auto-deploy kur ndryshon kodi në `main`, ose manualisht.
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/admin-vip/**'
 
 jobs:
   deploy:
