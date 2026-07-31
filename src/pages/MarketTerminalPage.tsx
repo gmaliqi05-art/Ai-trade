@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import {
-  Activity, RefreshCw, Loader2, Zap, Brain, Landmark,
+  Activity, RefreshCw, Loader2, Zap,
   AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
   ArrowUp, ArrowDown, Clock, X, Maximize2, Minimize2, TrendingUp, TrendingDown, Ban,
 } from 'lucide-react';
@@ -184,7 +184,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [showNewOrder, setShowNewOrder] = useState(false); // forma manuale e palosur si default; hapet me klik ose nga sinjali
   const [newEntry, setNewEntry] = useState('');   // Çmimi i hyrjes (porosi në pritje nëse s'është aty)
   const [newSl, setNewSl] = useState('');         // SL për porosinë e re (manuale)
-  const [newTp, setNewTp] = useState('');         // TP për porosinë e re (manuale)
+  const [newTp, setNewTp] = useState('');         // TP1 për porosinë e re (manuale)
+  // TP2–TP4 (ops.): me shumë TP-je loti ndahet në pjesë dhe hapet një porosi për secilin TP —
+  // i njëjti model si sinjalet me TP1–TP4 te cilësimet e sinjaleve.
+  const [newTp2, setNewTp2] = useState('');
+  const [newTp3, setNewTp3] = useState('');
+  const [newTp4, setNewTp4] = useState('');
   const [appliedSignalId, setAppliedSignalId] = useState<string | null>(null);
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeMsg, setTradeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -201,44 +206,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [showBigLevels, setShowBigLevels] = useState<boolean>(() => { try { return localStorage.getItem('tl_biglvl') !== '0'; } catch { return true; } });
   const toggleBigLevels = () => setShowBigLevels(v => { try { localStorage.setItem('tl_biglvl', v ? '0' : '1'); } catch { /* */ } return !v; });
 
-  // (1) COT: pozicionet javore REALE të fondeve/bankave në futures të arit (burim zyrtar: CFTC).
-  interface CotSide { long: number; short: number }
-  interface CotWeek { date: string; mm: CotSide; swap: CotSide }
-  const [cot, setCot] = useState<{ cur: CotWeek; prev: CotWeek | null } | null>(null);
-  useEffect(() => {
-    (async () => {
-      // Rreshtat vijnë për disa tregje ari — mbaj për çdo datë atë me interesin e hapur më të madh (COMEX).
-      const parse = (rows: Record<string, string>[]): CotWeek[] => {
-        const byDate = new Map<string, Record<string, string>>();
-        for (const r of rows) {
-          const d = (r.report_date_as_yyyy_mm_dd || '').slice(0, 10);
-          if (!d) continue;
-          const prev = byDate.get(d);
-          if (!prev || Number(r.open_interest_all) > Number(prev.open_interest_all)) byDate.set(d, r);
-        }
-        return [...byDate.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([d, r]) => ({
-          date: d,
-          mm: { long: Number(r.m_money_positions_long_all) || 0, short: Number(r.m_money_positions_short_all) || 0 },
-          // Fusha e short-it të dealer-ëve ka dy nënvija te CFTC (çudi historike) — provo të dyja.
-          swap: { long: Number(r.swap_positions_long_all) || 0, short: Number(r.swap__positions_short_all ?? r.swap_positions_short_all) || 0 },
-        }));
-      };
-      try {
-        const base = 'https://publicreporting.cftc.gov/resource/72hh-3qpy.json';
-        let rows: Record<string, string>[] = [];
-        try {
-          const r = await fetch(`${base}?commodity_name=GOLD&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=8`);
-          if (r.ok) rows = await r.json();
-        } catch { /* provo fallback-un */ }
-        if (!rows.length) {
-          const r = await fetch(`${base}?$where=${encodeURIComponent("market_and_exchange_names like 'GOLD -%'")}&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=8`);
-          if (r.ok) rows = await r.json();
-        }
-        const weeks = parse(rows);
-        if (weeks.length) setCot({ cur: weeks[0], prev: weeks[1] ?? null });
-      } catch { /* paneli thjesht s'shfaqet — pa shifra të shpikura */ }
-    })();
-  }, []);
+  // COT (Investitorët e Mëdhenj) u HOQ (kërkesa e pronarit, 31 korrik 2026): burimi zyrtar CFTC
+  // publikon vetëm një herë në javë — s'mund të ketë përditësim ditor, prandaj tabela u hoq.
 
   // (2) MURET E POROSIVE: libri REAL i porosive të arit të tokenizuar (PAXG/Binance) — muret më të
   // mëdha blerëse/shitëse pranë çmimit. Ruhen si DELTA nga mid-i, që në grafik të ndjekin
@@ -596,7 +565,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       }
     }
     const sl = newSl.trim() ? parseFloat(newSl) : undefined;
-    const tp = newTp.trim() ? parseFloat(newTp) : undefined;
+    // TP1–TP4 (si te cilësimet e sinjaleve): me shumë TP-je loti ndahet dhe hapet një porosi për
+    // secilin TP — çdo pjesë mbyllet te TP-ja e vet (TP1 = pjesa e parë).
+    const tps = [newTp, newTp2, newTp3, newTp4].map(s => s.trim()).filter(Boolean)
+      .map(parseFloat).filter(n => Number.isFinite(n) && n > 0);
+    const tp = tps.length ? tps[0] : undefined;
     const entry = newEntry.trim() ? parseFloat(newEntry) : undefined;
     // Paralajmërim: trade pa SL/TP = pa mbrojtje. Kërko konfirmim ose plotësim default.
     if ((sl == null || tp == null) && !confirmNoSLTP) {
@@ -606,19 +579,39 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       return;
     }
     setTradeLoading(true); setTradeMsg(null); setConfirmNoSLTP(false);
-    const r = await executeTrade({
-      action: tradeType === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: vol,
-      stopLoss: sl, takeProfit: tp, entryPrice: entry,
-      signalId: appliedSignalId ?? undefined,
-    });
-    if (r.error) setTradeMsg({ type: 'error', text: errText(t, r.error, r.message) });
+    // Ndarja e lotit në pjesë (çdo pjesë ≥ 0.01; pjesa e parë merr mbetjen e rrumbullakimit).
+    const legCount = Math.max(1, Math.min(tps.length || 1, Math.floor(vol / 0.01 + 1e-9)));
+    const baseVol = Math.floor((vol / legCount) * 100) / 100;
+    const legVols = Array.from({ length: legCount }, () => baseVol);
+    legVols[0] = Math.round((legVols[0] + (vol - baseVol * legCount)) * 100) / 100;
+
+    let firstErr: { error?: string; message?: string } | null = null;
+    let lastOk: Awaited<ReturnType<typeof executeTrade>> | null = null;
+    let okCount = 0;
+    for (let i = 0; i < legCount; i++) {
+      const r = await executeTrade({
+        action: tradeType === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: legVols[i],
+        stopLoss: sl, takeProfit: tps.length ? tps[Math.min(i, tps.length - 1)] : undefined, entryPrice: entry,
+        signalId: appliedSignalId ?? undefined,
+      });
+      if (r.error) { if (!firstErr) firstErr = r; break; }
+      lastOk = r; okCount++;
+    }
+    const r = lastOk ?? { error: firstErr?.error, message: firstErr?.message } as Awaited<ReturnType<typeof executeTrade>>;
+    if (firstErr && okCount === 0) setTradeMsg({ type: 'error', text: errText(t, firstErr.error, firstErr.message) });
+    else if (firstErr) {
+      setTradeMsg({ type: 'error', text: t('U hapën {ok}/{total} pjesë të porosisë; pjesa tjetër dështoi: {err}', { ok: okCount, total: legCount, err: errText(t, firstErr.error, firstErr.message) }) });
+      fetchMeta(); loadPreOpen();
+    }
     else {
       const dir = tradeType === 'buy' ? t('BLEJ') : t('SHIT');
-      const extra = `${sl ? ` · SL ${sl}` : ''}${tp ? ` · TP ${tp}` : ''}`;
+      const tpTxt = tps.length > 1 ? ` · TP ${tps.slice(0, legCount).join(' / ')}` : tp ? ` · TP ${tp}` : '';
+      const extra = `${sl ? ` · SL ${sl}` : ''}${tpTxt}${legCount > 1 ? ` · ${legCount} ${t('pjesë')}` : ''}`;
       // Lot-i REAL i ekzekutuar nga serveri (mund të pritet nga "Lot maksimal" i konfigurimit) —
       // trego atë, jo të kërkuarin, + paralajmërim kur pritet.
       const srvVol = Number((r as { volume?: number }).volume);
-      const realVol = Number.isFinite(srvVol) && srvVol > 0 ? srvVol : vol;
+      // Me shumë pjesë trego lotin TOTAL të kërkuar; me një pjesë — atë REAL që ekzekutoi serveri.
+      const realVol = legCount > 1 ? vol : (Number.isFinite(srvVol) && srvVol > 0 ? srvVol : vol);
       const capNote = realVol < vol ? ` ⚠️ ${t('Lot-i u prit nga "Lot maksimal" ({req} → {real}) — rrite te Lidhja & Konfigurimi.', { req: vol, real: realVol })}` : '';
       if ((r as { queued?: boolean }).queued) {
         setTradeMsg({ type: 'success', text: t('Porosia {dir} {sym} ({vol} lot){extra} u vendos në RADHË — hyn automatikisht kur hapet tregu.', { dir, sym: selected, vol: realVol, extra }) + capNote });
@@ -748,6 +741,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setNewEntry(s.entry_price != null ? String(s.entry_price) : '');
     setNewSl(s.stop_loss != null ? String(s.stop_loss) : '');
     setNewTp(s.target_price != null ? String(s.target_price) : '');
+    setNewTp2(''); setNewTp3(''); setNewTp4(''); // sinjali ka një TP — pastro shtesat
     setLot(String(signalLotByConfidence(Number(s.confidence) || 0)));
     setShowNewOrder(true); // hap automatik formën manuale me të dhënat e sinjalit
     setAppliedSignalId(s.id);
@@ -1379,8 +1373,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </div>
       )}
 
-      {/* RENDITJA (kërkesa e pronarit): Porosia e re (1) → Pozicionet e hapura (2) → Sinjali i fundit.
-          Big Investors/COT u zhvendos NË FUND të faqes (te banner-i i tregut). */}
+      {/* RENDITJA (kërkesa e pronarit): Porosia e re (1) → Pozicionet e hapura (2) → Sinjali i fundit. */}
       <div className="flex flex-col gap-3">
 
       {/* Sinjali i fundit (motori/MMT) — VETËM kur roboti i Sinjaleve është aktiv DHE përdoruesi është VIP.
@@ -1466,13 +1459,15 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               <button onClick={() => setTradeType('buy')} className={`px-3 py-1.5 text-xs font-bold transition-all ${tradeType === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('BLEJ')}</button>
               <button onClick={() => setTradeType('sell')} className={`px-3 py-1.5 text-xs font-bold transition-all ${tradeType === 'sell' ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>{t('SHIT')}</button>
             </div>
-            <div className="flex gap-1 flex-1">
+            {/* Presetet e lotit — gjerësi FIKSE në desktop (jo flex-1), që të mos fryhen sa gjithë rreshti. */}
+            <div className="flex gap-1 flex-1 sm:flex-initial">
               {['0.01', '0.05', '0.10', '0.25'].map(v => (
-                <button key={v} onClick={() => setLot(v)} className={`flex-1 text-[11px] py-1.5 rounded-md transition-colors ${lot === v ? 'bg-amber-500 text-gray-950 font-semibold' : 'bg-gray-800 hover:bg-gray-700 text-gray-400'}`}>{v}</button>
+                <button key={v} onClick={() => setLot(v)} className={`flex-1 sm:flex-none sm:w-16 text-[11px] py-1.5 rounded-md transition-colors ${lot === v ? 'bg-amber-500 text-gray-950 font-semibold' : 'bg-gray-800 hover:bg-gray-700 text-gray-400'}`}>{v}</button>
               ))}
             </div>
           </div>
-          {/* RRESHTI 2 — 4 fusha kompakte: Lot · Hyrje · SL · TP (2 kolona në telefon → 2 rreshta). */}
+          {/* RRESHTI 2 — fushat kompakte në DY rreshta në desktop: Lot · Hyrje · SL · TP1 / TP2 · TP3 · TP4.
+              Me shumë TP-je loti ndahet në pjesë — një porosi për secilin TP (si sinjalet me TP1–TP4). */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
             <div>
               <label className="block text-[9px] text-gray-400 mb-0.5">{t('Lot')}</label>
@@ -1490,11 +1485,29 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-red-500" />
             </div>
             <div>
-              <label className="block text-[9px] text-green-400 mb-0.5">TP</label>
+              <label className="block text-[9px] text-green-400 mb-0.5">TP1</label>
               <input type="number" step="0.01" value={newTp} onChange={e => setNewTp(e.target.value)} placeholder={t('ops.')}
                 className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
             </div>
+            <div>
+              <label className="block text-[9px] text-green-400 mb-0.5">TP2 <span className="text-gray-600">{t('(ops.)')}</span></label>
+              <input type="number" step="0.01" value={newTp2} onChange={e => setNewTp2(e.target.value)} placeholder={t('ops.')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
+            </div>
+            <div>
+              <label className="block text-[9px] text-green-400 mb-0.5">TP3 <span className="text-gray-600">{t('(ops.)')}</span></label>
+              <input type="number" step="0.01" value={newTp3} onChange={e => setNewTp3(e.target.value)} placeholder={t('ops.')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
+            </div>
+            <div>
+              <label className="block text-[9px] text-green-400 mb-0.5">TP4 <span className="text-gray-600">{t('(ops.)')}</span></label>
+              <input type="number" step="0.01" value={newTp4} onChange={e => setNewTp4(e.target.value)} placeholder={t('ops.')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
+            </div>
           </div>
+          {(newTp2.trim() || newTp3.trim() || newTp4.trim()) && (
+            <p className="text-[10px] text-gray-500">{t('Me shumë TP-je loti ndahet në pjesë të barabarta — një porosi për secilin TP; çdo pjesë mbyllet te TP-ja e vet.')}</p>
+          )}
           {appliedSignalId && <p className="text-[10px] text-amber-400/80">{t("Hyrja, SL dhe TP u mbushën nga sinjali. Nëse çmimi s'është te hyrja, vendoset porosi në pritje që hyn automatik. Mund t'i ndryshosh para se të tregtosh.")}</p>}
           {tradeMsg && (
             <div className={`text-xs rounded-xl px-3 py-2 ${tradeMsg.type === 'success' ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-red-900/30 text-red-400 border border-red-800/50'}`}>{tradeMsg.text}</div>
@@ -1504,15 +1517,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               <ShieldCheck className="w-3.5 h-3.5" />{t('Vendos SL/TP default')}
             </button>
           )}
-          {/* RRESHTI 3 — veprimi: BLEJ/SHIT + Analiza AI krah për krah (kompakte). */}
-          <div className="flex gap-1.5">
+          {/* RRESHTI 3 — veprimi: BLEJ/SHIT. Në desktop me gjerësi të kufizuar (jo sa gjithë rreshti). */}
+          <div className="flex">
             <button onClick={handleTrade} disabled={tradeLoading || !metaConfigured}
-              className={`flex-1 py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${tradeType === 'buy' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
+              className={`w-full sm:w-auto sm:min-w-[16rem] sm:px-10 py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${tradeType === 'buy' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-red-500 hover:bg-red-400 text-white'}`}>
               {tradeLoading && <Loader2 className="w-4 h-4 animate-spin" />}{tradeType === 'buy' ? t('BLEJ') : t('SHIT')} {selected}
-            </button>
-            <button onClick={() => onNavigate('chart_analysis')} title={t('Analizë AI për {sym}', { sym: selected })}
-              className="shrink-0 flex items-center justify-center gap-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-xl px-3 py-2 text-xs font-medium transition-colors">
-              <Brain className="w-4 h-4" /><span className="hidden sm:inline">{t('Analizë AI')}</span>
             </button>
           </div>
 
@@ -1548,7 +1557,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           </>)}
         </div>
 
-      {/* Pozicionet e hapura (live) — order-2: midis Porosisë dhe COT-it (kërkesa e pronarit). */}
+      {/* Pozicionet e hapura (live) — order-2: menjëherë pas Porosisë (kërkesa e pronarit). */}
       <div className="order-2">
         <OpenPositionsPanel configured={metaConfigured} section="positions" />
       </div>
@@ -1618,41 +1627,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         <TLFold k="history" bare defaultOpen={false} title={t('Analiza e sinjaleve — të përfunduarat + historiku i skanimeve')} icon={<History className="w-4 h-4 text-amber-400" />}>
           <CompletedSignals signals={doneSignals} variant="compact" />
           <SignalScanLog title={t('Historiku i Skanimeve (Live) — pse hyn ose s\'hyn sinjali')} />
-        </TLFold>
-      )}
-
-      {/* INVESTITORËT E MËDHENJ (COT) — NË FUND të faqes (kërkesa e pronarit). */}
-      {cot && (
-        <TLFold k="cot" title={t('Investitorët e Mëdhenj (COT — futures të arit)')} icon={<Landmark className="w-4 h-4 text-amber-400" />}>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {[
-              { label: t('Fondet e mëdha (Managed Money)'), cur: cot.cur.mm, prev: cot.prev?.mm },
-              { label: t('Bankat/Dealer-ët (Swap Dealers)'), cur: cot.cur.swap, prev: cot.prev?.swap },
-            ].map(g => {
-              const net = g.cur.long - g.cur.short;
-              const prevNet = g.prev ? g.prev.long - g.prev.short : null;
-              const d = prevNet == null ? null : net - prevNet;
-              return (
-                <div key={g.label} className="bg-gray-800/40 rounded-xl p-3">
-                  <div className="text-[11px] text-gray-400 mb-1.5">{g.label}</div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${net >= 0 ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
-                      {net >= 0 ? t('BLERËS neto') : t('SHITËS neto')} · {Math.abs(net).toLocaleString()} {t('kontrata')}
-                    </span>
-                    {d != null && d !== 0 && (
-                      <span className={`text-[11px] font-semibold ${d > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {d > 0 ? '▲ +' : '▼ '}{d.toLocaleString()} {t('nga java e kaluar')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-gray-500 mt-1.5">Long {g.cur.long.toLocaleString()} · Short {g.cur.short.toLocaleString()}</div>
-                </div>
-              );
-            })}
-          </div>
-          <p className="text-[10px] text-gray-600 mt-2 leading-snug">
-            {t('Burimi: CFTC (raporti zyrtar COT) — pozicionet reale në futures të arit (COMEX); publikohet çdo të premte për të martën.')} · {cot.cur.date}
-          </p>
         </TLFold>
       )}
 
