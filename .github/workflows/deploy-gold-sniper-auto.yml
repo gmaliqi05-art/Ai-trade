@@ -1,10 +1,15 @@
 name: Deploy gold-sniper-auto
 
-# Dërgim automatik i sinjaleve të motorit te kanali GoldSniper|FX (cron ~1 min).
-# verify_jwt=false — thirret nga pg_cron me x-cron-secret. Nxitet manualisht.
+# I ÇAKTIVIZUAR si NO-OP (kërkesa e pronarit): sinjalet e motorit s'postohen më në Telegram.
+# Deploy-i mbetet që versioni no-op të jetë live. Auto-deploy në main + manual.
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/gold-sniper-auto/**'
 
 jobs:
   deploy:
