@@ -24,6 +24,18 @@ export async function verifyVipCode(code: string): Promise<boolean> {
   } catch { return false; }
 }
 
+/** Mbyll qasjen VIP në SERVER (vetëm kur VIP-i është marrë me kod) — rihyrja kërkon kodin sërish. */
+export async function lockVipAccess(): Promise<void> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    await fetch(VERIFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ action: 'lock' }),
+    });
+  } catch { /* mbyllja lokale bëhet gjithsesi */ }
+}
+
 /** Verifikon kodin 6-shifror të qasjes (nga admini) për përdoruesin e kyçur. */
 export async function verifyAccountCode(code: string): Promise<boolean> {
   try {
@@ -62,11 +74,12 @@ export interface VipCodeRow {
   uses: number;
   last_used_at: string | null;
   created_at: string;
+  user_id: string | null; // kodi vlen VETËM për këtë përdorues (i caktuar nga admini)
 }
 
 export async function loadVipCodes(): Promise<VipCodeRow[]> {
   const { data } = await supabase.from('vip_access_codes')
-    .select('id, code, label, note, active, uses, last_used_at, created_at')
+    .select('id, code, label, note, active, uses, last_used_at, created_at, user_id')
     .order('created_at', { ascending: false });
   return (data ?? []) as VipCodeRow[];
 }
@@ -78,7 +91,7 @@ export async function createVipCode(code: string, label: string, note: string): 
   if (error) throw new Error(error.message);
 }
 
-export async function updateVipCode(id: string, patch: Partial<Pick<VipCodeRow, 'code' | 'label' | 'note' | 'active'>>): Promise<void> {
+export async function updateVipCode(id: string, patch: Partial<Pick<VipCodeRow, 'code' | 'label' | 'note' | 'active' | 'user_id'>>): Promise<void> {
   const { error } = await supabase.from('vip_access_codes').update(patch).eq('id', id);
   if (error) throw new Error(error.message);
 }
@@ -89,7 +102,7 @@ export async function deleteVipCode(id: string): Promise<void> {
 }
 
 // ---- Anëtarët VIP (privilegji jepet direkt nga admin — pa kod) ----
-export interface VipMember { id: string; email: string; is_vip: boolean; is_admin: boolean; is_verified: boolean; access_code: string | null; created_at?: string | null; }
+export interface VipMember { id: string; email: string; is_vip: boolean; is_admin: boolean; is_verified: boolean; access_code: string | null; vip_source?: string | null; created_at?: string | null; }
 
 export interface VipRequest { id: string; user_id: string; email: string; status: string; note: string | null; created_at: string; resolved_at: string | null; }
 

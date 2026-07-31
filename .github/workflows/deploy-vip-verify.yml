@@ -1,10 +1,15 @@
 name: Deploy vip-verify
 
 # Verifikon kodin VIP në server (kodet ruhen te vip_access_codes; s'ekspozohen te klienti).
-# verify_jwt=true — thirret nga përdorues të kyçur. Nxitet manualisht. Kërkon SUPABASE_ACCESS_TOKEN.
+# verify_jwt=true — thirret nga përdorues të kyçur. Auto-deploy në main + manual.
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/vip-verify/**'
 
 jobs:
   deploy:
