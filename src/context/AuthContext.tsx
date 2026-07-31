@@ -10,6 +10,7 @@ export interface Profile {
   balance: number;
   subscription_tier: string;
   is_admin: boolean;
+  is_verified?: boolean;
 }
 
 interface AuthContextType {

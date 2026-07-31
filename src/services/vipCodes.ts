@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 
 const PROJECT_REF = 'zwyuscgqacfpjafznybg';
 const VERIFY_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/vip-verify`;
+const FN = (name: string) => `https://${PROJECT_REF}.supabase.co/functions/v1/${name}`;
 
 /** Verifikon një kod VIP në server. Kthen true nëse ekziston dhe është aktiv. */
 export async function verifyVipCode(code: string): Promise<boolean> {
@@ -21,6 +22,34 @@ export async function verifyVipCode(code: string): Promise<boolean> {
     const j = await resp.json().catch(() => ({ valid: false }));
     return !!j.valid;
   } catch { return false; }
+}
+
+/** Verifikon kodin 6-shifror të qasjes (nga admini) për përdoruesin e kyçur. */
+export async function verifyAccountCode(code: string): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const resp = await fetch(FN('account-verify'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ code }),
+    });
+    const j = await resp.json().catch(() => ({ valid: false }));
+    return !!j.valid;
+  } catch { return false; }
+}
+
+/** Dërgon një kërkesë për abonim VIP te admini. Kthen statusin (created/pending/already_vip). */
+export async function requestVip(): Promise<{ ok: boolean; pending?: boolean; already_vip?: boolean; error?: string }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const resp = await fetch(FN('vip-request'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({}),
+    });
+    const j = await resp.json().catch(() => ({ ok: false }));
+    return j as { ok: boolean; pending?: boolean; already_vip?: boolean; error?: string };
+  } catch (e) { return { ok: false, error: (e as Error).message }; }
 }
 
 // ---- Menaxhimi nga super admin (RLS: vetëm is_admin) ----
@@ -60,7 +89,9 @@ export async function deleteVipCode(id: string): Promise<void> {
 }
 
 // ---- Anëtarët VIP (privilegji jepet direkt nga admin — pa kod) ----
-export interface VipMember { id: string; email: string; is_vip: boolean; is_admin: boolean; }
+export interface VipMember { id: string; email: string; is_vip: boolean; is_admin: boolean; is_verified: boolean; access_code: string | null; created_at?: string | null; }
+
+export interface VipRequest { id: string; user_id: string; email: string; status: string; note: string | null; created_at: string; resolved_at: string | null; }
 
 async function callAdminVip(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -83,4 +114,26 @@ export async function loadVipMembers(): Promise<VipMember[]> {
 /** I jep ose i heq privilegjin VIP një përdoruesi (vetëm admin). */
 export async function setVipMember(userId: string, isVip: boolean): Promise<void> {
   await callAdminVip({ action: 'set', user_id: userId, is_vip: isVip });
+}
+
+/** Shënon manualisht një përdorues si të verifikuar / jo (qasje te tregtimi). */
+export async function setVerifiedMember(userId: string, isVerified: boolean): Promise<void> {
+  await callAdminVip({ action: 'set_verified', user_id: userId, is_verified: isVerified });
+}
+
+/** Rigjeneron kodin 6-shifror të qasjes për një përdorues. Kthen kodin e ri. */
+export async function regenAccessCode(userId: string): Promise<string> {
+  const j = await callAdminVip({ action: 'regen_code', user_id: userId });
+  return String(j.access_code || '');
+}
+
+/** Liston kërkesat për VIP (vetëm admin). */
+export async function loadVipRequests(): Promise<VipRequest[]> {
+  const j = await callAdminVip({ action: 'list_requests' });
+  return (j.requests as VipRequest[]) ?? [];
+}
+
+/** Aprovon ose refuzon një kërkesë VIP (vetëm admin). */
+export async function resolveVipRequest(requestId: string, decision: 'approve' | 'reject'): Promise<void> {
+  await callAdminVip({ action: 'resolve_request', request_id: requestId, decision });
 }
