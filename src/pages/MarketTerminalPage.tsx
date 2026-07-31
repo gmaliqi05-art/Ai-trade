@@ -1285,19 +1285,28 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               <button onClick={() => setChartFull(false)} className="p-1.5 rounded-lg bg-gray-800 text-gray-300 hover:text-white" title={t('Dil nga ekrani i plotë')}><Minimize2 className="w-4 h-4" /></button>
             </div>
           </div>
-          {/* Grafiku — mbush gjithë hapësirën e mbetur */}
-          <div className="flex-1 min-h-0">
+          {/* Grafiku — mbush gjithë hapësirën e mbetur. Lartësia llogaritet ngushtë (vh − shiritat
+              lart+poshtë ≈ 100px) që të MOS mbetet brez bosh mbi butonat — grafiku sa më i madh. */}
+          <div className="flex-1 min-h-0 overflow-hidden">
             {candles.length > 0 && (
-              <Mt5Chart candles={displayCandles} lines={chartLines} bands={liqBands} height={Math.max(220, vh - 150)} fitKey={`full_${selected}_${tf}`}
+              <Mt5Chart candles={displayCandles} lines={chartLines} bands={liqBands} height={Math.max(220, vh - 100)} fitKey={`full_${selected}_${tf}`}
                 positions={editables} activeId={activePosId} onActiveChange={setActivePosId} onCommitSlTp={onCommitSlTp} />
             )}
           </div>
-          {/* Shiriti i tregtimit: lot + BUY / SELL / CANCEL — NJË RRESHT (pa mbështjellje), butona
-              kompaktë që të rrinë të gjithë brenda edhe në telefon vertikal. */}
+          {/* Shiriti i tregtimit: lot (me butona −/+ jashtë fushës) + BUY / SELL / OPEN ORDER —
+              NJË RRESHT, butona kompaktë që të rrinë të gjithë brenda edhe në telefon vertikal. */}
           <div className="border-t border-[#2a2e39] px-2 py-1.5 flex items-center gap-1.5">
-            <input type="number" step="0.01" min="0.01" value={lot} onChange={e => setLot(e.target.value)}
-              title={t('Lot')} aria-label={t('Lot')}
-              className="w-14 shrink-0 bg-black/40 border border-gray-700 rounded-lg px-1.5 py-1.5 text-white text-xs text-center focus:outline-none focus:border-amber-500" />
+            <div className="flex items-stretch shrink-0 rounded-lg overflow-hidden border border-gray-700 bg-black/40">
+              <button onClick={() => setLot(l => (Math.max(0.01, Math.round(((parseFloat(l) || 0.01) - 0.01) * 100) / 100)).toFixed(2))}
+                title={t('Ul lotin')} aria-label={t('Ul lotin')}
+                className="px-2 text-gray-300 hover:bg-gray-700 hover:text-white font-bold text-sm">−</button>
+              <input type="number" step="0.01" min="0.01" value={lot} onChange={e => setLot(e.target.value)}
+                title={t('Lot')} aria-label={t('Lot')}
+                className="w-11 bg-transparent py-1.5 text-white text-xs text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+              <button onClick={() => setLot(l => (Math.max(0.01, Math.round(((parseFloat(l) || 0.01) + 0.01) * 100) / 100)).toFixed(2))}
+                title={t('Rrit lotin')} aria-label={t('Rrit lotin')}
+                className="px-2 text-gray-300 hover:bg-gray-700 hover:text-white font-bold text-sm">+</button>
+            </div>
             <button onClick={() => quickTrade('buy')} disabled={tradeLoading}
               className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-green-500 hover:bg-green-400 text-white font-bold text-xs disabled:opacity-50">
               {tradeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}BUY
@@ -1306,9 +1315,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-xs disabled:opacity-50">
               {tradeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingDown className="w-3.5 h-3.5" />}SELL
             </button>
+            {/* "Open Order" (jo "Close") — hap dritaren me porositë e hapura live (kërkesa e pronarit). */}
             <button onClick={openClosePanel} disabled={tradeLoading}
               className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 font-bold text-xs disabled:opacity-50">
-              <X className="w-3.5 h-3.5" />{t('Mbyll')}
+              <Activity className="w-3.5 h-3.5" />Open Order
             </button>
           </div>
           {tradeMsg && (
