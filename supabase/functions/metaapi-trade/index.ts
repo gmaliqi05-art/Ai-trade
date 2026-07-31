@@ -136,42 +136,7 @@ async function resolveSymbol(cfg: MetaApiConfig, requested: string, db: ReturnTy
   return map[req] || requested; // pa zgjidhje tani → cache (nëse ka) ose i kërkuari si zgjidhje e fundit
 }
 
-// Fillimi i ditës sipas Frankfurt (Europe/Berlin) si instant UTC — që "dita" e humbjes
-// të përkojë me sesionin/ditën lokale (jo me 00:00 UTC). DST-i trajtohet automatik.
-function frankfurtDayStart(now = new Date()): Date {
-  const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(now);
-  const g = (t: string) => Number(p.find((x) => x.type === t)?.value || "0");
-  const y = g("year"), mo = g("month"), d = g("day"), h = g("hour"), mi = g("minute"), se = g("second");
-  const offset = Date.UTC(y, mo - 1, d, h, mi, se) - now.getTime();
-  return new Date(Date.UTC(y, mo - 1, d, 0, 0, 0) - offset);
-}
-
-// P&L i REALIZUAR i ditës (që nga mesnata e Frankfurtit) — trade-t e mbyllura sot.
-async function realizedToday(cfg: MetaApiConfig): Promise<number> {
-  try {
-    const start = frankfurtDayStart();
-    const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
-    const deals = await metaApiGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
-    if (!Array.isArray(deals)) return 0;
-    return deals.reduce((s, d) => s + (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0), 0);
-  } catch { return 0; }
-}
-
-// Humbja BRUTO e ditës — shuma e trade-ve HUMBËSE sot (pa i kompensuar me fitimet).
-async function grossLossToday(cfg: MetaApiConfig): Promise<number> {
-  try {
-    const start = frankfurtDayStart();
-    const path = `/history-deals/time/${encodeURIComponent(start.toISOString())}/${encodeURIComponent(new Date().toISOString())}`;
-    const deals = await metaApiGet(cfg, path) as Array<{ profit?: number; commission?: number; swap?: number }>;
-    if (!Array.isArray(deals)) return 0;
-    let loss = 0;
-    for (const d of deals) {
-      const net = (Number(d.profit) || 0) + (Number(d.commission) || 0) + (Number(d.swap) || 0);
-      if (net < 0) loss += -net;
-    }
-    return loss;
-  } catch { return 0; }
-}
+// (frankfurtDayStart/realizedToday/grossLossToday u hoqën bashkë me limitin ditor të humbjes.)
 
 // Njoftim Web Push (best-effort) për tregtitë MANUALE — thërret web-push-send me service-role.
 async function pushNotify(payload: Record<string, unknown>): Promise<void> {
@@ -486,19 +451,11 @@ Deno.serve(async (req: Request) => {
     // (forma "Porosi e re" + kliku mbi sinjal). Robotët automatikë e respektojnë kill_switch-in te
     // runner-ët e tyre (auto-trade-runner etj.) — ndalja e robotëve s'duhet t'ia ndalojë dorën pronarit.
 
-    // Gjendja aktuale e llogarisë nga MetaApi (pozicione + humbje e lëvizshme).
+    // Gjendja aktuale e llogarisë nga MetaApi (numri i pozicioneve).
     let openTrades = 0;
-    let dayPnl = 0; // realized(sot) + floating(tani); negativ = humbje
-    let grossLoss = 0; // humbja BRUTO e ditës (vetëm trade-t humbëse)
     try {
       const positions = await metaApiGet(config, "/positions") as Array<{ profit?: number }>;
       openTrades = Array.isArray(positions) ? positions.length : 0;
-      const info = await metaApiGet(config, "/account-information") as { balance?: number; equity?: number };
-      const bal = Number(info?.balance), eq = Number(info?.equity);
-      const floatingPnl = Number.isFinite(bal) && Number.isFinite(eq) ? eq - bal : 0;
-      const realized = await realizedToday(config);
-      dayPnl = realized + floatingPnl;
-      grossLoss = await grossLossToday(config);
     } catch (e) {
       await logExec("error", `S'u arrit MetaApi: ${(e as Error).message}`, null, null);
       return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
@@ -508,11 +465,10 @@ Deno.serve(async (req: Request) => {
       await logExec("rejected", `Arritur numri maksimal i tregtive të hapura (${config.max_open_trades}).`, null, null);
       return json({ error: "max_open_trades", message: `Arritur limiti i pozicioneve të hapura (${config.max_open_trades}).` }, 403);
     }
-    const maxDaily = Number(config.max_daily_loss) || 0;
-    if (maxDaily > 0 && (dayPnl <= -maxDaily || grossLoss >= maxDaily)) {
-      await logExec("rejected", `Limit humbjeje ditore arritur (neto ${dayPnl.toFixed(2)}, bruto ${grossLoss.toFixed(2)}, kufi ${maxDaily}).`, null, null);
-      return json({ error: "max_daily_loss", message: "Arritur limiti i humbjes ditore. Tregtitë e reja u bllokuan." }, 403);
-    }
+    // LIMITI DITOR I HUMBJES: HEQUR (kërkesa e pronarit, 31 korrik 2026) — bllokonte tregtitë
+    // manuale dhe klikimin e sinjaleve GoldSniperFX. Ky model s'duhet të ketë limit humbjeje;
+    // nëse duhet ndonjëherë, konfigurohet te cilësimet e faqes së sinjaleve (per-kanal), jo këtu.
+    // (Motori automatik VIP te auto-trade-runner e mban limitin e vet — i paprekur.)
 
     // --- EKZEKUTIMI ---
     // Lloji i porosisë: TREG (menjëherë) ose NË PRITJE (kur çmimi s'është ende te hyrja e dhënë).
