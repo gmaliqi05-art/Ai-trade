@@ -184,12 +184,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [showNewOrder, setShowNewOrder] = useState(false); // forma manuale e palosur si default; hapet me klik ose nga sinjali
   const [newEntry, setNewEntry] = useState('');   // Çmimi i hyrjes (porosi në pritje nëse s'është aty)
   const [newSl, setNewSl] = useState('');         // SL për porosinë e re (manuale)
-  const [newTp, setNewTp] = useState('');         // TP1 për porosinë e re (manuale)
-  // TP2–TP4 (ops.): me shumë TP-je loti ndahet në pjesë dhe hapet një porosi për secilin TP —
-  // i njëjti model si sinjalet me TP1–TP4 te cilësimet e sinjaleve.
-  const [newTp2, setNewTp2] = useState('');
-  const [newTp3, setNewTp3] = useState('');
-  const [newTp4, setNewTp4] = useState('');
+  const [newTp, setNewTp] = useState('');         // TP për porosinë e re (manuale)
   const [appliedSignalId, setAppliedSignalId] = useState<string | null>(null);
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeMsg, setTradeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -565,11 +560,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       }
     }
     const sl = newSl.trim() ? parseFloat(newSl) : undefined;
-    // TP1–TP4 (si te cilësimet e sinjaleve): me shumë TP-je loti ndahet dhe hapet një porosi për
-    // secilin TP — çdo pjesë mbyllet te TP-ja e vet (TP1 = pjesa e parë).
-    const tps = [newTp, newTp2, newTp3, newTp4].map(s => s.trim()).filter(Boolean)
-      .map(parseFloat).filter(n => Number.isFinite(n) && n > 0);
-    const tp = tps.length ? tps[0] : undefined;
+    const tp = newTp.trim() ? parseFloat(newTp) : undefined;
     const entry = newEntry.trim() ? parseFloat(newEntry) : undefined;
     // Paralajmërim: trade pa SL/TP = pa mbrojtje. Kërko konfirmim ose plotësim default.
     if ((sl == null || tp == null) && !confirmNoSLTP) {
@@ -579,39 +570,19 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       return;
     }
     setTradeLoading(true); setTradeMsg(null); setConfirmNoSLTP(false);
-    // Ndarja e lotit në pjesë (çdo pjesë ≥ 0.01; pjesa e parë merr mbetjen e rrumbullakimit).
-    const legCount = Math.max(1, Math.min(tps.length || 1, Math.floor(vol / 0.01 + 1e-9)));
-    const baseVol = Math.floor((vol / legCount) * 100) / 100;
-    const legVols = Array.from({ length: legCount }, () => baseVol);
-    legVols[0] = Math.round((legVols[0] + (vol - baseVol * legCount)) * 100) / 100;
-
-    let firstErr: { error?: string; message?: string } | null = null;
-    let lastOk: Awaited<ReturnType<typeof executeTrade>> | null = null;
-    let okCount = 0;
-    for (let i = 0; i < legCount; i++) {
-      const r = await executeTrade({
-        action: tradeType === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: legVols[i],
-        stopLoss: sl, takeProfit: tps.length ? tps[Math.min(i, tps.length - 1)] : undefined, entryPrice: entry,
-        signalId: appliedSignalId ?? undefined,
-      });
-      if (r.error) { if (!firstErr) firstErr = r; break; }
-      lastOk = r; okCount++;
-    }
-    const r = lastOk ?? { error: firstErr?.error, message: firstErr?.message } as Awaited<ReturnType<typeof executeTrade>>;
-    if (firstErr && okCount === 0) setTradeMsg({ type: 'error', text: errText(t, firstErr.error, firstErr.message) });
-    else if (firstErr) {
-      setTradeMsg({ type: 'error', text: t('U hapën {ok}/{total} pjesë të porosisë; pjesa tjetër dështoi: {err}', { ok: okCount, total: legCount, err: errText(t, firstErr.error, firstErr.message) }) });
-      fetchMeta(); loadPreOpen();
-    }
+    const r = await executeTrade({
+      action: tradeType === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: vol,
+      stopLoss: sl, takeProfit: tp, entryPrice: entry,
+      signalId: appliedSignalId ?? undefined,
+    });
+    if (r.error) setTradeMsg({ type: 'error', text: errText(t, r.error, r.message) });
     else {
       const dir = tradeType === 'buy' ? t('BLEJ') : t('SHIT');
-      const tpTxt = tps.length > 1 ? ` · TP ${tps.slice(0, legCount).join(' / ')}` : tp ? ` · TP ${tp}` : '';
-      const extra = `${sl ? ` · SL ${sl}` : ''}${tpTxt}${legCount > 1 ? ` · ${legCount} ${t('pjesë')}` : ''}`;
+      const extra = `${sl ? ` · SL ${sl}` : ''}${tp ? ` · TP ${tp}` : ''}`;
       // Lot-i REAL i ekzekutuar nga serveri (mund të pritet nga "Lot maksimal" i konfigurimit) —
       // trego atë, jo të kërkuarin, + paralajmërim kur pritet.
       const srvVol = Number((r as { volume?: number }).volume);
-      // Me shumë pjesë trego lotin TOTAL të kërkuar; me një pjesë — atë REAL që ekzekutoi serveri.
-      const realVol = legCount > 1 ? vol : (Number.isFinite(srvVol) && srvVol > 0 ? srvVol : vol);
+      const realVol = Number.isFinite(srvVol) && srvVol > 0 ? srvVol : vol;
       const capNote = realVol < vol ? ` ⚠️ ${t('Lot-i u prit nga "Lot maksimal" ({req} → {real}) — rrite te Lidhja & Konfigurimi.', { req: vol, real: realVol })}` : '';
       if ((r as { queued?: boolean }).queued) {
         setTradeMsg({ type: 'success', text: t('Porosia {dir} {sym} ({vol} lot){extra} u vendos në RADHË — hyn automatikisht kur hapet tregu.', { dir, sym: selected, vol: realVol, extra }) + capNote });
@@ -741,7 +712,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setNewEntry(s.entry_price != null ? String(s.entry_price) : '');
     setNewSl(s.stop_loss != null ? String(s.stop_loss) : '');
     setNewTp(s.target_price != null ? String(s.target_price) : '');
-    setNewTp2(''); setNewTp3(''); setNewTp4(''); // sinjali ka një TP — pastro shtesat
     setLot(String(signalLotByConfidence(Number(s.confidence) || 0)));
     setShowNewOrder(true); // hap automatik formën manuale me të dhënat e sinjalit
     setAppliedSignalId(s.id);
@@ -1484,8 +1454,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               ))}
             </div>
           </div>
-          {/* RRESHTI 2 — fushat kompakte në DY rreshta në desktop: Lot · Hyrje · SL · TP1 / TP2 · TP3 · TP4.
-              Me shumë TP-je loti ndahet në pjesë — një porosi për secilin TP (si sinjalet me TP1–TP4). */}
+          {/* RRESHTI 2 — 4 fusha kompakte: Lot · Hyrje · SL · TP (2 kolona në telefon → 2 rreshta). */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
             <div>
               <label className="block text-[9px] text-gray-400 mb-0.5">{t('Lot')}</label>
@@ -1503,29 +1472,11 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-red-500" />
             </div>
             <div>
-              <label className="block text-[9px] text-green-400 mb-0.5">TP1</label>
+              <label className="block text-[9px] text-green-400 mb-0.5">TP</label>
               <input type="number" step="0.01" value={newTp} onChange={e => setNewTp(e.target.value)} placeholder={t('ops.')}
                 className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
             </div>
-            <div>
-              <label className="block text-[9px] text-green-400 mb-0.5">TP2 <span className="text-gray-600">{t('(ops.)')}</span></label>
-              <input type="number" step="0.01" value={newTp2} onChange={e => setNewTp2(e.target.value)} placeholder={t('ops.')}
-                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
-            </div>
-            <div>
-              <label className="block text-[9px] text-green-400 mb-0.5">TP3 <span className="text-gray-600">{t('(ops.)')}</span></label>
-              <input type="number" step="0.01" value={newTp3} onChange={e => setNewTp3(e.target.value)} placeholder={t('ops.')}
-                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
-            </div>
-            <div>
-              <label className="block text-[9px] text-green-400 mb-0.5">TP4 <span className="text-gray-600">{t('(ops.)')}</span></label>
-              <input type="number" step="0.01" value={newTp4} onChange={e => setNewTp4(e.target.value)} placeholder={t('ops.')}
-                className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-white text-xs tabular-nums focus:outline-none focus:border-green-500" />
-            </div>
           </div>
-          {(newTp2.trim() || newTp3.trim() || newTp4.trim()) && (
-            <p className="text-[10px] text-gray-500">{t('Me shumë TP-je loti ndahet në pjesë të barabarta — një porosi për secilin TP; çdo pjesë mbyllet te TP-ja e vet.')}</p>
-          )}
           {appliedSignalId && <p className="text-[10px] text-amber-400/80">{t("Hyrja, SL dhe TP u mbushën nga sinjali. Nëse çmimi s'është te hyrja, vendoset porosi në pritje që hyn automatik. Mund t'i ndryshosh para se të tregtosh.")}</p>}
           {tradeMsg && (
             <div className={`text-xs rounded-xl px-3 py-2 ${tradeMsg.type === 'success' ? 'bg-green-900/30 text-green-400 border border-green-800/50' : 'bg-red-900/30 text-red-400 border border-red-800/50'}`}>{tradeMsg.text}</div>
