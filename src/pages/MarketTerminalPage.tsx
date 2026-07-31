@@ -1270,18 +1270,26 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* ===== EKRAN I PLOTË — grafiku në gjithë ekranin + butona Buy/Sell/Cancel (horizontal & vertikal) ===== */}
       {chartFull && (
         <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: '#131722', paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          {/* Shiriti i sipërm: simboli, çmimi, periudhat, dalja */}
-          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[#2a2e39] flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-white font-bold text-sm">{selected}</span>
-              {livePrice != null && <span className={`text-sm font-black tabular-nums ${!pxFresh ? 'text-gray-500' : pxDir === 'up' ? 'text-green-400' : pxDir === 'down' ? 'text-red-400' : 'text-white'}`}>{livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
+          {/* Shiriti i sipërm: simboli, çmimi, periudhat, Nivelet, dalja — GJITHMONË NJË RRESHT.
+              Në mobil emri/çmimi/pillat zvogëlohen që të nxënë të gjitha pa krijuar rresht të dytë;
+              në desktop/tablet ka hapësirë — të njëjtat elemente, më të mëdha. */}
+          <div className="flex items-center justify-between gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 border-b border-[#2a2e39]">
+            <div className="flex items-center gap-1 sm:gap-2 min-w-0 shrink">
+              <span className="text-white font-bold text-[11px] sm:text-sm truncate">{selected}</span>
+              {livePrice != null && <span className={`text-[11px] sm:text-sm font-black tabular-nums whitespace-nowrap ${!pxFresh ? 'text-gray-500' : pxDir === 'up' ? 'text-green-400' : pxDir === 'down' ? 'text-red-400' : 'text-white'}`}>{livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+              <div className="flex gap-0.5 sm:gap-1 bg-gray-800 rounded-lg p-0.5">
                 {['1m', '5m', '15m', '1h', '4h', '1d'].map(tt => (
-                  <button key={tt} onClick={() => setTf(tt)} className={`text-[11px] px-2 py-1 rounded-md font-medium ${tf === tt ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white'}`}>{tt === '1d' ? '1D' : tt}</button>
+                  <button key={tt} onClick={() => setTf(tt)} className={`text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md font-medium ${tf === tt ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white'}`}>{tt === '1d' ? '1D' : tt}</button>
                 ))}
               </div>
+              {/* Çelësi 🏦 Nivelet — i njëjti si te pamja normale (muret e porosive + zonat e likuiditetit).
+                  Në mobil vetëm ikona (kursen vend); teksti shfaqet nga sm: e lart. */}
+              <button onClick={toggleBigLevels} title={t('Muret e porosive (blerës/shitës të mëdhenj) + zonat e likuiditetit në grafik')}
+                className={`text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-lg font-semibold transition-colors border ${showBigLevels ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' : 'bg-gray-800 text-gray-500 border-transparent hover:text-white'}`}>
+                🏦<span className="hidden sm:inline"> {t('Nivelet')}</span>
+              </button>
               <button onClick={() => setChartFull(false)} className="p-1.5 rounded-lg bg-gray-800 text-gray-300 hover:text-white" title={t('Dil nga ekrani i plotë')}><Minimize2 className="w-4 h-4" /></button>
             </div>
           </div>
