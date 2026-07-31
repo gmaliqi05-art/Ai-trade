@@ -63,8 +63,9 @@ const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }
   { id: 'manual', label: 'Manuali', icon: BookOpen },
 ];
 
-// FAQET E LIRA (regjistrim normal): shfaqen gjithmonë në meny. Të tjerat fshihen pas butonit VIP.
-const FREE_PAGES: ClientPage[] = ['market_prices', 'dashboard', 'telegram_sin', 'manual', 'settings'];
+// FAQET E LIRA (regjistrim normal): shfaqen gjithmonë në meny. Të tjerat (përfshirë Panelin/Dashboard)
+// fshihen pas butonit VIP — kërkesa e pronarit (31 korrik 2026): Paneli vetëm për VIP.
+const FREE_PAGES: ClientPage[] = ['market_prices', 'telegram_sin', 'manual', 'settings'];
 // Kodet VIP menaxhohen nga super admini dhe verifikohen NË SERVER (edge function 'vip-verify').
 // Këtu ruhet vetëm gjendja e zhbllokimit lokal pas verifikimit të suksesshëm.
 const VIP_STORAGE_KEY = 'gt_vip_unlocked';
@@ -370,7 +371,7 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
           className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-gray-900/95 backdrop-blur border-t border-gray-800 flex items-stretch"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-          {bottomNavItems.map(item => {
+          {bottomNavItems.filter(item => vipUnlocked || FREE_PAGES.includes(item.id)).map(item => {
             const Icon = item.icon;
             const active = currentPage === item.id;
             return (
