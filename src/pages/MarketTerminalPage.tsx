@@ -1546,7 +1546,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </TLFold>
       )}
       {metaConfigured && tgReportRows.length > 0 && (
-        <TLFold k="tgdone" title={t('GoldSniperFX Algorithm — raportet (të mbyllura & të anuluara)')} icon={<History className="w-4 h-4 text-sky-400" />}>
+        <TLFold k="tgdone" title={t('GoldSniperFX')} icon={<History className="w-4 h-4 text-sky-400" />}>
           {/* NDARJE DITORE + përmbledhje ditore & e përgjithshme + filtër date (ditë/interval). */}
           <ReportBook rows={tgReportRows} lossLabel="SL" />
         </TLFold>
@@ -1563,7 +1563,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* MESAZHET E GRUPEVE (kërkesa e pronarit): GJITHÇKA që dërgojnë trejderat në kanale —
           sinjale, komente, modifikime — si feed i plotë, i lexueshëm nga Trade Live. */}
       {metaConfigured && tgSigs.length > 0 && (
-        <TLFold k="tgmsgs" defaultOpen={false} title={t('Mesazhet e grupeve — gjithçka që dërgojnë trejderat')} icon={<Zap className="w-4 h-4 text-sky-400" />}>
+        <TLFold k="tgmsgs" defaultOpen={false} title={t('Mesazhet')} icon={<Zap className="w-4 h-4 text-sky-400" />}>
           <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
             {tgSigs.slice(0, 40).map((s) => {
               const d = new Date(s.created_at);
