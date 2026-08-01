@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, NotebookPen, Bot, Hand, Scale, Check, LineChart } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, NotebookPen, Bot, Hand, Scale, Check, LineChart, Wallet, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
-import { loadPositionCloses, type PositionCloseRow } from '../services/metaapi';
+import { loadPositionCloses, checkMetaApiConnection, loadTradeHistory, type PositionCloseRow } from '../services/metaapi';
 
 // JOURNAL — ditari i treiderit (modeli standard i evidencës së një treideri):
 //  • Kalendar mujor: çdo ditë tregon P&L neto + numrin e tradeve (jeshile fitim / e kuqe humbje).
@@ -31,6 +31,30 @@ export default function JournalPage() {
   const [noteSaved, setNoteSaved] = useState(false);
   // Shënimet e muajit (ditë → tekst) — pika te kalendari + TABELA e shënimeve poshtë.
   const [monthNotes, setMonthNotes] = useState<Map<string, string>>(new Map());
+
+  // LLOGARIA & DEPOZITAT: bilanci aktual nga MT5 + veprimet e bilancit (depozita/tërheqje) nga
+  // historiku i deal-eve (DEAL_TYPE_BALANCE, deri 120 ditë — mosha e llogarisë). Rezultati nga
+  // tregtimi = bilanci aktual − (depozita − tërheqje) → pozitiv/negativ ndaj investimit.
+  const [acctBalance, setAcctBalance] = useState<number | null>(null);
+  const [deposits, setDeposits] = useState<{ count: number; total: number; wdCount: number; wdTotal: number } | null>(null);
+  const fetchAccount = useCallback(async () => {
+    try {
+      const [chk, hist] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(120)]);
+      const bal = Number((chk as { account?: { balance?: number } }).account?.balance);
+      if (Number.isFinite(bal)) setAcctBalance(bal);
+      const deals = (hist as { deals?: Array<{ type?: string; profit?: number }> }).deals;
+      if (Array.isArray(deals)) {
+        let count = 0, total = 0, wdCount = 0, wdTotal = 0;
+        for (const d of deals) {
+          if (String(d.type) !== 'DEAL_TYPE_BALANCE') continue;
+          const amt = Number(d.profit) || 0;
+          if (amt > 0) { count++; total += amt; } else if (amt < 0) { wdCount++; wdTotal += -amt; }
+        }
+        setDeposits({ count, total, wdCount, wdTotal });
+      }
+    } catch { /* pa MT5 të lidhur — paneli thjesht s'mbushet */ }
+  }, []);
+  useEffect(() => { fetchAccount(); }, [fetchAccount]);
 
   // Mbylljet e muajit të zgjedhur (± disa ditë buferi për zonat orare).
   const fetchMonth = useCallback(async () => {
@@ -207,11 +231,59 @@ export default function JournalPage() {
 
   return (
     <div className="p-3 sm:p-5 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <CalendarDays className="w-5 h-5 text-amber-400" />
         <h1 className="text-lg font-bold text-white">Journal</h1>
         <span className="text-xs text-gray-500">{t('— ditari i tregtimit: evidencë ditore + shënime')}</span>
+        <button onClick={() => { fetchMonth(); fetchAccount(); }} title={t('Rifresko të dhënat reale')}
+          className="ml-auto inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white">
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />{t('Rifresko')}
+        </button>
       </div>
+
+      {/* DEPOZITAT & BILANCI — një rresht mbi kalendarin: sa herë ka depozituar përdoruesi, totali,
+          bilanci aktual dhe rezultati nga tregtimi (pozitiv/negativ ndaj depozitave). */}
+      {(acctBalance != null || deposits) && (() => {
+        const netDep = deposits ? deposits.total - deposits.wdTotal : null;
+        const result = acctBalance != null && netDep != null ? acctBalance - netDep : null;
+        return (
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4">
+            <div className="text-xs font-semibold text-white mb-2 flex items-center gap-1.5">
+              <Wallet className="w-4 h-4 text-amber-400" />{t('Llogaria — depozitat & rezultati')}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="bg-gray-800/40 rounded-xl p-2.5">
+                <div className="text-[10px] text-gray-500 uppercase">{t('Depozitat')}</div>
+                <div className="text-sm font-black text-white tabular-nums">
+                  {deposits ? <>{deposits.total.toLocaleString('en-US', { maximumFractionDigits: 2 })}$ <span className="text-[10px] text-gray-500 font-semibold">({deposits.count} {t('herë')})</span></> : '—'}
+                </div>
+              </div>
+              <div className="bg-gray-800/40 rounded-xl p-2.5">
+                <div className="text-[10px] text-gray-500 uppercase">{t('Tërheqjet')}</div>
+                <div className="text-sm font-black text-white tabular-nums">
+                  {deposits ? (deposits.wdCount ? <>−{deposits.wdTotal.toLocaleString('en-US', { maximumFractionDigits: 2 })}$ <span className="text-[10px] text-gray-500 font-semibold">({deposits.wdCount} {t('herë')})</span></> : '0$') : '—'}
+                </div>
+              </div>
+              <div className="bg-gray-800/40 rounded-xl p-2.5">
+                <div className="text-[10px] text-gray-500 uppercase">{t('Bilanci aktual')}</div>
+                <div className="text-sm font-black text-white tabular-nums">{acctBalance != null ? `${acctBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })}$` : '—'}</div>
+              </div>
+              <div className="bg-gray-800/40 rounded-xl p-2.5">
+                <div className="text-[10px] text-gray-500 uppercase">{t('Rezultati nga tregtimi')}</div>
+                {result != null ? (
+                  <div className={`text-sm font-black tabular-nums flex items-center gap-1.5 ${moneyCls(result)}`}>
+                    {money(result)}
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${result >= 0 ? 'bg-green-500/15 text-green-300' : 'bg-red-500/15 text-red-300'}`}>
+                      {result >= 0 ? t('POZITIV') : t('NEGATIV')}
+                    </span>
+                  </div>
+                ) : <div className="text-sm font-black text-gray-500">—</div>}
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-600 mt-1.5">{t('Rezultati = bilanci aktual − (depozitat − tërheqjet). Veprimet e bilancit lexohen nga historiku real i MT5.')}</p>
+          </div>
+        );
+      })()}
 
       {/* KOKA E MUAJIT: navigimi + totali i muajit. */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4">
