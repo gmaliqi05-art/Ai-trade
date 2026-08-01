@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown, BellRing, Smartphone } from 'lucide-react';
+import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown, BellRing, Smartphone, Trash2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
@@ -7,7 +7,9 @@ import { isStandalone, isIosLike, getPushState, subscribePush, unsubscribePush, 
 
 type Section = 'profile' | 'security' | 'notifications' | 'subscription';
 
-interface NotificationPrefs { signals: boolean; priceAlerts: boolean; newsletter: boolean; tradeConfirmations: boolean; }
+// Preferencat e njoftimeve për përdoruesin STANDARD: mesazhet e platformës + kujtesa e abonimit.
+// (Toggles e vjetra — Sinjale AI, Alarme çmimi, Konfirmime, Buletini — u hoqën: s'janë privilegje standarde.)
+interface NotificationPrefs { messages: boolean; subscription: boolean; }
 
 export default function SettingsPage() {
   const { t } = useI18n();
@@ -18,8 +20,32 @@ export default function SettingsPage() {
   const [notifSaved, setNotifSaved] = useState(false);
   const [profileForm, setProfileForm] = useState({ full_name: profile?.full_name || '', username: profile?.username || '' });
   const [pwForm, setPwForm] = useState({ new: '', confirm: '' });
-  const [notifications, setNotifications] = useState<NotificationPrefs>({ signals: true, priceAlerts: true, newsletter: false, tradeConfirmations: true });
+  const [notifications, setNotifications] = useState<NotificationPrefs>({ messages: true, subscription: true });
   const [pwMsg, setPwMsg] = useState('');
+
+  // FSHIRJA E LLOGARISË — dy hapa: paralajmërim (të dhënat humbin) → fjalëkalim → fshirje e përhershme.
+  const [delStep, setDelStep] = useState(0);
+  const [delPw, setDelPw] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delMsg, setDelMsg] = useState('');
+  const confirmDelete = async () => {
+    if (!delPw) return;
+    setDelBusy(true); setDelMsg('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch('https://zwyuscgqacfpjafznybg.supabase.co/functions/v1/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ password: delPw }),
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (j.ok) { await signOut(); return; } // llogaria u fshi — dil dhe kthehu te hyrja
+      setDelMsg(j.error === 'wrong_password' ? t('Fjalëkalim i gabuar.')
+        : j.error === 'admin_protected' ? t("Llogaritë admin s'fshihen nga këtu.")
+        : (j.error || t('Fshirja dështoi. Provo sërish.')));
+    } catch { setDelMsg(t('Fshirja dështoi. Provo sërish.')); }
+    setDelBusy(false);
+  };
 
   // Web Push (web + PWA): gjendja e abonimit në këtë pajisje.
   const [push, setPush] = useState<{ supported: boolean; permission: NotificationPermission; subscribed: boolean }>({ supported: false, permission: 'default', subscribed: false });
@@ -75,9 +101,8 @@ export default function SettingsPage() {
   useEffect(() => {
     if (profile) {
       setProfileForm({ full_name: profile.full_name || '', username: profile.username || '' });
-      if ((profile as unknown as { notification_preferences?: NotificationPrefs }).notification_preferences) {
-        setNotifications((profile as unknown as { notification_preferences: NotificationPrefs }).notification_preferences);
-      }
+      const raw = (profile as unknown as { notification_preferences?: Record<string, unknown> }).notification_preferences;
+      if (raw) setNotifications({ messages: raw.messages !== false, subscription: raw.subscription !== false });
     }
   }, [profile]);
 
@@ -266,10 +291,8 @@ export default function SettingsPage() {
 
               <div className="space-y-3">
                 {[
-                  { key: 'signals' as const, label: t('Sinjale AI'), desc: t('Njoftohu kur gjenerohen sinjale të reja tregtimi') },
-                  { key: 'priceAlerts' as const, label: t('Alarme çmimi'), desc: t('Njoftime kur aktivizohen alarmet e tua të çmimit') },
-                  { key: 'tradeConfirmations' as const, label: t('Konfirmime tregtie'), desc: t('Konfirmim pas çdo tregtie të ekzekutuar') },
-                  { key: 'newsletter' as const, label: t('Buletini i tregut'), desc: t('Përmbledhje javore e tregut dhe analizat') },
+                  { key: 'messages' as const, label: t('Mesazhet e platformës'), desc: t('Push notification kur platforma të dërgon një mesazh ose njoftim të rëndësishëm') },
+                  { key: 'subscription' as const, label: t('Kujtesa e abonimit'), desc: t('Push notification 1 javë para se të skadojë abonimi yt') },
                 ].map((item) => (
                   <div key={item.key} className="flex items-center justify-between p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
                     <div><div className="text-white text-sm font-medium">{item.label}</div><div className="text-gray-500 text-xs mt-0.5">{item.desc}</div></div>
@@ -304,6 +327,55 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
+
+              {/* ZONA E RREZIKUT — çaktivizimi/fshirja e llogarisë (e detyrueshme për privatësinë).
+                  Rrjedha: paralajmërim (të gjitha të dhënat humbin) → fjalëkalimi → fshirje e përhershme. */}
+              <div className="bg-gray-900 border border-red-900/50 rounded-2xl p-5">
+                <h3 className="text-red-400 font-semibold flex items-center gap-2 mb-1"><Trash2 className="w-4 h-4" />{t('Çaktivizo llogarinë')}</h3>
+                <p className="text-gray-400 text-sm mb-3">{t('Fshirja e llogarisë është e përhershme: profili, raportet, trade-t, shënimet dhe të gjitha të dhënat e tua humbin përgjithmonë.')}</p>
+                <button onClick={() => { setDelStep(1); setDelPw(''); setDelMsg(''); }}
+                  className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-red-900/30 text-red-400 border border-red-800/60 hover:bg-red-900/50 transition-colors">
+                  <Trash2 className="w-4 h-4" />{t('Fshi llogarinë')}
+                </button>
+              </div>
+
+              {/* DRITARJA E FSHIRJES — dy hapa. */}
+              {delStep > 0 && (
+                <div className="fixed inset-0 z-[110] bg-black/70 flex items-center justify-center p-4" onClick={() => !delBusy && setDelStep(0)}>
+                  <div className="bg-gray-900 border border-red-900/60 rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+                    {delStep === 1 && (
+                      <>
+                        <h3 className="text-red-400 font-bold flex items-center gap-2 mb-2"><AlertTriangle className="w-5 h-5" />{t('Je i sigurt?')}</h3>
+                        <p className="text-gray-300 text-sm leading-relaxed mb-4">
+                          {t('Ky veprim fshin PËRGJITHMONË llogarinë tënde dhe TË GJITHA të dhënat: profilin, raportet, trade-t, shënimet e Journal-it, konfigurimet dhe njoftimet. Nuk ka kthim pas dhe asgjë nuk mund të rikuperohet.')}
+                        </p>
+                        <div className="flex gap-2 justify-end">
+                          <button onClick={() => setDelStep(0)} className="text-sm font-semibold px-4 py-2 rounded-xl bg-gray-800 text-gray-300 border border-gray-700 hover:text-white">{t('Anulo')}</button>
+                          <button onClick={() => setDelStep(2)} className="text-sm font-semibold px-4 py-2 rounded-xl bg-red-600 text-white hover:bg-red-500">{t('Vazhdo me fshirjen')}</button>
+                        </div>
+                      </>
+                    )}
+                    {delStep === 2 && (
+                      <>
+                        <h3 className="text-red-400 font-bold flex items-center gap-2 mb-2"><Shield className="w-5 h-5" />{t('Konfirmo me fjalëkalimin')}</h3>
+                        <p className="text-gray-400 text-sm mb-3">{t('Për sigurinë tënde, vendos fjalëkalimin e llogarisë për të përfunduar fshirjen e përhershme.')}</p>
+                        <input type="password" value={delPw} autoFocus onChange={e => { setDelPw(e.target.value); setDelMsg(''); }}
+                          onKeyDown={e => { if (e.key === 'Enter') confirmDelete(); }}
+                          placeholder={t('Fjalëkalimi')}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-red-500 mb-2" />
+                        {delMsg && <p className="text-red-400 text-xs mb-2">{delMsg}</p>}
+                        <div className="flex gap-2 justify-end">
+                          <button onClick={() => setDelStep(0)} disabled={delBusy} className="text-sm font-semibold px-4 py-2 rounded-xl bg-gray-800 text-gray-300 border border-gray-700 hover:text-white disabled:opacity-50">{t('Anulo')}</button>
+                          <button onClick={confirmDelete} disabled={delBusy || !delPw}
+                            className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl bg-red-600 text-white hover:bg-red-500 disabled:opacity-50">
+                            {delBusy && <Loader2 className="w-4 h-4 animate-spin" />}{t('Fshi llogarinë përgjithmonë')}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
