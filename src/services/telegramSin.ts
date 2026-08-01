@@ -128,6 +128,22 @@ export async function setOthersEnabled(userId: string, on: boolean): Promise<voi
   }
 }
 
+/** ADMIN: gjendja e robotëve të tjerë për llogarinë PRONARE (pa ekspozuar token-at e MetaApi). */
+export async function loadOthersStateAdmin(targetId: string): Promise<OthersState> {
+  const { data, error } = await supabase.rpc('admin_others_state', { target: targetId });
+  if (error) throw new Error(error.message);
+  const d = (data ?? {}) as { signalsOn?: boolean; mmtOn?: boolean; mmtControllable?: boolean };
+  const signalsOn = d.signalsOn !== false;
+  const mmtOn = !!d.mmtOn && !!d.mmtControllable;
+  return { signalsOn, mmtOn, mmtControllable: !!d.mmtControllable, othersOn: signalsOn || mmtOn };
+}
+
+/** ADMIN: ndal/nis robotët e tjerë për llogarinë PRONARE. */
+export async function setOthersEnabledAdmin(targetId: string, on: boolean): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_others', { target: targetId, turn_on: on });
+  if (error) throw new Error(error.message);
+}
+
 export async function loadTelegramSignals(userId: string, limit = 50): Promise<TelegramSignalRow[]> {
   const { data } = await supabase
     .from('telegram_signals')

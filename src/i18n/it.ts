@@ -807,4 +807,15 @@ export const it: Record<string, string> = {
   "Menaxho abonimin (kartën / anulimin)": "Gestisci abbonamento (carta / disdetta)",
   "S'ka abonim me pagesë për të menaxhuar.": "Non ci sono abbonamenti a pagamento da gestire.",
   "Nuk u hap dot portali. Provo sërish.": "Impossibile aprire il portale. Riprova.",
+  // ---- Profili: foto + ruajtje e verifikuar ----
+  "Ndrysho foton e profilit": "Cambia foto profilo",
+  "Fotoja u ngarkua.": "Foto caricata.",
+  "Ngarkimi dështoi.": "Caricamento non riuscito.",
+  "Ruajtja nuk u konfirmua nga serveri. Dil dhe hyr sërish, pastaj provo përsëri.": "Il salvataggio non è stato confermato dal server. Esci e rientra, poi riprova.",
+  "Konfigurimi i Sinjaleve": "Configurazione dei segnali",
+  "Konfigurimi i feed-it dhe i kanalit — llogaria pronare": "Configurazione del feed e del canale — account proprietario",
+  "Publiko sinjale te kanali": "Pubblica segnali sul canale",
+  "Asnjë llogari nuk e ka të lidhur kanalin GoldSniper|FX ende.": "Nessun account ha ancora collegato il canale GoldSniper|FX.",
+  "GoldSniperFX — konfigurimi i feed-it": "GoldSniperFX — configurazione del feed",
+  "Lot-i, TP-të, SL rezervë, max pozicionet dhe mbrojtja shkallë-shkallë rregullohen nga vetë përdoruesi te karta e kanalit.": "Lotto, TP, SL di riserva, posizioni max e protezione progressiva sono impostati dall'utente sulla scheda del canale.",
 };

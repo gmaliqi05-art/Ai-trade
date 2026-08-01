@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown, BellRing, Smartphone, Trash2, AlertTriangle } from 'lucide-react';
+import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown, BellRing, Smartphone, Trash2, AlertTriangle, Camera } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
@@ -24,7 +24,31 @@ export default function SettingsPage() {
     first_name: profile?.first_name || '', last_name: profile?.last_name || '',
     username: profile?.username || '', phone: profile?.phone || '',
     address: profile?.address || '', country: profile?.country || '',
+    birth_date: profile?.birth_date || '',
   });
+  const [profileMsg, setProfileMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  // Datëlindja bllokohet vetëm KUR është vendosur tashmë; përdoruesit e vjetër (bosh) e plotësojnë.
+  const birthLocked = !!profile?.birth_date;
+  // FOTO E PROFILIT — ngarkohet te bucket-i 'avatars' (dosja = user id).
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const uploadAvatar = async (file: File) => {
+    if (!user) return;
+    setAvatarBusy(true); setProfileMsg(null);
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${user.id}/avatar_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw new Error(upErr.message);
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
+      const { error: dbErr } = await supabase.from('profiles').update({ avatar_url: pub.publicUrl }).eq('id', user.id);
+      if (dbErr) throw new Error(dbErr.message);
+      await refreshProfile();
+      setProfileMsg({ type: 'success', text: t('Fotoja u ngarkua.') });
+    } catch (e) {
+      setProfileMsg({ type: 'error', text: (e as Error).message || t('Ngarkimi dështoi.') });
+    }
+    setAvatarBusy(false);
+  };
   const [pwForm, setPwForm] = useState({ new: '', confirm: '' });
   const [notifications, setNotifications] = useState<NotificationPrefs>({ messages: true, subscription: true });
   const [pwMsg, setPwMsg] = useState('');
@@ -124,6 +148,7 @@ export default function SettingsPage() {
         first_name: profile.first_name || '', last_name: profile.last_name || '',
         username: profile.username || '', phone: profile.phone || '',
         address: profile.address || '', country: profile.country || '',
+        birth_date: profile.birth_date || '',
       });
       const raw = (profile as unknown as { notification_preferences?: Record<string, unknown> }).notification_preferences;
       if (raw) setNotifications({ messages: raw.messages !== false, subscription: raw.subscription !== false });
@@ -132,15 +157,30 @@ export default function SettingsPage() {
 
   const saveProfile = async () => {
     if (!user) return;
+    setProfileMsg(null);
+    // Datëlindja (kur plotësohet për herë të parë): 18+ e detyrueshme.
+    if (!birthLocked && profileForm.birth_date) {
+      const bd = new Date(profileForm.birth_date + 'T12:00:00'), now = new Date();
+      let age = now.getFullYear() - bd.getFullYear();
+      if (now.getMonth() < bd.getMonth() || (now.getMonth() === bd.getMonth() && now.getDate() < bd.getDate())) age--;
+      if (!(age >= 18)) { setProfileMsg({ type: 'error', text: t('Për shkak të sigurisë, hapja e llogarisë nuk lejohet për personat nën 18 vjeç.') }); return; }
+    }
     setSaving(true);
-    await supabase.from('profiles').update({
-      first_name: profileForm.first_name, last_name: profileForm.last_name,
-      full_name: `${profileForm.first_name} ${profileForm.last_name}`.trim() || profileForm.username,
-      username: profileForm.username, phone: profileForm.phone,
-      address: profileForm.address, country: profileForm.country,
-    }).eq('id', user.id);
+    const patch: Record<string, unknown> = {
+      first_name: profileForm.first_name || null, last_name: profileForm.last_name || null,
+      full_name: `${profileForm.first_name} ${profileForm.last_name}`.trim() || profileForm.username || profile?.full_name || '',
+      username: profileForm.username || null, phone: profileForm.phone || null,
+      address: profileForm.address || null, country: profileForm.country || null,
+      updated_at: new Date().toISOString(),
+    };
+    if (!birthLocked && profileForm.birth_date) patch.birth_date = profileForm.birth_date;
+    // .select() konfirmon se rreshti U PËRDITËSUA vërtet (pa të, dështimi kalonte në heshtje).
+    const { data, error } = await supabase.from('profiles').update(patch).eq('id', user.id).select('id');
+    setSaving(false);
+    if (error) { setProfileMsg({ type: 'error', text: error.message }); return; }
+    if (!data || data.length === 0) { setProfileMsg({ type: 'error', text: t('Ruajtja nuk u konfirmua nga serveri. Dil dhe hyr sërish, pastaj provo përsëri.') }); return; }
     await refreshProfile();
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+    setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
   const saveNotifications = async (updated: NotificationPrefs) => {
@@ -201,7 +241,17 @@ export default function SettingsPage() {
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
               <h3 className="text-white font-semibold mb-5 flex items-center gap-2"><User className="w-4 h-4 text-amber-400" />{t('Të dhënat e profilit')}</h3>
               <div className="flex items-center gap-4 mb-6 p-4 bg-gray-800/50 rounded-2xl border border-gray-700/50">
-                <div className="w-14 h-14 bg-amber-500/20 rounded-2xl flex items-center justify-center flex-shrink-0"><User className="w-7 h-7 text-amber-400" /></div>
+                {/* FOTO E PROFILIT — klik për ta ndryshuar. */}
+                <label className="relative w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 cursor-pointer group" title={t('Ndrysho foton e profilit')}>
+                  {profile?.avatar_url
+                    ? <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                    : <div className="w-full h-full bg-amber-500/20 flex items-center justify-center"><User className="w-7 h-7 text-amber-400" /></div>}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    {avatarBusy ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Camera className="w-4 h-4 text-white" />}
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" disabled={avatarBusy}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAvatar(f); e.currentTarget.value = ''; }} />
+                </label>
                 <div>
                   <div className="text-white font-semibold">{profile?.full_name || 'Trader'}</div>
                   <div className="text-gray-400 text-sm">{user?.email}</div>
@@ -223,8 +273,14 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Datëlindja')}</label>
-                    <input type="text" value={profile?.birth_date ? new Date(profile.birth_date + 'T12:00:00').toLocaleDateString('en-GB') : '—'} disabled
-                      className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-3 text-gray-500 cursor-not-allowed" />
+                    {birthLocked ? (
+                      <input type="text" value={new Date(profile!.birth_date + 'T12:00:00').toLocaleDateString('en-GB')} disabled
+                        className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-3 text-gray-500 cursor-not-allowed" />
+                    ) : (
+                      <input type="date" value={profileForm.birth_date || ''} max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => setProfileForm(p => ({ ...p, birth_date: e.target.value }))}
+                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors [color-scheme:dark]" />
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Nr. i telefonit')}</label>
@@ -254,6 +310,9 @@ export default function SettingsPage() {
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
                   <input type="email" value={user?.email || ''} disabled className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-3 text-gray-500 cursor-not-allowed" />
                 </div>
+                {profileMsg && (
+                  <div className={`text-sm rounded-xl px-3 py-2 ${profileMsg.type === 'success' ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>{profileMsg.text}</div>
+                )}
                 <button onClick={saveProfile} disabled={saving} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-semibold px-5 py-2.5 rounded-xl text-sm transition-all">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
                   {saved ? t('U ruajt!') : t('Ruaj ndryshimet')}

@@ -79,15 +79,16 @@ async function callPost(payload: Record<string, unknown>): Promise<{ ok: boolean
   return { ok: !!j.ok, message: j.message };
 }
 
-/** Poston një mesazh prove te kanali (verifikon botin + kanalin). */
-export function testGoldSniper(): Promise<{ ok: boolean; message?: string }> {
-  return callPost({ action: 'test' });
+/** Poston një mesazh prove te kanali (verifikon botin + kanalin).
+ *  ownerId: vetëm nga konsola ADMIN — poston te kanali i llogarisë pronare. */
+export function testGoldSniper(ownerId?: string): Promise<{ ok: boolean; message?: string }> {
+  return callPost({ action: 'test', ...(ownerId ? { owner_id: ownerId } : {}) });
 }
 
 /** Poston një sinjal të formatuar (ose tekst custom) te kanali. */
 export function postGoldSniperSignal(input: {
   symbol?: string; direction?: 'buy' | 'sell'; entry?: number; stop_loss?: number;
-  tps?: number[]; note?: string; message?: string;
+  tps?: number[]; note?: string; message?: string; owner_id?: string;
 }): Promise<{ ok: boolean; message?: string }> {
   return callPost({ action: 'post', ...input });
 }

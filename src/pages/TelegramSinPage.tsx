@@ -1,22 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Send, Power, PowerOff, Loader2, Copy, ExternalLink, CheckCircle2, XCircle,
-  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, ShieldAlert, BarChart3, ArrowLeft, ChevronDown, Cloud, Crosshair,
+  Send, Loader2, CheckCircle2, XCircle,
+  TrendingUp, TrendingDown, Info, RefreshCw, Monitor, BarChart3, ArrowLeft, ChevronDown, Cloud,
 } from 'lucide-react';
 import Mt5ConnectCard from '../components/Mt5ConnectCard';
-import GoldSniperPage from './GoldSniperPage';
-import { type GoldSniperPrefill } from '../services/goldSniper';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import { ClientPage } from '../App';
 import { checkMetaApiConnection, loadMetaApiConfig, type AccountInfo } from '../services/metaapi';
 import {
   loadTelegramSinConfig, saveTelegramSinConfigPartial, loadTelegramSignals,
-  generateWebhookSecret, webhookUrlFor, setWebhookUrl,
-  loadOthersState, setOthersEnabled, loadOpenTgTrades, type TgTradeRow,
+  loadOpenTgTrades, type TgTradeRow,
   loadTgChannels, upsertTgChannel, type TgChannelRow,
   loadTgLegs, sigPnl, type TgLegRow,
-  DEFAULT_TG_CONFIG, type TelegramSinConfig, type TelegramSignalRow, type TpMode, type OthersState,
+  DEFAULT_TG_CONFIG, type TelegramSinConfig, type TelegramSignalRow, type TpMode,
 } from '../services/telegramSin';
 
 export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: ClientPage) => void }) {
@@ -30,8 +27,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   // NËN-FAQET sipas kanalit: 'all' ose tg_chat_id. Emrat e njohur të kanaleve → etiketa miqësore.
   const [channel, setChannel] = useState<string>('all');
   // Pamja: 'home' (dy tabelat e kanaleve) ose 'detail' (raportet e plota të një kanali).
-  const [view, setView] = useState<'home' | 'detail' | 'feed' | 'gold_sniper'>('home');
-  const [gsPrefill, setGsPrefill] = useState<GoldSniperPrefill | null>(null);
+  const [view, setView] = useState<'home' | 'detail' | 'feed'>('home');
   const [openTrades, setOpenTrades] = useState<TgTradeRow[]>([]);
   const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
   const [chParams, setChParams] = useState<Record<string, TgChannelRow>>({});
@@ -44,14 +40,21 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
   const [accLoading, setAccLoading] = useState(true);
 
-  const [others, setOthers] = useState<OthersState | null>(null);
-  const [othersBusy, setOthersBusy] = useState(false);
-
   const flash = (type: 'success' | 'error', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 3500); };
 
   const refresh = useCallback(async () => {
     if (!user) return;
-    try { const c = await loadTelegramSinConfig(user.id); setCfg(c); setLoaded(true); } catch { setLoaded(false); }
+    try {
+      const c = await loadTelegramSinConfig(user.id);
+      setCfg(c); setLoaded(true);
+      // Çelësi master i feed-it menaxhohet nga Admin (GoldSniperFX). Këtu sigurohemi vetëm
+      // që llogaria të mos mbetet e fikur pa e ditur — kontrolli i përdoruesit është
+      // çelësi ON/OFF i kanalit më poshtë.
+      if (!c.active) {
+        await saveTelegramSinConfigPartial(user.id, { active: true }).catch(() => {});
+        setCfg((p) => ({ ...p, active: true }));
+      }
+    } catch { setLoaded(false); }
     try { setSignals(await loadTelegramSignals(user.id, 300)); } catch { /* */ }
     try { setOpenTrades(await loadOpenTgTrades(user.id)); } catch { /* */ }
     try { setTgLegs(await loadTgLegs(user.id)); } catch { /* */ }
@@ -61,20 +64,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
       for (const r of rows) m[String(r.chat_id)] = r;
       setChParams(m);
     } catch { /* */ }
-    try { setOthers(await loadOthersState(user.id)); } catch { /* */ }
   }, [user]);
-
-  const toggleOthers = async () => {
-    if (!user || !others) return;
-    const turnOn = !others.othersOn;
-    setOthersBusy(true);
-    try {
-      await setOthersEnabled(user.id, turnOn);
-      setOthers(await loadOthersState(user.id));
-      flash('success', turnOn ? t('Robotët e tjerë u ndezën.') : t('Robotët e tjerë u ndalën — vetëm Telegram Sin punon.'));
-    } catch (e) { flash('error', (e as Error).message); }
-    finally { setOthersBusy(false); }
-  };
 
   const refreshAccount = useCallback(async () => {
     if (!user) return;
@@ -106,42 +96,8 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
     catch (e) { flash('error', (e as Error).message); }
   };
 
-  // Aktivizim: sigurohu që ekziston webhook_secret para se ta ndezësh.
-  const toggleActive = async () => {
-    if (!user) return;
-    const next = !cfg.active;
-    let secret = cfg.webhook_secret;
-    const patch: Partial<TelegramSinConfig> = { active: next };
-    if (next && !secret) { secret = generateWebhookSecret(); patch.webhook_secret = secret; }
-    setCfg((p) => ({ ...p, ...patch }));
-    try { await saveTelegramSinConfigPartial(user.id, patch); flash('success', next ? t('Telegram Sin u aktivizua.') : t('Telegram Sin u çaktivizua.')); }
-    catch (e) { flash('error', (e as Error).message); }
-  };
-
-  // Krijon adresën e lidhjes (webhook_secret) pa pasur nevojë për bot token — për metodën abonues (kopjues).
-  const ensureSecret = async () => {
-    if (!user || cfg.webhook_secret) return;
-    const secret = generateWebhookSecret();
-    setCfg((p) => ({ ...p, webhook_secret: secret }));
-    try { await saveTelegramSinConfigPartial(user.id, { webhook_secret: secret }); flash('success', t('Adresa e lidhjes u krijua.')); }
-    catch (e) { flash('error', (e as Error).message); }
-  };
-
-  const ensureSecretAndSaveToken = async (token: string) => {
-    if (!user) return;
-    let secret = cfg.webhook_secret;
-    const patch: Partial<TelegramSinConfig> = { bot_token: token };
-    if (!secret) { secret = generateWebhookSecret(); patch.webhook_secret = secret; }
-    setCfg((p) => ({ ...p, ...patch }));
-    try { await saveTelegramSinConfigPartial(user.id, patch); flash('success', t('U ruajt.')); }
-    catch (e) { flash('error', (e as Error).message); }
-  };
-
-  const copy = (text: string) => { navigator.clipboard?.writeText(text).then(() => flash('success', t('U kopjua.'))).catch(() => {}); };
-
   const money = (n?: number) => (n == null ? '—' : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const cur = account?.currency || '';
-  const hookUrl = cfg.webhook_secret ? webhookUrlFor(cfg.webhook_secret) : '';
 
   // ---- KANALET: regjistri (të njohurit + të parët nga sinjalet) dhe statistikat për secilin ----
   const chanMap = new Map<string, string>();
@@ -283,18 +239,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
   };
 
   // ===== PAMJA E DETAJUAR E NJË KANALI: të gjitha raportet e tij =====
-  // ===== NËN-FAQJA: GoldSniper|FX (publikimi i sinjaleve te kanali i vetë përdoruesit) =====
-  if (view === 'gold_sniper') {
-    return (
-      <div>
-        <div className="max-w-4xl mx-auto px-3 sm:px-4 pt-3">
-          <button onClick={() => setView('home')} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />{t('Kthehu te Sinjalet e platformës')}</button>
-        </div>
-        <GoldSniperPage prefill={gsPrefill} />
-      </div>
-    );
-  }
-
   // ===== NËN-FAQJA: LISTA E PLOTË E SINJALEVE (të gjitha kanalet, secili ndaras me datë/orë) =====
   if (view === 'feed') {
     const allSigs = signals
@@ -320,21 +264,9 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
               const chName = chanMap.get(String(s.tg_chat_id ?? '')) || s.tg_sender || 'Telegram';
               const result = (s.tp_hit ?? 0) > 0 ? `→ TP${s.tp_hit}` : (s.status === 'closed' ? 'SL' : s.status === 'canceled' ? 'Cancel' : null);
               const resCls = (s.tp_hit ?? 0) > 0 ? 'bg-emerald-500/15 text-emerald-300' : s.status === 'closed' ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300';
-              // KLIK → dërgo të dhënat te GoldSniper|FX (secila në pozicionin e vet) dhe hape atë nën-faqe.
-              const openInGoldSniper = () => {
-                if (!dir) return;
-                setGsPrefill({
-                  direction: dir, symbol: s.symbol || 'XAUUSD',
-                  entry: s.entry_type === 'market' ? null : (s.entry_price ?? null),
-                  sl: s.stop_loss ?? null,
-                  tps: (Array.isArray(s.tps) ? s.tps : []).map(Number).filter((n) => Number.isFinite(n) && n > 0),
-                });
-                setView('gold_sniper');
-              };
               return (
-                <div key={s.id} onClick={openInGoldSniper}
-                  className="rounded-xl border border-white/10 bg-white/[0.03] p-3 cursor-pointer hover:border-amber-500/40 hover:bg-amber-500/[0.04] transition-colors"
-                  title={t('Kliko për ta çuar te GoldSniper|FX')}>
+                <div key={s.id}
+                  className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                   {/* Rreshti i sipërm: data/ora e plotë + kanali + rezultati */}
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                     <div className="flex items-center gap-2">
@@ -354,7 +286,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
                     {tps.length > 0 && (
                       <span className="text-gray-400">TP: <span className="text-emerald-300 tabular-nums">{tps.join(' / ')}</span></span>
                     )}
-                    <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-400/80"><Crosshair className="w-3 h-3" />{t('Posto te GoldSniper')}</span>
                   </div>
                 </div>
               );
@@ -425,7 +356,7 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
           <Send className="w-5 h-5 text-sky-400" />
         </div>
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-white">Sinjalet e platformës</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-white">{t('Konfigurimi i Sinjaleve')}</h1>
           <p className="text-xs text-gray-400">{t('Roboti që hyn në trade sipas sinjaleve nga Telegram — 24/7.')}</p>
         </div>
       </div>
@@ -476,13 +407,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         className="w-full flex items-center justify-between gap-2 rounded-xl border border-sky-500/30 bg-sky-500/[0.06] hover:bg-sky-500/[0.12] px-4 py-3 transition-colors">
         <span className="flex items-center gap-2 text-sm font-semibold text-white"><BarChart3 className="w-4 h-4 text-sky-400" />{t('Të gjitha sinjalet (lista)')}</span>
         <span className="flex items-center gap-2 text-xs text-sky-300">{signals.filter((s0) => s0.kind === 'entry' && s0.status !== 'ignored').length} {t('sinjale')} <ArrowLeft className="w-3.5 h-3.5 rotate-180" /></span>
-      </button>
-
-      {/* NËN-FAQJA: GoldSniper|FX — publikimi i sinjaleve te kanali yt në Telegram. */}
-      <button onClick={() => setView('gold_sniper')}
-        className="w-full flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] hover:bg-amber-500/[0.12] px-4 py-3 transition-colors">
-        <span className="flex items-center gap-2 text-sm font-semibold text-white"><Crosshair className="w-4 h-4 text-amber-400" />GoldSniper|FX</span>
-        <span className="flex items-center gap-2 text-xs text-amber-300">{t('Publiko sinjale te kanali yt')} <ArrowLeft className="w-3.5 h-3.5 rotate-180" /></span>
       </button>
 
       {/* DY TABELAT E KANALEVE (kërkesa e pronarit): info + çelës ON/OFF për secilin kanal,
@@ -630,147 +554,6 @@ export default function TelegramSinPage({ onNavigate }: { onNavigate: (p: Client
         </summary>
         <div className="px-3 sm:px-4 pb-3 sm:pb-4">
           <Mt5ConnectCard />
-        </div>
-      </details>
-
-      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
-        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-          <span className="flex items-center gap-2"><Power className="w-4 h-4 text-emerald-400" />{t('Parametrat e parazgjedhur (për kanale të reja)')}</span>
-          <ChevronDown className="w-4 h-4 text-gray-500" />
-        </summary>
-        <div className="px-1 pb-1">
-      {/* Cilësimet kryesore: Aktivizim + Lot + Mënyra e TP */}
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-4">
-
-        {/* Aktivizim */}
-        <button
-          onClick={toggleActive}
-          className={`w-full flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${cfg.active ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-black/20 border-white/10'}`}
-        >
-          <div className="flex items-center gap-3 text-left">
-            <Power className={`w-5 h-5 ${cfg.active ? 'text-emerald-400' : 'text-gray-500'}`} />
-            <div>
-              <div className="text-sm font-semibold text-white">{cfg.active ? t('Aktiv') : t('Joaktiv')}</div>
-              <div className="text-[11px] text-gray-400">{t('ON = roboti hyn në trade sapo vjen një sinjal nga Telegram.')}</div>
-            </div>
-          </div>
-          <div className={`w-12 h-6 rounded-full relative transition-all ${cfg.active ? 'bg-emerald-500' : 'bg-gray-700'}`}>
-            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${cfg.active ? 'left-7' : 'left-1'}`} />
-          </div>
-        </button>
-
-        {/* Parametrat (lot, TP, SL, max, shkallët) tani vendosen TE KARTA E SECILIT KANAL më lart.
-            Këtu mbetet vetëm simboli i parazgjedhur (për sinjalet pa simbol) — vlerat e ruajtura
-            përdoren si kopje fillestare kur lidhet një kanal i ri. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">{t('Simboli parazgjedhur')}</label>
-            <input type="text" defaultValue={cfg.symbol_default} key={`sym-${loaded}`}
-              onBlur={(e) => setAndSave('symbol_default', (e.target.value || 'XAUUSD').toUpperCase().trim())}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
-          </div>
-          <p className="text-[11px] text-gray-500">{t('Lot-i, TP-të, SL rezervë, max pozicionet dhe mbrojtja shkallë-shkallë rregullohen te karta e secilit kanal më lart.')}</p>
-        </div>
-      </div>
-
-        </div>
-      </details>
-
-      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
-        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-          <span className="flex items-center gap-2"><Send className="w-4 h-4 text-sky-400" />{t('Lidhja me Telegram')}</span>
-          <ChevronDown className="w-4 h-4 text-gray-500" />
-        </summary>
-        <div className="px-1 pb-1">
-      {/* Lidhja me Telegram — metoda ABONUES (kopjues) */}
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-3">
-        <p className="text-[11px] text-gray-400">{t('Ti je abonues i kanalit — përdorim "kopjuesin" që e lexon kanalin me llogarinë tënde (pa qenë admin).')}</p>
-        <ol className="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
-          <li>{t('Kopjo adresën e lidhjes më poshtë.')}</li>
-          <li>{t('Ndiq udhëzuesin e kopjuesit (dosja telegram-forwarder) për ta lidhur me kanalin.')}</li>
-          <li>{t('Ndeze çelësin "Aktiv" lart.')}</li>
-        </ol>
-
-        {hookUrl ? (
-          <div className="rounded-lg bg-black/20 border border-white/5 p-2 space-y-2">
-            <div className="text-[10px] text-gray-400">{t('Adresa e lidhjes (webhook — privat, mos e ndaj)')}</div>
-            <div className="flex items-center gap-2">
-              <code className="text-[10px] text-sky-300 truncate flex-1">{hookUrl}</code>
-              <button onClick={() => copy(hookUrl)} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-200 hover:bg-sky-500/25 whitespace-nowrap"><Copy className="w-3.5 h-3.5" />{t('Kopjo')}</button>
-            </div>
-            <div className="text-[10px] text-gray-500">{t('Kjo adresë shkon te kopjuesi (forwarder) — jo te @BotFather.')}</div>
-          </div>
-        ) : (
-          <button onClick={ensureSecret} className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-200 hover:bg-sky-500/30">
-            <Send className="w-4 h-4" /> {t('Krijo adresën e lidhjes')}
-          </button>
-        )}
-
-        {/* Opsion dytësor: bot për një GRUP (vetëm nëse je admin i një grupi) */}
-        <details className="group">
-          <summary className="text-[11px] text-gray-400 cursor-pointer select-none hover:text-gray-300">{t('Opsion tjetër: ke një grup ku mund të shtosh një bot?')}</summary>
-          <div className="mt-2 space-y-2 pl-1">
-            <p className="text-[10px] text-gray-500">{t('Vetëm nëse ke një GRUP (jo kanal) ku je admin: krijo bot te @BotFather, ngjit token-in dhe kliko "Lidh me Telegram".')}</p>
-            <input
-              type="text" defaultValue={cfg.bot_token} key={`tok-${loaded}`} placeholder="123456:ABC-DEF..."
-              onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== cfg.bot_token) ensureSecretAndSaveToken(v); }}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
-            />
-            <button
-              disabled={!cfg.bot_token || !cfg.webhook_secret}
-              onClick={() => window.open(setWebhookUrl(cfg.bot_token, cfg.webhook_secret), '_blank')}
-              className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-200 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ExternalLink className="w-4 h-4" /> {t('Lidh me Telegram')}
-            </button>
-          </div>
-        </details>
-      </div>
-
-        </div>
-      </details>
-
-      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
-        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-          <span className="flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-400" />{t('Robotët e tjerë (MMT + Sinjalet)')}</span>
-          <ChevronDown className="w-4 h-4 text-gray-500" />
-        </summary>
-        <div className="px-1 pb-1">
-      {/* Master: ndal/nis robotët e tjerë (MMT + Sinjalet) — që të punojë vetëm Telegram Sin */}
-      <div className={`rounded-xl border p-3 sm:p-4 ${others && !others.othersOn ? 'bg-red-500/[0.06] border-red-500/30' : 'bg-white/[0.03] border-white/10'}`}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {others && !others.othersOn
-              ? <PowerOff className="w-5 h-5 text-red-400" />
-              : <ShieldAlert className="w-5 h-5 text-amber-400" />}
-            <div>
-              <div className="text-sm font-semibold text-white">{t('Robotët e tjerë (MMT + Sinjalet)')}</div>
-              <div className="text-[11px] text-gray-400">
-                {others
-                  ? (others.othersOn
-                      ? t('Aktivë tani. Fike që të tregtojë VETËM Telegram Sin.')
-                      : t('Të ndalur — vetëm Telegram Sin po punon.'))
-                  : t('Po ngarkohet…')}
-              </div>
-              {others && (
-                <div className="text-[10px] text-gray-500 mt-0.5 flex flex-wrap gap-x-3">
-                  <span>{t('Sinjalet')}: {others.signalsOn ? t('ON') : t('OFF')}</span>
-                  <span>MMT: {others.mmtControllable ? (others.mmtOn ? t('ON') : t('OFF')) : t('s\'menaxhohet nga kjo llogari')}</span>
-                </div>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={toggleOthers}
-            disabled={othersBusy || !others}
-            className={`inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg font-semibold whitespace-nowrap disabled:opacity-40 ${others && others.othersOn ? 'bg-red-500/20 border border-red-500/40 text-red-200 hover:bg-red-500/30' : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/30'}`}
-          >
-            {othersBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : (others && others.othersOn ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />)}
-            {others && others.othersOn ? t('Ndal të tjerët') : t('Nis të tjerët')}
-          </button>
-        </div>
-      </div>
-
         </div>
       </details>
 

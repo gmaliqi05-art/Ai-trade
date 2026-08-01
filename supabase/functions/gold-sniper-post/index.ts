@@ -45,7 +45,16 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "post");
 
-    const { data: cfg } = await svc.from("gold_sniper_config").select("*").eq("user_id", user.id).maybeSingle();
+    // Konsola ADMIN "GoldSniperFX": admini poston te kanali i llogarisë PRONARE (jo te i vet).
+    // owner_id pranohet VETËM nëse thirrësi është admin — përndryshe injorohet.
+    let ownerId = user.id;
+    if (body.owner_id && String(body.owner_id) !== user.id) {
+      const { data: me } = await svc.from("profiles").select("is_admin").eq("id", user.id).maybeSingle();
+      if (!me?.is_admin) return json({ error: "forbidden" }, 403);
+      ownerId = String(body.owner_id);
+    }
+
+    const { data: cfg } = await svc.from("gold_sniper_config").select("*").eq("user_id", ownerId).maybeSingle();
     if (!cfg || !cfg.bot_token || !cfg.channel_id) return json({ error: "not_configured", message: "Lidh botin dhe kanalin së pari." }, 400);
 
     let text: string;
@@ -68,7 +77,7 @@ Deno.serve(async (req: Request) => {
 
     if (action !== "test") {
       await svc.from("gold_sniper_posts").insert({
-        user_id: user.id, symbol: body.symbol ?? null, direction: body.direction ?? null,
+        user_id: ownerId, symbol: body.symbol ?? null, direction: body.direction ?? null,
         entry: body.entry ?? null, stop_loss: body.stop_loss ?? null, tps: body.tps ?? [],
         note: body.note ?? null, message: text, telegram_message_id: messageId,
         status: ok ? "sent" : "failed", error: ok ? null : (tg.description || "dërgimi dështoi"),

@@ -9,11 +9,14 @@ import {
   goldSniperIngestUrl, DEFAULT_GS_CONFIG, type GoldSniperConfig, type GoldSniperPost, type GoldSniperPrefill,
 } from '../services/goldSniper';
 
-// GoldSniper|FX — faqja e publikimit të sinjaleve te kanali i vetë përdoruesit (bot Telegram).
+// GoldSniper|FX — faqja e publikimit të sinjaleve te kanali i platformës (bot Telegram).
 // prefill: kur vjen nga një sinjal i klikuar te lista, mbush automatikisht fushat.
-export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefill | null }) {
+// ownerId: përdoret VETËM nga konsola Admin → punon mbi llogarinë PRONARE të kanalit,
+//          jo mbi llogarinë e adminit (RLS e lejon me politikat 'gsc_admin'/'gsp_admin').
+export default function GoldSniperPage({ prefill, ownerId }: { prefill?: GoldSniperPrefill | null; ownerId?: string }) {
   const { t } = useI18n();
   const { user } = useAuth();
+  const acct = ownerId || user?.id || '';
   const [cfg, setCfg] = useState<GoldSniperConfig>(DEFAULT_GS_CONFIG);
   const [loaded, setLoaded] = useState(false);
   const [posts, setPosts] = useState<GoldSniperPost[]>([]);
@@ -33,10 +36,10 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
   const flash = (type: 'success' | 'error', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 4000); };
 
   const refresh = useCallback(async () => {
-    if (!user) return;
-    try { setCfg(await loadGoldSniperConfig(user.id)); setLoaded(true); } catch { setLoaded(false); }
-    try { setPosts(await loadGoldSniperPosts(user.id)); } catch { /* */ }
-  }, [user]);
+    if (!acct) return;
+    try { setCfg(await loadGoldSniperConfig(acct)); setLoaded(true); } catch { setLoaded(false); }
+    try { setPosts(await loadGoldSniperPosts(acct)); } catch { /* */ }
+  }, [acct]);
   useEffect(() => { refresh(); }, [refresh]);
 
   // PARA-MBUSHJA nga një sinjal i klikuar te lista — secila vlerë në pozicionin e vet.
@@ -58,18 +61,18 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
   const set = <K extends keyof GoldSniperConfig>(k: K, v: GoldSniperConfig[K]) => setCfg(p => ({ ...p, [k]: v }));
 
   const saveCfg = async (patch?: Partial<GoldSniperConfig>) => {
-    if (!user || !loaded) return;
+    if (!acct || !loaded) return;
     if (patch) setCfg((p) => ({ ...p, ...patch })); // pasqyro menjëherë ndryshimin (p.sh. çelësi Auto)
     setBusy('save'); setMsg(null);
-    try { await saveGoldSniperConfig(user.id, patch ?? cfg); flash('success', t('U ruajt.')); }
+    try { await saveGoldSniperConfig(acct, patch ?? cfg); flash('success', t('U ruajt.')); }
     catch (e) { flash('error', (e as Error).message); }
     setBusy(null);
   };
 
   const doTest = async () => {
     setBusy('test'); setMsg(null);
-    await saveGoldSniperConfig(user!.id, cfg).catch(() => {});
-    const r = await testGoldSniper();
+    await saveGoldSniperConfig(acct, cfg).catch(() => {});
+    const r = await testGoldSniper(ownerId);
     if (r.ok) flash('success', t('Mesazhi i provës u dërgua te kanali ✅'));
     else flash('error', r.message || t('Dërgimi dështoi.'));
     setBusy(null);
@@ -81,7 +84,7 @@ export default function GoldSniperPage({ prefill }: { prefill?: GoldSniperPrefil
     const r = await postGoldSniperSignal({
       symbol: symbol.toUpperCase().trim(), direction: dir,
       entry: Number(entry) || undefined, stop_loss: Number(sl) || undefined, tps,
-      note: note.trim() || undefined,
+      note: note.trim() || undefined, ...(ownerId ? { owner_id: ownerId } : {}),
     });
     if (r.ok) { flash('success', t('Sinjali u postua te kanali ✅')); setEntry(''); setSl(''); setTp1(''); setTp2(''); setTp3(''); setTp4(''); setNote(''); await refresh(); }
     else flash('error', r.message || t('Postimi dështoi.'));

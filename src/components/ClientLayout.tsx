@@ -41,7 +41,7 @@ const navSections = [
     items: [
       { id: 'metatrader' as ClientPage, label: 'Lidhja & Konfigurimi', icon: Monitor },
       { id: 'mmt' as ClientPage, label: 'MMT — Super Roboti', icon: Brain },
-      { id: 'telegram_sin' as ClientPage, label: 'Sinjalet e platformës', icon: Send },
+      { id: 'telegram_sin' as ClientPage, label: 'Konfigurimi i Sinjaleve', icon: Send },
       { id: 'journal' as ClientPage, label: 'Journal', icon: CalendarDays },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
@@ -80,8 +80,7 @@ const pageLabels: Record<ClientPage, string> = {
   protrade: 'ProTrade Intelligence',
   metatrader: 'Lidhja & Konfigurimi',
   mmt: 'MMT — Super Roboti',
-  telegram_sin: 'Sinjalet e platformës',
-  gold_sniper: 'GoldSniper|FX',
+  telegram_sin: 'Konfigurimi i Sinjaleve',
   journal: 'Journal',
   notifications: 'Njoftimet',
   reports: 'Raporte',
@@ -303,8 +302,11 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
       <div className="p-2 border-t border-gray-800 flex-shrink-0">
         {!collapsed && (
           <div className="flex items-center gap-3 px-3 py-2 mb-1">
-            <div className="w-8 h-8 bg-amber-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-              <User className="w-4 h-4 text-amber-400" />
+            {/* Foto e profilit (nëse është ngarkuar) — ndryshe ikona. */}
+            <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-amber-500/20 flex items-center justify-center">
+              {profile?.avatar_url
+                ? <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                : <User className="w-4 h-4 text-amber-400" />}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-white text-xs font-medium truncate">{profile?.full_name || 'Trader'}</div>
