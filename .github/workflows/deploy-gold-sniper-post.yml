@@ -1,10 +1,14 @@
 name: Deploy gold-sniper-post
 
-# Poston sinjale te kanali GoldSniper|FX i përdoruesit (bot Telegram si admin).
-# verify_jwt=true — autentikohet me JWT-në e përdoruesit. Nxitet manualisht.
+# Poston sinjale te kanali GoldSniper|FX (bot Telegram si admin).
+# verify_jwt=true — autentikohet me JWT-në e përdoruesit.
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/gold-sniper-post/**'
 
 jobs:
   deploy:

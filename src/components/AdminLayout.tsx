@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
-  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown
+  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown, Crosshair
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -22,6 +22,7 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_users', label: 'Përdoruesit', icon: Users, section: 'Menaxhimi' },
   { id: 'admin_assets', label: 'Aktivet & tregjet', icon: BarChart2, section: 'Menaxhimi' },
   { id: 'admin_signals', label: 'Sinjalet', icon: Zap, section: 'Menaxhimi' },
+  { id: 'admin_goldsniper', label: 'GoldSniperFX', icon: Crosshair, section: 'Menaxhimi' },
   { id: 'admin_trades', label: 'Tregtitë', icon: Activity, section: 'Menaxhimi' },
   { id: 'admin_protrade_lab', label: 'ProTrade Lab', icon: FlaskConical, section: 'Platforma' },
   { id: 'admin_expert_room', label: 'Dhoma e Ekspertëve', icon: UsersRound, section: 'Platforma' },
@@ -48,6 +49,7 @@ const pageLabels: Record<AdminPage, string> = {
   admin_protrade_lab: 'ProTrade Lab — mësimi',
   admin_expert_room: 'Dhoma e Ekspertëve',
   admin_vip_codes: 'Kodet VIP',
+  admin_goldsniper: 'GoldSniperFX — konfigurimi i feed-it',
   admin_settings: 'Cilësimet e platformës',
 };
 

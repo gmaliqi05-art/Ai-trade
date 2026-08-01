@@ -812,4 +812,10 @@ export const fr: Record<string, string> = {
   "Fotoja u ngarkua.": "Photo téléchargée.",
   "Ngarkimi dështoi.": "Le téléchargement a échoué.",
   "Ruajtja nuk u konfirmua nga serveri. Dil dhe hyr sërish, pastaj provo përsëri.": "L'enregistrement n'a pas été confirmé par le serveur. Déconnecte-toi puis reconnecte-toi et réessaie.",
+  "Konfigurimi i Sinjaleve": "Configuration des signaux",
+  "Konfigurimi i feed-it dhe i kanalit — llogaria pronare": "Configuration du flux et du canal — compte propriétaire",
+  "Publiko sinjale te kanali": "Publier des signaux sur le canal",
+  "Asnjë llogari nuk e ka të lidhur kanalin GoldSniper|FX ende.": "Aucun compte n'a encore connecté le canal GoldSniper|FX.",
+  "GoldSniperFX — konfigurimi i feed-it": "GoldSniperFX — configuration du flux",
+  "Lot-i, TP-të, SL rezervë, max pozicionet dhe mbrojtja shkallë-shkallë rregullohen nga vetë përdoruesi te karta e kanalit.": "Le lot, les TP, le SL de secours, le nombre max de positions et la protection progressive sont réglés par l'utilisateur sur la carte du canal.",
 };

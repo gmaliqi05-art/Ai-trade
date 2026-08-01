@@ -1755,4 +1755,10 @@ export const en: Record<string, string> = {
   "Fotoja u ngarkua.": "Photo uploaded.",
   "Ngarkimi dështoi.": "Upload failed.",
   "Ruajtja nuk u konfirmua nga serveri. Dil dhe hyr sërish, pastaj provo përsëri.": "The save was not confirmed by the server. Log out and back in, then try again.",
+  "Konfigurimi i Sinjaleve": "Signal configuration",
+  "Konfigurimi i feed-it dhe i kanalit — llogaria pronare": "Feed and channel configuration — owner account",
+  "Publiko sinjale te kanali": "Publish signals to the channel",
+  "Asnjë llogari nuk e ka të lidhur kanalin GoldSniper|FX ende.": "No account has the GoldSniper|FX channel connected yet.",
+  "GoldSniperFX — konfigurimi i feed-it": "GoldSniperFX — feed configuration",
+  "Lot-i, TP-të, SL rezervë, max pozicionet dhe mbrojtja shkallë-shkallë rregullohen nga vetë përdoruesi te karta e kanalit.": "Lot size, TPs, fallback SL, max positions and step-by-step protection are set by the user on the channel card.",
 };

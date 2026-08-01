@@ -41,7 +41,7 @@ const navSections = [
     items: [
       { id: 'metatrader' as ClientPage, label: 'Lidhja & Konfigurimi', icon: Monitor },
       { id: 'mmt' as ClientPage, label: 'MMT — Super Roboti', icon: Brain },
-      { id: 'telegram_sin' as ClientPage, label: 'Sinjalet e platformës', icon: Send },
+      { id: 'telegram_sin' as ClientPage, label: 'Konfigurimi i Sinjaleve', icon: Send },
       { id: 'journal' as ClientPage, label: 'Journal', icon: CalendarDays },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
@@ -80,8 +80,7 @@ const pageLabels: Record<ClientPage, string> = {
   protrade: 'ProTrade Intelligence',
   metatrader: 'Lidhja & Konfigurimi',
   mmt: 'MMT — Super Roboti',
-  telegram_sin: 'Sinjalet e platformës',
-  gold_sniper: 'GoldSniper|FX',
+  telegram_sin: 'Konfigurimi i Sinjaleve',
   journal: 'Journal',
   notifications: 'Njoftimet',
   reports: 'Raporte',
