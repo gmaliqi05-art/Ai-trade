@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2, CalendarDays
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { verifyVipCode, requestVip, lockVipAccess } from '../services/vipCodes';
@@ -42,6 +42,7 @@ const navSections = [
       { id: 'metatrader' as ClientPage, label: 'Lidhja & Konfigurimi', icon: Monitor },
       { id: 'mmt' as ClientPage, label: 'MMT — Super Roboti', icon: Brain },
       { id: 'telegram_sin' as ClientPage, label: 'Sinjalet e platformës', icon: Send },
+      { id: 'journal' as ClientPage, label: 'Journal', icon: CalendarDays },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
   },
@@ -65,7 +66,7 @@ const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }
 
 // FAQET E LIRA (regjistrim normal): shfaqen gjithmonë në meny. Të tjerat (përfshirë Panelin/Dashboard)
 // fshihen pas butonit VIP — kërkesa e pronarit (31 korrik 2026): Paneli vetëm për VIP.
-const FREE_PAGES: ClientPage[] = ['market_prices', 'telegram_sin', 'manual', 'settings'];
+const FREE_PAGES: ClientPage[] = ['market_prices', 'telegram_sin', 'journal', 'manual', 'settings'];
 // Kodet VIP menaxhohen nga super admini dhe verifikohen NË SERVER (edge function 'vip-verify').
 // Këtu ruhet vetëm gjendja e zhbllokimit lokal pas verifikimit të suksesshëm.
 const VIP_STORAGE_KEY = 'gt_vip_unlocked';
@@ -81,6 +82,7 @@ const pageLabels: Record<ClientPage, string> = {
   mmt: 'MMT — Super Roboti',
   telegram_sin: 'Sinjalet e platformës',
   gold_sniper: 'GoldSniper|FX',
+  journal: 'Journal',
   notifications: 'Njoftimet',
   reports: 'Raporte',
   settings: 'Cilësimet',
