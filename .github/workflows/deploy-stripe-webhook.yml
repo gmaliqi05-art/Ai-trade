@@ -1,0 +1,29 @@
+name: Deploy stripe-webhook
+
+# verify_jwt=false — thirret nga Stripe (firma verifikohet me STRIPE_WEBHOOK_SECRET).
+# Auto-deploy në main + manual. Kërkon SUPABASE_ACCESS_TOKEN.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/stripe-webhook/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Deploy stripe-webhook
+        run: supabase functions deploy stripe-webhook --no-verify-jwt --project-ref zwyuscgqacfpjafznybg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

@@ -17,6 +17,9 @@ export interface Profile {
   phone?: string | null;
   address?: string | null;
   country?: string | null;
+  subscription_status?: string | null;
+  subscription_expires_at?: string | null;
+  trial_ends_at?: string | null;
 }
 
 // Të dhënat e regjistrimit të zgjeruar (KYC-light): emri/mbiemri, datëlindja (18+ e detyrueshme),
