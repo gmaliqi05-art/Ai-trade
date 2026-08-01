@@ -138,6 +138,19 @@ export async function loadTelegramSignals(userId: string, limit = 50): Promise<T
   return (data ?? []) as TelegramSignalRow[];
 }
 
+/** Vetëm SINJALET E HYRJES (kind='entry') — dritare më e gjerë (150), që mesazhet e shumta
+ *  të feed-it të MOS i shtyjnë sinjalet jashtë tabelave të Trade Live (bug: tabela dilte bosh). */
+export async function loadTelegramEntrySignals(userId: string, limit = 150): Promise<TelegramSignalRow[]> {
+  const { data } = await supabase
+    .from('telegram_signals')
+    .select('id, raw_text, kind, symbol, direction, entry_type, entry_price, stop_loss, tps, status, tp_hit, error, tg_sender, tg_chat_id, created_at')
+    .eq('user_id', userId)
+    .eq('kind', 'entry')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return (data ?? []) as TelegramSignalRow[];
+}
+
 /** Pozicionet e hapura/pending të Telegram Sin (për numërimin "aktive" për kanal). */
 export interface TgTradeRow { id: string; signal_id: string | null; status: string; tp_index: number | null; symbol: string | null; action: string | null; }
 export async function loadOpenTgTrades(userId: string): Promise<TgTradeRow[]> {

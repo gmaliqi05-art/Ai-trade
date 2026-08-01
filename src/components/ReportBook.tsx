@@ -158,7 +158,15 @@ function ReportTable({ list, lossLabel, t }: { list: ReportRow[]; lossLabel?: st
                 <td className={`py-2 pr-3 font-semibold ${s.direction === 'buy' ? 'text-green-400' : s.direction === 'sell' ? 'text-red-400' : 'text-gray-400'}`}>{s.direction ? s.direction.toUpperCase() : '—'}</td>
                 <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.market ? 'MKT' : (s.entry ?? '—')}</td>
                 <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.sl ?? '—'}</td>
-                <td className="py-2 pr-3 text-gray-300 tabular-nums whitespace-nowrap">{tps.length ? tps.join(' / ') : '—'}</td>
+                {/* TP-të e PREKURA bëhen të verdha (tpHit = deri te cili TP arriti trade-i). */}
+                <td className="py-2 pr-3 tabular-nums whitespace-nowrap">
+                  {tps.length ? tps.map((tp, i) => (
+                    <span key={i}>
+                      {i > 0 && <span className="text-gray-600"> / </span>}
+                      <span className={(s.tpHit ?? 0) > i ? 'text-amber-300 font-bold' : 'text-gray-300'}>{tp}</span>
+                    </span>
+                  )) : '—'}
+                </td>
                 <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${s.pips == null ? 'text-gray-600' : s.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>{s.pips == null ? '—' : Math.abs(s.pips)}</td>
                 <td className={`py-2 pr-3 text-right tabular-nums font-semibold ${s.net == null ? 'text-gray-600' : s.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>{s.net == null ? '—' : `${s.net >= 0 ? '+' : ''}${s.net.toFixed(2)}$`}</td>
                 <td className="py-2">
