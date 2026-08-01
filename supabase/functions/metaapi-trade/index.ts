@@ -178,7 +178,8 @@ async function recordPositionClose(cfg: MetaApiConfig, db: ReturnType<typeof cre
     //  (3) përputhje e përafërt me çmim+kah nga logu (rezerva e fundit).
     // Emërtimi i saktë ruhet te kolona 'robot' → raportet e ndara sipas robotit te Tregto Live.
     const robotOfText = (s: string): string | null =>
-      /MMT-F/i.test(s) ? "MMT-Fast" : /MMT-S/i.test(s) ? "MMT-Scalp" : /MMT/i.test(s) ? "MMT-Long"
+      /\bTG\d/i.test(s) ? "GoldSniperFX" // Telegram Sin: comment "TG<idx>" te pozicioni
+      : /MMT-F/i.test(s) ? "MMT-Fast" : /MMT-S/i.test(s) ? "MMT-Scalp" : /MMT/i.test(s) ? "MMT-Long"
       : /FastT/i.test(s) ? "FastT" : /SCALP|scalp auto/i.test(s) ? "Sinjalet-Scalp"
       : /\bSIG\b|^auto ?\(/i.test(s) ? "Sinjalet" : null;
     const { data: exactRow } = await db.from("trade_executions").select("reason, signal_id")
@@ -198,7 +199,7 @@ async function recordPositionClose(cfg: MetaApiConfig, db: ReturnType<typeof cre
       }
     }
     const source = robot === "FastT" ? "fastt" : robot ? "auto" : "manual";
-    const horizon = robot == null ? null : (robot === "Sinjalet" || robot === "MMT-Long" ? "long" : "short");
+    const horizon = robot == null ? null : (robot === "GoldSniperFX" || robot === "Sinjalet" || robot === "MMT-Long" ? "long" : "short");
     await db.from("position_closes").upsert({
       user_id: userId, position_id: String(positionId), symbol: sym, action: dir,
       volume: Number(inD?.volume) || 0.01, entry_price: entry || null,

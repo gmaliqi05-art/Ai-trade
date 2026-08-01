@@ -56,12 +56,15 @@ export default function JournalPage() {
   }, []);
   useEffect(() => { fetchAccount(); }, [fetchAccount]);
 
-  // Mbylljet e muajit të zgjedhur (± disa ditë buferi për zonat orare).
+  // Mbylljet: dritare e GJERË (120 ditë — sa lejon historiku) → kalendari filtron muajin,
+  // grafiku filtron sipas datave/modelit të zgjedhur nga përdoruesi.
+  const [allRows, setAllRows] = useState<PositionCloseRow[]>([]);
   const fetchMonth = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     const daysBack = Math.ceil((Date.now() - new Date(month.getFullYear(), month.getMonth(), 1).getTime()) / 86400000) + 3;
-    const all = await loadPositionCloses(user.id, Math.max(daysBack, 8));
+    const all = await loadPositionCloses(user.id, Math.max(daysBack, 120));
+    setAllRows(all);
     const start = new Date(month.getFullYear(), month.getMonth(), 1).getTime();
     const end = new Date(month.getFullYear(), month.getMonth() + 1, 1).getTime();
     setRows(all.filter(r => { const tms = new Date(r.closed_at).getTime(); return tms >= start && tms < end; }));
@@ -115,25 +118,47 @@ export default function JournalPage() {
     return { net, count, wins };
   }, [byDay]);
 
-  // GRAFIKU I BILANCIT: linja kumulative e P&L-së ditë-pas-dite për muajin (uljet/ngritjet).
+  // GRAFIKU I BILANCIT me FILTRA: datat Nga–Deri + modeli (GoldSniperFX / MMT Super Roboti / Manual).
   // Vlera në boshtin VERTIKAL, data në atë HORIZONTAL. Ditët pa trade mbajnë vlerën e mëparshme.
+  const [chartFrom, setChartFrom] = useState<string>(dayKey(new Date(today.getFullYear(), today.getMonth(), 1)));
+  const [chartTo, setChartTo] = useState<string>(dayKey(new Date(today.getFullYear(), today.getMonth() + 1, 0)));
+  const [chartModel, setChartModel] = useState<'all' | 'gsf' | 'robot' | 'manual'>('all');
+  // Kur ndërrohet muaji në kalendar, grafiku e ndjek (mund t'i ndryshosh datat me dorë pastaj).
+  useEffect(() => {
+    setChartFrom(dayKey(new Date(month.getFullYear(), month.getMonth(), 1)));
+    setChartTo(dayKey(new Date(month.getFullYear(), month.getMonth() + 1, 0)));
+  }, [month]);
+  // Modeli i trade-it: GoldSniperFX (sinjalet nga platforma jote) · MMT Super Roboti (robotët e
+  // vetë platformës: Sinjalet/MMT/FastT) · Manual (pa robot).
+  const modelOf = (r: PositionCloseRow): 'gsf' | 'robot' | 'manual' =>
+    r.robot === 'GoldSniperFX' ? 'gsf' : r.robot ? 'robot' : 'manual';
   const equitySeries = useMemo(() => {
-    const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-    const endDay = (today.getFullYear() === month.getFullYear() && today.getMonth() === month.getMonth())
-      ? today.getDate() : last.getDate();
-    const pts: { day: number; key: string; cum: number; traded: boolean }[] = [];
+    const filtered = chartModel === 'all' ? allRows : allRows.filter(r => modelOf(r) === chartModel);
+    const per = new Map<string, { net: number; count: number }>();
+    for (const r of filtered) {
+      const k = dayKey(new Date(r.closed_at));
+      const a = per.get(k) ?? { net: 0, count: 0 };
+      a.net += Number(r.net) || 0; a.count += 1;
+      per.set(k, a);
+    }
+    const from = new Date(chartFrom + 'T12:00:00');
+    const toRaw = new Date(chartTo + 'T12:00:00');
+    if (!(from.getTime() <= toRaw.getTime())) return [];
+    const end = Math.min(toRaw.getTime(), today.getTime());
+    const pts: { key: string; d: Date; cum: number; dayNet: number; traded: boolean }[] = [];
     let cum = 0;
-    for (let d = 1; d <= endDay; d++) {
-      const date = new Date(month.getFullYear(), month.getMonth(), d);
+    for (let tms = from.getTime(); tms <= end; tms += 86400000) {
+      const date = new Date(tms);
       const wd = date.getDay();
       if (wd === 0 || wd === 6) continue; // fundjava — tregu mbyllur
       const k = dayKey(date);
-      const a = byDay.get(k);
+      const a = per.get(k);
       if (a) cum += a.net;
-      pts.push({ day: d, key: k, cum: Math.round(cum * 100) / 100, traded: !!a });
+      pts.push({ key: k, d: date, cum: Math.round(cum * 100) / 100, dayNet: a ? Math.round(a.net * 100) / 100 : 0, traded: !!a });
     }
     return pts;
-  }, [byDay, month, today]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows, chartModel, chartFrom, chartTo]);
 
   // Rrjeta e kalendarit Hën–Pre (tregu i arit mbyllur fundjavën — si modeli i kërkuar).
   const weeks = useMemo(() => {
@@ -348,57 +373,89 @@ export default function JournalPage() {
         )}
       </div>
 
-      {/* GRAFIKU I BILANCIT — uljet/ngritjet e P&L-së kumulative ditë-pas-dite.
-          Boshtet: VLERA vertikalisht ($), DATA horizontalisht. */}
-      {equitySeries.length > 1 && (() => {
-        const W = 640, H = 210, L = 56, R = 14, T = 14, B = 30;
-        const vals = equitySeries.map(p => p.cum);
-        const yMin = Math.min(0, ...vals), yMax = Math.max(0, ...vals);
-        const pad = Math.max((yMax - yMin) * 0.1, 1);
-        const lo = yMin - pad, hi = yMax + pad;
-        const x = (i: number) => L + (i / (equitySeries.length - 1)) * (W - L - R);
-        const y = (v: number) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
-        const path = equitySeries.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.cum).toFixed(1)}`).join(' ');
-        const area = `${path} L${x(equitySeries.length - 1).toFixed(1)},${y(lo).toFixed(1)} L${x(0).toFixed(1)},${y(lo).toFixed(1)} Z`;
-        const lastV = vals[vals.length - 1];
-        const col = lastV >= 0 ? '#34d399' : '#f87171';
-        // 4 vija horizontale me vlera; ~5 data në boshtin horizontal.
-        const yTicks = Array.from({ length: 4 }, (_, i) => lo + ((hi - lo) * (i + 0)) / 3);
-        const xTickIdx = Array.from(new Set([0, Math.round((equitySeries.length - 1) / 4), Math.round((equitySeries.length - 1) / 2), Math.round(3 * (equitySeries.length - 1) / 4), equitySeries.length - 1]));
-        return (
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4">
-            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-              <div className="text-xs font-semibold text-white flex items-center gap-1.5">
-                <LineChart className="w-4 h-4 text-emerald-400" />{t('Grafiku i bilancit — P&L kumulativ i muajit')}
-              </div>
-              <div className={`text-sm font-black tabular-nums ${moneyCls(lastV)}`}>{money(lastV)}</div>
-            </div>
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={t('Grafiku i bilancit')}>
-              {yTicks.map((v, i) => (
-                <g key={i}>
-                  <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#1f2937" strokeWidth="1" />
-                  <text x={L - 6} y={y(v) + 3.5} textAnchor="end" fontSize="10" fill="#6b7280">{v >= 0 ? '+' : ''}{Math.round(v)}$</text>
-                </g>
-              ))}
-              {lo < 0 && hi > 0 && <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} stroke="#4b5563" strokeWidth="1" strokeDasharray="4 3" />}
-              <path d={area} fill={col} opacity="0.10" />
-              <path d={path} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-              {equitySeries.map((p, i) => p.traded ? (
-                <circle key={p.key} cx={x(i)} cy={y(p.cum)} r="3" fill={col} stroke="#111827" strokeWidth="1"
-                  className="cursor-pointer" onClick={() => setSelDay(p.key)}>
-                  <title>{`${p.day} ${monthNames[month.getMonth()]}: ${money(p.cum)}`}</title>
-                </circle>
-              ) : null)}
-              {xTickIdx.map(i => equitySeries[i] ? (
-                <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="#6b7280">
-                  {String(equitySeries[i].day).padStart(2, '0')}.{String(month.getMonth() + 1).padStart(2, '0')}
-                </text>
-              ) : null)}
-            </svg>
-            <p className="text-[10px] text-gray-600 mt-1">{t('Kliko një pikë për të hapur detajet e asaj dite. Ditët pa trade mbajnë vlerën e mëparshme (vijë e sheshtë).')}</p>
+      {/* GRAFIKU I BILANCIT — uljet/ngritjet e P&L-së kumulative ditë-pas-dite, me FILTRA:
+          datat Nga–Deri + modeli i trade-ve. Boshtet: VLERA vertikalisht ($), DATA horizontalisht. */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+          <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+            <LineChart className="w-4 h-4 text-emerald-400" />{t('Grafiku i bilancit — P&L kumulativ')}
           </div>
-        );
-      })()}
+          {/* FILTRAT: datat + modeli (GoldSniperFX / MMT Super Roboti / Manual). */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <input type="date" value={chartFrom} onChange={e => setChartFrom(e.target.value)} title={t('Nga data')}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-emerald-500" />
+            <span className="text-gray-600 text-[11px]">—</span>
+            <input type="date" value={chartTo} onChange={e => setChartTo(e.target.value)} title={t('Deri më')}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-emerald-500" />
+            <select value={chartModel} onChange={e => setChartModel(e.target.value as typeof chartModel)} title={t('Modeli i trade-ve')}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-emerald-500">
+              <option value="all">{t('Të gjitha')}</option>
+              <option value="gsf">GoldSniperFX</option>
+              <option value="robot">{t('MMT Super Roboti')}</option>
+              <option value="manual">{t('Manual')}</option>
+            </select>
+          </div>
+        </div>
+
+        {equitySeries.length > 1 ? (() => {
+          const W = 640, H = 210, L = 56, R = 14, T = 14, B = 30;
+          const vals = equitySeries.map(p => p.cum);
+          const yMin = Math.min(0, ...vals), yMax = Math.max(0, ...vals);
+          const pad = Math.max((yMax - yMin) * 0.1, 1);
+          const lo = yMin - pad, hi = yMax + pad;
+          const x = (i: number) => L + (i / (equitySeries.length - 1)) * (W - L - R);
+          const y = (v: number) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+          const path = equitySeries.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.cum).toFixed(1)}`).join(' ');
+          const area = `${path} L${x(equitySeries.length - 1).toFixed(1)},${y(lo).toFixed(1)} L${x(0).toFixed(1)},${y(lo).toFixed(1)} Z`;
+          const lastV = vals[vals.length - 1];
+          const col = lastV >= 0 ? '#34d399' : '#f87171';
+          const yTicks = Array.from({ length: 4 }, (_, i) => lo + ((hi - lo) * i) / 3);
+          const xTickIdx = Array.from(new Set([0, Math.round((equitySeries.length - 1) / 4), Math.round((equitySeries.length - 1) / 2), Math.round(3 * (equitySeries.length - 1) / 4), equitySeries.length - 1]));
+          const ddmm = (d: Date) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+          // Pika e ZGJEDHUR (dita e klikuar në kalendar/grafik; ndryshe e fundit) — vlera e bilancit
+          // në atë datë + fitim/humbje e asaj dite, të shfaqura lart pranë filtrave.
+          const selPt = equitySeries.find(p => p.key === selDay) ?? equitySeries[equitySeries.length - 1];
+          return (
+            <>
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-2 bg-gray-800/40 rounded-xl px-3 py-2">
+                <div className="text-[11px] text-gray-400">
+                  {t('Bilanci më')} <span className="text-white font-semibold">{ddmm(selPt.d)}.{selPt.d.getFullYear()}</span>:
+                  {' '}<span className={`font-black tabular-nums ${moneyCls(selPt.cum)}`}>{money(selPt.cum)}</span>
+                  {selPt.traded && (
+                    <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${selPt.dayNet >= 0 ? 'bg-green-500/15 text-green-300' : 'bg-red-500/15 text-red-300'}`}>
+                      {selPt.dayNet >= 0 ? t('FITIM') : t('HUMBJE')} {money(selPt.dayNet)}
+                    </span>
+                  )}
+                </div>
+                <div className={`text-sm font-black tabular-nums ${moneyCls(lastV)}`}>{t('Totali')}: {money(lastV)}</div>
+              </div>
+              <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={t('Grafiku i bilancit')}>
+                {yTicks.map((v, i) => (
+                  <g key={i}>
+                    <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#1f2937" strokeWidth="1" />
+                    <text x={L - 6} y={y(v) + 3.5} textAnchor="end" fontSize="10" fill="#6b7280">{v >= 0 ? '+' : ''}{Math.round(v)}$</text>
+                  </g>
+                ))}
+                {lo < 0 && hi > 0 && <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} stroke="#4b5563" strokeWidth="1" strokeDasharray="4 3" />}
+                <path d={area} fill={col} opacity="0.10" />
+                <path d={path} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                {equitySeries.map((p, i) => p.traded ? (
+                  <circle key={p.key} cx={x(i)} cy={y(p.cum)} r={p.key === selDay ? 4.5 : 3} fill={col} stroke={p.key === selDay ? '#fbbf24' : '#111827'} strokeWidth={p.key === selDay ? 2 : 1}
+                    className="cursor-pointer" onClick={() => setSelDay(p.key)}>
+                    <title>{`${ddmm(p.d)}: ${money(p.cum)} (${t('dita')}: ${money(p.dayNet)})`}</title>
+                  </circle>
+                ) : null)}
+                {xTickIdx.map(i => equitySeries[i] ? (
+                  <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="#6b7280">{ddmm(equitySeries[i].d)}</text>
+                ) : null)}
+              </svg>
+              <p className="text-[10px] text-gray-600 mt-1">{t('Kliko një pikë për të hapur detajet e asaj dite. Ditët pa trade mbajnë vlerën e mëparshme (vijë e sheshtë). Historiku mbulon deri ~120 ditë.')}</p>
+            </>
+          );
+        })() : (
+          <p className="text-gray-600 text-sm text-center py-4">{t('S\'ka të dhëna për periudhën/modelin e zgjedhur.')}</p>
+        )}
+      </div>
 
       {/* DETAJET E DITËS SË ZGJEDHUR. */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4 space-y-4">
