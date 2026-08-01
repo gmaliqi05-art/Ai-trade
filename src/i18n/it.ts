@@ -764,4 +764,5 @@ export const it: Record<string, string> = {
   "Numri i telefonit është i detyrueshëm.": "Il numero di telefono è obbligatorio.",
   "Adresa e banimit është e detyrueshme.": "L'indirizzo di residenza è obbligatorio.",
   "Hapur": "Aperto",
+  "p.sh. Germany": "es. Germany",
 };

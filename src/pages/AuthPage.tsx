@@ -50,8 +50,10 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex relative">
+    // Kolonë: rreshti kryesor + footer NË RRJEDHË (footer-i absolut mbulonte butonin "Hyr").
+    <div className="min-h-screen bg-gray-950 flex flex-col relative">
       <div className="absolute top-4 right-4 z-20"><LanguageSwitcher /></div>
+      <div className="flex-1 flex">
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex-col items-center justify-center p-12 relative overflow-hidden">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-20 left-10 w-64 h-64 rounded-full bg-amber-400 blur-3xl" />
@@ -127,7 +129,7 @@ export default function AuthPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Nr. i telefonit')}</label>
-                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+383 4x xxx xxx"
+                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+49 1xx xxxxxxx"
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
                 </div>
               </div>
@@ -141,7 +143,7 @@ export default function AuthPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Shteti')}</label>
-                  <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t('p.sh. Kosovë')}
+                  <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t('p.sh. Germany')}
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
                 </div>
               </div>
@@ -168,15 +170,18 @@ export default function AuthPage() {
               {mode === 'login' ? t('Hyr') : t('Krijo llogari')}
             </button>
           </form>
-          <div className="mt-6 text-center">
+          {/* Kalimi Hyr ↔ Krijo llogari — z-10 + padding që footer-i të mos e mbulojë kurrë. */}
+          <div className="relative z-10 mt-6 mb-2 text-center">
             <span className="text-gray-400 text-sm">{mode === 'login' ? t("S'ke llogari? ") : t('Ke tashmë llogari? ')}</span>
-            <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }} className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors">
+            <button type="button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
+              className="text-amber-400 hover:text-amber-300 text-sm font-semibold underline underline-offset-2 px-2 py-1 rounded-lg hover:bg-amber-500/10 transition-colors">
               {mode === 'login' ? t('Krijo një') : t('Hyr')}
             </button>
           </div>
         </div>
       </div>
-      <div className="absolute bottom-1 left-0 right-0"><AppFooter /></div>
+      </div>
+      <AppFooter />
     </div>
   );
 }
