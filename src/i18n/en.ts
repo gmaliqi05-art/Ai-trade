@@ -1742,4 +1742,12 @@ export const en: Record<string, string> = {
   "do të marrësh njoftim 1 javë para skadimit.": "you will get a notification 1 week before it expires.",
   "Zgjidh një plan më poshtë për të hapur sinjalet dhe robotin auto-trade.": "Choose a plan below to unlock the signals and the auto-trade robot.",
   "Pagesë e vonuar": "Payment overdue",
+  // ---- Pagesa me kartë Debit/Kredit (Stripe) ----
+  "Abonohu me kartë": "Subscribe with card",
+  "Pagesë automatike me kartë Debit/Kredit — rinovohet çdo muaj. Anulon kur të duash.": "Automatic payment by Debit/Credit card — renews every month. Cancel anytime.",
+  "Në vend të {full}€ (12 × {m}€) — kursen {s}€. Pagesë me kartë Debit/Kredit, rinovim automatik çdo vit.": "Instead of €{full} (12 × €{m}) — you save €{s}. Payment by Debit/Credit card, automatic yearly renewal.",
+  "Pagesa me kartë Debit/Kredit përmes Stripe — e sigurt dhe automatike: abonimi rinovohet vetvetiu në fund të periudhës dhe anulohet në çdo kohë nga \"Menaxho abonimin\".": "Payment by Debit/Credit card via Stripe — secure and automatic: the subscription renews itself at the end of the period and can be cancelled anytime from \"Manage subscription\".",
+  "Menaxho abonimin (kartën / anulimin)": "Manage subscription (card / cancellation)",
+  "S'ka abonim me pagesë për të menaxhuar.": "There is no paid subscription to manage.",
+  "Nuk u hap dot portali. Provo sërish.": "Could not open the portal. Try again.",
 };

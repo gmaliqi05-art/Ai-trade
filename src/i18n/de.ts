@@ -801,4 +801,12 @@ export const de: Record<string, string> = {
   "Zgjidh një plan më poshtë për të hapur sinjalet dhe robotin auto-trade.": "Wähle unten einen Plan, um Signale und Auto-Trade-Robot freizuschalten.",
   "Pagesë e vonuar": "Zahlung überfällig",
   "Skaduar": "Abgelaufen",
+  // ---- Pagesa me kartë Debit/Kredit (Stripe) ----
+  "Abonohu me kartë": "Mit Karte abonnieren",
+  "Pagesë automatike me kartë Debit/Kredit — rinovohet çdo muaj. Anulon kur të duash.": "Automatische Zahlung per Debit-/Kreditkarte — verlängert sich monatlich. Jederzeit kündbar.",
+  "Në vend të {full}€ (12 × {m}€) — kursen {s}€. Pagesë me kartë Debit/Kredit, rinovim automatik çdo vit.": "Statt {full}€ (12 × {m}€) — du sparst {s}€. Zahlung per Debit-/Kreditkarte, automatische jährliche Verlängerung.",
+  "Pagesa me kartë Debit/Kredit përmes Stripe — e sigurt dhe automatike: abonimi rinovohet vetvetiu në fund të periudhës dhe anulohet në çdo kohë nga \"Menaxho abonimin\".": "Zahlung per Debit-/Kreditkarte über Stripe — sicher und automatisch: Das Abo verlängert sich am Periodenende selbst und kann jederzeit unter „Abo verwalten\" gekündigt werden.",
+  "Menaxho abonimin (kartën / anulimin)": "Abo verwalten (Karte / Kündigung)",
+  "S'ka abonim me pagesë për të menaxhuar.": "Es gibt kein kostenpflichtiges Abo zu verwalten.",
+  "Nuk u hap dot portali. Provo sërish.": "Portal konnte nicht geöffnet werden. Versuch es erneut.",
 };

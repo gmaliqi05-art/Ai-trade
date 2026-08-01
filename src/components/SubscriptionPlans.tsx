@@ -69,7 +69,7 @@ export default function SubscriptionPlans({ sub, onDone, compact = false }: {
             isActive ? 'bg-gray-700 text-gray-300'
             : highlight ? 'bg-amber-500 hover:bg-amber-400 text-gray-950'
             : 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-600'}`}>
-          {busy === id && <Loader2 className="w-4 h-4 animate-spin" />}
+          {busy === id ? <Loader2 className="w-4 h-4 animate-spin" /> : (id !== 'trial' && !isActive) ? <CreditCard className="w-4 h-4" /> : null}
           {isActive ? t('Aktiv') : (id === 'trial' && trialUsed) ? t('E përdorur') : cta}
         </button>
       </div>
@@ -99,8 +99,8 @@ export default function SubscriptionPlans({ sub, onDone, compact = false }: {
           title={t('Mujor')}
           icon={<Zap className="w-5 h-5 text-amber-400" />}
           price={<div className="flex items-baseline gap-1"><span className="text-3xl font-bold text-white">{PRICE_MONTHLY}€</span><span className="text-gray-400 text-sm">/ {t('muaj')}</span></div>}
-          sub={t('Faturohet çdo muaj — anulon kur të duash.')}
-          cta={t('Abonohu')}
+          sub={t('Pagesë automatike me kartë Debit/Kredit — rinovohet çdo muaj. Anulon kur të duash.')}
+          cta={t('Abonohu me kartë')}
         />
 
         {/* VJETOR — me zbritje */}
@@ -117,14 +117,14 @@ export default function SubscriptionPlans({ sub, onDone, compact = false }: {
               <span className="text-gray-400 text-sm">/ {t('vit')}</span>
             </div>
           }
-          sub={t('Në vend të {full}€ (12 × {m}€) — kursen {s}€.', { full: PRICE_YEARLY_FULL, m: PRICE_MONTHLY, s: YEARLY_SAVING })}
-          cta={t('Abonohu')}
+          sub={t('Në vend të {full}€ (12 × {m}€) — kursen {s}€. Pagesë me kartë Debit/Kredit, rinovim automatik çdo vit.', { full: PRICE_YEARLY_FULL, m: PRICE_MONTHLY, s: YEARLY_SAVING })}
+          cta={t('Abonohu me kartë')}
         />
       </div>
 
       <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
         <CreditCard className="w-3.5 h-3.5" />
-        {t('Pagesat kryhen në mënyrë të sigurt me Stripe (kartë krediti/debiti). Anulimi është i mundur në çdo kohë.')}
+        {t('Pagesa me kartë Debit/Kredit përmes Stripe — e sigurt dhe automatike: abonimi rinovohet vetvetiu në fund të periudhës dhe anulohet në çdo kohë nga "Menaxho abonimin".')}
       </p>
 
       {/* Gjendja aktuale — ditët e mbetura */}

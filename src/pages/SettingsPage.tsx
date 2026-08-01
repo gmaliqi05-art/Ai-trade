@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
 import { isStandalone, isIosLike, getPushState, subscribePush, unsubscribePush, sendTestPush } from '../services/push';
 import SubscriptionPlans from '../components/SubscriptionPlans';
-import { loadSubscription, daysLeft, type SubState } from '../services/subscription';
+import { loadSubscription, daysLeft, openBillingPortal, type SubState } from '../services/subscription';
 
 type Section = 'profile' | 'security' | 'notifications' | 'subscription';
 
@@ -57,6 +57,15 @@ export default function SettingsPage() {
   const [sub, setSub] = useState<SubState | null>(null);
   const refreshSub = useCallback(async () => { if (user) setSub(await loadSubscription(user.id)); }, [user]);
   useEffect(() => { refreshSub(); }, [refreshSub]);
+  // Menaxhimi i abonimit (ndrysho kartën / anulo) — portali i sigurt i Stripe.
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [portalMsg, setPortalMsg] = useState('');
+  const manageBilling = async () => {
+    setPortalBusy(true); setPortalMsg('');
+    const r = await openBillingPortal();
+    if (!r.url) setPortalMsg(r.error === 'no_customer' ? t('S\'ka abonim me pagesë për të menaxhuar.') : t('Nuk u hap dot portali. Provo sërish.'));
+    setPortalBusy(false);
+  };
 
   // Web Push (web + PWA): gjendja e abonimit në këtë pajisje.
   const [push, setPush] = useState<{ supported: boolean; permission: NotificationPermission; subscribed: boolean }>({ supported: false, permission: 'default', subscribed: false });
@@ -380,6 +389,17 @@ export default function SettingsPage() {
                   </p>
                 ) : (
                   <p className="text-gray-400 text-sm">{t('Zgjidh një plan më poshtë për të hapur sinjalet dhe robotin auto-trade.')}</p>
+                )}
+                {/* MENAXHIMI I ABONIMIT — ndrysho kartën ose anulo (portali i Stripe). */}
+                {sub?.tier && ['monthly', 'yearly'].includes(sub.tier) && (
+                  <div className="mt-3">
+                    <button onClick={manageBilling} disabled={portalBusy}
+                      className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl bg-gray-800 text-gray-200 border border-gray-700 hover:border-gray-500 disabled:opacity-50">
+                      {portalBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CreditCard className="w-3.5 h-3.5" />}
+                      {t('Menaxho abonimin (kartën / anulimin)')}
+                    </button>
+                    {portalMsg && <p className="text-[11px] text-red-400 mt-1.5">{portalMsg}</p>}
+                  </div>
                 )}
               </div>
 
