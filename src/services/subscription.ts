@@ -44,6 +44,21 @@ export function daysLeft(iso: string | null): number | null {
 
 interface CheckoutResp { ok?: boolean; url?: string; trial?: boolean; expires_at?: string; error?: string; message?: string }
 
+/** Hap portalin e Stripe për të menaxhuar kartën ose ANULUAR abonimin. */
+export async function openBillingPortal(): Promise<CheckoutResp> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const resp = await fetch(CHECKOUT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ plan: 'portal', origin: window.location.origin }),
+    });
+    const j = (await resp.json().catch(() => ({}))) as CheckoutResp;
+    if (j.url) { window.location.href = j.url; return j; }
+    return j;
+  } catch (e) { return { error: (e as Error).message }; }
+}
+
 /** Nis provën FALAS 15-ditore (pa kartë) ose hap Stripe Checkout për planin me pagesë. */
 export async function choosePlan(plan: PlanId): Promise<CheckoutResp> {
   try {

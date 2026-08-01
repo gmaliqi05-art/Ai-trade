@@ -65,7 +65,20 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, trial: true, expires_at: ends });
     }
 
-    // ---- ABONIM ME PAGESË (Stripe Checkout) ----
+    // ---- PORTALI I FATURIMIT: menaxho kartën / anulo abonimin (Stripe Customer Portal) ----
+    if (plan === "portal") {
+      const key0 = Deno.env.get("STRIPE_SECRET_KEY");
+      if (!key0) return json({ error: "stripe_not_configured" }, 503);
+      if (!p?.stripe_customer_id) return json({ error: "no_customer" }, 400);
+      const origin0 = String(body.origin || req.headers.get("origin") || "").replace(/\/+$/, "");
+      const portal = await stripe("billing_portal/sessions", key0, {
+        customer: p.stripe_customer_id,
+        return_url: `${origin0}/`,
+      });
+      return json({ ok: true, url: portal.url });
+    }
+
+    // ---- ABONIM ME PAGESË (Stripe Checkout) — kartë Debit/Kredit, rinovim AUTOMATIK ----
     if (plan !== "monthly" && plan !== "yearly") return json({ error: "bad_plan" }, 400);
     const key = Deno.env.get("STRIPE_SECRET_KEY");
     if (!key) return json({ error: "stripe_not_configured", message: "Mungon STRIPE_SECRET_KEY te sekretet e Supabase." }, 503);
@@ -85,8 +98,10 @@ Deno.serve(async (req: Request) => {
     const cfg = PLANS[plan];
     const origin = String(body.origin || req.headers.get("origin") || "").replace(/\/+$/, "");
     const session = await stripe("checkout/sessions", key, {
-      mode: "subscription",
+      mode: "subscription",                     // rinovim AUTOMATIK (si çdo abonim standard)
+      "payment_method_types[0]": "card",         // vetëm kartë Debit/Kredit
       customer,
+      billing_address_collection: "auto",
       "line_items[0][quantity]": "1",
       "line_items[0][price_data][currency]": "eur",
       "line_items[0][price_data][unit_amount]": String(cfg.amount),

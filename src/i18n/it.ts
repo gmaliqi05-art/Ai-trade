@@ -799,4 +799,12 @@ export const it: Record<string, string> = {
   "Zgjidh një plan më poshtë për të hapur sinjalet dhe robotin auto-trade.": "Scegli un piano qui sotto per sbloccare i segnali e il robot auto-trade.",
   "Pagesë e vonuar": "Pagamento in ritardo",
   "Skaduar": "Scaduto",
+  // ---- Pagesa me kartë Debit/Kredit (Stripe) ----
+  "Abonohu me kartë": "Abbonati con carta",
+  "Pagesë automatike me kartë Debit/Kredit — rinovohet çdo muaj. Anulon kur të duash.": "Pagamento automatico con carta di debito/credito — si rinnova ogni mese. Disdici quando vuoi.",
+  "Në vend të {full}€ (12 × {m}€) — kursen {s}€. Pagesë me kartë Debit/Kredit, rinovim automatik çdo vit.": "Invece di {full}€ (12 × {m}€) — risparmi {s}€. Pagamento con carta di debito/credito, rinnovo automatico annuale.",
+  "Pagesa me kartë Debit/Kredit përmes Stripe — e sigurt dhe automatike: abonimi rinovohet vetvetiu në fund të periudhës dhe anulohet në çdo kohë nga \"Menaxho abonimin\".": "Pagamento con carta di debito/credito tramite Stripe — sicuro e automatico: l'abbonamento si rinnova alla fine del periodo e può essere disdetto in qualsiasi momento da \"Gestisci abbonamento\".",
+  "Menaxho abonimin (kartën / anulimin)": "Gestisci abbonamento (carta / disdetta)",
+  "S'ka abonim me pagesë për të menaxhuar.": "Non ci sono abbonamenti a pagamento da gestire.",
+  "Nuk u hap dot portali. Provo sërish.": "Impossibile aprire il portale. Riprova.",
 };
