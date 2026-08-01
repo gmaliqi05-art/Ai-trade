@@ -198,26 +198,91 @@ export default function JournalPage() {
   };
   const aggR = agg(robotRows), aggM = agg(manualRows), aggAll = agg(dayRows);
 
+  // SL/TP-të e trade-ve të ditës — position_closes s'i mban, prandaj bashkohen nga burimet:
+  //  • GoldSniperFX: telegram_trades (pozicioni → sinjali) + telegram_signals (TP1–TP4, tp_hit, SL);
+  //  • robotët e tjerë & manualet: trade_executions (SL/TP i vetëm i porosisë).
+  interface PosMeta { sl: number | null; tps: number[]; tpHit: number }
+  const [posMeta, setPosMeta] = useState<Map<string, PosMeta>>(new Map());
+  useEffect(() => {
+    if (!user || dayRows.length === 0) { setPosMeta(new Map()); return; }
+    const ids = dayRows.map(r => r.position_id);
+    let alive = true;
+    (async () => {
+      const m = new Map<string, PosMeta>();
+      try {
+        const { data: legs } = await supabase.from('telegram_trades')
+          .select('metaapi_position_id, signal_id, stop_loss, take_profit')
+          .eq('user_id', user.id).in('metaapi_position_id', ids);
+        const legRows = (legs ?? []) as { metaapi_position_id: string | null; signal_id: string | null; stop_loss: number | null; take_profit: number | null }[];
+        const sigIds = [...new Set(legRows.map(l => l.signal_id).filter(Boolean))] as string[];
+        const sigMap = new Map<string, { tps: number[]; tpHit: number; sl: number | null }>();
+        if (sigIds.length) {
+          const { data: sigs } = await supabase.from('telegram_signals').select('id, tps, tp_hit, stop_loss').in('id', sigIds);
+          for (const s of (sigs ?? []) as { id: string; tps: number[] | null; tp_hit: number | null; stop_loss: number | null }[]) {
+            sigMap.set(s.id, { tps: Array.isArray(s.tps) ? s.tps : [], tpHit: s.tp_hit ?? 0, sl: s.stop_loss });
+          }
+        }
+        for (const l of legRows) {
+          if (!l.metaapi_position_id) continue;
+          const sig = l.signal_id ? sigMap.get(l.signal_id) : undefined;
+          m.set(String(l.metaapi_position_id), {
+            sl: l.stop_loss ?? sig?.sl ?? null,
+            tps: sig?.tps.length ? sig.tps : (l.take_profit != null ? [l.take_profit] : []),
+            tpHit: sig?.tpHit ?? 0,
+          });
+        }
+      } catch { /* best-effort */ }
+      try {
+        const { data: execs } = await supabase.from('trade_executions')
+          .select('metaapi_order_id, stop_loss, take_profit')
+          .eq('user_id', user.id).in('metaapi_order_id', ids);
+        for (const e of (execs ?? []) as { metaapi_order_id: string | null; stop_loss: number | null; take_profit: number | null }[]) {
+          const id = String(e.metaapi_order_id ?? '');
+          if (!id || m.has(id)) continue;
+          m.set(id, { sl: e.stop_loss ?? null, tps: e.take_profit != null ? [e.take_profit] : [], tpHit: 0 });
+        }
+      } catch { /* best-effort */ }
+      if (alive) setPosMeta(m);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, selDay, rows]);
+
   const money = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}$`;
   const moneyCls = (v: number) => v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-gray-400';
   const fmtT = (s: string | null) => s ? new Date(s).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—';
+  // Koha e HAPJES: nëse trade-i u hap një ditë tjetër (kaloi natën), trego edhe datën dd.MM.
+  const fmtOpen = (s: string | null) => {
+    if (!s) return '—';
+    const d = new Date(s);
+    const hm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return dayKey(d) === selDay ? hm : `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${hm}`;
+  };
   const monthNames = ['Janar', 'Shkurt', 'Mars', 'Prill', 'Maj', 'Qershor', 'Korrik', 'Gusht', 'Shtator', 'Tetor', 'Nëntor', 'Dhjetor'];
   const selDate = new Date(selDay + 'T12:00:00');
   const prevMonth = () => setMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1));
   const nextMonth = () => setMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1));
 
-  // Tabela e tradeve (e njëjta strukturë për robot & manual).
-  const TradeTable = ({ list, total }: { list: PositionCloseRow[]; total: ReturnType<typeof agg> }) => (
+  // Tabela e tradeve: koha e HAPJES + MBYLLJES, SL dhe TP-të (roboti: TP1–TP4 me theksim të
+  // të prekurave; manuali: një TP i vetëm — s'i duhen 4 kolona).
+  const TradeTable = ({ list, total, tpCols = 1, showRobot = false }: {
+    list: PositionCloseRow[]; total: ReturnType<typeof agg>; tpCols?: number; showRobot?: boolean;
+  }) => (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="text-[10px] text-gray-500 uppercase tracking-wide text-left">
-            <th className="py-1.5 pr-3">{t('Ora')}</th>
+            <th className="py-1.5 pr-3">{t('Hapur')}</th>
+            <th className="py-1.5 pr-3">{t('Mbyllur')}</th>
             <th className="py-1.5 pr-3">{t('Simboli')}</th>
-            <th className="py-1.5 pr-3">{t('Roboti')}</th>
+            {showRobot && <th className="py-1.5 pr-3">{t('Roboti')}</th>}
             <th className="py-1.5 pr-3">{t('Drejtimi')}</th>
             <th className="py-1.5 pr-3">Lot</th>
             <th className="py-1.5 pr-3">{t('Hyrja')}</th>
+            <th className="py-1.5 pr-3">SL</th>
+            {Array.from({ length: tpCols }, (_, i) => (
+              <th key={i} className="py-1.5 pr-3">{tpCols > 1 ? `TP${i + 1}` : 'TP'}</th>
+            ))}
             <th className="py-1.5 pr-3">{t('Dalja')}</th>
             <th className="py-1.5 pr-0 text-right">{t('Neto')}</th>
           </tr>
@@ -225,14 +290,26 @@ export default function JournalPage() {
         <tbody>
           {list.map(r => {
             const n = Number(r.net) || 0;
+            const meta = posMeta.get(String(r.position_id));
             return (
               <tr key={r.position_id} className="border-t border-gray-800/60">
+                <td className="py-1.5 pr-3 text-gray-400 tabular-nums whitespace-nowrap">{fmtOpen(r.opened_at)}</td>
                 <td className="py-1.5 pr-3 text-gray-400 tabular-nums whitespace-nowrap">{fmtT(r.closed_at)}</td>
                 <td className="py-1.5 pr-3 text-white whitespace-nowrap">{r.symbol || '—'}</td>
-                <td className="py-1.5 pr-3 text-gray-300 whitespace-nowrap">{r.robot || t('Manual')}</td>
+                {showRobot && <td className="py-1.5 pr-3 text-gray-300 whitespace-nowrap">{r.robot || t('Manual')}</td>}
                 <td className={`py-1.5 pr-3 font-semibold ${(r.action || '').includes('BUY') ? 'text-green-400' : 'text-red-400'}`}>{(r.action || '').includes('BUY') ? t('BLEJ') : t('SHIT')}</td>
                 <td className="py-1.5 pr-3 text-gray-300 tabular-nums">{r.volume ?? '—'}</td>
                 <td className="py-1.5 pr-3 text-gray-300 tabular-nums">{r.entry_price ?? '—'}</td>
+                <td className="py-1.5 pr-3 text-red-300/80 tabular-nums">{meta?.sl ?? '—'}</td>
+                {Array.from({ length: tpCols }, (_, i) => {
+                  const tp = meta?.tps[i];
+                  const hit = (meta?.tpHit ?? 0) > i; // TP i PREKUR → i verdhë me bold
+                  return (
+                    <td key={i} className={`py-1.5 pr-3 tabular-nums ${tp == null ? 'text-gray-600' : hit ? 'text-amber-300 font-bold' : 'text-gray-300'}`}>
+                      {tp ?? '—'}
+                    </td>
+                  );
+                })}
                 <td className="py-1.5 pr-3 text-gray-300 tabular-nums">{r.exit_price ?? '—'}</td>
                 <td className={`py-1.5 pr-0 text-right font-bold tabular-nums ${moneyCls(n)}`}>{money(n)}</td>
               </tr>
@@ -241,7 +318,7 @@ export default function JournalPage() {
         </tbody>
         <tfoot>
           <tr className="border-t border-gray-700">
-            <td colSpan={7} className="py-1.5 pr-3 text-gray-400">
+            <td colSpan={8 + tpCols + (showRobot ? 1 : 0)} className="py-1.5 pr-3 text-gray-400">
               {t('Hyrje')}: <span className="text-white font-semibold">{total.count}</span>
               {' · '}<span className="text-green-400">{t('Fituese')}: {total.wins}</span>
               {' · '}<span className="text-red-400">{t('Humbëse')}: {total.losses}</span>
@@ -473,12 +550,12 @@ export default function JournalPage() {
             {/* TRADET E ROBOTËVE */}
             <div>
               <div className="text-xs font-semibold text-white mb-1.5 flex items-center gap-1.5"><Bot className="w-4 h-4 text-sky-400" />{t('Tradet e robotëve')}</div>
-              {robotRows.length ? <TradeTable list={robotRows} total={aggR} /> : <p className="text-gray-600 text-xs py-1">{t('Asnjë trade roboti këtë ditë.')}</p>}
+              {robotRows.length ? <TradeTable list={robotRows} total={aggR} tpCols={4} showRobot /> : <p className="text-gray-600 text-xs py-1">{t('Asnjë trade roboti këtë ditë.')}</p>}
             </div>
             {/* TRADET MANUALE */}
             <div>
               <div className="text-xs font-semibold text-white mb-1.5 flex items-center gap-1.5"><Hand className="w-4 h-4 text-amber-400" />{t('Tradet manuale')}</div>
-              {manualRows.length ? <TradeTable list={manualRows} total={aggM} /> : <p className="text-gray-600 text-xs py-1">{t('Asnjë trade manual këtë ditë.')}</p>}
+              {manualRows.length ? <TradeTable list={manualRows} total={aggM} tpCols={1} /> : <p className="text-gray-600 text-xs py-1">{t('Asnjë trade manual këtë ditë.')}</p>}
             </div>
 
             {/* KRAHASIMI ROBOT vs MANUAL */}
