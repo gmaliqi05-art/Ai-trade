@@ -1,4 +1,4 @@
-// Përzgjedhësi i gjuhës (EN / DE / SQ) si menu që hapet me klik (hamburger/dropdown).
+// Përzgjedhësi i gjuhës (EN / DE / FR / IT / SQ) si menu që hapet me klik (hamburger/dropdown).
 // RENDITJA (kërkesa e pronarit): anglishtja primare, pastaj gjermanishtja, e treta shqipja.
 import { useState } from 'react';
 import { Globe, ChevronDown } from 'lucide-react';
@@ -10,6 +10,8 @@ export default function LanguageSwitcher() {
   const opts: { code: Lang; label: string; name: string }[] = [
     { code: 'en', label: 'EN', name: 'English' },
     { code: 'de', label: 'DE', name: 'Deutsch' },
+    { code: 'fr', label: 'FR', name: 'Français' },
+    { code: 'it', label: 'IT', name: 'Italiano' },
     { code: 'sq', label: 'SQ', name: 'Shqip' },
   ];
   const current = opts.find(o => o.code === lang) ?? opts[0];
