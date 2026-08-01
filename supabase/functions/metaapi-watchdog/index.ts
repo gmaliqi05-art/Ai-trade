@@ -183,10 +183,14 @@ Deno.serve(async (req: Request) => {
                     (o.action ?? "").toUpperCase() === info.action && Math.abs(Number(o.entry_price) - info.entry) <= 2.0 && /^(fastt|auto \(|mmt|scalp auto)/i.test(o.reason ?? ""));
                   const r = m?.reason ?? "";
                   if (/^fastt/i.test(r)) continue; // FastT → s'e regjistrojmë këtu
-                  const robot = /^MMT-F/i.test(r) ? "MMT-Fast" : /^MMT-S/i.test(r) ? "MMT-Scalp" : /^MMT/i.test(r) ? "MMT-Long"
+                  // GoldSniperFX (Telegram Sin): pozicionet hapen me comment "TG<idx>" — njihi nga deal-i i hyrjes.
+                  const inD0 = myDeals.find((d) => /IN/i.test(String(d.entryType ?? ""))) as Record<string, unknown> | undefined;
+                  const tgTrade = /\bTG\d/i.test(`${String(inD0?.comment ?? "")} ${String(inD0?.brokerComment ?? "")} ${String(inD0?.clientId ?? "")}`);
+                  const robot = tgTrade ? "GoldSniperFX"
+                    : /^MMT-F/i.test(r) ? "MMT-Fast" : /^MMT-S/i.test(r) ? "MMT-Scalp" : /^MMT/i.test(r) ? "MMT-Long"
                     : /^scalp auto/i.test(r) ? "Sinjalet-Scalp" : /^auto ?\(/i.test(r) ? "Sinjalet" : null;
                   const source = robot ? "auto" : "manual";
-                  const horizon = robot == null ? null : (robot === "Sinjalet" || robot === "MMT-Long" ? "long" : "short");
+                  const horizon = robot == null ? null : (robot === "GoldSniperFX" || robot === "Sinjalet" || robot === "MMT-Long" ? "long" : "short");
                   await db.from("position_closes").upsert({
                     user_id: cfg.user_id, position_id: id, symbol: info.sym, action: info.action, volume: info.vol,
                     entry_price: info.entry || null, exit_price: outD ? Number(outD.price) : null, net,

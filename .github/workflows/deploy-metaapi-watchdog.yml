@@ -6,6 +6,11 @@ name: Deploy metaapi-watchdog
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/metaapi-watchdog/**'
 
 jobs:
   deploy:
