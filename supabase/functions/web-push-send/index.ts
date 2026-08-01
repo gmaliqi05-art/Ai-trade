@@ -124,6 +124,16 @@ Deno.serve(async (req: Request) => {
       } else if (body.user_id) {
         userIds = [String(body.user_id)];
       }
+      // FILTRI I PREFERENCAVE (ops.): body.pref = çelësi te profiles.notification_preferences
+      // (p.sh. 'messages', 'subscription'). Përjashtohen vetëm ata që e kanë FIKUR shprehimisht.
+      if (userIds.length > 0 && body.pref) {
+        const prefKey = String(body.pref);
+        const { data: profs } = await db.from("profiles").select("id, notification_preferences").in("id", userIds);
+        const off = new Set((profs ?? [])
+          .filter((p) => ((p as { notification_preferences?: Record<string, unknown> }).notification_preferences ?? {})[prefKey] === false)
+          .map((p) => (p as { id: string }).id));
+        userIds = userIds.filter((id) => !off.has(id));
+      }
     } else {
       // Përdorues i loguar → vetëm te vetja (butoni "Provo").
       const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: auth } } });
