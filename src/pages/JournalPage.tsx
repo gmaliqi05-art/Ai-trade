@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, NotebookPen, Bot, Hand, Scale, Check, LineChart, Wallet, RefreshCw } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Loader2, NotebookPen, Bot, Hand, Scale, Check, LineChart, Wallet, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
@@ -520,25 +520,9 @@ export default function JournalPage() {
             </div>
           </>
         )}
-
-        {/* SHËNIMET E DITËS — praktika bazë e journal-it: çfarë funksionoi / çfarë jo / plani. */}
-        <div>
-          <div className="text-xs font-semibold text-white mb-1.5 flex items-center gap-1.5"><NotebookPen className="w-4 h-4 text-emerald-400" />{t('Shënimet e ditës')}</div>
-          <textarea value={note} onChange={e => { setNote(e.target.value); setNoteSaved(false); }} disabled={!noteLoaded}
-            placeholder={t('P.sh.: Çfarë funksionoi sot? Çfarë gabimi bëra? A e ndoqa planin? Emocionet? Mësimi për nesër…')}
-            rows={4}
-            className="w-full bg-gray-800/60 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500 resize-y" />
-          <div className="flex items-center gap-2 mt-1.5">
-            <button onClick={saveNote} disabled={noteBusy || !noteLoaded}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-50">
-              {noteBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : noteSaved ? <Check className="w-3.5 h-3.5" /> : <NotebookPen className="w-3.5 h-3.5" />}
-              {noteSaved ? t('U ruajt') : t('Ruaj shënimin')}
-            </button>
-          </div>
-        </div>
       </div>
 
-      {/* TABELA E SHËNIMEVE TË MUAJIT — të gjitha shënimet e ruajtura, me datë; klik → hap ditën. */}
+      {/* TABELA E SHËNIMEVE TË MUAJIT — sipër editorit (kërkesa e pronarit); klik → hap ditën. */}
       {monthNotes.size > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4">
           <div className="text-xs font-semibold text-white mb-2 flex items-center gap-1.5">
@@ -577,6 +561,30 @@ export default function JournalPage() {
           <p className="text-[10px] text-gray-600 mt-1.5">{t('Kliko një rresht për të hapur ditën përkatëse në kalendar.')}</p>
         </div>
       )}
+
+      {/* SHËNIMET E DITËS — NË FUND, model hamburger (i palosshëm); shkruaj/ruaj shënimin e ditës
+          së zgjedhur. Praktika bazë e journal-it: çfarë funksionoi / çfarë jo / plani. */}
+      <details className="bg-gray-900 border border-gray-800 rounded-2xl group">
+        <summary className="cursor-pointer list-none p-3 sm:p-4 flex items-center gap-1.5 select-none">
+          <NotebookPen className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs font-semibold text-white">{t('Shënimet e ditës')} — {String(selDate.getDate()).padStart(2, '0')}.{String(selDate.getMonth() + 1).padStart(2, '0')}.{selDate.getFullYear()}</span>
+          {monthNotes.has(selDay) && <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block" title={t('Ka shënim')} />}
+          <ChevronDown className="w-4 h-4 text-gray-400 ml-auto transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="px-3 sm:px-4 pb-4">
+          <textarea value={note} onChange={e => { setNote(e.target.value); setNoteSaved(false); }} disabled={!noteLoaded}
+            placeholder={t('P.sh.: Çfarë funksionoi sot? Çfarë gabimi bëra? A e ndoqa planin? Emocionet? Mësimi për nesër…')}
+            rows={4}
+            className="w-full bg-gray-800/60 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500 resize-y" />
+          <div className="flex items-center gap-2 mt-1.5">
+            <button onClick={saveNote} disabled={noteBusy || !noteLoaded}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-50">
+              {noteBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : noteSaved ? <Check className="w-3.5 h-3.5" /> : <NotebookPen className="w-3.5 h-3.5" />}
+              {noteSaved ? t('U ruajt') : t('Ruaj shënimin')}
+            </button>
+          </div>
+        </div>
+      </details>
     </div>
   );
 }
