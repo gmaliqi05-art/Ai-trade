@@ -763,4 +763,5 @@ export const it: Record<string, string> = {
   "Për shkak të sigurisë, hapja e llogarisë nuk lejohet për personat nën 18 vjeç.": "Per motivi di sicurezza, l'apertura di un account non è consentita alle persone sotto i 18 anni.",
   "Numri i telefonit është i detyrueshëm.": "Il numero di telefono è obbligatorio.",
   "Adresa e banimit është e detyrueshme.": "L'indirizzo di residenza è obbligatorio.",
+  "Hapur": "Aperto",
 };
