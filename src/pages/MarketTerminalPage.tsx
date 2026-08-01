@@ -19,7 +19,7 @@ import {
   type AccountInfo, type HistoryDeal, type OpenPosition, type PreOpenOrder, type PendingOrder,
 } from '../services/metaapi';
 import { fetchCandles, type Timeframe } from '../ai-trader/market/candles';
-import { loadTelegramSignals, loadTgLegs, sigPnl, type TelegramSignalRow, type TgLegRow } from '../services/telegramSin';
+import { loadTelegramSignals, loadTelegramEntrySignals, loadTgLegs, sigPnl, type TelegramSignalRow, type TgLegRow } from '../services/telegramSin';
 import { metaStream } from '../services/metaStream';
 import { useMetaStream } from '../hooks/useMetaStream';
 import { groupDeals, attachSource, fasttFromExecutions, closesFromPositions, exitKind, positionHorizon, robotBadgeCls, robotOfPosition, robotOf, type ClosedTrade, type ExecRow, type FasttExecRow, type HorizonExec } from '../services/closedTrades';
@@ -149,6 +149,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [isVip, setIsVip] = useState(false);
   // Telegram Sin në Trade Live: sinjalet + GJITHË mesazhet e grupeve (raport i shpejtë + feed).
   const [tgSigs, setTgSigs] = useState<TelegramSignalRow[]>([]);
+  // Vetëm sinjalet e HYRJES (query e veçantë) — mesazhet e shumta s'i shtyjnë dot jashtë tabelave.
+  const [tgEntries, setTgEntries] = useState<TelegramSignalRow[]>([]);
   const [tgLegs, setTgLegs] = useState<TgLegRow[]>([]);
   // Emrat REALË të simboleve te brokeri (symbol_map nga serveri, p.sh. XAUUSD → XAUUSD.s).
   const [symMap, setSymMap] = useState<Record<string, string>>({});
@@ -966,6 +968,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     if (!user) return;
     const load = () => {
       loadTelegramSignals(user.id, 60).then(setTgSigs).catch(() => {});
+      loadTelegramEntrySignals(user.id, 150).then(setTgEntries).catch(() => {});
       loadTgLegs(user.id).then(setTgLegs).catch(() => {});
     };
     load();
@@ -979,7 +982,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   };
   // Sinjalet që kanë HYRË në trade (jo komentet/injoruarat) — të ndara në tri tabela:
   // LIVE në trade · në pritje · raportet (të mbyllura/anuluara). (Kërkesa e pronarit.)
-  const tgSigEntries = tgSigs.filter((s) => s.kind === 'entry' && ['pending', 'executed', 'partial', 'closed', 'canceled'].includes(s.status));
+  const tgSigEntries = tgEntries.filter((s) => ['pending', 'executed', 'partial', 'closed', 'canceled'].includes(s.status));
   const tgLegsOf = (sigId: string) => tgLegs.filter((l) => l.signal_id === sigId);
   const tgLive = tgSigEntries.filter((s) => ['executed', 'partial'].includes(s.status));
   const tgPending = tgSigEntries.filter((s) => s.status === 'pending');
