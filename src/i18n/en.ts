@@ -1694,4 +1694,18 @@ export const en: Record<string, string> = {
   "Fjalëkalim i gabuar.": "Wrong password.",
   "Llogaritë admin s'fshihen nga këtu.": "Admin accounts can't be deleted from here.",
   "Fshirja dështoi. Provo sërish.": "Deletion failed. Try again.",
+  // ---- Regjistrimi i zgjeruar (KYC-light) ----
+  "Mbiemri": "Last name",
+  "Datëlindja": "Date of birth",
+  "Nr. i telefonit": "Phone number",
+  "Adresa e banimit": "Residential address",
+  "Shteti": "Country",
+  "Rruga, qyteti": "Street, city",
+  "p.sh. Kosovë": "e.g. Kosovo",
+  "Vetëm 18+ — llogaritë e personave nën 18 vjeç nuk lejohen për arsye sigurie.": "18+ only — accounts for persons under 18 are not allowed for safety reasons.",
+  "Emri dhe mbiemri janë të detyrueshëm.": "First and last name are required.",
+  "Datëlindja është e detyrueshme.": "Date of birth is required.",
+  "Për shkak të sigurisë, hapja e llogarisë nuk lejohet për personat nën 18 vjeç.": "For safety reasons, opening an account is not allowed for persons under 18.",
+  "Numri i telefonit është i detyrueshëm.": "Phone number is required.",
+  "Adresa e banimit është e detyrueshme.": "Residential address is required.",
 };

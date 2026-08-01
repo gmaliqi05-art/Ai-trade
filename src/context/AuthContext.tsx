@@ -11,6 +11,19 @@ export interface Profile {
   subscription_tier: string;
   is_admin: boolean;
   is_verified?: boolean;
+  first_name?: string | null;
+  last_name?: string | null;
+  birth_date?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  country?: string | null;
+}
+
+// Të dhënat e regjistrimit të zgjeruar (KYC-light): emri/mbiemri, datëlindja (18+ e detyrueshme),
+// telefoni, adresa e banimit, shteti. Kopjohen te profiles nga trigger-i handle_new_user.
+export interface SignUpInfo {
+  firstName: string; lastName: string; birthDate: string;
+  phone: string; address: string; country: string;
 }
 
 interface AuthContextType {
@@ -19,7 +32,7 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, info: SignUpInfo) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -95,12 +108,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    // Emri kalon te metadata → trigger-i `handle_new_user` e mbush profilin automatikisht.
+  const signUp = async (email: string, password: string, info: SignUpInfo) => {
+    // Të dhënat kalojnë te metadata → trigger-i `handle_new_user` e mbush profilin automatikisht
+    // (dhe zbaton 18+ edhe në server).
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, username: email.split('@')[0] } },
+      options: { data: {
+        full_name: `${info.firstName} ${info.lastName}`.trim(),
+        username: email.split('@')[0],
+        first_name: info.firstName, last_name: info.lastName, birth_date: info.birthDate,
+        phone: info.phone, address: info.address, country: info.country,
+      } },
     });
     if (error) return { error };
     // Përdoruesit auto-konfirmohen (shih migrimin) → nëse s'ka session nga signUp,

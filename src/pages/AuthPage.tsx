@@ -9,7 +9,13 @@ export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  // Regjistrimi i zgjeruar: emri/mbiemri, datëlindja (18+), telefoni, adresa, shteti.
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [country, setCountry] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -24,9 +30,21 @@ export default function AuthPage() {
       const { error } = await signIn(email, password);
       if (error) setError(error.message);
     } else {
-      if (!fullName.trim()) { setError(t('Emri i plotë është i detyrueshëm')); setLoading(false); return; }
-      const { error } = await signUp(email, password, fullName);
-      if (error) setError(error.message);
+      if (!firstName.trim() || !lastName.trim()) { setError(t('Emri dhe mbiemri janë të detyrueshëm.')); setLoading(false); return; }
+      if (!birthDate) { setError(t('Datëlindja është e detyrueshme.')); setLoading(false); return; }
+      // 18+ E DETYRUESHME: llogarit moshën saktë (viti − muaji/dita).
+      const bd = new Date(birthDate + 'T12:00:00');
+      const now = new Date();
+      let age = now.getFullYear() - bd.getFullYear();
+      if (now.getMonth() < bd.getMonth() || (now.getMonth() === bd.getMonth() && now.getDate() < bd.getDate())) age--;
+      if (!(age >= 18)) { setError(t('Për shkak të sigurisë, hapja e llogarisë nuk lejohet për personat nën 18 vjeç.')); setLoading(false); return; }
+      if (!phone.trim()) { setError(t('Numri i telefonit është i detyrueshëm.')); setLoading(false); return; }
+      if (!address.trim()) { setError(t('Adresa e banimit është e detyrueshme.')); setLoading(false); return; }
+      const { error } = await signUp(email, password, {
+        firstName: firstName.trim(), lastName: lastName.trim(), birthDate,
+        phone: phone.trim(), address: address.trim(), country: country.trim(),
+      });
+      if (error) setError(/under_18/i.test(error.message) ? t('Për shkak të sigurisë, hapja e llogarisë nuk lejohet për personat nën 18 vjeç.') : error.message);
     }
     setLoading(false);
   };
@@ -85,13 +103,49 @@ export default function AuthPage() {
             {mode === 'login' ? t('Hyr për të hapur panelin tënd të tregtimit') : t('Nis udhëtimin tënd të tregtimit me AI')}
           </p>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Emri i plotë')}</label>
-                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder={t('Emri Mbiemri')}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
+            {mode === 'register' && (<>
+              {/* Emri + Mbiemri në një rresht */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Emri')}</label>
+                  <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder={t('Emri')}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Mbiemri')}</label>
+                  <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder={t('Mbiemri')}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
+                </div>
               </div>
-            )}
+              {/* Datëlindja (18+) + Telefoni */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Datëlindja')}</label>
+                  <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)}
+                    max={new Date().toISOString().slice(0, 10)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors [color-scheme:dark]" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Nr. i telefonit')}</label>
+                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+383 4x xxx xxx"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-500 -mt-2">{t('Vetëm 18+ — llogaritë e personave nën 18 vjeç nuk lejohen për arsye sigurie.')}</p>
+              {/* Adresa e banimit + Shteti */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Adresa e banimit')}</label>
+                  <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t('Rruga, qyteti')}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Shteti')}</label>
+                  <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t('p.sh. Kosovë')}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" required />
+                </div>
+              </div>
+            </>)}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"

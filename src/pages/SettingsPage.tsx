@@ -18,7 +18,11 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [notifSaved, setNotifSaved] = useState(false);
-  const [profileForm, setProfileForm] = useState({ full_name: profile?.full_name || '', username: profile?.username || '' });
+  const [profileForm, setProfileForm] = useState({
+    first_name: profile?.first_name || '', last_name: profile?.last_name || '',
+    username: profile?.username || '', phone: profile?.phone || '',
+    address: profile?.address || '', country: profile?.country || '',
+  });
   const [pwForm, setPwForm] = useState({ new: '', confirm: '' });
   const [notifications, setNotifications] = useState<NotificationPrefs>({ messages: true, subscription: true });
   const [pwMsg, setPwMsg] = useState('');
@@ -100,7 +104,11 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (profile) {
-      setProfileForm({ full_name: profile.full_name || '', username: profile.username || '' });
+      setProfileForm({
+        first_name: profile.first_name || '', last_name: profile.last_name || '',
+        username: profile.username || '', phone: profile.phone || '',
+        address: profile.address || '', country: profile.country || '',
+      });
       const raw = (profile as unknown as { notification_preferences?: Record<string, unknown> }).notification_preferences;
       if (raw) setNotifications({ messages: raw.messages !== false, subscription: raw.subscription !== false });
     }
@@ -109,7 +117,12 @@ export default function SettingsPage() {
   const saveProfile = async () => {
     if (!user) return;
     setSaving(true);
-    await supabase.from('profiles').update({ full_name: profileForm.full_name, username: profileForm.username }).eq('id', user.id);
+    await supabase.from('profiles').update({
+      first_name: profileForm.first_name, last_name: profileForm.last_name,
+      full_name: `${profileForm.first_name} ${profileForm.last_name}`.trim() || profileForm.username,
+      username: profileForm.username, phone: profileForm.phone,
+      address: profileForm.address, country: profileForm.country,
+    }).eq('id', user.id);
     await refreshProfile();
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
@@ -186,13 +199,47 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-4">
-                {[{ label: t('Emri i plotë'), key: 'full_name' as const, type: 'text' }, { label: 'Username', key: 'username' as const, type: 'text' }].map(f => (
-                  <div key={f.key}>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{f.label}</label>
-                    <input type={f.type} value={profileForm[f.key] || ''} onChange={(e) => setProfileForm(p => ({ ...p, [f.key]: e.target.value }))}
+                {/* Emri + Mbiemri */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[{ label: t('Emri'), key: 'first_name' as const }, { label: t('Mbiemri'), key: 'last_name' as const }].map(f => (
+                    <div key={f.key}>
+                      <label className="block text-sm font-medium text-gray-300 mb-1.5">{f.label}</label>
+                      <input type="text" value={profileForm[f.key] || ''} onChange={(e) => setProfileForm(p => ({ ...p, [f.key]: e.target.value }))}
+                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" />
+                    </div>
+                  ))}
+                </div>
+                {/* Datëlindja (vetëm-lexim — vendoset në regjistrim) + Telefoni */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Datëlindja')}</label>
+                    <input type="text" value={profile?.birth_date ? new Date(profile.birth_date + 'T12:00:00').toLocaleDateString('en-GB') : '—'} disabled
+                      className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-3 text-gray-500 cursor-not-allowed" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Nr. i telefonit')}</label>
+                    <input type="tel" value={profileForm.phone || ''} onChange={(e) => setProfileForm(p => ({ ...p, phone: e.target.value }))}
                       className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" />
                   </div>
-                ))}
+                </div>
+                {/* Adresa + Shteti */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Adresa e banimit')}</label>
+                    <input type="text" value={profileForm.address || ''} onChange={(e) => setProfileForm(p => ({ ...p, address: e.target.value }))}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{t('Shteti')}</label>
+                    <input type="text" value={profileForm.country || ''} onChange={(e) => setProfileForm(p => ({ ...p, country: e.target.value }))}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Username</label>
+                  <input type="text" value={profileForm.username || ''} onChange={(e) => setProfileForm(p => ({ ...p, username: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
                   <input type="email" value={user?.email || ''} disabled className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-3 text-gray-500 cursor-not-allowed" />
