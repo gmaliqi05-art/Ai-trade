@@ -95,6 +95,18 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
   const { profile, user, signOut } = useAuth();
   const { t } = useI18n();
 
+  // BUTONI TELEGRAM — linku publik i kanalit GoldSniper|FX, i lexuar nga serveri
+  // (funksioni 'goldsniper_channel_link'). Nëse s'ka kanal publik, butoni s'shfaqet fare.
+  const [tgLink, setTgLink] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    supabase.rpc('goldsniper_channel_link').then(({ data }) => {
+      if (alive && typeof data === 'string' && data.startsWith('https://t.me/')) setTgLink(data);
+    });
+    return () => { alive = false; };
+  }, [user]);
+
   // VIP: faqet e tjera (jo FREE_PAGES) fshihen derisa të futet kodi i saktë. Gjendja ruhet lokalisht.
   const [vipUnlocked, setVipUnlocked] = useState(() => {
     try { return localStorage.getItem(VIP_STORAGE_KEY) === '1'; } catch { return false; }
@@ -239,6 +251,20 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
             </div>
           );
         })}
+
+        {/* BUTONI TELEGRAM — hap kanalin tonë të sinjaleve në Telegram (t.me). Linku vjen nga
+            serveri dhe ndjek vetë kanalin nëse Admini e ndryshon te konsola GoldSniperFX. */}
+        {tgLink && (
+          <div className="mb-4">
+            {!collapsed && <div className="px-3 mb-1 text-[10px] text-sky-600 font-semibold tracking-[0.15em] uppercase">Telegram</div>}
+            <a href={tgLink} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)}
+              title={t('Bashkohu me kanalin tonë të sinjaleve në Telegram')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-sky-500/15 to-sky-600/10 border border-sky-500/30 text-sky-300 hover:from-sky-500/25 transition-all">
+              <Send className="w-4 h-4 flex-shrink-0" />
+              {!collapsed && <span className="text-sm font-semibold truncate">{t('Kanali në Telegram')}</span>}
+            </a>
+          </div>
+        )}
 
         {/* BUTONI VIP — hap faqet e tjera me kod. I dukshëm gjithmonë; hapet me kod, pastaj mbahet mend. */}
         <div className="mb-4">

@@ -892,4 +892,6 @@ export const fr: Record<string, string> = {
   "Merr njoftim push për çdo hapje dhe mbyllje, nëse i ke ndezur njoftimet.": "Tu reçois une notification push à chaque ouverture et clôture, si tu as activé les notifications.",
   "Për të marrë sinjalet, llogaria jote MT5 duhet të jetë e lidhur (Pjesa 5) dhe çelësi i kanalit ON (Pjesa 6). Pa këto të dyja, roboti nuk hap asnjë pozicion.": "Pour recevoir les signaux, ton compte MT5 doit être connecté (partie 5) et l'interrupteur du canal sur ON (partie 6). Sans les deux, le robot n'ouvre rien.",
   "Përmbledhje: 1) Abonimi + kodi i verifikimit → 2) Vantage MT5 → 3) MetaApi (Account ID + Token) → 4) Konfigurimi i Sinjaleve → Lidhja me MT5 → 5) Karta GoldSniperFX ON.": "Résumé : 1) Abonnement + code de vérification → 2) Vantage MT5 → 3) MetaApi (Account ID + jeton) → 4) Configuration des signaux → Connexion MT5 → 5) Carte GoldSniperFX sur ON.",
+  "Kanali në Telegram": "Canal Telegram",
+  "Bashkohu me kanalin tonë të sinjaleve në Telegram": "Rejoins notre canal de signaux sur Telegram",
 };
