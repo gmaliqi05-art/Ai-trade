@@ -1750,4 +1750,9 @@ export const en: Record<string, string> = {
   "Menaxho abonimin (kartën / anulimin)": "Manage subscription (card / cancellation)",
   "S'ka abonim me pagesë për të menaxhuar.": "There is no paid subscription to manage.",
   "Nuk u hap dot portali. Provo sërish.": "Could not open the portal. Try again.",
+  // ---- Profili: foto + ruajtje e verifikuar ----
+  "Ndrysho foton e profilit": "Change profile photo",
+  "Fotoja u ngarkua.": "Photo uploaded.",
+  "Ngarkimi dështoi.": "Upload failed.",
+  "Ruajtja nuk u konfirmua nga serveri. Dil dhe hyr sërish, pastaj provo përsëri.": "The save was not confirmed by the server. Log out and back in, then try again.",
 };

@@ -807,4 +807,9 @@ export const fr: Record<string, string> = {
   "Menaxho abonimin (kartën / anulimin)": "Gérer l'abonnement (carte / annulation)",
   "S'ka abonim me pagesë për të menaxhuar.": "Aucun abonnement payant à gérer.",
   "Nuk u hap dot portali. Provo sërish.": "Impossible d'ouvrir le portail. Réessaie.",
+  // ---- Profili: foto + ruajtje e verifikuar ----
+  "Ndrysho foton e profilit": "Changer la photo de profil",
+  "Fotoja u ngarkua.": "Photo téléchargée.",
+  "Ngarkimi dështoi.": "Le téléchargement a échoué.",
+  "Ruajtja nuk u konfirmua nga serveri. Dil dhe hyr sërish, pastaj provo përsëri.": "L'enregistrement n'a pas été confirmé par le serveur. Déconnecte-toi puis reconnecte-toi et réessaie.",
 };
