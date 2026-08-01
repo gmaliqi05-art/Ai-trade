@@ -161,11 +161,11 @@ export async function loadOpenTgTrades(userId: string): Promise<TgTradeRow[]> {
 }
 
 /** Të gjitha legs e Telegram Sin (edhe të mbyllurat, ditët e fundit) — për pips + P&L në raporte. */
-export interface TgLegRow { signal_id: string | null; status: string; action: string | null; entry_price: number | null; exit_price: number | null; net: number | null; }
+export interface TgLegRow { signal_id: string | null; status: string; action: string | null; entry_price: number | null; exit_price: number | null; net: number | null; closed_at?: string | null; }
 export async function loadTgLegs(userId: string, days = 8): Promise<TgLegRow[]> {
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const { data } = await supabase.from('telegram_trades')
-    .select('signal_id, status, action, entry_price, exit_price, net')
+    .select('signal_id, status, action, entry_price, exit_price, net, closed_at')
     .eq('user_id', userId).gte('created_at', since).limit(1000);
   return (data ?? []) as TgLegRow[];
 }
