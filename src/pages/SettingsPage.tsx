@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown, BellRing, Smartphone, Trash2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
 import { isStandalone, isIosLike, getPushState, subscribePush, unsubscribePush, sendTestPush } from '../services/push';
+import SubscriptionPlans from '../components/SubscriptionPlans';
+import { loadSubscription, daysLeft, type SubState } from '../services/subscription';
 
 type Section = 'profile' | 'security' | 'notifications' | 'subscription';
 
@@ -50,6 +52,11 @@ export default function SettingsPage() {
     } catch { setDelMsg(t('Fshirja dështoi. Provo sërish.')); }
     setDelBusy(false);
   };
+
+  // ABONIMI: gjendja aktuale (plan, status, skadimi) — për tab-in "Abonimi".
+  const [sub, setSub] = useState<SubState | null>(null);
+  const refreshSub = useCallback(async () => { if (user) setSub(await loadSubscription(user.id)); }, [user]);
+  useEffect(() => { refreshSub(); }, [refreshSub]);
 
   // Web Push (web + PWA): gjendja e abonimit në këtë pajisje.
   const [push, setPush] = useState<{ supported: boolean; permission: NotificationPermission; subscribed: boolean }>({ supported: false, permission: 'default', subscribed: false });
@@ -156,12 +163,6 @@ export default function SettingsPage() {
     { id: 'security' as Section, label: t('Siguria'), icon: Shield },
     { id: 'notifications' as Section, label: t('Njoftimet'), icon: Bell },
     { id: 'subscription' as Section, label: t('Abonimi'), icon: CreditCard },
-  ];
-
-  const tiers = [
-    { id: 'free', name: t('Falas'), price: '$0', features: [t('10 aktive të ndjekur'), t('Sinjale bazë'), t('3 alarme çmimi'), t('Mbështetje komuniteti')], border: 'border-gray-700', badge: '' },
-    { id: 'pro', name: 'Pro', price: '$29', features: [t('Aktive të pakufizuara'), t('Të gjitha sinjalet AI'), t('Alarme të pakufizuara'), t('Mbështetje prioritare'), t('Analitikë e avancuar')], border: 'border-amber-500', badge: t('Më i popullarizuari') },
-    { id: 'elite', name: 'Elite', price: '$79', features: [t('Gjithçka e Pro-s'), t('Menaxher portofoli AI'), t('Strategji të personalizuara'), t('Këshilltar i dedikuar'), t('Qasje API')], border: 'border-gray-600', badge: '' },
   ];
 
   return (
@@ -354,26 +355,36 @@ export default function SettingsPage() {
 
           {activeSection === 'subscription' && (
             <div className="space-y-4">
+              {/* GJENDJA AKTUALE — plani, statusi dhe ditët e mbetura. */}
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
                   <h3 className="text-white font-semibold flex items-center gap-2"><Crown className="w-4 h-4 text-amber-400" />{t('Plani aktual')}</h3>
-                  <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-2 py-1 rounded-lg capitalize">{profile?.subscription_tier || 'free'}</span>
+                  <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                    sub && ['active', 'trialing'].includes(sub.status) ? 'bg-green-500/20 text-green-400'
+                    : sub && sub.status === 'past_due' ? 'bg-amber-500/20 text-amber-300'
+                    : 'bg-gray-700 text-gray-300'}`}>
+                    {sub?.status === 'trialing' ? t('Provë falas')
+                      : sub?.tier === 'monthly' ? t('Mujor')
+                      : sub?.tier === 'yearly' ? t('Vjetor')
+                      : sub?.status === 'past_due' ? t('Pagesë e vonuar')
+                      : sub?.status === 'canceled' ? t('Anuluar')
+                      : sub?.status === 'expired' ? t('Skaduar')
+                      : (profile?.subscription_tier || 'free')}
+                  </span>
                 </div>
-                <p className="text-gray-400 text-sm">{t('Pagesat online nuk janë aktivizuar ende — planet me pagesë vijnë së shpejti. Për ndryshim plani aktualisht, kontakto administratorin.')}</p>
+                {sub && (sub.expiresAt || sub.trialEndsAt) && ['active', 'trialing'].includes(sub.status) ? (
+                  <p className="text-gray-400 text-sm">
+                    {t('Skadon më')} <span className="text-white font-semibold">{new Date((sub.expiresAt || sub.trialEndsAt)!).toLocaleDateString('en-GB')}</span>
+                    {' · '}<span className="text-amber-400 font-semibold">{daysLeft(sub.expiresAt || sub.trialEndsAt)} {t('ditë të mbetura')}</span>
+                    {' — '}{t('do të marrësh njoftim 1 javë para skadimit.')}
+                  </p>
+                ) : (
+                  <p className="text-gray-400 text-sm">{t('Zgjidh një plan më poshtë për të hapur sinjalet dhe robotin auto-trade.')}</p>
+                )}
               </div>
-              <div className="grid md:grid-cols-3 gap-4">
-                {tiers.map((tier) => (
-                  <div key={tier.id} className={`bg-gray-900 border-2 rounded-2xl p-5 relative ${tier.id === profile?.subscription_tier ? 'border-amber-500' : tier.border}`}>
-                    {tier.badge && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-gray-950 text-xs font-bold px-3 py-1 rounded-full">{tier.badge}</div>}
-                    {tier.id === profile?.subscription_tier && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">{t('Aktiv')}</div>}
-                    <div className="mb-4"><h4 className="text-white font-bold text-lg">{tier.name}</h4><div className="flex items-baseline gap-1 mt-1"><span className="text-3xl font-bold text-white">{tier.price}</span><span className="text-gray-400 text-sm">{t('/muaj')}</span></div></div>
-                    <ul className="space-y-2 mb-5">{tier.features.map(f => <li key={f} className="flex items-center gap-2 text-gray-300 text-sm"><Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />{f}</li>)}</ul>
-                    <button disabled className={`w-full py-2.5 rounded-xl text-sm font-semibold ${tier.id === profile?.subscription_tier ? 'bg-gray-700 text-gray-400' : 'bg-gray-800 text-gray-500'} cursor-not-allowed`}>
-                      {tier.id === profile?.subscription_tier ? t('Aktiv') : t('Së shpejti')}
-                    </button>
-                  </div>
-                ))}
-              </div>
+
+              {/* PLANET — provë falas · mujor · vjetor (pagesa me Stripe). */}
+              <SubscriptionPlans sub={sub} onDone={async () => { await refreshSub(); await refreshProfile(); }} compact />
 
               {/* ZONA E RREZIKUT — çaktivizimi/fshirja e llogarisë (e detyrueshme për privatësinë).
                   Rrjedha: paralajmërim (të gjitha të dhënat humbin) → fjalëkalimi → fshirje e përhershme. */}

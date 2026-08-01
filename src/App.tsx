@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './i18n/i18n';
 import AuthPage from './pages/AuthPage';
 import AccountVerifyGate from './pages/AccountVerifyGate';
+import SubscriptionGate from './pages/SubscriptionGate';
 import AdminLayout from './components/AdminLayout';
 import ClientLayout from './components/ClientLayout';
 
@@ -137,6 +138,12 @@ function AppContent() {
 
   if (profile?.is_admin) {
     return <AdminApp />;
+  }
+
+  // ABONIMI: pas "Krijo llogari" (ose kur abonimi skadon/anulohet) → tabela e planeve me Stripe.
+  // Përdoruesit e vjetër janë 'active' (grandfathered) → s'preken.
+  if (profile && ['none', 'expired', 'canceled'].includes(profile.subscription_status ?? '')) {
+    return <SubscriptionGate />;
   }
 
   // VERIFIKIM: përdoruesi i kyçur por i PAVERIFIKUAR (regjistrim i ri) → ekrani i kodit 6-shifror.

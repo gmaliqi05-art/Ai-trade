@@ -15,6 +15,9 @@ Deno.serve(async (req: Request) => {
     if (!secret || req.headers.get("x-cron-secret") !== secret) return json({ error: "unauthorized" }, 401);
   } catch { return json({ error: "unauthorized" }, 401); }
 
+  // Shëno si të skaduara provat/abonimet e mbaruara (para se të llogariten kujtesat).
+  try { await db.rpc("expire_subscriptions"); } catch { /* best-effort */ }
+
   const now = new Date();
   const in7d = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
   const { data: rows } = await db.from("profiles")
