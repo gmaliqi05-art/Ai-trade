@@ -34,14 +34,16 @@ function summarize(list: ReportRow[]): Summ {
   return { n: list.length, win, loss, canceled, net };
 }
 
-export default function ReportBook({ rows, lossLabel, cap = 300 }: {
+export default function ReportBook({ rows, lossLabel, cap = 300, defaultToday = false }: {
   rows: ReportRow[];
   lossLabel?: string;               // etiketa e humbjes te "Rezultati" (p.sh. "SL" për Telegram)
   cap?: number;
+  defaultToday?: boolean;           // nis me filtrin SOT (Trade Live) — historiku i plotë = Journal
 }) {
   const { t } = useI18n();
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const initKey = defaultToday ? dayKey(new Date()) : '';
+  const [from, setFrom] = useState(initKey);
+  const [to, setTo] = useState(initKey);
 
   const filtered = useMemo(() => {
     return rows

@@ -990,9 +990,13 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
   // Rreshtat e raportit (Telegram Sin) — të gjitha kanalet bashkë; kanali shfaqet te kolona "Burimi".
   const tgReportRows: ReportRow[] = tgDone.map((s) => {
-    const pnl = sigPnl(tgLegsOf(s.id));
+    const legs = tgLegsOf(s.id);
+    const pnl = sigPnl(legs);
+    // Data e raportit = MBYLLJA e fundit e trade-it (nëse ka) — një sinjal i hapur sot që
+    // mbyllet nesër shfaqet ditën e mbylljes, jo të hapjes.
+    const lastClose = legs.map((l) => l.closed_at).filter(Boolean).sort().pop();
     return {
-      id: s.id, date: new Date(s.created_at),
+      id: s.id, date: new Date(lastClose || s.created_at),
       label: TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || 'Telegram',
       direction: (s.direction as 'buy' | 'sell' | null) ?? null,
       entry: s.entry_price ?? null, market: s.entry_type === 'market',
@@ -1551,7 +1555,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {metaConfigured && tgReportRows.length > 0 && (
         <TLFold k="tgdone" title={t('GoldSniperFX')} icon={<History className="w-4 h-4 text-sky-400" />}>
           {/* NDARJE DITORE + përmbledhje ditore & e përgjithshme + filtër date (ditë/interval). */}
-          <ReportBook rows={tgReportRows} lossLabel="SL" />
+          <ReportBook rows={tgReportRows} lossLabel="SL" defaultToday />
         </TLFold>
       )}
 
@@ -1559,7 +1563,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           + përmbledhje (sa hyrje, sa profit, sa humbje, bilanci) + filtër date. */}
       {metaConfigured && manualReportRows.length > 0 && (
         <TLFold k="tgmanual" title={t('Hyrjet manuale — raportet')} icon={<History className="w-4 h-4 text-amber-400" />}>
-          <ReportBook rows={manualReportRows} />
+          <ReportBook rows={manualReportRows} defaultToday />
         </TLFold>
       )}
 
