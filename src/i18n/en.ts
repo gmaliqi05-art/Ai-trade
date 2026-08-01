@@ -1709,4 +1709,5 @@ export const en: Record<string, string> = {
   "Numri i telefonit është i detyrueshëm.": "Phone number is required.",
   "Adresa e banimit është e detyrueshme.": "Residential address is required.",
   "Hapur": "Opened",
+  "p.sh. Germany": "e.g. Germany",
 };
