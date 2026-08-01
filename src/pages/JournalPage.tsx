@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, NotebookPen, Bot, Hand, Scale, Check } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, NotebookPen, Bot, Hand, Scale, Check, LineChart } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
@@ -29,8 +29,8 @@ export default function JournalPage() {
   const [noteLoaded, setNoteLoaded] = useState(false);
   const [noteBusy, setNoteBusy] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
-  // Ditët që kanë shënim (pika te kalendari) — ngarkohen për muajin.
-  const [noteDays, setNoteDays] = useState<Set<string>>(new Set());
+  // Shënimet e muajit (ditë → tekst) — pika te kalendari + TABELA e shënimeve poshtë.
+  const [monthNotes, setMonthNotes] = useState<Map<string, string>>(new Map());
 
   // Mbylljet e muajit të zgjedhur (± disa ditë buferi për zonat orare).
   const fetchMonth = useCallback(async () => {
@@ -45,13 +45,14 @@ export default function JournalPage() {
   }, [user, month]);
   useEffect(() => { fetchMonth(); }, [fetchMonth]);
 
-  // Ditët me shënime për muajin (shënohen me pikë në kalendar).
+  // Shënimet e muajit (ditë + tekst) — për pikat te kalendari dhe tabelën e shënimeve.
   useEffect(() => {
     if (!user) return;
     const from = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-01`;
     const to = dayKey(new Date(month.getFullYear(), month.getMonth() + 1, 0));
-    supabase.from('journal_notes').select('day').eq('user_id', user.id).gte('day', from).lte('day', to)
-      .then(({ data }) => setNoteDays(new Set(((data ?? []) as { day: string }[]).map(r => r.day))));
+    supabase.from('journal_notes').select('day, note').eq('user_id', user.id).gte('day', from).lte('day', to)
+      .then(({ data }) => setMonthNotes(new Map(((data ?? []) as { day: string; note: string }[])
+        .filter(r => (r.note || '').trim()).map(r => [r.day, r.note]))));
   }, [user, month]);
 
   // Shënimi i ditës së zgjedhur.
@@ -67,7 +68,7 @@ export default function JournalPage() {
     setNoteBusy(true);
     await supabase.from('journal_notes').upsert({ user_id: user.id, day: selDay, note, updated_at: new Date().toISOString() });
     setNoteBusy(false); setNoteSaved(true);
-    setNoteDays(s => { const n = new Set(s); if (note.trim()) n.add(selDay); else n.delete(selDay); return n; });
+    setMonthNotes(m => { const n = new Map(m); if (note.trim()) n.set(selDay, note); else n.delete(selDay); return n; });
     setTimeout(() => setNoteSaved(false), 2500);
   };
 
@@ -89,6 +90,26 @@ export default function JournalPage() {
     for (const a of byDay.values()) { net += a.net; count += a.count; wins += a.wins; }
     return { net, count, wins };
   }, [byDay]);
+
+  // GRAFIKU I BILANCIT: linja kumulative e P&L-së ditë-pas-dite për muajin (uljet/ngritjet).
+  // Vlera në boshtin VERTIKAL, data në atë HORIZONTAL. Ditët pa trade mbajnë vlerën e mëparshme.
+  const equitySeries = useMemo(() => {
+    const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+    const endDay = (today.getFullYear() === month.getFullYear() && today.getMonth() === month.getMonth())
+      ? today.getDate() : last.getDate();
+    const pts: { day: number; key: string; cum: number; traded: boolean }[] = [];
+    let cum = 0;
+    for (let d = 1; d <= endDay; d++) {
+      const date = new Date(month.getFullYear(), month.getMonth(), d);
+      const wd = date.getDay();
+      if (wd === 0 || wd === 6) continue; // fundjava — tregu mbyllur
+      const k = dayKey(date);
+      const a = byDay.get(k);
+      if (a) cum += a.net;
+      pts.push({ day: d, key: k, cum: Math.round(cum * 100) / 100, traded: !!a });
+    }
+    return pts;
+  }, [byDay, month, today]);
 
   // Rrjeta e kalendarit Hën–Pre (tregu i arit mbyllur fundjavën — si modeli i kërkuar).
   const weeks = useMemo(() => {
@@ -236,7 +257,7 @@ export default function JournalPage() {
                         ${isSel ? 'border-amber-500 bg-amber-500/10' : isToday ? 'border-gray-500 bg-gray-800/60' : 'border-transparent bg-gray-800/40 hover:bg-gray-800'}`}>
                       <span className="text-[11px] text-gray-300 font-semibold flex items-center gap-1">
                         {d.getDate()}
-                        {noteDays.has(k) && <span className="w-1 h-1 rounded-full bg-sky-400 inline-block" title={t('Ka shënim')} />}
+                        {monthNotes.has(k) && <span className="w-1 h-1 rounded-full bg-sky-400 inline-block" title={t('Ka shënim')} />}
                       </span>
                       {a ? (
                         <>
@@ -254,6 +275,58 @@ export default function JournalPage() {
           </div>
         )}
       </div>
+
+      {/* GRAFIKU I BILANCIT — uljet/ngritjet e P&L-së kumulative ditë-pas-dite.
+          Boshtet: VLERA vertikalisht ($), DATA horizontalisht. */}
+      {equitySeries.length > 1 && (() => {
+        const W = 640, H = 210, L = 56, R = 14, T = 14, B = 30;
+        const vals = equitySeries.map(p => p.cum);
+        const yMin = Math.min(0, ...vals), yMax = Math.max(0, ...vals);
+        const pad = Math.max((yMax - yMin) * 0.1, 1);
+        const lo = yMin - pad, hi = yMax + pad;
+        const x = (i: number) => L + (i / (equitySeries.length - 1)) * (W - L - R);
+        const y = (v: number) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+        const path = equitySeries.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.cum).toFixed(1)}`).join(' ');
+        const area = `${path} L${x(equitySeries.length - 1).toFixed(1)},${y(lo).toFixed(1)} L${x(0).toFixed(1)},${y(lo).toFixed(1)} Z`;
+        const lastV = vals[vals.length - 1];
+        const col = lastV >= 0 ? '#34d399' : '#f87171';
+        // 4 vija horizontale me vlera; ~5 data në boshtin horizontal.
+        const yTicks = Array.from({ length: 4 }, (_, i) => lo + ((hi - lo) * (i + 0)) / 3);
+        const xTickIdx = Array.from(new Set([0, Math.round((equitySeries.length - 1) / 4), Math.round((equitySeries.length - 1) / 2), Math.round(3 * (equitySeries.length - 1) / 4), equitySeries.length - 1]));
+        return (
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <LineChart className="w-4 h-4 text-emerald-400" />{t('Grafiku i bilancit — P&L kumulativ i muajit')}
+              </div>
+              <div className={`text-sm font-black tabular-nums ${moneyCls(lastV)}`}>{money(lastV)}</div>
+            </div>
+            <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={t('Grafiku i bilancit')}>
+              {yTicks.map((v, i) => (
+                <g key={i}>
+                  <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#1f2937" strokeWidth="1" />
+                  <text x={L - 6} y={y(v) + 3.5} textAnchor="end" fontSize="10" fill="#6b7280">{v >= 0 ? '+' : ''}{Math.round(v)}$</text>
+                </g>
+              ))}
+              {lo < 0 && hi > 0 && <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} stroke="#4b5563" strokeWidth="1" strokeDasharray="4 3" />}
+              <path d={area} fill={col} opacity="0.10" />
+              <path d={path} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+              {equitySeries.map((p, i) => p.traded ? (
+                <circle key={p.key} cx={x(i)} cy={y(p.cum)} r="3" fill={col} stroke="#111827" strokeWidth="1"
+                  className="cursor-pointer" onClick={() => setSelDay(p.key)}>
+                  <title>{`${p.day} ${monthNames[month.getMonth()]}: ${money(p.cum)}`}</title>
+                </circle>
+              ) : null)}
+              {xTickIdx.map(i => equitySeries[i] ? (
+                <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="#6b7280">
+                  {String(equitySeries[i].day).padStart(2, '0')}.{String(month.getMonth() + 1).padStart(2, '0')}
+                </text>
+              ) : null)}
+            </svg>
+            <p className="text-[10px] text-gray-600 mt-1">{t('Kliko një pikë për të hapur detajet e asaj dite. Ditët pa trade mbajnë vlerën e mëparshme (vijë e sheshtë).')}</p>
+          </div>
+        );
+      })()}
 
       {/* DETAJET E DITËS SË ZGJEDHUR. */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4 space-y-4">
@@ -335,6 +408,46 @@ export default function JournalPage() {
           </div>
         </div>
       </div>
+
+      {/* TABELA E SHËNIMEVE TË MUAJIT — të gjitha shënimet e ruajtura, me datë; klik → hap ditën. */}
+      {monthNotes.size > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 sm:p-4">
+          <div className="text-xs font-semibold text-white mb-2 flex items-center gap-1.5">
+            <NotebookPen className="w-4 h-4 text-sky-400" />{t('Shënimet e muajit')}
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300">{monthNotes.size}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[10px] text-gray-500 uppercase tracking-wide text-left">
+                  <th className="py-1.5 pr-3 whitespace-nowrap">{t('Data')}</th>
+                  <th className="py-1.5 pr-3 text-right whitespace-nowrap">{t('P&L i ditës')}</th>
+                  <th className="py-1.5 pr-0">{t('Shënimi')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...monthNotes.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([day, txt]) => {
+                  const d = new Date(day + 'T12:00:00');
+                  const a = byDay.get(day);
+                  return (
+                    <tr key={day} onClick={() => setSelDay(day)}
+                      className={`border-t border-gray-800/60 cursor-pointer hover:bg-gray-800/40 ${day === selDay ? 'bg-amber-500/5' : ''}`}>
+                      <td className="py-2 pr-3 text-white font-semibold whitespace-nowrap tabular-nums">
+                        {String(d.getDate()).padStart(2, '0')}.{String(d.getMonth() + 1).padStart(2, '0')}.{d.getFullYear()}
+                      </td>
+                      <td className={`py-2 pr-3 text-right font-bold tabular-nums whitespace-nowrap ${a ? moneyCls(a.net) : 'text-gray-600'}`}>
+                        {a ? money(a.net) : '—'}
+                      </td>
+                      <td className="py-2 pr-0 text-gray-300 whitespace-pre-wrap break-words">{txt}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-gray-600 mt-1.5">{t('Kliko një rresht për të hapur ditën përkatëse në kalendar.')}</p>
+        </div>
+      )}
     </div>
   );
 }
