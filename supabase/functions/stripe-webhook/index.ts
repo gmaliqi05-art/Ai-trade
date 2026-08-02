@@ -148,7 +148,7 @@ Deno.serve(async (req: Request) => {
               template: mail, to: email, user_id: userId,
               vars: {
                 name: p?.first_name || p?.full_name || "",
-                plan: tier === "yearly" ? "Vjetor" : tier === "monthly" ? "Mujor" : "Abonim",
+                plan: tier === "yearly" ? "Yearly" : tier === "monthly" ? "Monthly" : "Subscription",
                 amount: cents > 0 ? `${(cents / 100).toFixed(2)} ${cur}` : "",
                 start: fmt(patch.subscription_started_at),
                 expires: fmt(patch.subscription_expires_at ?? p?.subscription_expires_at),
