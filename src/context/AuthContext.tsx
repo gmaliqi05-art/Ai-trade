@@ -10,6 +10,8 @@ export interface Profile {
   balance: number;
   subscription_tier: string;
   is_admin: boolean;
+  /** Operator i GoldSniperFX — qasje VETËM te konsola GoldSniperFX, pa panelin e plotë të adminit. */
+  is_gs_operator?: boolean;
   is_verified?: boolean;
   first_name?: string | null;
   last_name?: string | null;
