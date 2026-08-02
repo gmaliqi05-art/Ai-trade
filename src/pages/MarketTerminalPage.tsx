@@ -190,6 +190,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Grafiku në EKRAN TË PLOTË (me butona Buy/Sell/Cancel) — i përshtatshëm horizontal & vertikal.
   const [chartFull, setChartFull] = useState(false);
   const [vh, setVh] = useState<number>(typeof window !== 'undefined' ? window.innerHeight : 800);
+  // EKRANI I PLOTË: lartësia e grafikut MATET nga kontejneri, nuk hamendësohet. Më parë ishte
+  // 'vh − 100' e ngurtë; kur koka + shiriti BUY/SELL + rreshti i mesazhit dilnin mbi 100px,
+  // grafiku bëhej më i gjatë se hapësira dhe 'overflow-hidden' ia priste fundin — pikërisht
+  // aty ku ndodhet shiriti i kohës (datat/orët).
+  const fullChartRef = useRef<HTMLDivElement | null>(null);
+  const [fullChartH, setFullChartH] = useState(0);
   const [lot, setLot] = useState('0.01');
   const [showNewOrder, setShowNewOrder] = useState(false); // forma manuale e palosur si default; hapet me klik ose nga sinjali
   const [newEntry, setNewEntry] = useState('');   // Çmimi i hyrjes (porosi në pritje nëse s'është aty)
@@ -440,6 +446,18 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       fetchMeta(); // rifresko "Trade-t e mbyllura" (përfshin mbylljet e reja)
     })();
   }, [positions, metaConfigured, fetchMeta]);
+
+  // Matja e kontejnerit të grafikut në ekran të plotë (ndjek çdo ndryshim: rrotullim,
+  // shfaqja/zhdukja e rreshtit të mesazhit, tastiera e telefonit).
+  useEffect(() => {
+    const el = fullChartRef.current;
+    if (!el) { setFullChartH(0); return; }
+    const apply = () => setFullChartH(Math.round(el.getBoundingClientRect().height));
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [chartFull, tradeMsg]);
 
   // Rifreskim manual i të dhënave (me reagim vizual).
   const refreshAll = async () => {
@@ -1280,9 +1298,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
           </div>
           {/* Grafiku — mbush gjithë hapësirën e mbetur. Lartësia llogaritet ngushtë (vh − shiritat
               lart+poshtë ≈ 100px) që të MOS mbetet brez bosh mbi butonat — grafiku sa më i madh. */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            {candles.length > 0 && (
-              <Mt5Chart candles={displayCandles} lines={chartLines} bands={liqBands} height={Math.max(220, vh - 100)} fitKey={`full_${selected}_${tf}`}
+          <div ref={fullChartRef} className="flex-1 min-h-0 overflow-hidden">
+            {candles.length > 0 && fullChartH > 0 && (
+              <Mt5Chart candles={displayCandles} lines={chartLines} bands={liqBands} height={Math.max(220, fullChartH)} fitKey={`full_${selected}_${tf}`}
                 positions={editables} activeId={activePosId} onActiveChange={setActivePosId} onCommitSlTp={onCommitSlTp} />
             )}
           </div>
