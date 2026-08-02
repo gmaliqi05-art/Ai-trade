@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { TrendingUp, Eye, EyeOff, Loader2, BarChart3 } from 'lucide-react';
+import { TrendingUp, Eye, EyeOff, Loader2, BarChart3, Mail, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
+import { requestPasswordReset } from '../services/email';
 import LanguageSwitcher from '../i18n/LanguageSwitcher';
 import AppFooter from '../components/AppFooter';
 
@@ -24,6 +25,20 @@ export default function AuthPage() {
   const [error, setError] = useState('');
   const { signIn, signUp } = useAuth();
   const { t } = useI18n();
+
+  // HARROVA FJALËKALIMIN — kërkesa i dërgohet serverit, i cili dërgon lidhjen me email.
+  // Përgjigjja është GJITHMONË e njëjtë, që të mos zbulohet cili email ka llogari.
+  const [forgot, setForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const submitForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotBusy(true);
+    await requestPasswordReset(forgotEmail.trim());
+    setForgotBusy(false);
+    setForgotSent(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +123,45 @@ export default function AuthPage() {
       </div>
 
       <div className="flex-1 flex items-center justify-center p-6">
+        {/* HARROVA FJALËKALIMIN — panel i veçantë mbi formularin e hyrjes. */}
+        {forgot ? (
+        <div className="w-full max-w-md">
+          <button type="button" onClick={() => setForgot(false)}
+            className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-white mb-5 transition-colors">
+            <ArrowLeft className="w-4 h-4" />{t('Kthehu te hyrja')}
+          </button>
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-7">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mb-4">
+              <Mail className="w-6 h-6 text-amber-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-1.5">{t('Rivendos fjalëkalimin')}</h2>
+            {forgotSent ? (
+              <>
+                <p className="text-gray-400 text-sm leading-relaxed mb-4">
+                  {t('Nëse kjo adresë ka llogari, brenda pak minutash do të marrësh një email me lidhjen për të vendosur fjalëkalim të ri.')}
+                </p>
+                <p className="text-[12px] text-gray-500 leading-relaxed">
+                  {t('Kontrollo edhe dosjen Spam. Lidhja skadon brenda një ore.')}
+                </p>
+              </>
+            ) : (
+              <form onSubmit={submitForgot} className="space-y-4">
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  {t('Shkruaj email-in e llogarisë dhe të dërgojmë një lidhje për të vendosur fjalëkalim të ri.')}
+                </p>
+                <input type="email" required value={forgotEmail} autoFocus
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder={t('Email-i yt')}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500" />
+                <button type="submit" disabled={forgotBusy || !forgotEmail.trim()}
+                  className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-gray-950 font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                  {forgotBusy && <Loader2 className="w-4 h-4 animate-spin" />}{t('Dërgo lidhjen')}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+        ) : (
         <div className="w-full max-w-md">
           <div className="flex items-center gap-2 mb-8 lg:hidden">
             <div className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center">
@@ -202,6 +256,15 @@ export default function AuthPage() {
               {mode === 'login' ? t('Hyr') : t('Krijo llogari')}
             </button>
           </form>
+          {mode === 'login' && (
+            <div className="mt-3 text-center">
+              <button type="button" onClick={() => { setForgot(true); setForgotEmail(email); setForgotSent(false); }}
+                className="text-[13px] text-gray-400 hover:text-amber-400 underline underline-offset-2 transition-colors">
+                {t('Harrova fjalëkalimin')}
+              </button>
+            </div>
+          )}
+
           {/* Kalimi Hyr ↔ Krijo llogari — z-10 + padding që footer-i të mos e mbulojë kurrë. */}
           <div className="relative z-10 mt-6 mb-2 text-center">
             <span className="text-gray-400 text-sm">{mode === 'login' ? t("S'ke llogari? ") : t('Ke tashmë llogari? ')}</span>
@@ -211,6 +274,7 @@ export default function AuthPage() {
             </button>
           </div>
         </div>
+        )}
       </div>
       </div>
       <AppFooter />

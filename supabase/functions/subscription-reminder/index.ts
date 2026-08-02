@@ -20,6 +20,48 @@ Deno.serve(async (req: Request) => {
 
   const now = new Date();
   const in7d = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
+
+  const mail = (template: string, to: string, vars: Record<string, string>, userId: string) =>
+    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+      body: JSON.stringify({ template, to, user_id: userId, vars }),
+      signal: AbortSignal.timeout(12000),
+    }).then(() => {}, () => {});
+
+  // ---------- ABONIMET QË SAPO SKADUAN → ftesa për riabonim (një herë për periudhë) ----------
+  // Dritare 30-ditëshe: mjafton për ata që kanë skaduar rishtas, pa i prekur llogaritë e vjetra.
+  const since30d = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+  const { data: gone } = await db.from("profiles")
+    .select("id, subscription_expires_at, sub_expired_mail_at, notification_preferences")
+    .in("subscription_status", ["expired", "canceled"])
+    .not("subscription_expires_at", "is", null)
+    .gte("subscription_expires_at", since30d.toISOString())
+    .lt("subscription_expires_at", now.toISOString());
+
+  let winBack = 0;
+  for (const r of (gone ?? []) as Array<{ id: string; subscription_expires_at: string; sub_expired_mail_at: string | null; notification_preferences?: Record<string, unknown> }>) {
+    // Dërguar tashmë PAS skadimit të kësaj periudhe → mos e përsërit.
+    if (r.sub_expired_mail_at && new Date(r.sub_expired_mail_at) >= new Date(r.subscription_expires_at)) continue;
+    if ((r.notification_preferences ?? {})["subscription"] === false) {
+      await db.from("profiles").update({ sub_expired_mail_at: now.toISOString() }).eq("id", r.id);
+      continue;
+    }
+    try {
+      const { data: u } = await db.auth.admin.getUserById(r.id);
+      const email = u?.user?.email;
+      if (email) {
+        const { data: prof } = await db.from("profiles").select("first_name, full_name").eq("id", r.id).maybeSingle();
+        const p = prof as { first_name?: string; full_name?: string } | null;
+        await mail("expired", email, {
+          name: p?.first_name || p?.full_name || "",
+          expires: new Date(r.subscription_expires_at).toLocaleDateString("en-GB"),
+        }, r.id);
+        winBack++;
+      }
+    } catch { /* best-effort */ }
+    await db.from("profiles").update({ sub_expired_mail_at: now.toISOString() }).eq("id", r.id);
+  }
   const { data: rows } = await db.from("profiles")
     .select("id, subscription_expires_at, sub_reminder_sent_at, notification_preferences")
     .not("subscription_expires_at", "is", null)
@@ -51,8 +93,21 @@ Deno.serve(async (req: Request) => {
         body: `Abonimi yt skadon më ${dateTxt} — rinovoje me kohë.`, is_broadcast: false,
       });
     } catch { /* */ }
+    // KUJTESA ME EMAIL — i njëjti kufizim si push-i (preferenca 'subscription').
+    if (!prefOff) {
+      try {
+        const { data: u } = await db.auth.admin.getUserById(r.id);
+        const email = u?.user?.email;
+        if (email) {
+          const { data: prof } = await db.from("profiles")
+            .select("first_name, full_name").eq("id", r.id).maybeSingle();
+          const p = prof as { first_name?: string; full_name?: string } | null;
+          await mail("expiry", email, { name: p?.first_name || p?.full_name || "", expires: dateTxt }, r.id);
+        }
+      } catch { /* email best-effort */ }
+    }
     await db.from("profiles").update({ sub_reminder_sent_at: now.toISOString() }).eq("id", r.id);
     sent++;
   }
-  return json({ ok: true, checked: (rows ?? []).length, sent });
+  return json({ ok: true, checked: (rows ?? []).length, sent, winBack });
 });
