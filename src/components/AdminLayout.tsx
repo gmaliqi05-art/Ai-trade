@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
-  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown, Crosshair
+  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown, Crosshair, ScrollText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -20,7 +20,6 @@ interface AdminLayoutProps {
 const navItems: { id: AdminPage; label: string; icon: React.ElementType; section: string }[] = [
   { id: 'admin_overview', label: 'Përmbledhje', icon: LayoutDashboard, section: 'Paneli' },
   { id: 'admin_users', label: 'Përdoruesit', icon: Users, section: 'Menaxhimi' },
-  { id: 'admin_assets', label: 'Aktivet & tregjet', icon: BarChart2, section: 'Menaxhimi' },
   { id: 'admin_signals', label: 'Sinjalet', icon: Zap, section: 'Menaxhimi' },
   { id: 'admin_goldsniper', label: 'GoldSniperFX', icon: Crosshair, section: 'Menaxhimi' },
   { id: 'admin_trades', label: 'Tregtitë', icon: Activity, section: 'Menaxhimi' },
@@ -32,13 +31,13 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_metatrader', label: 'MetaTrader', icon: Monitor, section: 'Platforma' },
   { id: 'admin_vip_codes', label: 'Kodet VIP', icon: Crown, section: 'Siguria' },
   { id: 'admin_howitworks', label: 'Si funksionon', icon: BookOpen, section: 'Siguria' },
-  { id: 'admin_settings', label: 'Cilësimet', icon: Settings, section: 'Siguria' },
+  { id: 'admin_audit', label: 'Audit Log', icon: ScrollText, section: 'Siguria' },
+  { id: 'admin_settings', label: 'Profili', icon: Settings, section: 'Siguria' },
 ];
 
 const pageLabels: Record<AdminPage, string> = {
   admin_overview: 'Përmbledhja e platformës',
   admin_users: 'Menaxhimi i përdoruesve',
-  admin_assets: 'Aktivet & tregjet',
   admin_signals: 'Menaxhimi i sinjaleve',
   admin_trades: 'Monitorimi i tregtive',
   admin_ai: 'AI Providers',
@@ -50,7 +49,8 @@ const pageLabels: Record<AdminPage, string> = {
   admin_expert_room: 'Dhoma e Ekspertëve',
   admin_vip_codes: 'Kodet VIP',
   admin_goldsniper: 'GoldSniperFX — konfigurimi i feed-it',
-  admin_settings: 'Cilësimet e platformës',
+  admin_audit: 'Audit Log — veprimet e adminëve',
+  admin_settings: 'Profili i Adminit',
 };
 
 export default function AdminLayout({ currentPage, onNavigate, children }: AdminLayoutProps) {
@@ -205,7 +205,8 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
               <Shield className="w-3.5 h-3.5 text-red-400" />
               <span className="text-red-400 text-xs font-semibold">{t('Administrator')}</span>{/* badge */}
             </div>
-            <button className="relative p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
+            <button onClick={() => onNavigate('admin_broadcast')} title={t('Broadcast')}
+              className="relative p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
                 <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center">

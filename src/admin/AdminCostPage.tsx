@@ -51,7 +51,7 @@ export default function AdminCostPage() {
         <div className="bg-gray-900 border border-gray-800 rounded-2xl flex items-center justify-center py-16"><Loader2 className="w-7 h-7 text-amber-400 animate-spin" /></div>
       ) : error ? (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-amber-300 text-sm">
-          {t('Të dhënat e përdorimit ende s\'janë gati. Publiko në Bolt që të aplikohet migrimi (tabelat e përdorimit).')} <span className="text-amber-400/60">({error})</span>
+          {t('Të dhënat e përdorimit ende s\'janë gati — tabelat e përdorimit mungojnë në bazë.')} <span className="text-amber-400/60">({error})</span>
         </div>
       ) : (
         <>

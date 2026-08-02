@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Activity, Zap, TrendingUp,
   ArrowUpRight, ArrowDownRight, RefreshCw,
-  BarChart2, Shield, Brain, Cloud, Megaphone
+  Shield, Brain, Cloud, Megaphone, CreditCard, Crosshair
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AdminPage } from '../App';
@@ -24,16 +24,26 @@ const EMPTY: Stats = {
   activeSignals: 0, totalAssets: 0, autoTradeUsers: 0, aiCostMonth: 0, aiCallsMonth: 0, metaCallsMonth: 0, recentTrades: [],
 };
 
+interface DashStats {
+  subs: { trial: number; monthly: number; yearly: number; expiring_7d: number; inactive: number };
+  gsf: { total: number; tp1: number; tp2: number; tp3: number; tp4: number; sl: number; last7d: number };
+}
+
 export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: AdminPage) => void }) {
   const { t } = useI18n();
   const [stats, setStats] = useState<Stats>(EMPTY);
+  const [dash, setDash] = useState<DashStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.rpc('get_admin_stats');
+    const [{ data }, dashRes] = await Promise.all([
+      supabase.rpc('get_admin_stats'),
+      supabase.rpc('admin_dashboard_stats'),
+    ]);
     const s = (data as Partial<Stats>) || {};
     setStats({ ...EMPTY, ...s, recentTrades: (s.recentTrades as RecentTrade[]) || [] });
+    if (dashRes.data) setDash(dashRes.data as DashStats);
     setLoading(false);
   }, []);
 
@@ -53,7 +63,7 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
 
   const quickLinks: { label: string; icon: React.ElementType; desc: string; page: AdminPage; color: string; bg: string; border: string }[] = [
     { label: t('Menaxho përdoruesit'), icon: Users, desc: t('Lejet & roli admin'), page: 'admin_users', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-    { label: t('Aktivet & tregjet'), icon: BarChart2, desc: t('Çmime (vetëm pamje)'), page: 'admin_assets', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+    { label: 'GoldSniperFX', icon: Crosshair, desc: t('Feed-i & kanali'), page: 'admin_goldsniper', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
     { label: t('Sinjalet'), icon: Zap, desc: t('Krijo/menaxho sinjale'), page: 'admin_signals', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
     { label: 'AI Providers', icon: Brain, desc: t('Çelësa API & prompt'), page: 'admin_ai', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
     { label: 'Broadcast', icon: Megaphone, desc: t('Mesazh për të gjithë'), page: 'admin_broadcast', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
@@ -90,6 +100,64 @@ export default function AdminOverviewPage({ onNavigate }: { onNavigate?: (p: Adm
           );
         })}
       </div>
+
+      {/* RAPORTET E REJA (2 gusht 2026): abonimet sipas planit + sinjalet GoldSniperFX. */}
+      {dash && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+            <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-emerald-400" />{t('Abonimet')}
+            </h3>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              {[
+                { l: t('Provë falas'), v: dash.subs.trial, c: 'text-sky-300' },
+                { l: t('Mujor'), v: dash.subs.monthly, c: 'text-white' },
+                { l: t('Vjetor'), v: dash.subs.yearly, c: 'text-amber-300' },
+              ].map(x => (
+                <div key={x.l} className="bg-gray-800/60 border border-gray-700/60 rounded-xl px-3 py-2.5 text-center">
+                  <div className={`text-xl font-bold ${x.c}`}>{x.v}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">{x.l}</div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className={dash.subs.expiring_7d > 0 ? 'text-amber-400 font-semibold' : 'text-gray-500'}>
+                {t('Skadojnë brenda 7 ditësh')}: {dash.subs.expiring_7d}
+              </span>
+              <span className="text-gray-500">{t('Joaktivë')}: {dash.subs.inactive}</span>
+            </div>
+          </div>
+
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+            <h3 className="text-white font-semibold text-sm mb-4 flex items-center gap-2">
+              <Crosshair className="w-4 h-4 text-amber-400" />{t('Sinjalet GoldSniperFX')}
+            </h3>
+            <div className="grid grid-cols-6 gap-2 mb-3">
+              {[
+                { l: t('Gjithsej'), v: dash.gsf.total, c: 'text-white' },
+                { l: '≥TP1', v: dash.gsf.tp1, c: 'text-emerald-400' },
+                { l: '≥TP2', v: dash.gsf.tp2, c: 'text-emerald-400' },
+                { l: '≥TP3', v: dash.gsf.tp3, c: 'text-emerald-400' },
+                { l: '≥TP4', v: dash.gsf.tp4, c: 'text-emerald-400' },
+                { l: 'SL', v: dash.gsf.sl, c: 'text-red-400' },
+              ].map(x => (
+                <div key={x.l} className="bg-gray-800/60 border border-gray-700/60 rounded-xl px-1.5 py-2 text-center">
+                  <div className={`text-lg font-bold ${x.c}`}>{x.v}</div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">{x.l}</div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-500">{t('7 ditët e fundit')}: <span className="text-sky-300 font-semibold">{dash.gsf.last7d}</span></span>
+              <span className="text-gray-500">
+                {t('Sukses')}: <span className={`font-semibold ${dash.gsf.tp1 + dash.gsf.sl > 0 && dash.gsf.tp1 / (dash.gsf.tp1 + dash.gsf.sl) >= 0.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {dash.gsf.tp1 + dash.gsf.sl > 0 ? Math.round((dash.gsf.tp1 / (dash.gsf.tp1 + dash.gsf.sl)) * 100) + '%' : '—'}
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Tregtitë e fundit */}

@@ -13,7 +13,6 @@ export default function AdminSettingsPage() {
   const [form, setForm] = useState({
     full_name: profile?.full_name || '',
     username: profile?.username || '',
-    currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
@@ -51,7 +50,7 @@ export default function AdminSettingsPage() {
     setSaving(true);
     const { error } = await supabase.auth.updateUser({ password: form.newPassword });
     if (!error) {
-      setForm(f => ({ ...f, currentPassword: '', newPassword: '', confirmPassword: '' }));
+      setForm(f => ({ ...f, newPassword: '', confirmPassword: '' }));
       flash('success', t('Fjalëkalimi u ndryshua me sukses.'));
     } else {
       flash('error', error.message);
@@ -67,7 +66,7 @@ export default function AdminSettingsPage() {
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-red-400" />
-            {t('Cilësimet e platformës')}
+            {t('Profili i Adminit')}
           </h2>
           <p className="text-gray-500 text-sm mt-1">{t('Menaxho llogarinë admin dhe preferencat e platformës')}</p>
         </div>
