@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Shield, Users, TrendingUp, Zap, BarChart2, Search, Edit2, Check, X,
-  Trash2, Plus, RefreshCw, ChevronUp, Activity, DollarSign,
-  AlertTriangle, Crown, Loader2, Eye, EyeOff, Brain, Megaphone, Key, TestTube
+  Shield, Users, Zap, Search, Edit2, Check, X,
+  Trash2, Plus, RefreshCw, ChevronUp, Activity,
+  AlertTriangle, Loader2, Eye, EyeOff, Brain, Megaphone, Key, TestTube
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 
-type AdminTab = 'overview' | 'users' | 'assets' | 'signals' | 'trades' | 'ai_providers' | 'notifications' | 'audit';
+type AdminTab = 'users' | 'signals' | 'trades' | 'ai_providers' | 'notifications' | 'audit';
 
 interface AdminPageProps {
   forcedTab?: string;
@@ -91,20 +91,10 @@ interface AIProviderRow {
   priority: number;
 }
 
-interface Stats {
-  totalUsers: number;
-  totalTrades: number;
-  totalVolume: number;
-  activeSignals: number;
-  totalAssets: number;
-  proUsers: number;
-}
-
 export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   const { t } = useI18n();
   const { user, profile } = useAuth();
-  const [tab, setTab] = useState<AdminTab>((forcedTab as AdminTab) || 'overview');
-  const [stats, setStats] = useState<Stats>({ totalUsers: 0, totalTrades: 0, totalVolume: 0, activeSignals: 0, totalAssets: 0, proUsers: 0 });
+  const [tab, setTab] = useState<AdminTab>((forcedTab as AdminTab) || 'users');
   const [users, setUsers] = useState<UserRow[]>([]);
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [signals, setSignals] = useState<SignalRow[]>([]);
@@ -131,7 +121,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   const [showNewPwd, setShowNewPwd] = useState(false);
 
   const [showNewSignal, setShowNewSignal] = useState(false);
-  const [newSignal, setNewSignal] = useState({ asset_id: '', signal_type: 'buy', strength: 'medium', entry_price: '', target_price: '', stop_loss: '', confidence: '75', timeframe: '1D', description: '', expires_at: '' });
+  const [newSignal, setNewSignal] = useState({ asset_id: '', signal_type: 'buy', entry_price: '', target_price: '', stop_loss: '', confidence: '75', timeframe: '1D', description: '', expires_at: '' });
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -140,24 +130,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     if (!user) return;
     await supabase.from('admin_audit_log').insert({ admin_id: user.id, action, target_table: targetTable, target_id: targetId || null, details: details || null });
   }, [user]);
-
-  const fetchOverview = useCallback(async () => {
-    // Tregtitë reale vijnë nga trade_executions (MT5). Tabela e vjetër 'trades' (broker i brendshëm) u hoq.
-    const [statsRes, sr, ar] = await Promise.all([
-      supabase.rpc('get_admin_stats'),
-      supabase.from('signals').select('id', { count: 'exact' }).eq('status', 'active'),
-      supabase.from('assets').select('id', { count: 'exact' }),
-    ]);
-    const s = statsRes.data || {};
-    setStats({
-      totalUsers: s.totalUsers || 0,
-      totalTrades: s.totalTrades || 0,
-      totalVolume: 0,
-      activeSignals: sr.count || 0,
-      totalAssets: ar.count || 0,
-      proUsers: s.proUsers || 0,
-    });
-  }, []);
 
   const fetchUsers = useCallback(async () => {
     const { data } = await supabase.rpc('get_all_profiles');
@@ -194,9 +166,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
   useEffect(() => {
     setLoading(true);
     const load = async () => {
-      await fetchOverview();
       if (tab === 'users') { await fetchUsers(); }
-      else if (tab === 'assets') await fetchAssets();
       else if (tab === 'signals') { await fetchSignals(); await fetchAssets(); }
       else if (tab === 'trades') await fetchTrades();
       else if (tab === 'ai_providers') await fetchAIProviders();
@@ -204,7 +174,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       setLoading(false);
     };
     load();
-  }, [tab, fetchOverview, fetchUsers, fetchAssets, fetchSignals, fetchTrades, fetchAudit, fetchAIProviders]);
+  }, [tab, fetchUsers, fetchAssets, fetchSignals, fetchTrades, fetchAudit, fetchAIProviders]);
 
   const saveProvider = async (p: AIProviderRow) => {
     setSaving(true);
@@ -367,7 +337,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
       await logAction('CREATE_SIGNAL', 'signals', undefined, { asset_id: payload.asset_id, type: payload.type });
       await fetchSignals();
       setShowNewSignal(false);
-      setNewSignal({ asset_id: '', signal_type: 'buy', strength: 'medium', entry_price: '', target_price: '', stop_loss: '', confidence: '75', timeframe: '1D', description: '', expires_at: '' });
+      setNewSignal({ asset_id: '', signal_type: 'buy', entry_price: '', target_price: '', stop_loss: '', confidence: '75', timeframe: '1D', description: '', expires_at: '' });
       flash('success', t('Sinjali u krijua.'));
     } else {
       flash('error', t('Krijimi dështoi: {msg}', { msg: error.message }));
@@ -400,23 +370,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     u.email?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredAssets = assets.filter(a =>
-    a.symbol.toLowerCase().includes(search.toLowerCase()) ||
-    a.name.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const tabs: { id: AdminTab; label: string; icon: React.ElementType }[] = [
-    { id: 'overview', label: t('Përmbledhje'), icon: BarChart2 },
-    { id: 'users', label: t('Përdorues'), icon: Users },
-    { id: 'assets', label: t('Aktive'), icon: TrendingUp },
-    { id: 'signals', label: t('Sinjale'), icon: Zap },
-    { id: 'trades', label: t('Tregti'), icon: Activity },
-    { id: 'ai_providers', label: 'AI Providers', icon: Brain },
-    { id: 'notifications', label: 'Broadcast', icon: Megaphone },
-    { id: 'audit', label: 'Audit', icon: Shield },
-  ];
-
-  if (!forcedTab && !(profile as unknown as { is_admin?: boolean })?.is_admin) {
+  if (!(profile as unknown as { is_admin?: boolean })?.is_admin) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-96 gap-4">
         <AlertTriangle className="w-12 h-12 text-red-400" />
@@ -442,58 +396,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
           </div>
         )}
       </div>
-
-      <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-2xl p-1 overflow-x-auto">
-        {tabs.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${tab === t.id ? 'bg-amber-500 text-gray-950' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-              <Icon className="w-4 h-4" />{t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {tab === 'overview' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { label: t('Përdorues gjithsej'), value: stats.totalUsers.toString(), icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-              { label: t('Përdorues me pagesë'), value: stats.proUsers.toString(), icon: Crown, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-              { label: t('Tregti gjithsej'), value: stats.totalTrades.toString(), icon: Activity, color: 'text-green-400', bg: 'bg-green-500/10' },
-              { label: t('Vëllim blerjeje'), value: `$${stats.totalVolume.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, icon: DollarSign, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-              { label: t('Sinjale aktive'), value: stats.activeSignals.toString(), icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-              { label: t('Aktive të listuara'), value: stats.totalAssets.toString(), icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-500/10' },
-            ].map(s => {
-              const Icon = s.icon;
-              return (
-                <div key={s.label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-gray-400 text-xs font-medium">{s.label}</span>
-                    <div className={`w-9 h-9 ${s.bg} rounded-xl flex items-center justify-center`}><Icon className={`w-5 h-5 ${s.color}`} /></div>
-                  </div>
-                  <div className="text-2xl font-bold text-white">{s.value}</div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="bg-gray-900 border border-amber-500/30 rounded-2xl p-5">
-            <h3 className="text-amber-400 font-semibold mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4" />{t('Veprime të shpejta')}</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: t('Menaxho përdoruesit'), tab: 'users' as AdminTab },
-                { label: t('Përditëso çmimet'), tab: 'assets' as AdminTab },
-                { label: t('Publiko sinjal'), tab: 'signals' as AdminTab },
-                { label: t('Shiko aktivitetin'), tab: 'trades' as AdminTab },
-              ].map(a => (
-                <button key={a.label} onClick={() => setTab(a.tab)} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-amber-500/30 text-white text-sm font-medium px-4 py-3 rounded-xl transition-all text-center">
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {tab === 'users' && (
         <div className="space-y-4">
@@ -656,70 +558,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
         </div>
       )}
 
-      {tab === 'assets' && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Kërko aktive...')} className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500" />
-            </div>
-            <span className="text-[11px] text-gray-500">{t('Vetëm pamje — çmimet vijnë automatik nga sistemi.')}</span>
-          </div>
-
-          {loading ? (
-            <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-14 bg-gray-900 rounded-xl animate-pulse" />)}</div>
-          ) : (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-800">
-                      <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Aktivi')}</th>
-                      <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Kategoria')}</th>
-                      <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Çmimi')}</th>
-                      <th className="text-right text-gray-500 font-medium px-4 py-3">24h %</th>
-                      <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Vëllimi')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-800">
-                    {filteredAssets.map(a => {
-                      // Supabase i kthen kolonat `numeric` si STRING (ose null) — konverto në numër
-                      // para se të thërrasësh .toFixed()/.toLocaleString(), përndryshe faqja del e bardhë (crash).
-                      const price = Number(a.current_price) || 0;
-                      const pct = Number(a.price_change_pct) || 0;
-                      const vol = Number(a.volume_24h) || 0;
-                      return (
-                        <tr key={a.id} className="hover:bg-gray-800/30 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="font-semibold text-white">{a.symbol}</div>
-                            <div className="text-gray-500 text-xs">{a.name}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs capitalize text-gray-400">{a.category}</span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-white font-medium">
-                            {a.category === 'forex' ? price.toFixed(4) : price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className={`px-4 py-3 text-right font-medium ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-400">
-                            {vol.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {filteredAssets.length === 0 && (
-                  <div className="text-center py-12 text-gray-500 text-sm">{t('Asnjë aktiv i gjetur')}</div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {tab === 'signals' && (
         <div className="space-y-4">
           <div className="flex justify-end">
@@ -744,14 +582,6 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                   <select value={newSignal.signal_type} onChange={e => setNewSignal(s => ({ ...s, signal_type: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500">
                     <option value="buy">{t('Blej')}</option>
                     <option value="sell">{t('Shit')}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 block mb-1">{t('Fuqia')}</label>
-                  <select value={newSignal.strength} onChange={e => setNewSignal(s => ({ ...s, strength: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500">
-                    <option value="strong">{t('E fortë')}</option>
-                    <option value="medium">{t('Mesatare')}</option>
-                    <option value="weak">{t('E dobët')}</option>
                   </select>
                 </div>
                 {[

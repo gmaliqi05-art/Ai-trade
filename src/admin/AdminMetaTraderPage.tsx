@@ -1,179 +1,159 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Monitor, RefreshCw, Wifi, WifiOff, User, Clock, Activity, Search } from 'lucide-react';
+import { Monitor, RefreshCw, Loader2, Search, Wifi, WifiOff, Power, PowerOff, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useI18n, dtLocale } from '../i18n/i18n';
+import { useI18n } from '../i18n/i18n';
 
-interface MTConnection {
-  id: string;
-  platform: string;
-  server: string;
-  login: string;
-  symbol: string;
-  interval_minutes: number;
-  is_active: boolean;
-  last_ping_at: string | null;
-  last_data_at: string | null;
-  created_at: string;
-  profiles: { full_name: string; subscription_tier: string } | null;
+// MONITORI I LIDHJEVE MT5 (i rindërtuar, 2 gusht 2026).
+// Versioni i vjetër lexonte tabelën 'metatrader_connections' që ka 0 rreshta — faqja dilte
+// gjithmonë bosh. Lidhjet REALE janë te 'metaapi_config'; lexohen përmes RPC-së admin-të-sigurt
+// 'admin_metaapi_overview' (token-at NUK ekspozohen kurrë — kthehet vetëm po/jo).
+interface Row {
+  user_id: string;
+  username: string | null;
+  full_name: string | null;
+  mode: string | null;
+  region: string | null;
+  auto_trade: boolean;
+  kill_switch: boolean;
+  has_account: boolean;
+  has_token: boolean;
+  last_connected_at: string | null;
+  disconnect_since: string | null;
+  updated_at: string | null;
 }
 
 export default function AdminMetaTraderPage() {
   const { t } = useI18n();
-  const [connections, setConnections] = useState<MTConnection[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [err, setErr] = useState<string | null>(null);
 
-  const fetchConnections = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from('metatrader_connections')
-      .select('*, profiles(full_name, subscription_tier)')
-      .order('created_at', { ascending: false });
-    if (data) setConnections(data as MTConnection[]);
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null);
+    const { data, error } = await supabase.rpc('admin_metaapi_overview');
+    if (error) setErr(error.message);
+    else setRows((data ?? []) as Row[]);
     setLoading(false);
   }, []);
+  useEffect(() => { load(); }, [load]);
 
-  useEffect(() => { fetchConnections(); }, [fetchConnections]);
+  const q = search.toLowerCase();
+  const filtered = rows.filter(r =>
+    (r.username || '').toLowerCase().includes(q) || (r.full_name || '').toLowerCase().includes(q));
 
-  const isOnline = (conn: MTConnection) => {
-    if (!conn.last_ping_at || !conn.is_active) return false;
-    const diff = Date.now() - new Date(conn.last_ping_at).getTime();
-    return diff < 5 * 60 * 1000;
+  const connected = rows.filter(r => r.has_account && r.has_token && !r.disconnect_since).length;
+  const disconnected = rows.filter(r => !!r.disconnect_since).length;
+  const autoOn = rows.filter(r => r.auto_trade && !r.kill_switch).length;
+
+  const fmtTime = (iso: string | null) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return `${d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
 
-  const filtered = connections.filter(c =>
-    c.profiles?.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.symbol?.toLowerCase().includes(search.toLowerCase()) ||
-    c.server?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const online = connections.filter(c => isOnline(c)).length;
-  const active = connections.filter(c => c.is_active).length;
-
   return (
-    <div className="p-5 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+    <div className="p-4 sm:p-6 space-y-5 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center">
             <Monitor className="w-5 h-5 text-red-400" />
-            {t('Lidhjet MetaTrader')}
-          </h2>
-          <p className="text-gray-500 text-sm mt-1">{t('Monitoro të gjitha lidhjet MT4/MT5 të përdoruesve')}</p>
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">{t('Lidhjet MT5 (MetaApi)')}</h2>
+            <p className="text-gray-500 text-xs">{t('Llogaritë reale të lidhura të përdoruesve — pa ekspozuar asnjë kredencial.')}</p>
+          </div>
         </div>
-        <button
-          onClick={fetchConnections}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-gray-400 hover:text-white text-sm transition-all"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          {t('Rifresko')}
+        <button onClick={load} className="p-2.5 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white transition-all">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { label: t('Lidhje gjithsej'), value: connections.length, icon: Monitor, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-          { label: t('Online tani'), value: online, icon: Wifi, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-          { label: t('Aktive'), value: active, icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-        ].map(stat => {
-          const Icon = stat.icon;
+          { label: t('Të lidhur'), value: connected, icon: Wifi, cls: 'text-emerald-400 bg-emerald-500/10' },
+          { label: t('Të shkëputur'), value: disconnected, icon: WifiOff, cls: 'text-red-400 bg-red-500/10' },
+          { label: t('Auto-trade aktiv'), value: autoOn, icon: Power, cls: 'text-amber-400 bg-amber-500/10' },
+        ].map(c => {
+          const Icon = c.icon;
           return (
-            <div key={stat.label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-gray-500 text-xs">{stat.label}</span>
-                <div className={`w-8 h-8 ${stat.bg} rounded-lg flex items-center justify-center`}>
-                  <Icon className={`w-4 h-4 ${stat.color}`} />
-                </div>
+            <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-400 text-xs">{c.label}</span>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${c.cls}`}><Icon className="w-4 h-4" /></div>
               </div>
-              <div className="text-2xl font-bold text-white">{stat.value}</div>
+              <div className="text-2xl font-bold text-white">{c.value}</div>
             </div>
           );
         })}
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder={t('Kërko sipas përdoruesit, simbolit, serverit...')}
-            className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-500/50 placeholder-gray-600"
-          />
-        </div>
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Kërko përdorues...')}
+          className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-500" />
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          {loading ? (
-            <div className="p-6 space-y-3">
-              {[...Array(4)].map((_, i) => <div key={i} className="h-14 bg-gray-800 rounded-xl animate-pulse" />)}
-            </div>
-          ) : (
+      {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">{err}</div>}
+
+      {loading ? (
+        <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-14 bg-gray-900 rounded-xl animate-pulse" />)}</div>
+      ) : (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="text-left text-gray-500 font-medium px-5 py-3">{t('Përdoruesi')}</th>
-                  <th className="text-left text-gray-500 font-medium px-5 py-3">{t('Platforma')}</th>
-                  <th className="text-left text-gray-500 font-medium px-5 py-3">{t('Serveri')}</th>
-                  <th className="text-left text-gray-500 font-medium px-5 py-3">{t('Simboli')}</th>
-                  <th className="text-center text-gray-500 font-medium px-5 py-3">{t('Statusi')}</th>
-                  <th className="text-right text-gray-500 font-medium px-5 py-3">{t('Ping i fundit')}</th>
+                  <th className="text-left text-gray-500 font-medium px-4 py-3">{t('Përdoruesi')}</th>
+                  <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Modaliteti')}</th>
+                  <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Rajoni')}</th>
+                  <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Konfigurimi')}</th>
+                  <th className="text-center text-gray-500 font-medium px-4 py-3">Auto-trade</th>
+                  <th className="text-center text-gray-500 font-medium px-4 py-3">{t('Gjendja')}</th>
+                  <th className="text-right text-gray-500 font-medium px-4 py-3">{t('Lidhur së fundi')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/50">
-                {filtered.map(conn => {
-                  const online = isOnline(conn);
-                  return (
-                    <tr key={conn.id} className="hover:bg-gray-800/30 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 bg-amber-500/20 rounded-full flex items-center justify-center">
-                            <User className="w-3.5 h-3.5 text-amber-400" />
-                          </div>
-                          <div>
-                            <div className="text-white text-xs font-medium">{conn.profiles?.full_name || '—'}</div>
-                            <div className="text-gray-500 text-[10px] capitalize">{conn.profiles?.subscription_tier || 'free'}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className="text-xs font-bold uppercase text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-md">{conn.platform}</span>
-                      </td>
-                      <td className="px-5 py-3 text-gray-400 text-xs">{conn.server}</td>
-                      <td className="px-5 py-3 text-white text-xs font-semibold">{conn.symbol}</td>
-                      <td className="px-5 py-3 text-center">
-                        <div className="inline-flex items-center gap-1.5">
-                          {online
-                            ? <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-                            : <WifiOff className="w-3.5 h-3.5 text-gray-600" />
-                          }
-                          <span className={`text-xs font-medium ${online ? 'text-emerald-400' : 'text-gray-500'}`}>
-                            {online ? t('Online') : conn.is_active ? t('Në pritje') : t('Joaktiv')}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        {conn.last_ping_at ? (
-                          <div className="flex items-center justify-end gap-1.5 text-gray-500 text-xs">
-                            <Clock className="w-3 h-3" />
-                            {new Date(conn.last_ping_at).toLocaleString(dtLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        ) : (
-                          <span className="text-gray-600 text-xs">{t('Asnjëherë')}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+              <tbody className="divide-y divide-gray-800">
+                {filtered.map(r => (
+                  <tr key={r.user_id} className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-white">{r.full_name || r.username || r.user_id.slice(0, 8)}</div>
+                      {r.username && <div className="text-gray-500 text-xs">{r.username}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.mode === 'live' ? 'bg-red-500/15 text-red-300' : 'bg-sky-500/15 text-sky-300'}`}>
+                        {(r.mode || 'demo').toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-300">{r.region || '—'}</td>
+                    <td className="px-4 py-3 text-center">
+                      {r.has_account && r.has_token
+                        ? <span className="inline-flex items-center gap-1 text-emerald-400 text-xs"><ShieldCheck className="w-3.5 h-3.5" />{t('I plotë')}</span>
+                        : <span className="inline-flex items-center gap-1 text-amber-400 text-xs"><ShieldAlert className="w-3.5 h-3.5" />{t('I paplotë')}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {r.kill_switch
+                        ? <span className="inline-flex items-center gap-1 text-red-400 text-xs"><PowerOff className="w-3.5 h-3.5" />{t('Ndalur')}</span>
+                        : r.auto_trade
+                          ? <span className="inline-flex items-center gap-1 text-emerald-400 text-xs"><Power className="w-3.5 h-3.5" />ON</span>
+                          : <span className="text-gray-500 text-xs">OFF</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {r.disconnect_since
+                        ? <span className="inline-flex items-center gap-1 text-red-400 text-xs"><WifiOff className="w-3.5 h-3.5" />{t('Shkëputur')}</span>
+                        : <span className="inline-flex items-center gap-1 text-emerald-400 text-xs"><Wifi className="w-3.5 h-3.5" />{t('Në rregull')}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-400 whitespace-nowrap">{fmtTime(r.last_connected_at || r.updated_at)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-          )}
-          {!loading && filtered.length === 0 && (
-            <div className="text-center py-12 text-gray-500 text-sm">{t('Asnjë lidhje MetaTrader e gjetur')}</div>
-          )}
+            {filtered.length === 0 && (
+              <div className="text-center py-12 text-gray-500 text-sm">{t('Asnjë llogari MT5 e konfiguruar ende.')}</div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
