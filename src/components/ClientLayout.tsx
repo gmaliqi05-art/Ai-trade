@@ -59,9 +59,7 @@ const navSections = [
 // Shiriti i navigimit poshtë për celular/tablet (pamje si-app). E 5-ta ("Më shumë") hap menynë e plotë.
 const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }[] = [
   { id: 'market_prices', label: 'Tregto Live', icon: Activity },
-  { id: 'telegram_sin', label: 'Sinjalet', icon: Send },
-  { id: 'dashboard', label: 'Paneli', icon: LayoutDashboard },
-  { id: 'manual', label: 'Manuali', icon: BookOpen },
+  { id: 'journal', label: 'Journal', icon: CalendarDays },
 ];
 
 // FAQET E LIRA (regjistrim normal): shfaqen gjithmonë në meny. Të tjerat (përfshirë Panelin/Dashboard)
@@ -438,6 +436,14 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
               </button>
             );
           })}
+          {/* TELEGRAM — hap kanalin e sinjaleve (link i jashtëm, etiketa vetëm "Telegram"). */}
+          {tgLink && (
+            <a href={tgLink} target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-sky-400 hover:text-sky-300 transition-colors">
+              <Send className="w-5 h-5" />
+              <span className="text-[10px] font-medium leading-none">Telegram</span>
+            </a>
+          )}
           <button
             onClick={() => setMobileOpen(true)}
             className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 hover:text-gray-300 transition-colors relative"
