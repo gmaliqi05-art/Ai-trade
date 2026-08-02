@@ -25,6 +25,15 @@ export default function ScreenshotShield() {
 
   const exempt = !user || ALLOWED_EMAILS.includes((user.email || '').toLowerCase());
 
+  // URA ME APLIKACIONIN ANDROID: aty bllokimi është i sistemit operativ (FLAG_SECURE) —
+  // screenshot-et dalin të zeza realisht. Kapja i lejohet vetëm llogarisë së përjashtuar.
+  useEffect(() => {
+    try {
+      (window as unknown as { AndroidShield?: { setCaptureAllowed?: (b: boolean) => void } })
+        .AndroidShield?.setCaptureAllowed?.(exempt);
+    } catch { /* jo brenda aplikacionit Android */ }
+  }, [exempt]);
+
   useEffect(() => {
     if (exempt) return;
 
