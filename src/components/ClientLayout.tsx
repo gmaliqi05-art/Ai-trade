@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2, CalendarDays
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2, CalendarDays, LifeBuoy
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { verifyVipCode, requestVip, lockVipAccess } from '../services/vipCodes';
@@ -50,6 +50,7 @@ const navSections = [
     label: 'Llogaria',
     items: [
       { id: 'manual' as ClientPage, label: 'Manuali i përdorimit', icon: BookOpen },
+      { id: 'support' as ClientPage, label: 'Suporti', icon: LifeBuoy },
       { id: 'notifications' as ClientPage, label: 'Njoftimet', icon: Bell },
       { id: 'settings' as ClientPage, label: 'Cilësimet', icon: Settings },
     ],
@@ -64,7 +65,7 @@ const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }
 
 // FAQET E LIRA (regjistrim normal): shfaqen gjithmonë në meny. Të tjerat (përfshirë Panelin/Dashboard)
 // fshihen pas butonit VIP — kërkesa e pronarit (31 korrik 2026): Paneli vetëm për VIP.
-const FREE_PAGES: ClientPage[] = ['market_prices', 'telegram_sin', 'journal', 'manual', 'settings'];
+const FREE_PAGES: ClientPage[] = ['market_prices', 'telegram_sin', 'journal', 'manual', 'support', 'settings'];
 // Kodet VIP menaxhohen nga super admini dhe verifikohen NË SERVER (edge function 'vip-verify').
 // Këtu ruhet vetëm gjendja e zhbllokimit lokal pas verifikimit të suksesshëm.
 const VIP_STORAGE_KEY = 'gt_vip_unlocked';
@@ -84,6 +85,7 @@ const pageLabels: Record<ClientPage, string> = {
   reports: 'Raporte',
   settings: 'Cilësimet',
   manual: 'Manuali i përdorimit',
+  support: 'Suporti',
 };
 
 export default function ClientLayout({ currentPage, onNavigate, children }: ClientLayoutProps) {

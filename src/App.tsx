@@ -22,6 +22,7 @@ import ClientManualPage from './pages/ClientManualPage';
 import MmtPage from './pages/MmtPage';
 import TelegramSinPage from './pages/TelegramSinPage';
 import JournalPage from './pages/JournalPage';
+import SupportPage from './pages/SupportPage';
 
 import AdminOverviewPage from './admin/AdminOverviewPage';
 import AdminSettingsPage from './admin/AdminSettingsPage';
@@ -32,21 +33,22 @@ import AdminProTradeLabPage from './admin/AdminProTradeLabPage';
 import AdminExpertRoomPage from './admin/AdminExpertRoomPage';
 import AdminVipCodesPage from './admin/AdminVipCodesPage';
 import AdminGoldSniperPage from './admin/AdminGoldSniperPage';
+import AdminSupportPage from './admin/AdminSupportPage';
 import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
   | 'dashboard' | 'market_prices' | 'demo_trading' | 'chart_analysis'
-  | 'signals' | 'protrade' | 'metatrader' | 'mmt' | 'telegram_sin' | 'journal' | 'notifications' | 'reports' | 'settings' | 'manual';
+  | 'signals' | 'protrade' | 'metatrader' | 'mmt' | 'telegram_sin' | 'journal' | 'support' | 'notifications' | 'reports' | 'settings' | 'manual';
 
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_signals'
   | 'admin_trades' | 'admin_ai' | 'admin_cost' | 'admin_broadcast' | 'admin_metatrader'
-  | 'admin_howitworks' | 'admin_protrade_lab' | 'admin_expert_room' | 'admin_vip_codes' | 'admin_goldsniper' | 'admin_audit' | 'admin_settings';
+  | 'admin_howitworks' | 'admin_protrade_lab' | 'admin_expert_room' | 'admin_vip_codes' | 'admin_goldsniper' | 'admin_support' | 'admin_audit' | 'admin_settings';
 
 export type Page = ClientPage | AdminPage;
 
-const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'demo_trading', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'mmt', 'telegram_sin', 'journal', 'notifications', 'reports', 'settings', 'manual'];
-const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_vip_codes', 'admin_goldsniper', 'admin_audit', 'admin_settings'];
+const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'demo_trading', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'mmt', 'telegram_sin', 'journal', 'support', 'notifications', 'reports', 'settings', 'manual'];
+const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_vip_codes', 'admin_goldsniper', 'admin_support', 'admin_audit', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
 function usePersistedPage<T extends string>(storageKey: string, valid: T[], fallback: T): [T, (p: T) => void] {
@@ -83,6 +85,7 @@ function AdminApp() {
       {currentPage === 'admin_expert_room' && <AdminExpertRoomPage />}
       {currentPage === 'admin_vip_codes' && <AdminVipCodesPage />}
       {currentPage === 'admin_goldsniper' && <AdminGoldSniperPage />}
+      {currentPage === 'admin_support' && <AdminSupportPage />}
       {currentPage === 'admin_settings' && <AdminSettingsPage />}
     </AdminLayout>
   );
@@ -107,6 +110,7 @@ function ClientApp() {
       {currentPage === 'mmt' && <MmtPage />}
       {currentPage === 'telegram_sin' && <TelegramSinPage onNavigate={setCurrentPage} />}
       {currentPage === 'journal' && <JournalPage />}
+      {currentPage === 'support' && <SupportPage />}
       {currentPage === 'notifications' && <NotificationsPage />}
       {currentPage === 'reports' && <ReportsPage />}
       {currentPage === 'settings' && <SettingsPage />}
