@@ -1928,4 +1928,5 @@ export const en: Record<string, string> = {
   "Dërgo te kanali": "Send to channel",
   "Mesazhi u dërgua te kanali ✅": "Message sent to the channel ✅",
   "Plotëso fillimisht fushën \"Çmimi/vlera\".": "Fill in the \"Price/value\" field first.",
+  "Lidh botin dhe kanalin te nënfaqja «Lidhjet» para se të postosh.": "Connect the bot and the channel in the “Connections” tab before posting.",
 };

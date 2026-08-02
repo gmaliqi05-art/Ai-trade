@@ -950,4 +950,5 @@ export const de: Record<string, string> = {
   "Dërgo te kanali": "An Kanal senden",
   "Mesazhi u dërgua te kanali ✅": "Nachricht an den Kanal gesendet ✅",
   "Plotëso fillimisht fushën \"Çmimi/vlera\".": "Fülle zuerst das Feld „Preis/Wert“ aus.",
+  "Lidh botin dhe kanalin te nënfaqja «Lidhjet» para se të postosh.": "Verbinde Bot und Kanal im Tab „Verbindungen“, bevor du postest.",
 };

@@ -329,7 +329,7 @@ export default function AdminGoldSniperPage() {
       {/* ============ 2) SINJALET ============ */}
       {tab === 'signals' && (
         <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.03] overflow-hidden">
-          <GoldSniperPage ownerId={owner} />
+          <GoldSniperPage ownerId={owner} only="compose" />
         </div>
       )}
 
@@ -387,6 +387,9 @@ export default function AdminGoldSniperPage() {
       {/* ============ 4) LIDHJET ============ */}
       {tab === 'links' && (
         <div className="space-y-4">
+          {/* Lidhja me kanalin (bot + kanal) dhe webhook-u i platformës sate. */}
+          <GoldSniperPage ownerId={owner} only="connection" />
+
           {/* Lidhja me Telegram */}
           <details className="rounded-xl border border-white/10 bg-white/[0.02]" open>
             <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">

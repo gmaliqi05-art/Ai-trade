@@ -948,4 +948,5 @@ export const it: Record<string, string> = {
   "Dërgo te kanali": "Invia al canale",
   "Mesazhi u dërgua te kanali ✅": "Messaggio inviato al canale ✅",
   "Plotëso fillimisht fushën \"Çmimi/vlera\".": "Compila prima il campo “Prezzo/valore”.",
+  "Lidh botin dhe kanalin te nënfaqja «Lidhjet» para se të postosh.": "Collega il bot e il canale nella scheda “Collegamenti” prima di pubblicare.",
 };
