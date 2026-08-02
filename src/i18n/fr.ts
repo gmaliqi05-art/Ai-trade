@@ -1132,4 +1132,9 @@ export const fr: Record<string, string> = {
   "Manuali i përdorimit i ka të gjitha hapat me pamje ekrani, nga hapja e llogarisë deri te lidhja.": "Le manuel d'utilisation contient chaque étape avec captures d'écran, de l'ouverture du compte à la connexion.",
   "Hap Manualin e përdorimit": "Ouvrir le manuel d'utilisation",
   "Kam gjithçka — lidhe tani": "J'ai tout — connecter maintenant",
+  "Asnjë pozicion i hapur nga sinjalet për momentin.": "Aucune position ouverte à partir des signaux pour l'instant.",
+  "Asnjë porosi në pritje.": "Aucun ordre en attente.",
+  "Raportet e sinjaleve shfaqen këtu sapo të mbyllet tregtia e parë.": "Les rapports des signaux apparaissent ici dès la clôture du premier trade.",
+  "Raportet e hyrjeve manuale shfaqen këtu pas tregtisë sate të parë.": "Les rapports des entrées manuelles apparaissent ici après ton premier trade.",
+  "Mesazhet e kanalit shfaqen këtu sapo të vijë i pari.": "Les messages du canal apparaissent ici dès l'arrivée du premier.",
 };

@@ -105,6 +105,11 @@ function errText(t: (k: string) => string, code: string, message?: string): stri
 // SEKSION I PALOSSHËM me kujtesë (localStorage) — pamja klasike e terminalit: koka gjithmonë e
 // dukshme, përmbajtja hapet/mbyllet me një klik dhe zgjedhja mbahet mend për herën tjetër.
 // `bare` = pa kornizë karte (për seksione që kanë kartat e veta brenda).
+// Gjendja bosh brenda një tabele: e qetë, pa alarm — thjesht shpjegon çfarë do të vijë aty.
+function TLEmpty({ text }: { text: string }) {
+  return <p className="text-[11px] text-gray-500 text-center py-4">{text}</p>;
+}
+
 function TLFold({ k, title, icon, right, defaultOpen = true, bare = false, always, children }: {
   k: string; title: string; icon?: ReactNode; right?: ReactNode; defaultOpen?: boolean; bare?: boolean;
   /** Përmbajtje GJITHMONË e dukshme nën kokë — edhe kur seksioni është i mbyllur (p.sh. mesazhi i fundit). */
@@ -1581,35 +1586,34 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
 
       {/* TELEGRAM SIN — TRI TABELAT (kërkesa e pronarit): LIVE në trade · në pritje · raportet.
           Tabelat e robotëve të tjerë u HOQËN nga Trade Live (i gjen te faqja Raporte). */}
-      {metaConfigured && tgLive.length > 0 && (
-        <TLFold k="tglive" title={t('GoldSniperFX Algorithm — LIVE në trade')} icon={<Zap className="w-4 h-4 text-emerald-400" />}>
-          {renderTgSinTable(tgLive)}
-        </TLFold>
-      )}
-      {metaConfigured && tgPending.length > 0 && (
-        <TLFold k="tgpend" title={t('GoldSniperFX Algorithm — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
-          <p className="text-[10px] text-gray-500 mb-2">{t('Porosia rri në pritje derisa çmimi të arrijë hyrjen (ose derisa të mbyllet nga sinjali/ti).')}</p>
-          {renderTgSinTable(tgPending)}
-        </TLFold>
-      )}
-      {metaConfigured && tgReportRows.length > 0 && (
-        <TLFold k="tgdone" title={t('GoldSniperFX')} icon={<History className="w-4 h-4 text-sky-400" />}>
-          {/* NDARJE DITORE + përmbledhje ditore & e përgjithshme + filtër date (ditë/interval). */}
-          <ReportBook rows={tgReportRows} lossLabel="SL" defaultToday />
-        </TLFold>
-      )}
+      {/* Tabelat rrinë GJITHMONË në faqe — edhe kur janë bosh, edhe pa lidhje me MetaTrader.
+          Kështu përdoruesi e sheh strukturën që do t'i mbushet sapo të nisë tregtimi, në vend
+          që faqja t'i dukej e zbrazët (kërkesa e pronarit). */}
+      <TLFold k="tglive" title={t('GoldSniperFX Algorithm — LIVE në trade')} icon={<Zap className="w-4 h-4 text-emerald-400" />}>
+        {tgLive.length > 0 ? renderTgSinTable(tgLive) : <TLEmpty text={t('Asnjë pozicion i hapur nga sinjalet për momentin.')} />}
+      </TLFold>
+      <TLFold k="tgpend" title={t('GoldSniperFX Algorithm — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
+        <p className="text-[10px] text-gray-500 mb-2">{t('Porosia rri në pritje derisa çmimi të arrijë hyrjen (ose derisa të mbyllet nga sinjali/ti).')}</p>
+        {tgPending.length > 0 ? renderTgSinTable(tgPending) : <TLEmpty text={t('Asnjë porosi në pritje.')} />}
+      </TLFold>
+      <TLFold k="tgdone" title={t('GoldSniperFX')} icon={<History className="w-4 h-4 text-sky-400" />}>
+        {/* NDARJE DITORE + përmbledhje ditore & e përgjithshme + filtër date (ditë/interval). */}
+        {tgReportRows.length > 0
+          ? <ReportBook rows={tgReportRows} lossLabel="SL" defaultToday />
+          : <TLEmpty text={t('Raportet e sinjaleve shfaqen këtu sapo të mbyllet tregtia e parë.')} />}
+      </TLFold>
 
       {/* HYRJET MANUALE (kërkesa e pronarit): raport i veçantë, model hamburger, me ndarje ditore
           + përmbledhje (sa hyrje, sa profit, sa humbje, bilanci) + filtër date. */}
-      {metaConfigured && manualReportRows.length > 0 && (
-        <TLFold k="tgmanual" title={t('Hyrjet manuale — raportet')} icon={<History className="w-4 h-4 text-amber-400" />}>
-          <ReportBook rows={manualReportRows} defaultToday />
-        </TLFold>
-      )}
+      <TLFold k="tgmanual" title={t('Hyrjet manuale — raportet')} icon={<History className="w-4 h-4 text-amber-400" />}>
+        {manualReportRows.length > 0
+          ? <ReportBook rows={manualReportRows} defaultToday />
+          : <TLEmpty text={t('Raportet e hyrjeve manuale shfaqen këtu pas tregtisë sate të parë.')} />}
+      </TLFold>
 
       {/* MESAZHET E GRUPEVE (kërkesa e pronarit): mesazhi MË I RI gjithmonë i dukshëm nën kokë;
           të tjerët hapen me klik te shiriti (model hamburger) — feed-i i plotë, i lexueshëm. */}
-      {metaConfigured && tgSigs.length > 0 && (() => {
+      {(() => {
         const msgCard = (s: (typeof tgSigs)[number]) => {
           const d = new Date(s.created_at);
           const isSig = s.kind === 'entry' && s.status !== 'ignored';
@@ -1634,7 +1638,7 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         const older = tgSigs.slice(1, 40);
         return (
           <TLFold k="tgmsgs" defaultOpen={false} title={t('Mesazhet')} icon={<Zap className="w-4 h-4 text-sky-400" />}
-            always={msgCard(tgSigs[0])}>
+            always={tgSigs.length > 0 ? msgCard(tgSigs[0]) : <TLEmpty text={t('Mesazhet e kanalit shfaqen këtu sapo të vijë i pari.')} />}>
             {older.length > 0 ? (
               <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">{older.map(msgCard)}</div>
             ) : (

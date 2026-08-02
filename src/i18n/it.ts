@@ -1132,4 +1132,9 @@ export const it: Record<string, string> = {
   "Manuali i përdorimit i ka të gjitha hapat me pamje ekrani, nga hapja e llogarisë deri te lidhja.": "Il manuale d'uso contiene ogni passaggio con schermate, dall'apertura del conto al collegamento.",
   "Hap Manualin e përdorimit": "Apri il manuale d'uso",
   "Kam gjithçka — lidhe tani": "Ho tutto — collega ora",
+  "Asnjë pozicion i hapur nga sinjalet për momentin.": "Nessuna posizione aperta dai segnali al momento.",
+  "Asnjë porosi në pritje.": "Nessun ordine in attesa.",
+  "Raportet e sinjaleve shfaqen këtu sapo të mbyllet tregtia e parë.": "I report dei segnali compaiono qui appena si chiude la prima operazione.",
+  "Raportet e hyrjeve manuale shfaqen këtu pas tregtisë sate të parë.": "I report delle entrate manuali compaiono qui dopo la tua prima operazione.",
+  "Mesazhet e kanalit shfaqen këtu sapo të vijë i pari.": "I messaggi del canale compaiono qui appena arriva il primo.",
 };
