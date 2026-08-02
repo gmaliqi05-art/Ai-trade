@@ -329,7 +329,7 @@ export default function AdminGoldSniperPage() {
       {/* ============ 2) SINJALET ============ */}
       {tab === 'signals' && (
         <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.03] overflow-hidden">
-          <GoldSniperPage ownerId={owner} />
+          <GoldSniperPage ownerId={owner} only="compose" />
         </div>
       )}
 
@@ -367,14 +367,30 @@ export default function AdminGoldSniperPage() {
               className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 accent-emerald-500 shrink-0" />
           </label>
 
+          {/* RREGULLAT E INTEGRUARA — gjithmonë aktive, të zbatuara në server. */}
+          <div className="rounded-xl border border-red-500/25 bg-red-500/[0.05] p-3">
+            <div className="text-sm font-semibold text-white flex items-center gap-2 mb-2">
+              <Ban className="w-4 h-4 text-red-400" />{t('Rregullat e integruara (gjithmonë aktive)')}
+            </div>
+            <ul className="text-[11px] text-gray-400 space-y-1 list-disc list-inside">
+              <li>{t('Çdo mesazh me përmendje @emri bllokohet komplet.')}</li>
+              <li>{t('Mesazhet me "deposit" ose "upgrade account" bllokohen.')}</li>
+              <li>{t('Mesazhet me "watch the video" bllokohen.')}</li>
+              <li>{t('"Scalp group" bllokohet — përveç kur mesazhi është sinjal ose urdhër roboti.')}</li>
+              <li>{t('Sirena 🚨 me foto/media bllokohet.')}</li>
+              <li>{t('Sirena 🚨 pa asnjë informacion (pa çmim, pa sinjal) bllokohet; me informacion kalon.')}</li>
+              <li>{t('Mesazhi që ripërshkruan një sinjal: mbahet vetëm sinjali, shfaqet si informacion dhe NUK hap trade të dytë.')}</li>
+            </ul>
+          </div>
+
           <label className="block">
             <span className="text-[11px] text-gray-500 flex items-center gap-1.5 mb-1">
-              <Ban className="w-3.5 h-3.5 text-red-400" />{t('Fjalët kyçe të bllokuara (një për rresht ose ndarë me presje)')}
+              <Ban className="w-3.5 h-3.5 text-red-400" />{t('Emrat/fjalët e bllokuara (një për rresht ose ndarë me presje)')}
             </span>
             <textarea value={fWords} onChange={(e) => setFWords(e.target.value)} rows={5}
-              placeholder={t('p.sh.\nliquidated\npromo\nreferral')}
+              placeholder={t('p.sh.\nEric\nLevrone\nXNINE')}
               className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 resize-none" />
-            <span className="block text-[10px] text-gray-600 mt-1">{t('Nëse mesazhi përmban ndonjë nga këto fjalë, nuk kalon as te abonentët, as te kanali.')}</span>
+            <span className="block text-[10px] text-gray-600 mt-1">{t('Nëse mesazhi përmban ndonjë nga këto fjalë, nuk kalon as te abonentët, as te kanali. Përputhja bëhet me fjalë të plota — "Eric" nuk e kap "America".')}</span>
           </label>
 
           <button onClick={saveFilters} disabled={fBusy}
@@ -387,6 +403,9 @@ export default function AdminGoldSniperPage() {
       {/* ============ 4) LIDHJET ============ */}
       {tab === 'links' && (
         <div className="space-y-4">
+          {/* Lidhja me kanalin (bot + kanal) dhe webhook-u i platformës sate. */}
+          <GoldSniperPage ownerId={owner} only="connection" />
+
           {/* Lidhja me Telegram */}
           <details className="rounded-xl border border-white/10 bg-white/[0.02]" open>
             <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">

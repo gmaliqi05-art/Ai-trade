@@ -13,7 +13,13 @@ import {
 // prefill: kur vjen nga një sinjal i klikuar te lista, mbush automatikisht fushat.
 // ownerId: përdoret VETËM nga konsola Admin → punon mbi llogarinë PRONARE të kanalit,
 //          jo mbi llogarinë e adminit (RLS e lejon me politikat 'gsc_admin'/'gsp_admin').
-export default function GoldSniperPage({ prefill, ownerId }: { prefill?: GoldSniperPrefill | null; ownerId?: string }) {
+// only:    ndan faqen në pjesë për nënfaqet e konsolës Admin —
+//          'compose'    = postimi i sinjalit + historiku (nënfaqja "Sinjalet")
+//          'connection' = lidhja me kanalin + webhook-u hyrës (nënfaqja "Lidhjet")
+//          undefined    = gjithçka (sjellja e mëparshme).
+export default function GoldSniperPage({ prefill, ownerId, only }: {
+  prefill?: GoldSniperPrefill | null; ownerId?: string; only?: 'compose' | 'connection';
+}) {
   const { t } = useI18n();
   const { user } = useAuth();
   const acct = ownerId || user?.id || '';
@@ -99,8 +105,8 @@ export default function GoldSniperPage({ prefill, ownerId }: { prefill?: GoldSni
 
   return (
     <div className="max-w-4xl mx-auto p-3 sm:p-4 space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
+      {/* Header — vetëm kur faqja shfaqet e plotë ose si "Sinjalet". */}
+      {only !== 'connection' && <div className="flex items-center gap-3">
         <div className="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
           <Crosshair className="w-6 h-6 text-amber-400" />
         </div>
@@ -108,12 +114,12 @@ export default function GoldSniperPage({ prefill, ownerId }: { prefill?: GoldSni
           <h1 className="text-lg font-bold text-white">GoldSniper|FX</h1>
           <p className="text-xs text-gray-400">{t('Publiko sinjale te kanali yt në Telegram — automatik, me tekstin tënd.')}</p>
         </div>
-      </div>
+      </div>}
 
       {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.type === 'success' ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>{msg.text}</div>}
 
       {/* KOMPOZIMI I SINJALIT */}
-      <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.03] p-4 space-y-3">
+      {only !== 'connection' && <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.03] p-4 space-y-3">
         <div className="text-sm font-semibold text-white flex items-center gap-2"><Send className="w-4 h-4 text-amber-400" />{t('Posto një sinjal')}</div>
         <div className="flex rounded-lg overflow-hidden border border-gray-700 w-fit">
           <button onClick={() => setDir('buy')} className={`px-4 py-1.5 text-xs font-bold flex items-center gap-1 ${dir === 'buy' ? 'bg-green-500 text-white' : 'bg-gray-800 text-gray-400'}`}><TrendingUp className="w-3.5 h-3.5" />BUY</button>
@@ -155,11 +161,11 @@ export default function GoldSniperPage({ prefill, ownerId }: { prefill?: GoldSni
         {cfg.auto_send && configured && (
           <p className="text-[11px] text-emerald-400/90 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />{t('Dërgim automatik AKTIV: çdo sinjal i ri nga motori yt postohet vetë te kanali (brenda ~1 min). Sinjalet e kopjuara nga kanale të tjera NUK postohen automatik.')}</p>
         )}
-        {!configured && <p className="text-[11px] text-amber-400/80">{t('Lidh botin dhe kanalin më poshtë para se të postosh.')}</p>}
-      </div>
+        {!configured && <p className="text-[11px] text-amber-400/80">{t('Lidh botin dhe kanalin te nënfaqja «Lidhjet» para se të postosh.')}</p>}
+      </div>}
 
       {/* LIDHJA E KANALIT */}
-      <details className="rounded-2xl border border-white/10 bg-white/[0.02]" open={!configured}>
+      {only !== 'compose' && <details className="rounded-2xl border border-white/10 bg-white/[0.02]" open={!configured}>
         <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2"><Send className="w-4 h-4 text-sky-400" />{t('Lidhja me kanalin')} {configured && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-300">{t('I lidhur')}</span>}</span>
           <ChevronDown className="w-4 h-4 text-gray-500" />
@@ -191,10 +197,10 @@ export default function GoldSniperPage({ prefill, ownerId }: { prefill?: GoldSni
             <li><span className="text-amber-400 font-bold">3.</span> {t('Vendos @username-in e kanalit (ose id-në -100…) këtu, ruaj dhe testo.')}</li>
           </ol>
         </div>
-      </details>
+      </details>}
 
       {/* WEBHOOK HYRËS — lidh platformën TËNDE të gjenerimit të sinjaleve (auto-post te kanali). */}
-      <details className="rounded-2xl border border-white/10 bg-white/[0.02]">
+      {only !== 'compose' && <details className="rounded-2xl border border-white/10 bg-white/[0.02]">
         <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2"><Cloud className="w-4 h-4 text-emerald-400" />{t('Lidh platformën tënde (webhook)')}</span>
           <ChevronDown className="w-4 h-4 text-gray-500" />
@@ -226,10 +232,10 @@ export default function GoldSniperPage({ prefill, ownerId }: { prefill?: GoldSni
             <p className="text-[11px] text-gray-500">{t('Ruaj konfigurimin një herë që të gjenerohet çelësi i webhook-ut.')}</p>
           )}
         </div>
-      </details>
+      </details>}
 
       {/* HISTORIKU */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3 sm:p-4">
+      {only !== 'connection' && <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3 sm:p-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-white">{t('Postimet e fundit')}</span>
           <button onClick={refresh} className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white"><RefreshCw className="w-3.5 h-3.5" />{t('Rifresko')}</button>
@@ -254,7 +260,7 @@ export default function GoldSniperPage({ prefill, ownerId }: { prefill?: GoldSni
             })}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
