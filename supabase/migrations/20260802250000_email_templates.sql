@@ -11,14 +11,17 @@
 --   • [button]Etiketa|{{link}}[/button]  → butoni i artë
 --   • [rows]Emri|Vlera(një për rresht)[/rows] → tabela e detajeve
 --   • {{variabla}}                       → zëvendësohen nga sistemi
+--
+-- TEKSTET e email-eve janë në ANGLISHT (klientë ndërkombëtarë). Emrat e modeleve
+-- mbeten shqip, sepse i sheh vetëm Admini brenda panelit.
 
 -- ---------- Marka & pamja e përbashkët ----------
 alter table public.email_config
   add column if not exists brand_name  text not null default 'GoldSniperFX',
   add column if not exists logo_url     text not null default '',
   add column if not exists legal_note   text not null default
-    'Tregtimi në tregjet financiare mbart rrezik të lartë dhe mund të çojë në humbjen e kapitalit. GoldSniperFX ofron analiza, sinjale dhe mjete teknologjike për qëllime informative dhe edukative — nuk është këshillë investimi dhe nuk garanton asnjë fitim. Performanca e kaluar nuk garanton rezultate të ardhshme. Ti mban përgjegjësi të plotë për vendimet e tua të tregtimit.',
-  add column if not exists footer_note  text not null default 'Krijuar nga MarGroup DE';
+    'Trading in financial markets carries a high level of risk and may result in the loss of your capital. GoldSniperFX provides analysis, signals and technology tools for informational and educational purposes — this is not investment advice and no profit is guaranteed. Past performance does not guarantee future results. You remain fully responsible for your own trading decisions.',
+  add column if not exists footer_note  text not null default 'Created by MarGroup DE';
 
 update public.email_config
    set from_name = 'GoldSniperFX'
@@ -69,117 +72,117 @@ create trigger et_protect_system before delete on public.email_templates
 -- ---------- Modelet e parazgjedhura ----------
 insert into public.email_templates (key, name, subject, body, is_system, sort_order) values
 
-('verify', 'Kodi i verifikimit', 'Kodi yt i verifikimit: {{code}}',
-'Përshëndetje {{name}},
+('verify', 'Kodi i verifikimit', 'Your verification code: {{code}}',
+'Hello {{name}},
 
-Faleminderit që u bashkove me **{{brand}}**.
+Thank you for joining **{{brand}}**.
 
-Vendos këtë kod 6-shifror në ekranin e verifikimit për të hapur platformën:
+Enter this 6-digit code on the verification screen to unlock the platform:
 
 [code]{{code}}[/code]
 
-Kodi vlen vetëm për llogarinë tënde dhe skadon pas 24 orësh. Mos ia jep askujt — asnjë punonjës i {{brand}} nuk do të ta kërkojë kurrë.', true, 10),
+The code works only for your account and expires in 24 hours. Never share it — no {{brand}} staff member will ever ask you for it.', true, 10),
 
-('welcome', 'Mirëseardhje', 'Mirë se erdhe në {{brand}}',
-'Përshëndetje {{name}},
+('welcome', 'Mirëseardhje', 'Welcome to {{brand}}',
+'Hello {{name}},
 
-Llogaria jote u verifikua me sukses. Që tani ke qasje te:
+Your account has been verified. You now have access to:
 
-**Trade Live** — çmimet dhe pozicionet në kohë reale
-**Journal** — historiku dhe analiza e tregtive të tua
-**Telegram** — kanali ynë i sinjaleve
-**Konfigurimi i Sinjaleve** — lidhja me MetaTrader dhe roboti
+**Trade Live** — live prices and open positions
+**Journal** — your trade history and analysis
+**Telegram** — our signals channel
+**Signal Setup** — MetaTrader connection and the robot
 
-[button]Hap platformën|{{site}}[/button]
+[button]Open the platform|{{site}}[/button]
 
-Nis me **Manualin e përdorimit** brenda platformës — të shpjegon hap pas hapi çdo pjesë. Për çdo pyetje jemi te {{support}}.', true, 20),
+Start with the **User Manual** inside the platform — it walks you through every section step by step. Any questions, we are at {{support}}.', true, 20),
 
-('reset', 'Rivendosje fjalëkalimi', 'Rivendos fjalëkalimin e llogarisë sate',
-'Përshëndetje {{name}},
+('reset', 'Rivendosje fjalëkalimi', 'Reset your password',
+'Hello {{name}},
 
-Morëm një kërkesë për të rivendosur fjalëkalimin e llogarisë sate te {{brand}}.
+We received a request to reset the password for your {{brand}} account.
 
-[button]Vendos fjalëkalim të ri|{{link}}[/button]
+[button]Set a new password|{{link}}[/button]
 
-Lidhja skadon brenda një ore dhe përdoret vetëm një herë.
+The link expires within one hour and can be used only once.
 
-Nëse nuk e ke kërkuar ti, injoroje këtë email — fjalëkalimi yt nuk ndryshon.', true, 30),
+If you did not request this, simply ignore this email — your password stays unchanged.', true, 30),
 
-('billing', 'Konfirmim abonimi', 'Abonimi yt në {{brand}} është aktiv',
-'Përshëndetje {{name}},
+('billing', 'Konfirmim abonimi', 'Your {{brand}} subscription is active',
+'Hello {{name}},
 
-Pagesa u konfirmua dhe abonimi yt është aktivizuar. Faleminderit për besimin.
+Your payment was confirmed and your subscription is now active. Thank you for your trust.
 
-[rows]Plani|{{plan}}
-Shuma|{{amount}}
-Data e fillimit|{{start}}
-Vlen deri më|{{expires}}
-Referenca|{{invoice}}[/rows]
+[rows]Plan|{{plan}}
+Amount|{{amount}}
+Start date|{{start}}
+Valid until|{{expires}}
+Reference|{{invoice}}[/rows]
 
-[button]Hap platformën|{{site}}[/button]
+[button]Open the platform|{{site}}[/button]
 
-Abonimin mund ta shohësh dhe menaxhosh kurdo te **Cilësimet** brenda platformës. Ky email shërben edhe si konfirmim i pagesës.', true, 40),
+You can review and manage your subscription any time under **Settings** inside the platform. This email also serves as your payment confirmation.', true, 40),
 
-('expiry', 'Kujtesë skadimi', 'Abonimi yt skadon më {{expires}}',
-'Përshëndetje {{name}},
+('expiry', 'Kujtesë skadimi', 'Your subscription expires on {{expires}}',
+'Hello {{name}},
 
-Abonimi yt te {{brand}} skadon më **{{expires}}**.
+Your {{brand}} subscription expires on **{{expires}}**.
 
-Rinovoje me kohë që sinjalet, tregtimi automatik dhe qasja te kanali të mos ndërpriten.
+Renew in time so your signals, automated trading and channel access are not interrupted.
 
-[button]Rinovo abonimin|{{site}}[/button]
+[button]Renew subscription|{{site}}[/button]
 
-Nëse e ke rinovuar tashmë, injoroje këtë kujtesë.', true, 50),
+If you have already renewed, please ignore this reminder.', true, 50),
 
-('expired', 'Abonimi skadoi', 'Abonimi yt skadoi — riaktivizoje me një klik',
-'Përshëndetje {{name}},
+('expired', 'Abonimi skadoi', 'Your subscription has expired — reactivate in one click',
+'Hello {{name}},
 
-Abonimi yt te {{brand}} skadoi më **{{expires}}** dhe qasja te sinjalet, roboti dhe kanali është ndërprerë përkohësisht.
+Your {{brand}} subscription expired on **{{expires}}**, and access to signals, the robot and the channel is paused for now.
 
-Të dhënat, historiku dhe konfigurimet e tua janë ruajtur të plota — riaktivizimi i rikthen të gjitha menjëherë.
+Your data, history and settings are all safely stored — reactivating restores everything instantly.
 
-[button]Riaktivizo abonimin|{{site}}[/button]
+[button]Reactivate subscription|{{site}}[/button]
 
-Nëse ke ndonjë pyetje para se të vendosësh, shkruajna te {{support}} — jemi këtu.', true, 60),
+If you have any questions before deciding, write to us at {{support}} — we are here.', true, 60),
 
-('renewed', 'Rinovim i abonimit', 'Abonimi yt u rinovua',
-'Përshëndetje {{name}},
+('renewed', 'Rinovim i abonimit', 'Your subscription has been renewed',
+'Hello {{name}},
 
-Abonimi yt te {{brand}} u rinovua me sukses. Asgjë nuk ndërpritet.
+Your {{brand}} subscription has been renewed successfully. Nothing is interrupted.
 
-[rows]Plani|{{plan}}
-Shuma|{{amount}}
-Vlen deri më|{{expires}}
-Referenca|{{invoice}}[/rows]
+[rows]Plan|{{plan}}
+Amount|{{amount}}
+Valid until|{{expires}}
+Reference|{{invoice}}[/rows]
 
-Faleminderit që vazhdon me ne.', true, 70),
+Thank you for staying with us.', true, 70),
 
-('payment_failed', 'Pagesa dështoi', 'Pagesa e abonimit nuk u krye',
-'Përshëndetje {{name}},
+('payment_failed', 'Pagesa dështoi', 'Your subscription payment did not go through',
+'Hello {{name}},
 
-Provuam të tërheqim pagesën e abonimit tënd te {{brand}}, por transaksioni nuk u krye.
+We tried to charge your {{brand}} subscription, but the payment did not go through.
 
-Zakonisht kjo ndodh kur karta ka skaduar, nuk ka fonde të mjaftueshme ose banka e ka bllokuar pagesën online.
+This usually happens when a card has expired, there are insufficient funds, or the bank blocked the online payment.
 
-[button]Përditëso mënyrën e pagesës|{{site}}[/button]
+[button]Update payment method|{{site}}[/button]
 
-Do të provojmë sërish automatikisht. Që qasja të mos ndërpritet, rregulloje brenda pak ditësh.', true, 80),
+We will try again automatically. To keep your access uninterrupted, please fix it within the next few days.', true, 80),
 
-('canceled', 'Anulim abonimi', 'Abonimi yt u anulua',
-'Përshëndetje {{name}},
+('canceled', 'Anulim abonimi', 'Your subscription has been canceled',
+'Hello {{name}},
 
-Abonimi yt te {{brand}} u anulua sipas kërkesës.
+Your {{brand}} subscription has been canceled as requested.
 
-Qasja mbetet aktive deri më **{{expires}}** — deri atëherë vazhdon t''i përdorësh të gjitha shërbimet normalisht.
+Access stays active until **{{expires}}** — until then you can keep using every service as normal.
 
-[button]Riaktivizo kurdo|{{site}}[/button]
+[button]Reactivate any time|{{site}}[/button]
 
-Na vjen keq që po ndahemi. Nëse diçka nuk shkoi si duhet, na e thuaj te {{support}} — çdo mendim na ndihmon të përmirësohemi.', true, 90),
+We are sorry to see you go. If something did not work as it should, tell us at {{support}} — every bit of feedback helps us improve.', true, 90),
 
-('test', 'Provë e lidhjes', 'Provë — lidhja me Resend punon',
-'Ky është një email prove nga paneli i administrimit të **{{brand}}**.
+('test', 'Provë e lidhjes', 'Test — your Resend connection works',
+'This is a test email from the **{{brand}}** admin panel.
 
-Nëse e sheh këtë mesazh me logon dhe pamjen e duhur, atëherë çelësi i Resend, domeni i dërgimit dhe modelet janë konfiguruar saktë.', true, 999)
+If you can see this message with the right logo and styling, then your Resend key, sending domain and templates are all set up correctly.', true, 999)
 
 on conflict (key) do nothing;
 

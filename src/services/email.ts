@@ -156,6 +156,70 @@ export async function loadEmailLog(limit = 100): Promise<EmailLogRow[]> {
   return (data ?? []) as EmailLogRow[];
 }
 
+/** Një marrës i mundshëm në listën e dërgimit. */
+export interface Recipient {
+  id: string;
+  email: string;
+  name: string;
+  is_verified: boolean;
+  is_vip: boolean;
+}
+
+/** Thirrje e përgjithshme e dërguesit (vetëm admin — JWT-ja e tij shkon te funksioni). */
+async function callSend(payload: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  try {
+    const r = await fetch(FN('send-email'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json().catch(() => ({ ok: false }));
+    return { ok: !!j.ok, error: j.error };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Dërgon një model te disa marrës. Kthen sa shkuan dhe gabimin e parë, nëse ka.
+ *  Dërgimi bëhet një nga një që një adresë e gabuar të mos i rrëzojë të tjerat. */
+export async function sendTemplateTo(
+  key: string,
+  people: { email: string; id?: string; name?: string }[],
+): Promise<{ sent: number; failed: number; error?: string }> {
+  let sent = 0, failed = 0;
+  let error: string | undefined;
+  for (const p of people) {
+    const r = await callSend({
+      template: key, to: p.email, user_id: p.id ?? null,
+      vars: { name: p.name ?? '' },
+    });
+    if (r.ok) sent++; else { failed++; error = error ?? r.error; }
+  }
+  return { sent, failed, error };
+}
+
+/** Dërgon një email të shkruar me dorë te disa marrës (kalon nga e njëjta kornizë). */
+export async function sendCustomEmail(
+  subject: string,
+  body: string,
+  people: { email: string; id?: string; name?: string }[],
+): Promise<{ sent: number; failed: number; error?: string }> {
+  let sent = 0, failed = 0;
+  let error: string | undefined;
+  for (const p of people) {
+    const r = await callSend({
+      template: 'custom', subject, body, to: p.email, user_id: p.id ?? null,
+      vars: { name: p.name ?? '' },
+    });
+    if (r.ok) sent++; else { failed++; error = error ?? r.error; }
+  }
+  return { sent, failed, error };
+}
+
 /** Dërgon një email prove te adresa e dhënë (vetëm admin). */
 export async function sendTestEmail(to: string): Promise<{ ok: boolean; error?: string }> {
   const { data: { session } } = await supabase.auth.getSession();

@@ -153,7 +153,7 @@ Deno.serve(async (req: Request) => {
     const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     if (!jwt) return json({ ok: false, error: "unauthorized" }, 401);
 
-    // Thirrës i lejuar: service-role (funksionet e brendshme) OSE admin (provë/parapamje).
+    // Thirrës i lejuar: service-role (funksionet e brendshme) OSE admin (provë/parapamje/dërgim me dorë).
     const internal = jwt === SERVICE;
     if (!internal) {
       const { data: u } = await db.auth.getUser(jwt);
@@ -176,8 +176,18 @@ Deno.serve(async (req: Request) => {
     const legal = String(cfg.legal_note || "");
     const footNote = String(cfg.footer_note || "Krijuar nga MarGroup DE");
 
-    const { data: tplRow } = await db.from("email_templates").select("*").eq("key", template).maybeSingle();
-    const tpl = tplRow as { subject?: string; body?: string; enabled?: boolean } | null;
+    // 'custom' → email i shkruar me dorë nga paneli: subjekti dhe teksti vijnë me kërkesën,
+    // por kalojnë nga E NJËJTA kornizë dhe i njëjti shpëtim si modelet (asnjë HTML i papërpunuar).
+    let tpl: { subject?: string; body?: string; enabled?: boolean } | null;
+    if (template === "custom") {
+      const s = String(body.subject || "").trim();
+      const b = String(body.body || "").trim();
+      if (!s || !b) return json({ ok: false, error: "empty_custom" }, 400);
+      tpl = { subject: s, body: b, enabled: true };
+    } else {
+      const { data: tplRow } = await db.from("email_templates").select("*").eq("key", template).maybeSingle();
+      tpl = tplRow as typeof tpl;
+    }
     if (!tpl) return json({ ok: false, error: "unknown_template" }, 400);
 
     // Modeli i çaktivizuar → mos dërgo (por lëre gjurmën). Prova kalon gjithmonë.

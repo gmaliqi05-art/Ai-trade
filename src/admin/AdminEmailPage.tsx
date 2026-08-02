@@ -2,13 +2,19 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Mail, Key, Save, Send, Loader2, CheckCircle2, XCircle, RefreshCw, Eye, Plus, Trash2,
   AlertTriangle, ExternalLink, Inbox, FileText, Image as ImageIcon, Upload, Lock, X,
+  Users, Search, PenLine, ChevronDown,
 } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import {
   loadEmailConfig, saveEmailConfig, setResendKey, loadEmailStatus, loadEmailLog, sendTestEmail,
   loadTemplates, saveTemplate, createTemplate, deleteTemplate, previewTemplate, uploadLogo,
+  sendTemplateTo, sendCustomEmail,
   DEFAULT_EMAIL_CONFIG, type EmailConfig, type EmailStatus, type EmailLogRow, type EmailTemplate,
 } from '../services/email';
+import { loadVipMembers } from '../services/vipCodes';
+
+// Marrësi i zgjedhur për dërgim me dorë.
+interface Person { id?: string; email: string; name?: string }
 
 // FAQJA "EMAIL" — lidhja me Resend, marka, modelet e redaktueshme dhe regjistri i dërgimeve.
 // Çelësi VENDOSET këtu por nuk LEXOHET kurrë nga klienti (shihen vetëm 4 shenjat e fundit).
@@ -52,6 +58,16 @@ export default function AdminEmailPage() {
   const [logoBusy, setLogoBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // DËRGIMI ME DORË — model i gatshëm ose email i shkruar nga fillimi.
+  const [sendFor, setSendFor] = useState<{ key: string; name: string } | null>(null);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [peopleBusy, setPeopleBusy] = useState(false);
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [q, setQ] = useState('');
+  const [extra, setExtra] = useState('');
+  const [sending, setSending] = useState(false);
+  const [custom, setCustom] = useState({ subject: '', body: '' });
+
   // Redaktori i modelit
   const [edit, setEdit] = useState<EmailTemplate | null>(null);
   const [editBusy, setEditBusy] = useState(false);
@@ -69,6 +85,47 @@ export default function AdminEmailPage() {
 
   const flash = (type: 'success' | 'error', text: string) => {
     setMsg({ type, text }); setTimeout(() => setMsg(null), 4500);
+  };
+
+  // Lista e përdoruesve ngarkohet vetëm kur hapet paneli i dërgimit (dhe një herë).
+  const openSend = async (key: string, name: string) => {
+    setSendFor({ key, name }); setPicked({}); setQ(''); setExtra('');
+    if (key === 'custom') setCustom({ subject: '', body: '' });
+    if (people.length === 0) {
+      setPeopleBusy(true);
+      try {
+        const rows = await loadVipMembers();
+        setPeople(rows.map((r) => ({ id: r.id, email: r.email, name: '' })).filter((r) => !!r.email));
+      } catch (e) { flash('error', (e as Error).message); }
+      setPeopleBusy(false);
+    }
+  };
+
+  // Marrësit përfundimtarë: të zgjedhurit nga lista + adresat e shkruara me dorë.
+  const recipients = (): Person[] => {
+    const chosen = people.filter((p) => picked[p.email]);
+    const typed = extra.split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+    const seen = new Set(chosen.map((p) => p.email.toLowerCase()));
+    for (const e of typed) if (!seen.has(e.toLowerCase())) { seen.add(e.toLowerCase()); chosen.push({ email: e }); }
+    return chosen;
+  };
+
+  const doSend = async () => {
+    if (!sendFor) return;
+    const list = recipients();
+    if (list.length === 0) { flash('error', t('Zgjidh të paktën një marrës.')); return; }
+    if (sendFor.key === 'custom' && (!custom.subject.trim() || !custom.body.trim())) {
+      flash('error', t('Plotëso subjektin dhe tekstin.')); return;
+    }
+    setSending(true);
+    const r = sendFor.key === 'custom'
+      ? await sendCustomEmail(custom.subject.trim(), custom.body.trim(), list)
+      : await sendTemplateTo(sendFor.key, list);
+    setSending(false);
+    if (r.failed === 0) flash('success', t('U dërgua te {n} marrës.', { n: String(r.sent) }));
+    else flash('error', t('U dërguan {ok}, dështuan {bad}. {err}', { ok: String(r.sent), bad: String(r.failed), err: r.error || '' }));
+    setSendFor(null);
+    refresh();
   };
 
   const saveKey = async () => {
@@ -320,10 +377,16 @@ export default function AdminEmailPage() {
             <p className="text-[11px] text-gray-400 max-w-lg">
               {t('Çdo email që largohet nga platforma vjen nga një model këtu. Ndryshimet zbatohen menjëherë, pa rilëshim.')}
             </p>
-            <button onClick={() => setAdding(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25">
-              <Plus className="w-3.5 h-3.5" />{t('Model i ri')}
-            </button>
+            <div className="flex gap-1.5">
+              <button onClick={() => openSend('custom', t('Email i ri'))}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-amber-500 text-gray-950 hover:bg-amber-400">
+                <PenLine className="w-3.5 h-3.5" />{t('Shkruaj email të ri')}
+              </button>
+              <button onClick={() => setAdding(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25">
+                <Plus className="w-3.5 h-3.5" />{t('Model i ri')}
+              </button>
+            </div>
           </div>
 
           {tpls.map((tp) => (
@@ -351,6 +414,10 @@ export default function AdminEmailPage() {
                       }} />
                     {t('Aktiv')}
                   </label>
+                  <button onClick={() => openSend(tp.key, tp.name)} title={t('Dërgo te përdoruesit')}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-2 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25">
+                    <Send className="w-3.5 h-3.5" />{t('Dërgo')}
+                  </button>
                   <button onClick={() => doPreview(tp.key)} title={t('Parapamje')}
                     className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-white"><Eye className="w-3.5 h-3.5" /></button>
                   <button onClick={() => setEdit({ ...tp })} title={t('Ndrysho')}
@@ -480,6 +547,106 @@ export default function AdminEmailPage() {
               <button onClick={doAdd}
                 className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-gray-950">
                 <Plus className="w-4 h-4" />{t('Shto')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ DËRGIMI TE PËRDORUESIT ============ */}
+      {sendFor && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-gray-900 border border-gray-700 rounded-2xl p-5 my-6 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-white font-bold flex items-center gap-2">
+                <Send className="w-4 h-4 text-amber-400" />{sendFor.name}
+              </h3>
+              <button onClick={() => setSendFor(null)} className="text-gray-500 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+
+            {/* Email i shkruar nga fillimi */}
+            {sendFor.key === 'custom' && (
+              <>
+                <div>
+                  <label className="block text-[10px] text-gray-500 font-semibold uppercase tracking-wide mb-1">{t('Subjekti')}</label>
+                  <input value={custom.subject} onChange={(e) => setCustom({ ...custom, subject: e.target.value })}
+                    className="w-full bg-black/30 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 font-semibold uppercase tracking-wide mb-1">{t('Teksti')}</label>
+                  <textarea value={custom.body} rows={8} onChange={(e) => setCustom({ ...custom, body: e.target.value })}
+                    placeholder={'Hello {{name}},\n\n...'}
+                    className="w-full bg-black/30 border border-gray-700 rounded-xl px-3 py-2 text-[12px] text-white font-mono leading-relaxed focus:outline-none focus:border-amber-500" />
+                  <p className="text-[10px] text-gray-600 mt-1">
+                    {t('Të njëjtat shenja si te modelet: **i trashë**, [button]…[/button], {{name}}.')}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Lista e përdoruesve — hapet dhe mbyllet, me kërkim. */}
+            <details className="rounded-xl border border-gray-700 bg-black/25" open>
+              <summary className="cursor-pointer select-none list-none p-3 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                <span className="flex items-center gap-2"><Users className="w-4 h-4 text-sky-400" />{t('Përdoruesit')}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">
+                    {recipients().length}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                </span>
+              </summary>
+
+              <div className="px-3 pb-3 space-y-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Kërko me email...')}
+                    className="w-full bg-black/40 border border-gray-700 rounded-lg pl-8 pr-3 py-2 text-[12px] text-white focus:outline-none focus:border-sky-500" />
+                </div>
+
+                <div className="flex gap-1.5">
+                  <button onClick={() => {
+                    const next: Record<string, boolean> = { ...picked };
+                    for (const p of people) if (!q || p.email.toLowerCase().includes(q.toLowerCase())) next[p.email] = true;
+                    setPicked(next);
+                  }} className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white">
+                    {t('Zgjidh të gjithë')}
+                  </button>
+                  <button onClick={() => setPicked({})}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white">
+                    {t('Pastro')}
+                  </button>
+                </div>
+
+                <div className="max-h-52 overflow-y-auto space-y-0.5">
+                  {peopleBusy ? (
+                    <div className="flex justify-center py-5"><Loader2 className="w-5 h-5 animate-spin text-amber-400" /></div>
+                  ) : people.filter((p) => !q || p.email.toLowerCase().includes(q.toLowerCase())).map((p) => (
+                    <label key={p.email} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-white/[0.04] cursor-pointer">
+                      <input type="checkbox" checked={!!picked[p.email]} className="w-3.5 h-3.5 accent-amber-500 flex-shrink-0"
+                        onChange={(e) => setPicked({ ...picked, [p.email]: e.target.checked })} />
+                      <span className="text-[12px] text-gray-300 truncate">{p.email}</span>
+                    </label>
+                  ))}
+                  {!peopleBusy && people.length === 0 && (
+                    <p className="text-[11px] text-gray-500 text-center py-4">{t('Nuk u lexua asnjë përdorues.')}</p>
+                  )}
+                </div>
+              </div>
+            </details>
+
+            <div>
+              <label className="block text-[10px] text-gray-500 font-semibold uppercase tracking-wide mb-1">{t('Ose shkruaj adresa (të ndara me presje)')}</label>
+              <input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="dikush@shembull.com, tjetri@shembull.com"
+                className="w-full bg-black/30 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <span className="text-[11px] text-gray-500">
+                {t('Marrës: {n}', { n: String(recipients().length) })}
+              </span>
+              <button onClick={doSend} disabled={sending || recipients().length === 0}
+                className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 disabled:opacity-50">
+                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}{t('Dërgo tani')}
               </button>
             </div>
           </div>
