@@ -1,0 +1,4 @@
+// GOLDTRADE — aplikacioni Android (mbështjellës i platformës web me bllokim të vërtetë screenshot-esh).
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}
