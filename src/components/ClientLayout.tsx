@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, LayoutDashboard,
   Bell, Settings, LogOut, ChevronLeft, Menu, X, User,
-  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2, CalendarDays, LifeBuoy
+  Zap, Monitor, FileText, Activity, Upload, Sparkles, BookOpen, FlaskConical, Brain, Send, Crown, Loader2, CalendarDays, LifeBuoy, Crosshair
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { verifyVipCode, requestVip, lockVipAccess } from '../services/vipCodes';
@@ -65,7 +65,9 @@ const bottomNavItems: { id: ClientPage; label: string; icon: React.ElementType }
 
 // FAQET E LIRA (regjistrim normal): shfaqen gjithmonë në meny. Të tjerat (përfshirë Panelin/Dashboard)
 // fshihen pas butonit VIP — kërkesa e pronarit (31 korrik 2026): Paneli vetëm për VIP.
-const FREE_PAGES: ClientPage[] = ['market_prices', 'telegram_sin', 'journal', 'manual', 'support', 'settings'];
+// 'gsfx' (konsola GoldSniperFX e operatorit) nuk varet nga VIP — mbrohet nga roli në server
+// dhe nga kodi sekret, prandaj qëndron këtu që rojtari i VIP-it të mos e kthejë mbrapsht.
+const FREE_PAGES: ClientPage[] = ['market_prices', 'telegram_sin', 'journal', 'manual', 'support', 'settings', 'gsfx'];
 // Kodet VIP menaxhohen nga super admini dhe verifikohen NË SERVER (edge function 'vip-verify').
 // Këtu ruhet vetëm gjendja e zhbllokimit lokal pas verifikimit të suksesshëm.
 const VIP_STORAGE_KEY = 'gt_vip_unlocked';
@@ -86,6 +88,7 @@ const pageLabels: Record<ClientPage, string> = {
   settings: 'Cilësimet',
   manual: 'Manuali i përdorimit',
   support: 'Suporti',
+  gsfx: 'GoldSniperFX',
 };
 
 export default function ClientLayout({ currentPage, onNavigate, children }: ClientLayoutProps) {
@@ -269,6 +272,25 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
                     <Send className="w-4 h-4 flex-shrink-0" />
                     {!collapsed && <span className="text-sm font-semibold truncate">{t('Kanali në Telegram')}</span>}
                   </a>
+                </div>
+              )}
+
+              {/* KONSOLA GoldSniperFX — vetëm për operatorin (partneri teknik / bashkëpronari).
+                  Roli vjen nga serveri (profiles.is_gs_operator); faqja vetë kërkon kodin sekret. */}
+              {profile?.is_gs_operator && (
+                <div className="mb-4">
+                  {!collapsed && <div className="px-3 mb-1 text-[10px] text-emerald-600 font-semibold tracking-[0.15em] uppercase">{t('Operatori')}</div>}
+                  <button
+                    onClick={() => { onNavigate('gsfx'); setMobileOpen(false); }}
+                    title={t('Konsola GoldSniperFX — hapet me kod sekret')}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${
+                      currentPage === 'gsfx'
+                        ? 'bg-emerald-500 border-emerald-400 text-gray-950'
+                        : 'bg-gradient-to-r from-emerald-500/15 to-emerald-600/10 border-emerald-500/30 text-emerald-300 hover:from-emerald-500/25'}`}
+                  >
+                    <Crosshair className="w-4 h-4 flex-shrink-0" />
+                    {!collapsed && <span className="text-sm font-semibold truncate">GoldSniperFX</span>}
+                  </button>
                 </div>
               )}
 

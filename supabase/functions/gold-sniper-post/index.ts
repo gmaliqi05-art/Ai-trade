@@ -45,12 +45,12 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "post");
 
-    // Konsola ADMIN "GoldSniperFX": admini poston te kanali i llogarisë PRONARE (jo te i vet).
-    // owner_id pranohet VETËM nëse thirrësi është admin — përndryshe injorohet.
+    // Konsola "GoldSniperFX": stafi poston te kanali i llogarisë PRONARE (jo te i vet).
+    // owner_id pranohet VETËM nga admini ose nga operatori i GoldSniperFX — përndryshe injorohet.
     let ownerId = user.id;
     if (body.owner_id && String(body.owner_id) !== user.id) {
-      const { data: me } = await svc.from("profiles").select("is_admin").eq("id", user.id).maybeSingle();
-      if (!me?.is_admin) return json({ error: "forbidden" }, 403);
+      const { data: me } = await svc.from("profiles").select("is_admin, is_gs_operator").eq("id", user.id).maybeSingle();
+      if (!me?.is_admin && !me?.is_gs_operator) return json({ error: "forbidden" }, 403);
       ownerId = String(body.owner_id);
     }
 

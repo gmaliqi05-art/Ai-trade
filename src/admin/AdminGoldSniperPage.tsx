@@ -164,9 +164,10 @@ export default function AdminGoldSniperPage() {
       const id = data ? String(data) : '';
       if (!id) { setOwnerErr(t('Asnjë llogari nuk e ka të lidhur kanalin GoldSniper|FX ende.')); return; }
       setOwner(id);
-      const { data: p } = await supabase.from('profiles').select('username, full_name').eq('id', id).maybeSingle();
-      const pr = p as { username?: string; full_name?: string } | null;
-      setOwnerName(pr?.full_name || pr?.username || id);
+      // Etiketa lexohet me RPC: RLS-ja e 'profiles' lejon vetëm rreshtin e vet, prandaj
+      // një select i drejtpërdrejtë do të kthente bosh (edhe për adminin).
+      const { data: nm } = await supabase.rpc('goldsniper_owner_name');
+      setOwnerName(typeof nm === 'string' && nm ? nm : id);
     })();
   }, [t]);
 
