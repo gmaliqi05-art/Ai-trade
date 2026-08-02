@@ -897,4 +897,8 @@ export const de: Record<string, string> = {
   "Kanali në Telegram": "Telegram-Kanal",
   "Bashkohu me kanalin tonë të sinjaleve në Telegram": "Tritt unserem Signal-Kanal auf Telegram bei",
   "S'ka mesazhe më të vjetra.": "Keine älteren Nachrichten.",
+  "Screenshot-et janë të ndaluara në këtë platformë.": "Screenshots sind auf dieser Plattform nicht erlaubt.",
+  "Përmbajtja u fsheh për siguri.": "Inhalt aus Sicherheitsgründen ausgeblendet.",
+  "Përmbajtja e platformës është e mbrojtur dhe nuk lejohet të kopjohet apo fotografohet.": "Die Inhalte der Plattform sind geschützt und dürfen nicht kopiert oder fotografiert werden.",
+  "Kthehu në këtë dritare për të vazhduar — përmbajtja mbulohet sa herë që dritarja humb fokusin.": "Kehre zu diesem Fenster zurück, um fortzufahren — der Inhalt wird verdeckt, sobald das Fenster den Fokus verliert.",
 };
