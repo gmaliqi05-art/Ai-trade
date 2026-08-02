@@ -11,7 +11,7 @@ type Section = 'profile' | 'security' | 'notifications' | 'subscription';
 
 // Preferencat e njoftimeve për përdoruesin STANDARD: mesazhet e platformës + kujtesa e abonimit.
 // (Toggles e vjetra — Sinjale AI, Alarme çmimi, Konfirmime, Buletini — u hoqën: s'janë privilegje standarde.)
-interface NotificationPrefs { messages: boolean; subscription: boolean; }
+interface NotificationPrefs { signals: boolean; messages: boolean; subscription: boolean; }
 
 export default function SettingsPage() {
   const { t } = useI18n();
@@ -50,7 +50,7 @@ export default function SettingsPage() {
     setAvatarBusy(false);
   };
   const [pwForm, setPwForm] = useState({ new: '', confirm: '' });
-  const [notifications, setNotifications] = useState<NotificationPrefs>({ messages: true, subscription: true });
+  const [notifications, setNotifications] = useState<NotificationPrefs>({ signals: true, messages: true, subscription: true });
   const [pwMsg, setPwMsg] = useState('');
 
   // FSHIRJA E LLOGARISË — dy hapa: paralajmërim (të dhënat humbin) → fjalëkalim → fshirje e përhershme.
@@ -151,7 +151,7 @@ export default function SettingsPage() {
         birth_date: profile.birth_date || '',
       });
       const raw = (profile as unknown as { notification_preferences?: Record<string, unknown> }).notification_preferences;
-      if (raw) setNotifications({ messages: raw.messages !== false, subscription: raw.subscription !== false });
+      if (raw) setNotifications({ signals: raw.signals !== false, messages: raw.messages !== false, subscription: raw.subscription !== false });
     }
   }, [profile]);
 
@@ -407,6 +407,7 @@ export default function SettingsPage() {
 
               <div className="space-y-3">
                 {[
+                  { key: 'signals' as const, label: t('Sinjalet dhe tregtitë'), desc: t('Push kur vjen një sinjal i ri, kur preket një TP, kur SL kalon në breakeven dhe kur mbyllet tregtia') },
                   { key: 'messages' as const, label: t('Mesazhet e platformës'), desc: t('Push notification kur platforma të dërgon një mesazh ose njoftim të rëndësishëm') },
                   { key: 'subscription' as const, label: t('Kujtesa e abonimit'), desc: t('Push notification 1 javë para se të skadojë abonimi yt') },
                 ].map((item) => (

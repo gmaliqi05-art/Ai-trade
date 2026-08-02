@@ -1124,4 +1124,6 @@ export const de: Record<string, string> = {
   "U dërgua te {n} marrës.": "An {n} Empfänger gesendet.",
   "U dërguan {ok}, dështuan {bad}. {err}": "{ok} gesendet, {bad} fehlgeschlagen. {err}",
   "Të njëjtat shenja si te modelet: **i trashë**, [button]…[/button], {{name}}.": "Dieselben Zeichen wie in den Vorlagen: **fett**, [button]…[/button], {{name}}.",
+  "Sinjalet dhe tregtitë": "Signale und Trades",
+  "Push kur vjen një sinjal i ri, kur preket një TP, kur SL kalon në breakeven dhe kur mbyllet tregtia": "Push bei neuem Signal, erreichtem TP, SL-Verschiebung auf Breakeven und beim Schließen des Trades",
 };
