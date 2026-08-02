@@ -1,18 +1,35 @@
-import { useState } from 'react';
-import { TrendingUp, Loader2, ShieldCheck, LogOut } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { TrendingUp, Loader2, ShieldCheck, LogOut, Mail, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import { verifyAccountCode } from '../services/vipCodes';
+import { sendVerificationEmail } from '../services/email';
 import LanguageSwitcher from '../i18n/LanguageSwitcher';
 
-// Ekrani i VERIFIKIMIT — shfaqet pas regjistrimit derisa përdoruesi të vendosë kodin 6-shifror
-// që ia jep Admini. Pa këtë kod, s'ka qasje në asnjë faqe të platformës.
+// Ekrani i VERIFIKIMIT — shfaqet pas regjistrimit derisa përdoruesi të vendosë kodin 6-shifror.
+// Kodi i shkon me EMAIL automatikisht sapo hapet ky ekran (dhe mund të ridërgohet me buton).
 export default function AccountVerifyGate() {
-  const { profile, refreshProfile, signOut } = useAuth();
+  const { profile, user, refreshProfile, signOut } = useAuth();
   const { t } = useI18n();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
+
+  // DËRGIMI AUTOMATIK — një herë për çdo hapje të ekranit.
+  const [mailState, setMailState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const autoSent = useRef(false);
+  useEffect(() => {
+    if (autoSent.current || !profile || profile.is_verified) return;
+    autoSent.current = true;
+    setMailState('sending');
+    sendVerificationEmail().then((r) => setMailState(r.ok ? 'sent' : 'failed'));
+  }, [profile]);
+
+  const resend = async () => {
+    setMailState('sending');
+    const r = await sendVerificationEmail();
+    setMailState(r.ok ? 'sent' : 'failed');
+  };
 
   const submit = async () => {
     const clean = code.replace(/\s+/g, '');
@@ -52,7 +69,12 @@ export default function AccountVerifyGate() {
         </div>
         <p className="text-center text-gray-400 text-sm mb-6 leading-relaxed">
           {t('Vendos kodin e verifikimit me 6 shifra për të hapur platformën.')}<br />
-          <span className="text-amber-400/90 font-medium">{t('Këtë kod do ta marrësh nga Admini.')}</span>
+          <span className="text-amber-400/90 font-medium inline-flex items-center gap-1.5 mt-1">
+            <Mail className="w-3.5 h-3.5" />
+            {mailState === 'sending' ? t('Po dërgohet kodi...')
+              : mailState === 'failed' ? t('Kodi s\'u dërgua dot — provo "Ridërgo kodin".')
+              : t('E dërguam te {email}', { email: user?.email || '' })}
+          </span>
         </p>
 
         <label className="block text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-1.5">{t('Kodi i verifikimit')}</label>
@@ -66,12 +88,22 @@ export default function AccountVerifyGate() {
           placeholder="______"
           className={`w-full bg-black/30 border rounded-xl px-4 py-3 text-center text-2xl tracking-[0.5em] font-bold text-white focus:outline-none ${err ? 'border-red-500' : 'border-amber-500/40 focus:border-amber-500'}`}
         />
-        {err && <p className="text-[12px] text-red-400 mt-2 text-center">{t('Kod i pasaktë. Kontrollo me Adminin.')}</p>}
+        {err && <p className="text-[12px] text-red-400 mt-2 text-center">{t('Kod i pasaktë. Kontrollo email-in ose ridërgo kodin.')}</p>}
 
         <button onClick={submit} disabled={busy || code.length !== 6}
           className="mt-5 w-full flex items-center justify-center gap-2 text-sm font-bold px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 disabled:opacity-50 transition-colors">
           {busy && <Loader2 className="w-4 h-4 animate-spin" />}{t('Verifiko dhe hyr')}
         </button>
+
+        {/* RIDËRGIMI — nëse email-i vonon ose humbet. */}
+        <button onClick={resend} disabled={mailState === 'sending'}
+          className="mt-3 w-full flex items-center justify-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl bg-gray-800 border border-gray-700 text-gray-300 hover:text-white disabled:opacity-50 transition-colors">
+          {mailState === 'sending' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          {t('Ridërgo kodin')}
+        </button>
+        <p className="text-[10px] text-gray-600 text-center mt-2">
+          {t('Kontrollo edhe dosjen Spam. Nëse prapë nuk vjen, shkruaj te support@goldsniper.vip')}
+        </p>
 
         <div className="mt-6 pt-4 border-t border-gray-800 flex items-center justify-between text-xs">
           <span className="text-gray-500 truncate">{profile?.full_name || t('Trader')}</span>

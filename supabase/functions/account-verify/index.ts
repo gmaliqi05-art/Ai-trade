@@ -35,6 +35,25 @@ Deno.serve(async (req: Request) => {
 
     const { error } = await db.from("profiles").update({ is_verified: true }).eq("id", userId);
     if (error) return json({ valid: false, error: error.message }, 500);
+
+    // EMAIL MIRËSEARDHJEJE — best-effort, kurrë s'e bllokon verifikimin.
+    try {
+      const email = u?.user?.email;
+      if (email) {
+        const { data: pr } = await db.from("profiles").select("first_name, full_name").eq("id", userId).maybeSingle();
+        const p = pr as { first_name?: string; full_name?: string } | null;
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+          body: JSON.stringify({
+            template: "welcome", to: email, user_id: userId,
+            vars: { name: p?.first_name || p?.full_name || "" },
+          }),
+          signal: AbortSignal.timeout(12000),
+        });
+      }
+    } catch { /* */ }
+
     return json({ valid: true });
   } catch (e) {
     return json({ valid: false, error: (e as Error).message }, 500);

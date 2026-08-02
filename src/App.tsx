@@ -26,6 +26,8 @@ import JournalPage from './pages/JournalPage';
 import SupportPage from './pages/SupportPage';
 import LegalPage from './pages/LegalPage';
 import OperatorGoldSniperPage from './pages/OperatorGoldSniperPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import { supabase } from './lib/supabase';
 
 import AdminOverviewPage from './admin/AdminOverviewPage';
 import AdminSettingsPage from './admin/AdminSettingsPage';
@@ -39,6 +41,7 @@ import AdminGoldSniperPage from './admin/AdminGoldSniperPage';
 import AdminSupportPage from './admin/AdminSupportPage';
 import AdminPaymentsPage from './admin/AdminPaymentsPage';
 import AdminPlansPage from './admin/AdminPlansPage';
+import AdminEmailPage from './admin/AdminEmailPage';
 import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
@@ -48,12 +51,12 @@ export type ClientPage =
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_signals'
   | 'admin_trades' | 'admin_ai' | 'admin_cost' | 'admin_broadcast' | 'admin_metatrader'
-  | 'admin_howitworks' | 'admin_protrade_lab' | 'admin_expert_room' | 'admin_vip_codes' | 'admin_goldsniper' | 'admin_support' | 'admin_payments' | 'admin_plans' | 'admin_audit' | 'admin_settings';
+  | 'admin_howitworks' | 'admin_protrade_lab' | 'admin_expert_room' | 'admin_vip_codes' | 'admin_goldsniper' | 'admin_support' | 'admin_payments' | 'admin_plans' | 'admin_email' | 'admin_audit' | 'admin_settings';
 
 export type Page = ClientPage | AdminPage;
 
 const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'demo_trading', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'mmt', 'telegram_sin', 'journal', 'support', 'notifications', 'reports', 'settings', 'manual', 'gsfx'];
-const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_vip_codes', 'admin_goldsniper', 'admin_support', 'admin_payments', 'admin_plans', 'admin_audit', 'admin_settings'];
+const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_vip_codes', 'admin_goldsniper', 'admin_support', 'admin_payments', 'admin_plans', 'admin_email', 'admin_audit', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
 function usePersistedPage<T extends string>(storageKey: string, valid: T[], fallback: T): [T, (p: T) => void] {
@@ -93,6 +96,7 @@ function AdminApp() {
       {currentPage === 'admin_support' && <AdminSupportPage />}
       {currentPage === 'admin_payments' && <AdminPaymentsPage />}
       {currentPage === 'admin_plans' && <AdminPlansPage />}
+      {currentPage === 'admin_email' && <AdminEmailPage />}
       {currentPage === 'admin_settings' && <AdminSettingsPage />}
     </AdminLayout>
   );
@@ -139,6 +143,28 @@ function AppContent() {
     return () => window.removeEventListener('hashchange', f);
   }, []);
   if (showLegal) return <LegalPage />;
+
+  // RIVENDOSJA E FJALËKALIMIT — përdoruesi vjen nga lidhja e email-it. Supabase e njeh vetë
+  // tokenin te adresa dhe lëshon ngjarjen PASSWORD_RECOVERY; kontrollojmë edhe hash-in, sepse
+  // ngjarja mund të ketë kaluar para se ky komponent të montohej.
+  const [recovery, setRecovery] = useState(() => {
+    const h = window.location.hash || '';
+    return h.includes('type=recovery') || h === '#reset';
+  });
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+  if (recovery) {
+    return <ResetPasswordPage onDone={() => {
+      // Pastro adresën dhe dil nga sesioni i rikuperimit → ekrani i hyrjes.
+      try { window.history.replaceState(null, '', window.location.pathname); } catch { /* injoro */ }
+      setRecovery(false);
+      supabase.auth.signOut();
+    }} />;
+  }
 
   if (loading) {
     return (

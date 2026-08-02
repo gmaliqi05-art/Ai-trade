@@ -112,6 +112,39 @@ Deno.serve(async (req: Request) => {
     if (Object.keys(patch).length) {
       try { await db.from("profiles").update(patch).eq("id", userId); } catch { /* */ }
     }
+
+    // EMAIL KONFIRMIMI — vetëm kur abonimi sapo u aktivizua nga një pagesë e suksesshme.
+    if (type === "checkout.session.completed" || type === "invoice.paid") {
+      try {
+        const { data: u } = await db.auth.admin.getUserById(userId);
+        const email = u?.user?.email;
+        if (email) {
+          const { data: prof } = await db.from("profiles")
+            .select("first_name, full_name").eq("id", userId).maybeSingle();
+          const p = prof as { first_name?: string; full_name?: string } | null;
+          const fmt = (iso: unknown) => iso ? new Date(String(iso)).toLocaleDateString("en-GB") : "—";
+          // Shuma vjen nga vetë ngjarja e Stripe (në cent) — pa hamendësime çmimesh.
+          const cents = Number(obj.amount_total ?? obj.amount_paid ?? 0);
+          const cur = String(obj.currency ?? "eur").toUpperCase();
+          await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+            body: JSON.stringify({
+              template: "billing", to: email, user_id: userId,
+              vars: {
+                name: p?.first_name || p?.full_name || "",
+                plan: plan === "yearly" ? "Vjetor" : plan === "monthly" ? "Mujor" : "Abonim",
+                amount: cents > 0 ? `${(cents / 100).toFixed(2)} ${cur}` : "—",
+                start: fmt(patch.subscription_started_at),
+                expires: fmt(patch.subscription_expires_at),
+                invoice: String(obj.id ?? ""),
+              },
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+        }
+      } catch { /* email best-effort — kurrë s'e prish webhook-un */ }
+    }
   }
 
   // Regjistro ngjarjen (audit + idempotencë).

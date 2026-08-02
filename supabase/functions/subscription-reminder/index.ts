@@ -51,6 +51,27 @@ Deno.serve(async (req: Request) => {
         body: `Abonimi yt skadon më ${dateTxt} — rinovoje me kohë.`, is_broadcast: false,
       });
     } catch { /* */ }
+    // KUJTESA ME EMAIL — i njëjti kufizim si push-i (preferenca 'subscription').
+    if (!prefOff) {
+      try {
+        const { data: u } = await db.auth.admin.getUserById(r.id);
+        const email = u?.user?.email;
+        if (email) {
+          const { data: prof } = await db.from("profiles")
+            .select("first_name, full_name").eq("id", r.id).maybeSingle();
+          const p = prof as { first_name?: string; full_name?: string } | null;
+          await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+            body: JSON.stringify({
+              template: "expiry", to: email, user_id: r.id,
+              vars: { name: p?.first_name || p?.full_name || "", expires: dateTxt },
+            }),
+            signal: AbortSignal.timeout(12000),
+          });
+        }
+      } catch { /* email best-effort */ }
+    }
     await db.from("profiles").update({ sub_reminder_sent_at: now.toISOString() }).eq("id", r.id);
     sent++;
   }
