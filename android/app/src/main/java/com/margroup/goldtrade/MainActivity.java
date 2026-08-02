@@ -24,12 +24,13 @@ import android.webkit.WebViewClient;
 public class MainActivity extends Activity {
 
     // ADRESA E PLATFORMËS — e vetmja vlerë për t'u ndryshuar nëse ndërron domeni.
-    private static final String APP_URL = "https://mmti.netlify.app/";
+    private static final String APP_URL = "https://www.goldsniper.vip/";
 
     // Host-et që hapen BRENDA aplikacionit (platforma + pagesat Stripe).
     // Çdo host tjetër (t.me, vantagemarkets, metaapi...) hapet në shfletues/aplikacion të jashtëm.
     private static final String[] INTERNAL_HOSTS = {
-            "mmti.netlify.app",
+            "goldsniper.vip",
+            "www.goldsniper.vip",
             "checkout.stripe.com",
             "billing.stripe.com",
     };

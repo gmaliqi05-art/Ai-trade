@@ -14,7 +14,7 @@ Instalimi në telefon: shkarko `GOLDTRADE.apk` → hape → lejo "Instalimin nga
 
 ## Konfigurimi
 
-- **Adresa e platformës**: konstantja `APP_URL` te `MainActivity.java` (një rresht).
+- **Adresa e platformës**: konstantja `APP_URL` te `MainActivity.java` (një rresht). Aktualisht: https://www.goldsniper.vip/
 - **Llogaria e përjashtuar nga bllokimi**: kontrollohet nga platforma web
   (`src/components/ScreenshotShield.tsx`, lista `ALLOWED_EMAILS`) përmes urës `AndroidShield` —
   s'ka nevojë të ndryshohet asgjë këtu.
