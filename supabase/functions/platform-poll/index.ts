@@ -46,21 +46,23 @@ function stripEmojis(s: string): string {
 // A e përmban teksti ndonjë fjalë kyçe të bllokuar (një për rresht ose ndarë me presje)?
 // KUFIJ FJALE: "eric" NUK duhet të përputhet brenda "America" — prandaj shqyrtohet si fjalë
 // e plotë kur termi është një fjalë e vetme; termat me hapësira kërkohen si frazë.
-function hasBlockedWord(text: string, blocked: string): boolean {
-  const words = blocked.split(/[\n,]/).map((w) => w.trim().toLowerCase()).filter(Boolean);
-  if (words.length === 0) return false;
+function matchedBlockedWord(text: string, blocked: string): string | null {
+  const words = blocked.split(/[\n,]/).map((w) => w.trim()).filter(Boolean);
+  if (words.length === 0) return null;
   const low = text.toLowerCase();
-  return words.some((w) => {
-    if (/\s/.test(w)) return low.includes(w);
-    const esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, "i").test(low);
-  });
+  for (const w of words) {
+    const lw = w.toLowerCase();
+    if (/\s/.test(lw)) { if (low.includes(lw)) return w; continue; }
+    const esc = lw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, "i").test(low)) return w;
+  }
+  return null;
 }
 
 // ---- RREGULLAT E INTEGRUARA TË BLLOKIMIT (kërkesa e pronarit, 2 gusht 2026) ----
 // Kthen arsyen e bllokimit ose null nëse mesazhi lejohet.
 // deno-lint-ignore no-explicit-any
-function blockReason(text: string, m: any, blockedWords: string): string | null {
+function blockReason(text: string, m: any, blockedWords: string): { reason: string; matched: string | null } | null {
   const hasSiren = /🚨/.test(text);
   // Media: varet nga fusha që dërgon feed-i; kontrollohen emrat e mundshëm.
   const hasMedia = !!(m?.photo || m?.image || m?.media || m?.has_photo || m?.file || m?.document || m?.attachment);
@@ -70,19 +72,24 @@ function blockReason(text: string, m: any, blockedWords: string): string | null 
   const robotOrder = isRobotOrder(text);
 
   // 1) Çdo mesazh me përmendje @emri.
-  if (/@[A-Za-z0-9_]{2,}/.test(text)) return "mention";
+  const mention = text.match(/@[A-Za-z0-9_]{2,}/);
+  if (mention) return { reason: "mention", matched: mention[0] };
   // 2) Emrat e bllokuar + lista e Adminit (me kufij fjale).
-  if (hasBlockedWord(text, blockedWords)) return "keyword";
+  const kw = matchedBlockedWord(text, blockedWords);
+  if (kw) return { reason: "keyword", matched: kw };
   // 3) Ftesa për depozitë / përmirësim llogarie.
-  if (/\bdeposits?\b|\bupgrade\s+(your\s+)?account\b/i.test(text)) return "deposit";
+  const dep = text.match(/\bdeposits?\b|\bupgrade\s+(?:your\s+)?account\b/i);
+  if (dep) return { reason: "deposit", matched: dep[0] };
   // 4) Ftesa për video.
-  if (/\bwatch\s+the\s+video\b/i.test(text)) return "video";
+  const vid = text.match(/\bwatch\s+the\s+video\b/i);
+  if (vid) return { reason: "video", matched: vid[0] };
   // 5) "Scalp group" — VETËM kur s'është sinjal apo urdhër roboti.
-  if (/\bscalp\s*group\b/i.test(text) && !signalLike && !robotOrder) return "scalp_group";
+  const sg = text.match(/\bscalp\s*group\b/i);
+  if (sg && !signalLike && !robotOrder) return { reason: "scalp_group", matched: sg[0] };
   // 6) Sirenë 🚨 e shoqëruar me foto/media.
-  if (hasSiren && hasMedia) return "siren_media";
+  if (hasSiren && hasMedia) return { reason: "siren_media", matched: "🚨 + media" };
   // 7) Sirenë 🚨 pa asnjë informacion (pa çmim, pa sinjal, pa urdhër).
-  if (hasSiren && !hasPrice && !signalLike && !robotOrder) return "siren_no_info";
+  if (hasSiren && !hasPrice && !signalLike && !robotOrder) return { reason: "siren_no_info", matched: "🚨" };
   return null;
 }
 
@@ -177,9 +184,22 @@ Deno.serve(async (req: Request) => {
       //    watch the video · "scalp group" jo-sinjal · 🚨 me foto · 🚨 pa asnjë informacion.
       //    Mesazhi i bllokuar NUK kalon askund — as te abonentët, as te kanali.
       const why = blockReason(text, m, String(gs?.msg_blocked_words || ""));
-      if (why) { skipped++; continue; }
+      if (why) {
+        // RAPORTI: ruaj arsyen dhe fjalën e saktë — shfaqet te Admin → GoldSniperFX → Raporti.
+        await db.from("message_block_log").insert({
+          feed_id: mid, reason: why.reason, matched: why.matched,
+          text_excerpt: text.slice(0, 2000), source: m.source ?? "GoldSniperFX",
+        }).then(() => {}, () => {});
+        skipped++; continue;
+      }
       // b) Fshehja e komenteve/bisedave — urdhrat e robotit (SL/TP/breakeven/mbyll) kalojnë gjithmonë.
-      if (gs?.msg_hide_chat && !isRobotOrder(text)) { skipped++; continue; }
+      if (gs?.msg_hide_chat && !isRobotOrder(text)) {
+        await db.from("message_block_log").insert({
+          feed_id: mid, reason: "hide_chat", matched: null,
+          text_excerpt: text.slice(0, 2000), source: m.source ?? "GoldSniperFX",
+        }).then(() => {}, () => {});
+        skipped++; continue;
+      }
       // c) Heqja e emoji-ve/simboleve dekorative nga teksti që shfaqet dhe postohet.
       if (gs?.msg_strip_emojis !== false) { text = stripEmojis(text); if (!text) { skipped++; continue; } }
 

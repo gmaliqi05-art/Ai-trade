@@ -3,6 +3,7 @@ import {
   Crosshair, Send, Power, PowerOff, Loader2, Copy, ExternalLink, ShieldAlert, ChevronDown, Info,
   Filter, Smile, MessageSquareOff, Ban, Save, MessageSquare, Link2, Lock, CheckCircle2,
   AlertTriangle, Sunrise, Moon, CalendarX, Clock, Trophy, Scissors, XCircle,
+  BarChart3, RefreshCw, Bot, ShieldOff,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
@@ -24,7 +25,7 @@ import {
 // E RËNDËSISHME: feed-i i GoldSniperFX i takon llogarisë PRONARE (ajo që ka kanalin te
 // gold_sniper_config), jo llogarisë admin. Prandaj çdo panel punon mbi 'owner' — të njëjtin
 // rresht që lexon edhe funksioni 'platform-poll'. Kështu asnjë lidhje ekzistuese nuk prishet.
-type Tab = 'messages' | 'signals' | 'filters' | 'links';
+type Tab = 'messages' | 'signals' | 'filters' | 'report' | 'links';
 
 // MESAZHET E GATSHME — tekstet shkojnë te kanali publik, prandaj janë në ANGLISHT.
 // {v} zëvendësohet me vlerën e fushës "Çmimi/vlera" (nëse shabllon e kërkon).
@@ -76,6 +77,23 @@ const QUICK_GROUPS: { group: string; items: Quick[] }[] = [
   },
 ];
 
+// Etiketat e lexueshme të arsyeve të bllokimit (raporti).
+const REASON_LABEL: Record<string, string> = {
+  mention: 'Përmendje @',
+  keyword: 'Fjalë e bllokuar',
+  deposit: 'Depozitë / upgrade',
+  video: 'Watch the video',
+  scalp_group: 'Scalp group',
+  siren_media: 'Sirenë me foto',
+  siren_no_info: 'Sirenë pa informacion',
+  hide_chat: 'Bisedë (filtri i komenteve)',
+};
+
+const fmtWhen = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+};
+
 const TONES: Record<string, string> = {
   sky: 'border-sky-500/30 bg-sky-500/[0.06] hover:bg-sky-500/[0.14] text-sky-300',
   emerald: 'border-emerald-500/30 bg-emerald-500/[0.06] hover:bg-emerald-500/[0.14] text-emerald-300',
@@ -112,6 +130,29 @@ export default function AdminGoldSniperPage() {
   // Mesazh PRANË butonit — banneri lart nuk shihet kur faqja është e rrëshqitur poshtë.
   const [fMsg, setFMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // RAPORTI — mesazhet e bllokuara + vendimet e AI-së.
+  interface BlockRow { id: string; reason: string; matched: string | null; text_excerpt: string; source: string | null; created_at: string }
+  interface AiRow { id: string; text_in: string; text_out: string | null; decision: string; reason: string | null; created_at: string }
+  const [blocks, setBlocks] = useState<BlockRow[]>([]);
+  const [aiRows, setAiRows] = useState<AiRow[]>([]);
+  const [stats, setStats] = useState<{ total: number; by_reason: Record<string, number>; ai_total: number; ai_applied: number } | null>(null);
+  const [repFilter, setRepFilter] = useState<string>('all');
+  const [repBusy, setRepBusy] = useState(false);
+
+  const loadReport = useCallback(async () => {
+    setRepBusy(true);
+    const [b, a, st] = await Promise.all([
+      supabase.from('message_block_log').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('signal_ai_log').select('*').order('created_at', { ascending: false }).limit(60),
+      supabase.rpc('admin_block_stats', { days: 7 }),
+    ]);
+    if (b.data) setBlocks(b.data as BlockRow[]);
+    if (a.data) setAiRows(a.data as AiRow[]);
+    if (st.data) setStats(st.data as typeof stats);
+    setRepBusy(false);
+  }, []);
+  useEffect(() => { if (tab === 'report') loadReport(); }, [tab, loadReport]);
 
   const flash = (type: 'success' | 'error', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 3500); };
 
@@ -257,6 +298,7 @@ export default function AdminGoldSniperPage() {
     { id: 'messages', label: t('Mesazhet'), icon: MessageSquare },
     { id: 'signals', label: t('Sinjalet'), icon: Crosshair },
     { id: 'filters', label: t('Bllokimet'), icon: Filter },
+    { id: 'report', label: t('Raporti'), icon: BarChart3 },
     { id: 'links', label: t('Lidhjet'), icon: Link2 },
   ];
 
@@ -452,6 +494,94 @@ export default function AdminGoldSniperPage() {
                 {fMsg.text}
               </span>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ============ RAPORTI — mesazhet e refuzuara + vendimet e AI-së ============ */}
+      {tab === 'report' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-[11px] text-gray-400 max-w-lg">
+              {t('Çdo mesazh që nuk kalon regjistrohet këtu me arsyen dhe fjalën e saktë që e shkaktoi. Statistikat mbulojnë 7 ditët e fundit.')}
+            </p>
+            <button onClick={loadReport} className="p-2.5 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white">
+              {repBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* Përmbledhja */}
+          {stats && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { l: t('Bllokime (7 ditë)'), v: stats.total, c: 'text-red-400' },
+                { l: t('Lloje arsyesh'), v: Object.keys(stats.by_reason || {}).length, c: 'text-amber-400' },
+                { l: t('Lexime me AI'), v: stats.ai_total, c: 'text-sky-400' },
+                { l: t('Urdhra nga AI'), v: stats.ai_applied, c: 'text-emerald-400' },
+              ].map((x) => (
+                <div key={x.l} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+                  <div className={`text-2xl font-bold ${x.c}`}>{x.v}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">{x.l}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Filtri sipas arsyes */}
+          <div className="flex gap-1.5 flex-wrap">
+            {['all', ...Object.keys(stats?.by_reason || {})].map((r) => (
+              <button key={r} onClick={() => setRepFilter(r)}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${repFilter === r
+                  ? 'bg-red-500/15 border-red-500/40 text-red-300'
+                  : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'}`}>
+                {r === 'all' ? t('Të gjitha') : REASON_LABEL[r] ? t(REASON_LABEL[r]) : r}
+                {r !== 'all' && stats?.by_reason?.[r] ? ` · ${stats.by_reason[r]}` : ''}
+              </button>
+            ))}
+          </div>
+
+          {/* Lista e bllokimeve */}
+          <div className="space-y-2">
+            {blocks.filter((b) => repFilter === 'all' || b.reason === repFilter).length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">{t('Asnjë mesazh i bllokuar ende.')}</p>
+            ) : blocks.filter((b) => repFilter === 'all' || b.reason === repFilter).map((b) => (
+              <div key={b.id} className="rounded-xl border border-red-500/20 bg-red-500/[0.04] p-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-300">
+                    <ShieldOff className="w-3 h-3" />{REASON_LABEL[b.reason] ? t(REASON_LABEL[b.reason]) : b.reason}
+                  </span>
+                  {b.matched && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300">
+                      {t('Përputhja')}: {b.matched}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-gray-500 ml-auto">{fmtWhen(b.created_at)}</span>
+                </div>
+                <p className="text-[11px] text-gray-300 whitespace-pre-wrap break-words leading-snug line-clamp-4">{b.text_excerpt}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Vendimet e AI-së */}
+          <div className="rounded-2xl border border-sky-500/25 bg-sky-500/[0.04] p-4 space-y-2">
+            <h3 className="text-white font-bold text-sm flex items-center gap-2">
+              <Bot className="w-4 h-4 text-sky-400" />{t('Leximi i urdhrave me AI — vendimet e fundit')}
+            </h3>
+            {aiRows.length === 0 ? (
+              <p className="text-[11px] text-gray-500">{t('AI-ja ende s\'ka pasur nevojë të ndërhyjë — rregullat po i kuptojnë të gjitha.')}</p>
+            ) : aiRows.map((a) => (
+              <div key={a.id} className="rounded-xl bg-black/25 border border-white/5 p-2.5">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${a.text_out
+                    ? 'bg-emerald-500/15 text-emerald-300' : 'bg-gray-600/30 text-gray-400'}`}>
+                    {a.text_out ? `→ ${a.text_out}` : t('Nuk u zbatua')}
+                  </span>
+                  {a.reason && <span className="text-[10px] text-amber-400/80">{a.reason}</span>}
+                  <span className="text-[10px] text-gray-500 ml-auto">{fmtWhen(a.created_at)}</span>
+                </div>
+                <p className="text-[11px] text-gray-400 whitespace-pre-wrap break-words line-clamp-3">{a.text_in}</p>
+              </div>
+            ))}
           </div>
         </div>
       )}
