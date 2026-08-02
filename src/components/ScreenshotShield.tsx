@@ -14,16 +14,23 @@ import { useI18n } from '../i18n/i18n';
 //  3) Ctrl+P / Ctrl+S bllokohen; printimi nxjerr faqe bosh (CSS @media print).
 //  4) Klikimi i djathtë + selektimi i tekstit çaktivizohen (inputet mbeten normale).
 // Screenshot-i me butona fizikë në telefon s'kapet dot nga asnjë web-teknologji.
-const ALLOWED_EMAILS = ['marbaudoo@gmail.com'];
+//
+// TË PËRJASHTUARIT (kapja e lejuar):
+//  · llogaritë e listuara më poshtë;
+//  · ÇDO ADMIN (profiles.is_admin) — paneli i Admin-it përdoret vetëm nga pronari, i cili
+//    duhet të bëjë screenshot për përmirësime. Lidhja me rolin (jo vetëm me email) do të
+//    thotë se s'ka nevojë të preket kodi kur ndryshon llogaria e adminit.
+const ALLOWED_EMAILS = ['marbaudoo@gmail.com', 'maliqigenton@gmail.com'];
 
 export default function ScreenshotShield() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { t } = useI18n();
   // 'privacy' = fokusi jashtë dritares (mbulesë e përhershme sa zgjat) · 'warn' = tentativë e kapur (3s)
   const [mode, setMode] = useState<'none' | 'privacy' | 'warn'>('none');
   const warnTimer = useRef<number | null>(null);
 
-  const exempt = !user || ALLOWED_EMAILS.includes((user.email || '').toLowerCase());
+  const isAdmin = !!(profile as unknown as { is_admin?: boolean } | null)?.is_admin;
+  const exempt = !user || isAdmin || ALLOWED_EMAILS.includes((user.email || '').toLowerCase());
 
   // URA ME APLIKACIONIN ANDROID: aty bllokimi është i sistemit operativ (FLAG_SECURE) —
   // screenshot-et dalin të zeza realisht. Kapja i lejohet vetëm llogarisë së përjashtuar.
