@@ -41,7 +41,9 @@ function fill(tpl: string, vars: Record<string, string>): string {
 }
 
 /** Përkthen shënjat e thjeshta të modelit në HTML email-i (tabela, jo flexbox). */
-function renderBody(src: string): string {
+/** codeHref: nëse jepet, kutia e kodit bëhet e klikueshme dhe të çon te platforma me
+ *  kodin tashmë të zbatuar — email-i s'mund të kopjojë vetë, por lidhja e kursen hapin. */
+function renderBody(src: string, codeHref = ""): string {
   const out: string[] = [];
 
   // Blloqet me shënja të veçanta nxirren para paragrafëve.
@@ -52,9 +54,11 @@ function renderBody(src: string): string {
 
     const code = part.match(/^\[code\]([\s\S]*?)\[\/code\]$/);
     if (code) {
+      const box =
+        `<span style="display:inline-block;background:${C.bg};border:1px solid ${C.gold};border-radius:14px;padding:16px 28px;color:${C.goldSoft};font-size:31px;font-weight:800;letter-spacing:10px;font-family:'Courier New',monospace;text-decoration:none;">${esc(code[1].trim())}</span>`;
       out.push(
-        `<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:8px 0 18px;">
-<span style="display:inline-block;background:${C.bg};border:1px solid ${C.gold};border-radius:14px;padding:16px 28px;color:${C.goldSoft};font-size:31px;font-weight:800;letter-spacing:10px;font-family:'Courier New',monospace;">${esc(code[1].trim())}</span>
+        `<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:8px 0 6px;">
+${codeHref ? `<a href="${esc(codeHref)}" style="text-decoration:none;">${box}</a>` : box}
 </td></tr></table>`);
       continue;
     }
@@ -211,7 +215,9 @@ Deno.serve(async (req: Request) => {
     const subject = fill(String(tpl.subject || ""), vars).trim() || brand;
     // "Përshëndetje ," kur s'ka emër → pastrohet.
     const filled = fill(String(tpl.body || ""), vars).replace(/([A-Za-zëçÇË])\s+,/g, "$1,");
-    const html = layout(brand, logoUrl, renderBody(filled), legal, footNote);
+    // Te 'verify' lidhja çon te ekrani i kodit me kodin brenda → kutia bëhet e klikueshme.
+    const codeHref = template === "verify" && vars.code ? `${SITE}/#verify=${encodeURIComponent(vars.code)}` : "";
+    const html = layout(brand, logoUrl, renderBody(filled, codeHref), legal, footNote);
 
     if (preview) return json({ ok: true, subject, html });
 
