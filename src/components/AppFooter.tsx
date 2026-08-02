@@ -6,6 +6,8 @@ export default function AppFooter() {
   return (
     <footer className="text-center text-[11px] text-gray-600 py-4 px-4 select-none">
       {t('Krijuar nga')} <span className="text-gray-400 font-semibold">MarGroup</span> 🇩🇪
+      {' · '}
+      <a href="#legal" className="underline decoration-gray-700 hover:text-gray-400">{t('Politikat Ligjore')}</a>
     </footer>
   );
 }

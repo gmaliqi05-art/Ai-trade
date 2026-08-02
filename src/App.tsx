@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ScreenshotShield from './components/ScreenshotShield';
 import { LanguageProvider } from './i18n/i18n';
@@ -23,6 +23,7 @@ import MmtPage from './pages/MmtPage';
 import TelegramSinPage from './pages/TelegramSinPage';
 import JournalPage from './pages/JournalPage';
 import SupportPage from './pages/SupportPage';
+import LegalPage from './pages/LegalPage';
 
 import AdminOverviewPage from './admin/AdminOverviewPage';
 import AdminSettingsPage from './admin/AdminSettingsPage';
@@ -121,6 +122,15 @@ function ClientApp() {
 
 function AppContent() {
   const { user, loading, profile } = useAuth();
+
+  // POLITIKAT LIGJORE — hapen me #legal nga kudo (footer, regjistrimi), edhe pa llogari.
+  const [showLegal, setShowLegal] = useState(() => window.location.hash === '#legal');
+  useEffect(() => {
+    const f = () => setShowLegal(window.location.hash === '#legal');
+    window.addEventListener('hashchange', f);
+    return () => window.removeEventListener('hashchange', f);
+  }, []);
+  if (showLegal) return <LegalPage />;
 
   if (loading) {
     return (
