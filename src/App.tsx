@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import ScreenshotShield from './components/ScreenshotShield';
 import { LanguageProvider } from './i18n/i18n';
 import AuthPage from './pages/AuthPage';
 import AccountVerifyGate from './pages/AccountVerifyGate';
@@ -159,6 +160,8 @@ export default function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
+        {/* Mburoja kundër screenshot-eve — aktive për çdo përdorues të kyçur, përveç të përjashtuarve. */}
+        <ScreenshotShield />
         <AppContent />
       </AuthProvider>
     </LanguageProvider>
