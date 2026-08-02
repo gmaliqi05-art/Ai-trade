@@ -32,6 +32,31 @@ async function fetchList(url: string, key: string): Promise<any[]> {
   } catch { return []; }
 }
 
+// ---- FILTRAT E MESAZHEVE (konfigurohen te Admin → GoldSniperFX) ----
+// Heq emoji-t, simbolet dekorative dhe variacionet e tyre; pastron hapësirat e mbetura.
+function stripEmojis(s: string): string {
+  return s
+    .replace(/[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F3FB}-\u{1F3FF}\u{200D}]/gu, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .split("\n").map((l) => l.trim()).join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// A e përmban teksti ndonjë fjalë kyçe të bllokuar (një për rresht ose ndarë me presje)?
+function hasBlockedWord(text: string, blocked: string): boolean {
+  const words = blocked.split(/[\n,]/).map((w) => w.trim().toLowerCase()).filter(Boolean);
+  if (words.length === 0) return false;
+  const low = text.toLowerCase();
+  return words.some((w) => low.includes(w));
+}
+
+// A duket si URDHËR për robotin (lëviz SL, breakeven, mbyll, TP)? Këta NUK bllokohen nga
+// filtri i komenteve — përndryshe roboti s'do t'i mbronte pozicionet e hapura.
+function isRobotOrder(text: string): boolean {
+  return /\b(sl|stop\s*loss|tp|take\s*profit|break\s*even|breakeven|be)\b|\b(move|close|exit|mbyll|dil)\b/i.test(text);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: cors });
   const SELF = Deno.env.get("SUPABASE_URL")!;
@@ -92,8 +117,16 @@ Deno.serve(async (req: Request) => {
         .select("feed_id");
       if (claimErr || !claimed || claimed.length === 0) continue;
       if (type === "signal") continue; // sinjalet trajtohen nga /signals (trade)
-      const text = String(m.text ?? "").trim();
+      let text = String(m.text ?? "").trim();
       if (!text) continue;
+
+      // ---- FILTRAT (Admin → GoldSniperFX → Filtrat e mesazheve) ----
+      // a) Fjalët kyçe të bllokuara → mesazhi NUK kalon askund (as te abonentët, as te kanali).
+      if (hasBlockedWord(text, String(gs?.msg_blocked_words || ""))) { skipped++; continue; }
+      // b) Fshehja e komenteve/bisedave — urdhrat e robotit (SL/TP/breakeven/mbyll) kalojnë gjithmonë.
+      if (gs?.msg_hide_chat && !isRobotOrder(text)) { skipped++; continue; }
+      // c) Heqja e emoji-ve/simboleve dekorative nga teksti që shfaqet dhe postohet.
+      if (gs?.msg_strip_emojis !== false) { text = stripEmojis(text); if (!text) { skipped++; continue; } }
 
       // 1) ROBOTI: mesazhi shkon te telegram-signals ku parseSignal e klasifikon —
       //    modify (lëviz SL / breakeven / ndrysho TP), exit (dil/mbyll), ose koment → injorohet.

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Crosshair, Send, Power, PowerOff, Loader2, Copy, ExternalLink, ShieldAlert, ChevronDown, Info,
+  Filter, Smile, MessageSquareOff, Ban, Save,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
@@ -34,6 +35,12 @@ export default function AdminGoldSniperPage() {
   const [loaded, setLoaded] = useState(false);
   const [others, setOthers] = useState<OthersState | null>(null);
   const [othersBusy, setOthersBusy] = useState(false);
+
+  // FILTRAT E MESAZHEVE (ruhen te gold_sniper_config i pronarit; lexohen nga 'platform-poll').
+  const [fStrip, setFStrip] = useState(true);
+  const [fHideChat, setFHideChat] = useState(false);
+  const [fWords, setFWords] = useState('');
+  const [fBusy, setFBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const flash = (type: 'success' | 'error', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 3500); };
@@ -55,6 +62,12 @@ export default function AdminGoldSniperPage() {
   const refresh = useCallback(async () => {
     if (!owner) return;
     try { setCfg(await loadTelegramSinConfig(owner)); setLoaded(true); } catch { setLoaded(false); }
+    try {
+      const { data } = await supabase.from('gold_sniper_config')
+        .select('msg_strip_emojis, msg_hide_chat, msg_blocked_words').eq('user_id', owner).maybeSingle();
+      const g = data as { msg_strip_emojis?: boolean; msg_hide_chat?: boolean; msg_blocked_words?: string } | null;
+      if (g) { setFStrip(g.msg_strip_emojis !== false); setFHideChat(!!g.msg_hide_chat); setFWords(g.msg_blocked_words || ''); }
+    } catch { /* */ }
     try { setOthers(await loadOthersStateAdmin(owner)); } catch { /* */ }
   }, [owner]);
   useEffect(() => { refresh(); }, [refresh]);
@@ -106,6 +119,18 @@ export default function AdminGoldSniperPage() {
       flash('success', turnOn ? t('Robotët e tjerë u ndezën.') : t('Robotët e tjerë u ndalën — vetëm Telegram Sin punon.'));
     } catch (e) { flash('error', (e as Error).message); }
     finally { setOthersBusy(false); }
+  };
+
+  const saveFilters = async () => {
+    if (!owner) return;
+    setFBusy(true);
+    const { error } = await supabase.from('gold_sniper_config').update({
+      msg_strip_emojis: fStrip, msg_hide_chat: fHideChat, msg_blocked_words: fWords.trim(),
+      updated_at: new Date().toISOString(),
+    }).eq('user_id', owner);
+    setFBusy(false);
+    if (error) flash('error', error.message);
+    else flash('success', t('Filtrat u ruajtën — zbatohen menjëherë te mesazhet e reja.'));
   };
 
   const copy = (text: string) => { navigator.clipboard?.writeText(text).then(() => flash('success', t('U kopjua.'))).catch(() => {}); };
@@ -238,6 +263,58 @@ export default function AdminGoldSniperPage() {
             </div>
             <p className="text-[11px] text-gray-500">{t('Lot-i, TP-të, SL rezervë, max pozicionet dhe mbrojtja shkallë-shkallë rregullohen nga vetë përdoruesi te karta e kanalit.')}</p>
           </div>
+        </div>
+      </details>
+
+      {/* 3.5) FILTRAT E MESAZHEVE — çfarë lejohet të kalojë nga platforma e jashtme. */}
+      <details className="rounded-xl border border-white/10 bg-white/[0.02]">
+        <summary className="cursor-pointer select-none list-none p-3 sm:p-4 text-sm font-semibold text-white flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><Filter className="w-4 h-4 text-sky-400" />{t('Filtrat e mesazheve')}</span>
+          <ChevronDown className="w-4 h-4 text-gray-500" />
+        </summary>
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-4">
+          <p className="text-[11px] text-gray-400">
+            {t('Kontrollo çfarë kalon nga platforma e jashtme te abonentët dhe te kanali në Telegram. Sinjalet e tregtimit dhe urdhrat e robotit (SL, TP, breakeven, mbyll) kalojnë gjithmonë — filtrat prekin vetëm mesazhet e tjera.')}
+          </p>
+
+          <label className="flex items-start justify-between gap-3 rounded-xl bg-black/20 border border-white/5 p-3 cursor-pointer">
+            <span className="flex gap-2.5">
+              <Smile className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                <span className="block text-sm font-semibold text-white">{t('Hiq emoji-t dhe simbolet')}</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">{t('Mesazhet pastrohen nga emoji-t dhe simbolet dekorative para se të shfaqen ose të postohen.')}</span>
+              </span>
+            </span>
+            <input type="checkbox" checked={fStrip} onChange={(e) => setFStrip(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 accent-emerald-500 shrink-0" />
+          </label>
+
+          <label className="flex items-start justify-between gap-3 rounded-xl bg-black/20 border border-white/5 p-3 cursor-pointer">
+            <span className="flex gap-2.5">
+              <MessageSquareOff className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+              <span>
+                <span className="block text-sm font-semibold text-white">{t('Fshih komentet dhe bisedat')}</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">{t('Kalojnë vetëm sinjalet dhe urdhrat e robotit; çdo mesazh tjetër bisede nuk shfaqet askund.')}</span>
+              </span>
+            </span>
+            <input type="checkbox" checked={fHideChat} onChange={(e) => setFHideChat(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 accent-emerald-500 shrink-0" />
+          </label>
+
+          <label className="block">
+            <span className="text-[11px] text-gray-500 flex items-center gap-1.5 mb-1">
+              <Ban className="w-3.5 h-3.5 text-red-400" />{t('Fjalët kyçe të bllokuara (një për rresht ose ndarë me presje)')}
+            </span>
+            <textarea value={fWords} onChange={(e) => setFWords(e.target.value)} rows={4}
+              placeholder={t('p.sh.\nliquidated\npromo\nreferral')}
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 resize-none" />
+            <span className="block text-[10px] text-gray-600 mt-1">{t('Nëse mesazhi përmban ndonjë nga këto fjalë, nuk kalon as te abonentët, as te kanali.')}</span>
+          </label>
+
+          <button onClick={saveFilters} disabled={fBusy}
+            className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-gray-950 disabled:opacity-50">
+            {fBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{t('Ruaj filtrat')}
+          </button>
         </div>
       </details>
 

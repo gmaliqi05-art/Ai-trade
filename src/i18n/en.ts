@@ -1900,4 +1900,7 @@ export const en: Record<string, string> = {
   "Duhet t'i pranosh Politikat Ligjore për të krijuar llogari.": "You must accept the Legal Policies to create an account.",
   "Paguaj me kriptovalutë": "Pay with cryptocurrency",
   "Dërgo shumën e planit të zgjedhur te njëra nga adresat më poshtë, pastaj dërgo dëshminë e pagesës te support@goldsniper.vip ose te faqja Suporti — abonimi aktivizohet nga Admini pas konfirmimit.": "Send the amount of your chosen plan to one of the addresses below, then send the payment proof to support@goldsniper.vip or via the Support page — your subscription is activated by the Admin after confirmation.",
+  "Filtrat e mesazheve": "Message filters",
+  "Hiq emoji-t dhe simbolet": "Remove emojis and symbols",
+  "Fshih komentet dhe bisedat": "Hide comments and chat",
 };

@@ -922,4 +922,7 @@ export const de: Record<string, string> = {
   "Duhet t'i pranosh Politikat Ligjore për të krijuar llogari.": "Du musst die rechtlichen Richtlinien akzeptieren, um ein Konto zu erstellen.",
   "Paguaj me kriptovalutë": "Mit Kryptowährung bezahlen",
   "Dërgo shumën e planit të zgjedhur te njëra nga adresat më poshtë, pastaj dërgo dëshminë e pagesës te support@goldsniper.vip ose te faqja Suporti — abonimi aktivizohet nga Admini pas konfirmimit.": "Sende den Betrag des gewählten Plans an eine der unten stehenden Adressen und schicke den Zahlungsnachweis an support@goldsniper.vip oder über die Support-Seite — das Abo wird nach Bestätigung vom Admin aktiviert.",
+  "Filtrat e mesazheve": "Nachrichtenfilter",
+  "Hiq emoji-t dhe simbolet": "Emojis und Symbole entfernen",
+  "Fshih komentet dhe bisedat": "Kommentare und Chat ausblenden",
 };
