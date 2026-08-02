@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TrendingUp, Eye, EyeOff, Loader2, BarChart3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
 import LanguageSwitcher from '../i18n/LanguageSwitcher';
 import AppFooter from '../components/AppFooter';
@@ -16,6 +17,8 @@ export default function AuthPage() {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [country, setCountry] = useState('');
+  // PRANIMI I POLITIKAVE LIGJORE — i detyrueshëm te regjistrimi (na mbron para ligjit).
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,11 +43,25 @@ export default function AuthPage() {
       if (!(age >= 18)) { setError(t('Për shkak të sigurisë, hapja e llogarisë nuk lejohet për personat nën 18 vjeç.')); setLoading(false); return; }
       if (!phone.trim()) { setError(t('Numri i telefonit është i detyrueshëm.')); setLoading(false); return; }
       if (!address.trim()) { setError(t('Adresa e banimit është e detyrueshme.')); setLoading(false); return; }
+      if (!acceptTerms) { setError(t('Duhet t\'i pranosh Politikat Ligjore për të krijuar llogari.')); setLoading(false); return; }
       const { error } = await signUp(email, password, {
         firstName: firstName.trim(), lastName: lastName.trim(), birthDate,
         phone: phone.trim(), address: address.trim(), country: country.trim(),
       });
       if (error) setError(/under_18/i.test(error.message) ? t('Për shkak të sigurisë, hapja e llogarisë nuk lejohet për personat nën 18 vjeç.') : error.message);
+      else {
+        // Regjistro KOHËN e pranimit të politikave (dëshmi ligjore). Profili krijohet nga
+        // trigger-i i bazës — riprovohet një herë nëse s'është gati ende.
+        const stamp = async () => {
+          const { data: u } = await supabase.auth.getUser();
+          if (!u?.user) return false;
+          const { data } = await supabase.from('profiles')
+            .update({ accepted_terms_at: new Date().toISOString() })
+            .eq('id', u.user.id).select('id');
+          return !!(data && data.length);
+        };
+        if (!(await stamp())) setTimeout(() => { stamp(); }, 2000);
+      }
     }
     setLoading(false);
   };
@@ -163,8 +180,23 @@ export default function AuthPage() {
                 </button>
               </div>
             </div>
+            {mode === 'register' && (
+              <div className="space-y-1">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-gray-600 bg-gray-800 accent-amber-500" />
+                  <span className="text-[13px] text-gray-300 leading-snug">
+                    {t('I pranoj Politikat Ligjore dhe Kushtet e Përdorimit të platformës, përfshirë paralajmërimin e rrezikut dhe faktin që fitimi nuk garantohet.')}
+                  </span>
+                </label>
+                <a href="#legal" target="_blank" rel="noopener noreferrer"
+                  className="block pl-6 text-[11px] text-amber-400 hover:text-amber-300 underline underline-offset-2">
+                  {t('Lexo Politikat Ligjore →')}
+                </a>
+              </div>
+            )}
             {error && <div className="bg-red-900/30 border border-red-800/50 rounded-xl px-4 py-3 text-red-400 text-sm">{error}</div>}
-            <button type="submit" disabled={loading}
+            <button type="submit" disabled={loading || (mode === 'register' && !acceptTerms)}
               className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed text-gray-950 font-semibold py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 mt-2">
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               {mode === 'login' ? t('Hyr') : t('Krijo llogari')}

@@ -916,4 +916,8 @@ export const de: Record<string, string> = {
   "Mesazhi u dërgua te suporti — do të marrësh përgjigje këtu.": "Deine Nachricht wurde an den Support gesendet — die Antwort bekommst du direkt hier.",
   "Dërgimi dështoi. Provo sërish.": "Senden fehlgeschlagen. Versuch es erneut.",
   "Dërgo": "Senden",
+  "Politikat Ligjore": "Rechtliches",
+  "I pranoj Politikat Ligjore dhe Kushtet e Përdorimit të platformës, përfshirë paralajmërimin e rrezikut dhe faktin që fitimi nuk garantohet.": "Ich akzeptiere die rechtlichen Richtlinien und Nutzungsbedingungen der Plattform, einschließlich des Risikohinweises und der Tatsache, dass kein Gewinn garantiert wird.",
+  "Lexo Politikat Ligjore →": "Rechtliches lesen →",
+  "Duhet t'i pranosh Politikat Ligjore për të krijuar llogari.": "Du musst die rechtlichen Richtlinien akzeptieren, um ein Konto zu erstellen.",
 };

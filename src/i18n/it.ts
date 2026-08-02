@@ -914,4 +914,8 @@ export const it: Record<string, string> = {
   "Mesazhi u dërgua te suporti — do të marrësh përgjigje këtu.": "Il messaggio è stato inviato al supporto — riceverai la risposta qui.",
   "Dërgimi dështoi. Provo sërish.": "Invio non riuscito. Riprova.",
   "Dërgo": "Invia",
+  "Politikat Ligjore": "Note legali",
+  "I pranoj Politikat Ligjore dhe Kushtet e Përdorimit të platformës, përfshirë paralajmërimin e rrezikut dhe faktin që fitimi nuk garantohet.": "Accetto le note legali e i termini d'uso della piattaforma, compresa l'avvertenza sui rischi e il fatto che il profitto non è garantito.",
+  "Lexo Politikat Ligjore →": "Leggi le note legali →",
+  "Duhet t'i pranosh Politikat Ligjore për të krijuar llogari.": "Devi accettare le note legali per creare un account.",
 };
