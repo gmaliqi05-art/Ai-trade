@@ -40,10 +40,13 @@ export default function NotificationsPage() {
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     setRefreshing(true);
+    // BROADCAST-ET vetëm PAS regjistrimit: përndryshe një llogari e sapohapur shihte
+    // njoftime të përgjithshme të dërguara muaj më parë, kur ajo s'ekzistonte fare.
+    const since = user.created_at || '1970-01-01T00:00:00Z';
     const { data } = await supabase
       .from('notifications')
       .select('*')
-      .or(`user_id.eq.${user.id},is_broadcast.eq.true`)
+      .or(`user_id.eq.${user.id},and(is_broadcast.eq.true,created_at.gte.${since})`)
       .order('created_at', { ascending: false })
       .limit(50);
     if (data) {

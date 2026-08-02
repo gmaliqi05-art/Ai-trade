@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo, type ReactNode } fro
 import {
   Activity, RefreshCw, Loader2, Zap,
   AlertCircle, History, ChevronDown, ShieldCheck, Eye, EyeOff,
-  ArrowUp, ArrowDown, Clock, X, Maximize2, Minimize2, TrendingUp, TrendingDown, Ban,
+  ArrowUp, ArrowDown, Clock, X, Maximize2, Minimize2, TrendingUp, TrendingDown, Ban, BookOpen,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -1541,6 +1541,43 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         <OpenPositionsPanel configured={metaConfigured} section="positions" />
       </div>
       </div>
+
+      {/* NISJA (llogari e re): pa lidhje me MetaTrader, të gjitha tabelat më poshtë rrinë bosh.
+          Pa këtë kartë, përdoruesi i ri shihte një faqe të zbrazët pa e ditur pse. E çojmë te
+          MANUALI, sepse aty janë të gjitha hapat: brokeri (Vantage), MetaTrader dhe MetaApi. */}
+      {!metaConfigured && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+              <BookOpen className="w-5 h-5 text-amber-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-white font-bold text-sm">{t('Lidh MetaTrader-in që të nisë gjithçka')}</h3>
+              <p className="text-[12px] text-gray-400 leading-relaxed mt-1">
+                {t('Pozicionet e hapura, sinjalet e GoldSniperFX, raportet dhe mesazhet shfaqen sapo llogaria jote e tregtimit të lidhet. Të duhen tri gjëra me radhë:')}
+              </p>
+              <ol className="text-[12px] text-gray-300 mt-2 space-y-1 list-decimal list-inside">
+                <li>{t('Një llogari te një broker (p.sh. Vantage) — pa broker nuk hapet dot MetaTrader.')}</li>
+                <li>{t('Llogaria MetaTrader (MT4 ose MT5) te ai broker.')}</li>
+                <li>{t('MetaApi, që e lidh MetaTrader-in me platformën (Account ID + Token).')}</li>
+              </ol>
+              <p className="text-[11px] text-gray-500 mt-2">
+                {t('Manuali i përdorimit i ka të gjitha hapat me pamje ekrani, nga hapja e llogarisë deri te lidhja.')}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button onClick={() => onNavigate('manual')}
+                  className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950">
+                  <BookOpen className="w-4 h-4" />{t('Hap Manualin e përdorimit')}
+                </button>
+                <button onClick={() => onNavigate('telegram_sin')}
+                  className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-gray-800 border border-gray-700 text-gray-300 hover:text-white">
+                  {t('Kam gjithçka — lidhe tani')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TELEGRAM SIN — TRI TABELAT (kërkesa e pronarit): LIVE në trade · në pritje · raportet.
           Tabelat e robotëve të tjerë u HOQËN nga Trade Live (i gjen te faqja Raporte). */}

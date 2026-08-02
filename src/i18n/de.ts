@@ -1126,4 +1126,12 @@ export const de: Record<string, string> = {
   "Të njëjtat shenja si te modelet: **i trashë**, [button]…[/button], {{name}}.": "Dieselben Zeichen wie in den Vorlagen: **fett**, [button]…[/button], {{name}}.",
   "Sinjalet dhe tregtitë": "Signale und Trades",
   "Push kur vjen një sinjal i ri, kur preket një TP, kur SL kalon në breakeven dhe kur mbyllet tregtia": "Push bei neuem Signal, erreichtem TP, SL-Verschiebung auf Breakeven und beim Schließen des Trades",
+  "Lidh MetaTrader-in që të nisë gjithçka": "Verbinde MetaTrader, damit alles startet",
+  "Pozicionet e hapura, sinjalet e GoldSniperFX, raportet dhe mesazhet shfaqen sapo llogaria jote e tregtimit të lidhet. Të duhen tri gjëra me radhë:": "Offene Positionen, GoldSniperFX-Signale, Berichte und Nachrichten erscheinen, sobald dein Handelskonto verbunden ist. Du brauchst drei Dinge der Reihe nach:",
+  "Një llogari te një broker (p.sh. Vantage) — pa broker nuk hapet dot MetaTrader.": "Ein Konto bei einem Broker (z. B. Vantage) — ohne Broker lässt sich MetaTrader nicht eröffnen.",
+  "Llogaria MetaTrader (MT4 ose MT5) te ai broker.": "Ein MetaTrader-Konto (MT4 oder MT5) bei diesem Broker.",
+  "MetaApi, që e lidh MetaTrader-in me platformën (Account ID + Token).": "MetaApi, das MetaTrader mit der Plattform verbindet (Account ID + Token).",
+  "Manuali i përdorimit i ka të gjitha hapat me pamje ekrani, nga hapja e llogarisë deri te lidhja.": "Das Benutzerhandbuch enthält jeden Schritt mit Screenshots — von der Kontoeröffnung bis zur Verbindung.",
+  "Hap Manualin e përdorimit": "Benutzerhandbuch öffnen",
+  "Kam gjithçka — lidhe tani": "Ich habe alles — jetzt verbinden",
 };
