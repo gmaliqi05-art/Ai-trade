@@ -113,30 +113,45 @@ Deno.serve(async (req: Request) => {
       try { await db.from("profiles").update(patch).eq("id", userId); } catch { /* */ }
     }
 
-    // EMAIL KONFIRMIMI — vetëm kur abonimi sapo u aktivizua nga një pagesë e suksesshme.
-    if (type === "checkout.session.completed" || type === "invoice.paid") {
+    // ---------- EMAIL-ET E ABONIMIT ----------
+    // Cili model i takon kësaj ngjarjeje. KUJDES me dublimin: te blerja e parë Stripe lëshon
+    // EDHE 'checkout.session.completed' EDHE 'invoice.paid'. Prandaj fatura e parë
+    // (billing_reason = 'subscription_create') nuk dërgon asgjë — konfirmimin e dërgon checkout-i.
+    const reason = String(obj.billing_reason ?? "");
+    let mail: string | null = null;
+    if (type === "checkout.session.completed") mail = "billing";
+    else if (type === "invoice.paid") mail = reason === "subscription_create" ? null : "renewed";
+    else if (type === "invoice.payment_failed") mail = "payment_failed";
+    else if (type === "customer.subscription.deleted") mail = "canceled";
+
+    if (mail) {
       try {
         const { data: u } = await db.auth.admin.getUserById(userId);
         const email = u?.user?.email;
         if (email) {
           const { data: prof } = await db.from("profiles")
-            .select("first_name, full_name").eq("id", userId).maybeSingle();
-          const p = prof as { first_name?: string; full_name?: string } | null;
+            .select("first_name, full_name, subscription_tier, subscription_expires_at")
+            .eq("id", userId).maybeSingle();
+          const p = prof as {
+            first_name?: string; full_name?: string;
+            subscription_tier?: string; subscription_expires_at?: string;
+          } | null;
           const fmt = (iso: unknown) => iso ? new Date(String(iso)).toLocaleDateString("en-GB") : "—";
           // Shuma vjen nga vetë ngjarja e Stripe (në cent) — pa hamendësime çmimesh.
           const cents = Number(obj.amount_total ?? obj.amount_paid ?? 0);
           const cur = String(obj.currency ?? "eur").toUpperCase();
+          const tier = plan ?? p?.subscription_tier ?? "";
           await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
             body: JSON.stringify({
-              template: "billing", to: email, user_id: userId,
+              template: mail, to: email, user_id: userId,
               vars: {
                 name: p?.first_name || p?.full_name || "",
-                plan: plan === "yearly" ? "Vjetor" : plan === "monthly" ? "Mujor" : "Abonim",
-                amount: cents > 0 ? `${(cents / 100).toFixed(2)} ${cur}` : "—",
+                plan: tier === "yearly" ? "Vjetor" : tier === "monthly" ? "Mujor" : "Abonim",
+                amount: cents > 0 ? `${(cents / 100).toFixed(2)} ${cur}` : "",
                 start: fmt(patch.subscription_started_at),
-                expires: fmt(patch.subscription_expires_at),
+                expires: fmt(patch.subscription_expires_at ?? p?.subscription_expires_at),
                 invoice: String(obj.id ?? ""),
               },
             }),

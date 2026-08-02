@@ -11,11 +11,21 @@ export interface EmailConfig {
   from_name: string;
   from_email: string;
   reply_to: string;
-  send_verify: boolean;
-  send_reset: boolean;
-  send_welcome: boolean;
-  send_billing: boolean;
-  send_expiry: boolean;
+  brand_name: string;
+  logo_url: string;
+  legal_note: string;
+  footer_note: string;
+}
+
+export interface EmailTemplate {
+  id: string;
+  key: string;
+  name: string;
+  subject: string;
+  body: string;
+  enabled: boolean;
+  is_system: boolean;
+  sort_order: number;
 }
 
 export interface EmailStatus {
@@ -36,17 +46,88 @@ export interface EmailLogRow {
 }
 
 export const DEFAULT_EMAIL_CONFIG: EmailConfig = {
-  from_name: 'GoldSniper',
+  from_name: 'GoldSniperFX',
   from_email: 'no-reply@goldsniper.vip',
   reply_to: 'support@goldsniper.vip',
-  send_verify: true, send_reset: true, send_welcome: true, send_billing: true, send_expiry: true,
+  brand_name: 'GoldSniperFX',
+  logo_url: '',
+  legal_note: '',
+  footer_note: 'Krijuar nga MarGroup DE',
 };
 
 /* ---------------- ADMIN ---------------- */
 
 export async function loadEmailConfig(): Promise<EmailConfig> {
-  const { data } = await supabase.from('email_config').select('*').eq('id', 1).maybeSingle();
+  const { data } = await supabase.from('email_config')
+    .select('from_name, from_email, reply_to, brand_name, logo_url, legal_note, footer_note')
+    .eq('id', 1).maybeSingle();
   return { ...DEFAULT_EMAIL_CONFIG, ...((data ?? {}) as Partial<EmailConfig>) };
+}
+
+/* ---------------- MODELET ---------------- */
+
+export async function loadTemplates(): Promise<EmailTemplate[]> {
+  const { data } = await supabase.from('email_templates')
+    .select('id, key, name, subject, body, enabled, is_system, sort_order')
+    .order('sort_order');
+  return (data ?? []) as EmailTemplate[];
+}
+
+export async function saveTemplate(id: string, patch: Partial<EmailTemplate>): Promise<void> {
+  const { data, error } = await supabase.from('email_templates')
+    .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select('id');
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error('Ruajtja nuk u konfirmua nga serveri.');
+}
+
+export async function createTemplate(t: Pick<EmailTemplate, 'key' | 'name' | 'subject' | 'body'>): Promise<void> {
+  const { error } = await supabase.from('email_templates')
+    .insert({ ...t, enabled: true, is_system: false, sort_order: 500 });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('email_templates').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** Ndërton HTML-në e email-it pa e dërguar — për parapamje në panel. */
+export async function previewTemplate(key: string): Promise<{ ok: boolean; html?: string; subject?: string; error?: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  try {
+    const r = await fetch(FN('send-email'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({
+        template: key, preview: true,
+        // Vlera shembull, që parapamja të duket si email i vërtetë.
+        vars: {
+          name: 'Arben', code: '482913', link: 'https://www.goldsniper.vip',
+          plan: 'Vjetor', amount: '699.00 EUR', start: '02/08/2026',
+          expires: '02/08/2027', invoice: 'in_1QxWvT2eZvKY',
+        },
+      }),
+    });
+    const j = await r.json().catch(() => ({ ok: false }));
+    return j as { ok: boolean; html?: string; subject?: string; error?: string };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Ngarkon logon te depoja publike 'brand' dhe kthen adresën e saj. */
+export async function uploadLogo(file: File): Promise<string> {
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+  const path = `logo-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from('brand').upload(path, file, {
+    cacheControl: '31536000', upsert: true, contentType: file.type || undefined,
+  });
+  if (error) throw new Error(error.message);
+  const { data } = supabase.storage.from('brand').getPublicUrl(path);
+  return data.publicUrl;
 }
 
 export async function saveEmailConfig(patch: Partial<EmailConfig>): Promise<void> {
