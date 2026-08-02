@@ -44,11 +44,63 @@ function stripEmojis(s: string): string {
 }
 
 // A e përmban teksti ndonjë fjalë kyçe të bllokuar (një për rresht ose ndarë me presje)?
+// KUFIJ FJALE: "eric" NUK duhet të përputhet brenda "America" — prandaj shqyrtohet si fjalë
+// e plotë kur termi është një fjalë e vetme; termat me hapësira kërkohen si frazë.
 function hasBlockedWord(text: string, blocked: string): boolean {
   const words = blocked.split(/[\n,]/).map((w) => w.trim().toLowerCase()).filter(Boolean);
   if (words.length === 0) return false;
   const low = text.toLowerCase();
-  return words.some((w) => low.includes(w));
+  return words.some((w) => {
+    if (/\s/.test(w)) return low.includes(w);
+    const esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, "i").test(low);
+  });
+}
+
+// ---- RREGULLAT E INTEGRUARA TË BLLOKIMIT (kërkesa e pronarit, 2 gusht 2026) ----
+// Kthen arsyen e bllokimit ose null nëse mesazhi lejohet.
+// deno-lint-ignore no-explicit-any
+function blockReason(text: string, m: any, blockedWords: string): string | null {
+  const hasSiren = /🚨/.test(text);
+  // Media: varet nga fusha që dërgon feed-i; kontrollohen emrat e mundshëm.
+  const hasMedia = !!(m?.photo || m?.image || m?.media || m?.has_photo || m?.file || m?.document || m?.attachment);
+  // "Informacion i vlefshëm" = ka çmim (3+ shifra) ose është sinjal/urdhër roboti.
+  const hasPrice = /\d{3,}/.test(text);
+  const signalLike = isSignalLike(text);
+  const robotOrder = isRobotOrder(text);
+
+  // 1) Çdo mesazh me përmendje @emri.
+  if (/@[A-Za-z0-9_]{2,}/.test(text)) return "mention";
+  // 2) Emrat e bllokuar + lista e Adminit (me kufij fjale).
+  if (hasBlockedWord(text, blockedWords)) return "keyword";
+  // 3) Ftesa për depozitë / përmirësim llogarie.
+  if (/\bdeposits?\b|\bupgrade\s+(your\s+)?account\b/i.test(text)) return "deposit";
+  // 4) Ftesa për video.
+  if (/\bwatch\s+the\s+video\b/i.test(text)) return "video";
+  // 5) "Scalp group" — VETËM kur s'është sinjal apo urdhër roboti.
+  if (/\bscalp\s*group\b/i.test(text) && !signalLike && !robotOrder) return "scalp_group";
+  // 6) Sirenë 🚨 e shoqëruar me foto/media.
+  if (hasSiren && hasMedia) return "siren_media";
+  // 7) Sirenë 🚨 pa asnjë informacion (pa çmim, pa sinjal, pa urdhër).
+  if (hasSiren && !hasPrice && !signalLike && !robotOrder) return "siren_no_info";
+  return null;
+}
+
+// A duket si SINJAL i plotë (drejtim + hyrje/SL/TP)?
+function isSignalLike(text: string): boolean {
+  return /\b(buy|sell)\b/i.test(text) && /\bentry\b|\bsl\b|\btp\s*\d?\b/i.test(text);
+}
+
+// R10: nga një mesazh që përmban sinjal, mban VETËM rreshtat e sinjalit —
+// tekstet përshkruese sipër/poshtë hiqen.
+function extractSignal(text: string): string | null {
+  const keep = text.split("\n").map((l) => l.trim()).filter((l) =>
+    /^[^A-Za-z0-9]*\b(buy|sell)\b/i.test(l) ||
+    /^[^A-Za-z0-9]*\b(entry|enter)\b/i.test(l) ||
+    /^[^A-Za-z0-9]*\b(sl|stop\s*loss)\b/i.test(l) ||
+    /^[^A-Za-z0-9]*\b(tp\s*\d?|take\s*profit\s*\d?)\b/i.test(l)
+  );
+  return keep.length >= 2 ? keep.join("\n") : null;
 }
 
 // A duket si URDHËR për robotin (lëviz SL, breakeven, mbyll, TP)? Këta NUK bllokohen nga
@@ -120,13 +172,25 @@ Deno.serve(async (req: Request) => {
       let text = String(m.text ?? "").trim();
       if (!text) continue;
 
-      // ---- FILTRAT (Admin → GoldSniperFX → Filtrat e mesazheve) ----
-      // a) Fjalët kyçe të bllokuara → mesazhi NUK kalon askund (as te abonentët, as te kanali).
-      if (hasBlockedWord(text, String(gs?.msg_blocked_words || ""))) { skipped++; continue; }
+      // ---- FILTRAT (Admin → GoldSniperFX → Bllokimet) ----
+      // a) RREGULLAT E BLLOKIMIT: @përmendje · emrat/fjalët e Adminit · deposit/upgrade account ·
+      //    watch the video · "scalp group" jo-sinjal · 🚨 me foto · 🚨 pa asnjë informacion.
+      //    Mesazhi i bllokuar NUK kalon askund — as te abonentët, as te kanali.
+      const why = blockReason(text, m, String(gs?.msg_blocked_words || ""));
+      if (why) { skipped++; continue; }
       // b) Fshehja e komenteve/bisedave — urdhrat e robotit (SL/TP/breakeven/mbyll) kalojnë gjithmonë.
       if (gs?.msg_hide_chat && !isRobotOrder(text)) { skipped++; continue; }
       // c) Heqja e emoji-ve/simboleve dekorative nga teksti që shfaqet dhe postohet.
       if (gs?.msg_strip_emojis !== false) { text = stripEmojis(text); if (!text) { skipped++; continue; } }
+
+      // d) MESAZH QË PËRSHKRUAN NJË SINJAL (p.sh. i njëjti hyrje i rikthyer me 🚨):
+      //    · R10 — mbahen VETËM rreshtat e sinjalit (tekstet sipër/poshtë hiqen);
+      //    · R8  — dërgohet me history:true → REGJISTROHET dhe SHFAQET, por NUK hap trade
+      //            (sinjali i vërtetë ka ardhur tashmë nga feed-i /signals);
+      //    · nuk ripostohet te kanali, sepse sinjali është postuar një herë nga seksioni A.
+      const extracted = extractSignal(text);
+      const infoOnly = !!extracted;
+      if (extracted) text = extracted;
 
       // 1) ROBOTI: mesazhi shkon te telegram-signals ku parseSignal e klasifikon —
       //    modify (lëviz SL / breakeven / ndrysho TP), exit (dil/mbyll), ose koment → injorohet.
@@ -136,13 +200,17 @@ Deno.serve(async (req: Request) => {
         try {
           await fetch(`${SELF}/functions/v1/telegram-signals?key=${encodeURIComponent(secret)}`, {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ signal: { action: "message", message: clean, symbol: "XAUUSD", id: uuidToNum(mid), source: m.source ?? "GoldSniperFX" } }),
+            body: JSON.stringify({
+              signal: { action: "message", message: clean, symbol: "XAUUSD", id: uuidToNum(mid), source: m.source ?? "GoldSniperFX" },
+              ...(infoOnly ? { history: true } : {}),
+            }),
           });
         } catch { /* mos e ndal poller-in */ }
       }
 
-      // 2) KANALI: posto tekstin origjinal te kanali (nëse auto_send + bot + kanal).
-      if (gs?.auto_send && gs?.bot_token && gs?.channel_id) {
+      // 2) KANALI: posto tekstin te kanali (nëse auto_send + bot + kanal).
+      //    Përshkrimet e sinjaleve (infoOnly) NUK ripostohen — sinjali u postua nga seksioni A.
+      if (!infoOnly && gs?.auto_send && gs?.bot_token && gs?.channel_id) {
         const resp = await fetch(`https://api.telegram.org/bot${gs.bot_token}/sendMessage`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chat_id: gs.channel_id, text, disable_web_page_preview: true }),
