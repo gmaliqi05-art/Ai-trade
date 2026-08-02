@@ -918,4 +918,6 @@ export const it: Record<string, string> = {
   "I pranoj Politikat Ligjore dhe Kushtet e Përdorimit të platformës, përfshirë paralajmërimin e rrezikut dhe faktin që fitimi nuk garantohet.": "Accetto le note legali e i termini d'uso della piattaforma, compresa l'avvertenza sui rischi e il fatto che il profitto non è garantito.",
   "Lexo Politikat Ligjore →": "Leggi le note legali →",
   "Duhet t'i pranosh Politikat Ligjore për të krijuar llogari.": "Devi accettare le note legali per creare un account.",
+  "Paguaj me kriptovalutë": "Paga con criptovaluta",
+  "Dërgo shumën e planit të zgjedhur te njëra nga adresat më poshtë, pastaj dërgo dëshminë e pagesës te support@goldsniper.vip ose te faqja Suporti — abonimi aktivizohet nga Admini pas konfirmimit.": "Invia l'importo del piano scelto a uno degli indirizzi qui sotto, poi invia la prova di pagamento a support@goldsniper.vip o tramite la pagina Supporto — l'abbonamento viene attivato dall'Admin dopo la conferma.",
 };

@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { Check, Loader2, Crown, Zap, Gift, CreditCard } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Check, Loader2, Crown, Zap, Gift, CreditCard, Bitcoin, Copy, ChevronDown } from 'lucide-react';
 import { useI18n } from '../i18n/i18n';
 import {
-  choosePlan, TRIAL_DAYS, PRICE_MONTHLY, PRICE_YEARLY, PRICE_YEARLY_FULL, YEARLY_SAVING,
+  choosePlan, loadBillingConfig, DEFAULT_BILLING, type BillingConfig,
   type PlanId, type SubState, daysLeft,
 } from '../services/subscription';
 
@@ -16,6 +16,11 @@ export default function SubscriptionPlans({ sub, onDone, compact = false }: {
   const { t } = useI18n();
   const [busy, setBusy] = useState<PlanId | null>(null);
   const [msg, setMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  // ÇMIMET DINAMIKE — nga billing_config (Admin → Planet e Abonimit). Rezerva derisa të vijë.
+  const [bc, setBc] = useState<BillingConfig>(DEFAULT_BILLING);
+  const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => { loadBillingConfig().then(setBc).catch(() => {}); }, []);
+  const saving = Math.max(0, bc.yearlyFull - bc.yearly);
 
   const trialUsed = !!sub?.trialEndsAt;
   const activeTier = sub && ['trialing', 'active'].includes(sub.status) ? sub.tier : null;
@@ -88,8 +93,8 @@ export default function SubscriptionPlans({ sub, onDone, compact = false }: {
           id="trial"
           title={t('Provë falas')}
           icon={<Gift className="w-5 h-5 text-emerald-400" />}
-          price={<div className="flex items-baseline gap-1"><span className="text-3xl font-bold text-white">0€</span><span className="text-gray-400 text-sm">/ {TRIAL_DAYS} {t('ditë')}</span></div>}
-          sub={t('Pa kartë krediti — akses i plotë për {d} ditë.', { d: TRIAL_DAYS })}
+          price={<div className="flex items-baseline gap-1"><span className="text-3xl font-bold text-white">0€</span><span className="text-gray-400 text-sm">/ {bc.trialDays} {t('ditë')}</span></div>}
+          sub={t('Pa kartë krediti — akses i plotë për {d} ditë.', { d: bc.trialDays })}
           cta={t('Nis provën falas')}
         />
 
@@ -98,7 +103,7 @@ export default function SubscriptionPlans({ sub, onDone, compact = false }: {
           id="monthly"
           title={t('Mujor')}
           icon={<Zap className="w-5 h-5 text-amber-400" />}
-          price={<div className="flex items-baseline gap-1"><span className="text-3xl font-bold text-white">{PRICE_MONTHLY}€</span><span className="text-gray-400 text-sm">/ {t('muaj')}</span></div>}
+          price={<div className="flex items-baseline gap-1"><span className="text-3xl font-bold text-white">{bc.monthly}€</span><span className="text-gray-400 text-sm">/ {t('muaj')}</span></div>}
           sub={t('Pagesë automatike me kartë Debit/Kredit — rinovohet çdo muaj. Anulon kur të duash.')}
           cta={t('Abonohu me kartë')}
         />
@@ -109,15 +114,15 @@ export default function SubscriptionPlans({ sub, onDone, compact = false }: {
           title={t('Vjetor')}
           icon={<Crown className="w-5 h-5 text-amber-400" />}
           highlight
-          badge={t('Kurse {s}€', { s: YEARLY_SAVING })}
+          badge={saving > 0 ? t('Kurse {s}€', { s: saving }) : undefined}
           price={
             <div className="flex items-baseline gap-2 flex-wrap">
-              <span className="text-3xl font-bold text-white">{PRICE_YEARLY}€</span>
-              <span className="text-gray-500 text-sm line-through">{PRICE_YEARLY_FULL}€</span>
+              <span className="text-3xl font-bold text-white">{bc.yearly}€</span>
+              {bc.yearlyFull > bc.yearly && <span className="text-gray-500 text-sm line-through">{bc.yearlyFull}€</span>}
               <span className="text-gray-400 text-sm">/ {t('vit')}</span>
             </div>
           }
-          sub={t('Në vend të {full}€ (12 × {m}€) — kursen {s}€. Pagesë me kartë Debit/Kredit, rinovim automatik çdo vit.', { full: PRICE_YEARLY_FULL, m: PRICE_MONTHLY, s: YEARLY_SAVING })}
+          sub={t('Në vend të {full}€ (12 × {m}€) — kursen {s}€. Pagesë me kartë Debit/Kredit, rinovim automatik çdo vit.', { full: bc.yearlyFull, m: bc.monthly, s: saving })}
           cta={t('Abonohu me kartë')}
         />
       </div>
@@ -126,6 +131,34 @@ export default function SubscriptionPlans({ sub, onDone, compact = false }: {
         <CreditCard className="w-3.5 h-3.5" />
         {t('Pagesa me kartë Debit/Kredit përmes Stripe — e sigurt dhe automatike: abonimi rinovohet vetvetiu në fund të periudhës dhe anulohet në çdo kohë nga "Menaxho abonimin".')}
       </p>
+
+      {/* KRIPTO-PAGESAT — vetëm kur Admini i ka aktivizuar te faqja Pagesat. */}
+      {bc.cryptoEnabled && bc.wallets.length > 0 && (
+        <details className="rounded-2xl border border-orange-500/25 bg-orange-500/[0.04]">
+          <summary className="cursor-pointer select-none list-none p-4 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Bitcoin className="w-4 h-4 text-orange-400" />{t('Paguaj me kriptovalutë')}
+            </span>
+            <ChevronDown className="w-4 h-4 text-gray-500" />
+          </summary>
+          <div className="px-4 pb-4 space-y-3">
+            <p className="text-[12px] text-gray-400">{t('Dërgo shumën e planit të zgjedhur te njëra nga adresat më poshtë, pastaj dërgo dëshminë e pagesës te support@goldsniper.vip ose te faqja Suporti — abonimi aktivizohet nga Admini pas konfirmimit.')}</p>
+            {bc.wallets.map((w, i) => (
+              <div key={i} className="rounded-xl bg-gray-950 border border-gray-800 p-3">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-xs font-bold text-orange-300">{w.coin}{w.network ? ` · ${w.network}` : ''}</span>
+                  <button onClick={() => { navigator.clipboard?.writeText(w.address); setCopied(w.address); setTimeout(() => setCopied(null), 2000); }}
+                    className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:text-white">
+                    <Copy className="w-3 h-3" />{copied === w.address ? t('U kopjua.') : t('Kopjo')}
+                  </button>
+                </div>
+                <code className="text-[11px] text-gray-300 break-all">{w.address}</code>
+              </div>
+            ))}
+            {bc.cryptoNote && <p className="text-[11px] text-gray-500 whitespace-pre-wrap">{bc.cryptoNote}</p>}
+          </div>
+        </details>
+      )}
 
       {/* Gjendja aktuale — ditët e mbetura */}
       {sub && ['trialing', 'active'].includes(sub.status) && (sub.expiresAt || sub.trialEndsAt) && (

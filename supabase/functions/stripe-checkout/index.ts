@@ -12,12 +12,20 @@ const cors = {
 };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
-// PLANET (një burim i vetëm i së vërtetës për çmimet — përdoret edhe te UI).
-const PLANS = {
-  monthly: { amount: 6900, interval: "month", label: "Sinjale Telegram + Robot auto-trade — mujor" },
-  yearly: { amount: 69900, interval: "year", label: "Sinjale Telegram + Robot auto-trade — vjetor" },
-} as const;
-const TRIAL_DAYS = 15;
+// ÇMIMET & PROVA lexohen nga billing_config (tabela që menaxhon Admini te "Planet e
+// Abonimit") → regjistrimi, cilësimet dhe checkout-i janë GJITHMONË të sinkronizuar.
+// Vlerat më poshtë janë vetëm rezervë nëse rreshti mungon.
+const FALLBACK = { trial_days: 15, monthly_eur: 69, yearly_eur: 699 };
+
+// Çelësi i Stripe: sekreti i env-it ka përparësi; ndryshe lexohet nga billing_secrets
+// (tabela pa RLS-politika → e lexon vetëm service-role; Admini e vendos nga faqja Pagesat).
+// deno-lint-ignore no-explicit-any
+async function stripeSecretKey(db: any): Promise<string> {
+  const env = Deno.env.get("STRIPE_SECRET_KEY");
+  if (env) return env;
+  const { data } = await db.from("billing_secrets").select("stripe_secret_key").eq("id", 1).maybeSingle();
+  return String(data?.stripe_secret_key || "");
+}
 
 // Thirrje te Stripe REST (form-encoded) — pa SDK, i lehtë për Deno.
 async function stripe(path: string, key: string, form?: Record<string, string>): Promise<Record<string, unknown>> {
@@ -52,10 +60,18 @@ Deno.serve(async (req: Request) => {
       .select("stripe_customer_id, subscription_status, trial_ends_at, first_name, last_name").eq("id", userId).maybeSingle();
     const p = prof as { stripe_customer_id?: string | null; subscription_status?: string; trial_ends_at?: string | null; first_name?: string; last_name?: string } | null;
 
-    // ---- PROVA FALAS 15 DITORE (pa Stripe) ----
+    // Konfigurimi aktual i çmimeve (i menaxhuar nga Admini).
+    const { data: bcRow } = await db.from("billing_config").select("*").eq("id", 1).maybeSingle();
+    const bc = {
+      trial_days: Number(bcRow?.trial_days ?? FALLBACK.trial_days),
+      monthly_eur: Number(bcRow?.monthly_eur ?? FALLBACK.monthly_eur),
+      yearly_eur: Number(bcRow?.yearly_eur ?? FALLBACK.yearly_eur),
+    };
+
+    // ---- PROVA FALAS (ditët nga billing_config, pa Stripe) ----
     if (plan === "trial") {
       if (p?.trial_ends_at) return json({ error: "trial_used" }, 400); // një provë për llogari
-      const ends = new Date(Date.now() + TRIAL_DAYS * 24 * 3600 * 1000).toISOString();
+      const ends = new Date(Date.now() + bc.trial_days * 24 * 3600 * 1000).toISOString();
       const { error } = await db.from("profiles").update({
         subscription_tier: "trial", subscription_status: "trialing",
         trial_ends_at: ends, subscription_expires_at: ends,
@@ -67,7 +83,7 @@ Deno.serve(async (req: Request) => {
 
     // ---- PORTALI I FATURIMIT: menaxho kartën / anulo abonimin (Stripe Customer Portal) ----
     if (plan === "portal") {
-      const key0 = Deno.env.get("STRIPE_SECRET_KEY");
+      const key0 = await stripeSecretKey(db);
       if (!key0) return json({ error: "stripe_not_configured" }, 503);
       if (!p?.stripe_customer_id) return json({ error: "no_customer" }, 400);
       const origin0 = String(body.origin || req.headers.get("origin") || "").replace(/\/+$/, "");
@@ -80,8 +96,8 @@ Deno.serve(async (req: Request) => {
 
     // ---- ABONIM ME PAGESË (Stripe Checkout) — kartë Debit/Kredit, rinovim AUTOMATIK ----
     if (plan !== "monthly" && plan !== "yearly") return json({ error: "bad_plan" }, 400);
-    const key = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!key) return json({ error: "stripe_not_configured", message: "Mungon STRIPE_SECRET_KEY te sekretet e Supabase." }, 503);
+    const key = await stripeSecretKey(db);
+    if (!key) return json({ error: "stripe_not_configured", message: "Vendos çelësin e Stripe te Admin → Pagesat." }, 503);
 
     // Klienti te Stripe (rifitohet nëse ekziston) — që abonimet të mos dublohen.
     let customer = p?.stripe_customer_id || "";
@@ -95,7 +111,9 @@ Deno.serve(async (req: Request) => {
       await db.from("profiles").update({ stripe_customer_id: customer }).eq("id", userId);
     }
 
-    const cfg = PLANS[plan];
+    const cfg = plan === "monthly"
+      ? { amount: Math.round(bc.monthly_eur * 100), interval: "month", label: "Sinjale Telegram + Robot auto-trade — mujor" }
+      : { amount: Math.round(bc.yearly_eur * 100), interval: "year", label: "Sinjale Telegram + Robot auto-trade — vjetor" };
     const origin = String(body.origin || req.headers.get("origin") || "").replace(/\/+$/, "");
     const session = await stripe("checkout/sessions", key, {
       mode: "subscription",                     // rinovim AUTOMATIK (si çdo abonim standard)
