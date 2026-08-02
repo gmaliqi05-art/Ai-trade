@@ -34,7 +34,12 @@ Deno.serve(async (req: Request) => {
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const raw = await req.text();
 
-  const secret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
+  let secret = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
+  if (!secret) {
+    // Rezervë: çelësi i vendosur nga Admini te faqja Pagesat (billing_secrets, vetëm service-role).
+    const { data: bs } = await db.from("billing_secrets").select("stripe_webhook_secret").eq("id", 1).maybeSingle();
+    secret = String(bs?.stripe_webhook_secret || "");
+  }
   const sig = req.headers.get("stripe-signature") || "";
   if (!secret) return json({ error: "webhook_not_configured" }, 503);
   if (!(await verify(sig, raw, secret))) return json({ error: "bad_signature" }, 400);
