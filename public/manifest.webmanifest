@@ -1,8 +1,8 @@
 {
-  "name": "AI Trade — Analizë & Tregtim me AI",
-  "short_name": "AI Trade",
-  "description": "Platformë analize dhe tregtimi me AI për arin (XAUUSD) përmes MT5 — sinjale live, auto-trade dhe mbrojtje rreziku.",
-  "lang": "sq",
+  "name": "GoldSniperFX — Telegram Trading Platform",
+  "short_name": "GoldSniperFX",
+  "description": "Live gold (XAUUSD) signals delivered to Telegram and executed automatically on MetaTrader 5 — entry, stop-loss and take-profit managed by the robot.",
+  "lang": "en",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
