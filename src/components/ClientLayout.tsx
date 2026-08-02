@@ -24,6 +24,7 @@ const navSections = [
     label: 'Kryesore',
     items: [
       { id: 'market_prices' as ClientPage, label: 'Tregto Live', icon: Activity },
+      { id: 'journal' as ClientPage, label: 'Journal', icon: CalendarDays },
       { id: 'demo_trading' as ClientPage, label: 'Tregto Demo', icon: FlaskConical },
       { id: 'dashboard' as ClientPage, label: 'Paneli', icon: LayoutDashboard },
     ],
@@ -42,7 +43,6 @@ const navSections = [
       { id: 'metatrader' as ClientPage, label: 'Lidhja & Konfigurimi', icon: Monitor },
       { id: 'mmt' as ClientPage, label: 'MMT — Super Roboti', icon: Brain },
       { id: 'telegram_sin' as ClientPage, label: 'Konfigurimi i Sinjaleve', icon: Send },
-      { id: 'journal' as ClientPage, label: 'Journal', icon: CalendarDays },
       { id: 'reports' as ClientPage, label: 'Raporte', icon: FileText },
     ],
   },
@@ -236,35 +236,46 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
       </div>
 
       <nav className="flex-1 px-2 py-3 overflow-y-auto">
-        {/* FAQET E LIRA — gjithmonë të dukshme (Trade Live, Paneli, Telegram Sin, Manual, Cilësimet). */}
-        {navSections.map(section => {
-          const freeItems = section.items.filter(it => FREE_PAGES.includes(it.id));
-          if (freeItems.length === 0) return null;
-          return (
-            <div key={section.label} className="mb-4">
-              {!collapsed && (
-                <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{t(section.label)}</div>
-              )}
-              <div className="space-y-0.5">
-                {freeItems.map(item => <NavItem key={item.id} item={item} />)}
+        {/* RENDI I MENYSË (kërkesa e pronarit, 2 gusht 2026):
+            Trade Live → Journal → Telegram → Konfigurimi i Sinjaleve → Manuali → Cilësimet → VIP.
+            Seksioni i parë (Kryesore) → butoni Telegram → seksionet e tjera → kutia VIP. */}
+        {(() => {
+          const freeSection = (section: (typeof navSections)[number]) => {
+            const freeItems = section.items.filter(it => FREE_PAGES.includes(it.id));
+            if (freeItems.length === 0) return null;
+            return (
+              <div key={section.label} className="mb-4">
+                {!collapsed && (
+                  <div className="px-3 mb-1 text-[10px] text-gray-600 font-semibold tracking-[0.15em] uppercase">{t(section.label)}</div>
+                )}
+                <div className="space-y-0.5">
+                  {freeItems.map(item => <NavItem key={item.id} item={item} />)}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          };
+          return (
+            <>
+              {freeSection(navSections[0])}
 
-        {/* BUTONI TELEGRAM — hap kanalin tonë të sinjaleve në Telegram (t.me). Linku vjen nga
-            serveri dhe ndjek vetë kanalin nëse Admini e ndryshon te konsola GoldSniperFX. */}
-        {tgLink && (
-          <div className="mb-4">
-            {!collapsed && <div className="px-3 mb-1 text-[10px] text-sky-600 font-semibold tracking-[0.15em] uppercase">Telegram</div>}
-            <a href={tgLink} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)}
-              title={t('Bashkohu me kanalin tonë të sinjaleve në Telegram')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-sky-500/15 to-sky-600/10 border border-sky-500/30 text-sky-300 hover:from-sky-500/25 transition-all">
-              <Send className="w-4 h-4 flex-shrink-0" />
-              {!collapsed && <span className="text-sm font-semibold truncate">{t('Kanali në Telegram')}</span>}
-            </a>
-          </div>
-        )}
+              {/* BUTONI TELEGRAM — hap kanalin tonë të sinjaleve në Telegram (t.me). Linku vjen nga
+                  serveri dhe ndjek vetë kanalin nëse Admini e ndryshon te konsola GoldSniperFX. */}
+              {tgLink && (
+                <div className="mb-4">
+                  {!collapsed && <div className="px-3 mb-1 text-[10px] text-sky-600 font-semibold tracking-[0.15em] uppercase">Telegram</div>}
+                  <a href={tgLink} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)}
+                    title={t('Bashkohu me kanalin tonë të sinjaleve në Telegram')}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-sky-500/15 to-sky-600/10 border border-sky-500/30 text-sky-300 hover:from-sky-500/25 transition-all">
+                    <Send className="w-4 h-4 flex-shrink-0" />
+                    {!collapsed && <span className="text-sm font-semibold truncate">{t('Kanali në Telegram')}</span>}
+                  </a>
+                </div>
+              )}
+
+              {navSections.slice(1).map(freeSection)}
+            </>
+          );
+        })()}
 
         {/* BUTONI VIP — hap faqet e tjera me kod. I dukshëm gjithmonë; hapet me kod, pastaj mbahet mend. */}
         <div className="mb-4">
