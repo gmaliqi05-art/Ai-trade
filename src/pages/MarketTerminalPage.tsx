@@ -105,8 +105,10 @@ function errText(t: (k: string) => string, code: string, message?: string): stri
 // SEKSION I PALOSSHËM me kujtesë (localStorage) — pamja klasike e terminalit: koka gjithmonë e
 // dukshme, përmbajtja hapet/mbyllet me një klik dhe zgjedhja mbahet mend për herën tjetër.
 // `bare` = pa kornizë karte (për seksione që kanë kartat e veta brenda).
-function TLFold({ k, title, icon, right, defaultOpen = true, bare = false, children }: {
-  k: string; title: string; icon?: ReactNode; right?: ReactNode; defaultOpen?: boolean; bare?: boolean; children: ReactNode;
+function TLFold({ k, title, icon, right, defaultOpen = true, bare = false, always, children }: {
+  k: string; title: string; icon?: ReactNode; right?: ReactNode; defaultOpen?: boolean; bare?: boolean;
+  /** Përmbajtje GJITHMONË e dukshme nën kokë — edhe kur seksioni është i mbyllur (p.sh. mesazhi i fundit). */
+  always?: ReactNode; children: ReactNode;
 }) {
   const [open, setOpen] = useState<boolean>(() => {
     try { const v = localStorage.getItem('tl_fold_' + k); return v == null ? defaultOpen : v === '1'; } catch { return defaultOpen; }
@@ -121,6 +123,7 @@ function TLFold({ k, title, icon, right, defaultOpen = true, bare = false, child
         </button>
         {right}
       </div>
+      {always && <div className={bare ? '' : `px-4 ${open ? 'pb-2' : 'pb-4'}`}>{always}</div>}
       {open && <div className={bare ? 'space-y-5' : 'px-4 pb-4'}>{children}</div>}
     </div>
   );
@@ -1567,35 +1570,42 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         </TLFold>
       )}
 
-      {/* MESAZHET E GRUPEVE (kërkesa e pronarit): GJITHÇKA që dërgojnë trejderat në kanale —
-          sinjale, komente, modifikime — si feed i plotë, i lexueshëm nga Trade Live. */}
-      {metaConfigured && tgSigs.length > 0 && (
-        <TLFold k="tgmsgs" defaultOpen={false} title={t('Mesazhet')} icon={<Zap className="w-4 h-4 text-sky-400" />}>
-          <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
-            {tgSigs.slice(0, 40).map((s) => {
-              const d = new Date(s.created_at);
-              const isSig = s.kind === 'entry' && s.status !== 'ignored';
-              return (
-                <div key={s.id} className={`rounded-lg border px-3 py-2 ${isSig ? 'border-sky-500/25 bg-sky-500/[0.05]' : 'border-gray-800 bg-gray-900/60'}`}>
-                  <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-                    <span className="text-[10px] text-sky-300 font-semibold">{TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || 'Telegram'}</span>
-                    <span className="flex items-center gap-2">
-                      <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
-                        isSig ? 'bg-emerald-500/15 text-emerald-300'
-                        : s.kind === 'modify' ? 'bg-sky-500/15 text-sky-300'
-                        : s.kind === 'exit' ? 'bg-amber-500/15 text-amber-300'
-                        : 'bg-gray-700/50 text-gray-400'
-                      }`}>{isSig ? t('SINJAL') : s.kind === 'modify' ? t('Modifikim') : s.kind === 'exit' ? t('Dalje') : t('Koment')}</span>
-                      <span className="text-[10px] text-gray-500 whitespace-nowrap">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-300 whitespace-pre-wrap break-words leading-snug">{s.raw_text || '—'}</p>
-                </div>
-              );
-            })}
-          </div>
-        </TLFold>
-      )}
+      {/* MESAZHET E GRUPEVE (kërkesa e pronarit): mesazhi MË I RI gjithmonë i dukshëm nën kokë;
+          të tjerët hapen me klik te shiriti (model hamburger) — feed-i i plotë, i lexueshëm. */}
+      {metaConfigured && tgSigs.length > 0 && (() => {
+        const msgCard = (s: (typeof tgSigs)[number]) => {
+          const d = new Date(s.created_at);
+          const isSig = s.kind === 'entry' && s.status !== 'ignored';
+          return (
+            <div key={s.id} className={`rounded-lg border px-3 py-2 ${isSig ? 'border-sky-500/25 bg-sky-500/[0.05]' : 'border-gray-800 bg-gray-900/60'}`}>
+              <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                <span className="text-[10px] text-sky-300 font-semibold">{TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || 'Telegram'}</span>
+                <span className="flex items-center gap-2">
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
+                    isSig ? 'bg-emerald-500/15 text-emerald-300'
+                    : s.kind === 'modify' ? 'bg-sky-500/15 text-sky-300'
+                    : s.kind === 'exit' ? 'bg-amber-500/15 text-amber-300'
+                    : 'bg-gray-700/50 text-gray-400'
+                  }`}>{isSig ? t('SINJAL') : s.kind === 'modify' ? t('Modifikim') : s.kind === 'exit' ? t('Dalje') : t('Koment')}</span>
+                  <span className="text-[10px] text-gray-500 whitespace-nowrap">{d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-300 whitespace-pre-wrap break-words leading-snug">{s.raw_text || '—'}</p>
+            </div>
+          );
+        };
+        const older = tgSigs.slice(1, 40);
+        return (
+          <TLFold k="tgmsgs" defaultOpen={false} title={t('Mesazhet')} icon={<Zap className="w-4 h-4 text-sky-400" />}
+            always={msgCard(tgSigs[0])}>
+            {older.length > 0 ? (
+              <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">{older.map(msgCard)}</div>
+            ) : (
+              <p className="text-[11px] text-gray-500">{t('S\'ka mesazhe më të vjetra.')}</p>
+            )}
+          </TLFold>
+        );
+      })()}
 
       {/* 4+5) Analizat e sinjaleve (motori/MMT) — VETËM kur roboti i Sinjaleve është aktiv DHE VIP.
           Përdoruesit normalë s'i shohin — vetëm GoldSniperFX Algorithm (kërkesa e pronarit). */}
