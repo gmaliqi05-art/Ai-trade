@@ -161,7 +161,9 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
 
   // Take-profit(s) me INDEKS — "TP 1: 4112", "TP3 4060", "Change TP 4 to 4054"
   const tpUpdates: TpUpdate[] = [];
-  const tpIdxRe = /(?:tp|take\s*profit)\s*(\d)\s*(?:to\s*)?:?\s*(\d{2,7}(?:\.\d+)?)/gi;
+  // KUJDES: pas indeksit kërkohet KUFI FJALE (\b) — pa të, "CHANGE TP 4003" lexohej si
+  // TP4 = 3 (indeksi "4" + çmimi "003") dhe do të vendoste TP-në në 3$ në vend të 4003$.
+  const tpIdxRe = /(?:tp|take\s*profit)\s*([1-4])\b\s*(?:to|@|=|:)?\s*(\d{2,7}(?:\.\d+)?)/gi;
   let tu: RegExpExecArray | null;
   while ((tu = tpIdxRe.exec(low)) !== null) {
     const idx = parseInt(tu[1], 10), price = parseFloat(tu[2]);
@@ -170,6 +172,8 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   // TP pa indeks (p.sh. "take profit 4112", "target 4112")
   const tpNoIdx: number[] = [];
   const tpGenRe = /(?:take\s*profit|target|objektiv)\s*:?\s*(\d{2,7}(?:\.\d+)?)/gi;
+  // "CHANGE TP 4003" / "set tp to 4010" — TP pa indeks, i shprehur si URDHËR.
+  const tpCmd = low.match(/(?:change|move|update|set|new)\s+(?:the\s+)?(?:tp|take\s*profit)\s*(?:to|@|=|:)?\s*(\d{3,7}(?:\.\d+)?)/i);
   let tg: RegExpExecArray | null;
   while ((tg = tpGenRe.exec(low)) !== null) { const v = parseFloat(tg[1]); if (Number.isFinite(v)) tpNoIdx.push(v); }
 
@@ -212,17 +216,105 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   }
 
   // 3) MENAXHIM (modify): lëviz SL / breakeven / ndrysho TP-t — pa drejtim të ri.
-  const breakeven = /break\s*even|breakeven/i.test(low);
+  // BREAKEVEN — "breakeven", "break-even", ose SL/stop i çuar te hyrja ("SL → BE", "stops at entry").
+  // "BE" pranohet VETËM në kontekst SL/stop — përndryshe fjala e zakonshme "be" do të shkaktonte
+  // lëvizje të rreme të SL-së në çdo fjali angleze.
+  const breakeven = /break\s*-?\s*even/i.test(low)
+    || /(?:sl|s\/l|stops?|stop\s*loss)\s*(?:->|→|=|:|\bto\b|\bat\b|\bin\b)\s*(?:\bbe\b|entry|entri|hyrje)/i.test(low);
   let modSl: number | undefined;
-  const moveSl = low.match(/(?:move|moving|change|changing|update|vendos|zhvendos)[^\d]{0,20}(?:sl|stop\s*loss)[^\d]{0,8}(\d{2,7}(?:\.\d+)?)/i)
-    || low.match(/(?:sl|stop\s*loss)\s*(?:to|=|:)\s*(\d{2,7}(?:\.\d+)?)/i);
+  // Foljet e menaxhimit + "sl|stop|stoploss" (edhe pa fjalën "loss") + to/at/@/=/: + çmimi.
+  const VERBS = "move|moving|change|changing|update|updating|set|setting|put|putting|bring|bringing|tighten|tightening|shift|shifting|raise|raising|lower|lowering|secure|securing|adjust|adjusting|vendos|zhvendos|ngri";
+  const moveSl = low.match(new RegExp(`(?:${VERBS})[^\\d]{0,24}(?:sl|s\\/l|stop\\s*loss|stoploss|stops?)[^\\d]{0,12}(\\d{2,7}(?:\\.\\d+)?)`, "i"))
+    || low.match(/(?:sl|s\/l|stop\s*loss|stoploss|stops?)\s*(?:->|→|to|at|=|:|@)\s*(\d{2,7}(?:\.\d+)?)/i);
   if (moveSl) modSl = parseFloat(moveSl[1]);
-  if (breakeven || modSl != null || tpUpdates.length > 0) {
+  // TP pa indeks i shprehur si urdhër → zbatohet te TP-ja e secilit leg (idx 1..4).
+  const tpCmdUpdates: TpUpdate[] = [];
+  if (tpUpdates.length === 0 && tpCmd) {
+    const v = parseFloat(tpCmd[1]);
+    if (Number.isFinite(v)) for (let i = 1; i <= 4; i++) tpCmdUpdates.push({ idx: i, price: v });
+  }
+  const allTp = tpUpdates.length > 0 ? tpUpdates : tpCmdUpdates;
+  if (breakeven || modSl != null || allTp.length > 0) {
     return { kind: "modify", symbol: symbol ?? defaultSymbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [],
-      mod: { sl: modSl, breakeven, tpUpdates: tpUpdates.length > 0 ? tpUpdates : undefined } };
+      mod: { sl: modSl, breakeven, tpUpdates: allTp.length > 0 ? allTp : undefined } };
   }
 
   return { ...none, symbol };
+}
+
+
+// ================= LEXIMI INTELIGJENT I URDHRAVE (AI) =================
+// Rrjet sigurie MBI parserin me rregulla: thirret VETËM kur rregullat s'e kuptuan dot
+// mesazhin, por teksti flet për stop/TP/breakeven. Claude NUK vendos asgjë vetë — ai vetëm
+// PROPOZON një formë kanonike, dhe kodi e verifikon rreptësisht para se ta pranojë:
+//   1) çmimi i propozuar duhet të ndodhet FJALË-PËR-FJALË në mesazhin origjinal;
+//   2) çmimi duhet të jetë brenda ±5% të çmimit aktual të arit;
+//   3) drejtimi mbrojtës i SL-së kontrollohet më vonë te zbatimi (SL vetëm shtrëngohet).
+// Nëse ndonjë verifikim dështon → propozimi hidhet dhe regjistrohet për Adminin.
+// deno-lint-ignore no-explicit-any
+async function aiNormalizeOrder(db: any, text: string): Promise<string | null> {
+  const log = async (decision: string, out: string | null, reason: string | null) => {
+    try { await db.from("signal_ai_log").insert({ text_in: text.slice(0, 2000), text_out: out, decision, reason }); } catch { /* */ }
+  };
+  try {
+    const { data: prov } = await db.from("ai_providers")
+      .select("api_key_encrypted, model").eq("slug", "claude").eq("is_active", true).maybeSingle();
+    const key = prov?.api_key_encrypted;
+    if (!key) return null;
+
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      signal: AbortSignal.timeout(12000),
+      body: JSON.stringify({
+        model: prov.model || "claude-sonnet-4-6",
+        max_tokens: 120,
+        system: "You classify trade-management messages from a gold (XAUUSD) signal channel. "
+          + "Answer ONLY with compact JSON, no prose. Schema: "
+          + '{"action":"breakeven"|"sl"|"tp"|"none","price":number|null,"tpIndex":1|2|3|4|null}. '
+          + 'Use "breakeven" when the author asks to move the stop to entry/break-even. '
+          + 'Use "sl" with the exact numeric price when they ask to move the stop loss to a price. '
+          + 'Use "tp" when they ask to change a take profit. Use "none" if it is commentary, '
+          + "an opinion, a market observation, or anything that is not an explicit instruction. "
+          + "Never invent a price that is not written in the message. When unsure, answer none.",
+        messages: [{ role: "user", content: text.slice(0, 1500) }],
+      }),
+    });
+    const j = await resp.json().catch(() => ({}));
+    const raw = String(j?.content?.[0]?.text || "").trim();
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) { await log("rejected", null, "përgjigje jo-JSON"); return null; }
+    const out = JSON.parse(m[0]) as { action?: string; price?: number | null; tpIndex?: number | null };
+    const action = String(out.action || "none");
+    if (action === "none") { await log("none", null, null); return null; }
+
+    if (action === "breakeven") { await log("breakeven", "BREAKEVEN", null); return "BREAKEVEN"; }
+
+    const price = Number(out.price);
+    if (!Number.isFinite(price) || price <= 0) { await log("rejected", null, "pa çmim të vlefshëm"); return null; }
+
+    // VERIFIKIM 1 — çmimi duhet të shkruhet realisht në mesazh (kundër halucinacionit).
+    const digits = String(Math.round(price));
+    if (!new RegExp(`\\b${digits}(?:\\.\\d+)?\\b`).test(text.replace(/,/g, ""))) {
+      await log("rejected", null, `çmimi ${price} nuk gjendet në mesazh`); return null;
+    }
+    // VERIFIKIM 2 — brenda ±5% të çmimit aktual të arit.
+    const { data: asset } = await db.from("assets").select("current_price").eq("symbol", "XAUUSD").maybeSingle();
+    const mkt = Number(asset?.current_price);
+    if (Number.isFinite(mkt) && mkt > 0 && Math.abs(price - mkt) / mkt > 0.05) {
+      await log("rejected", null, `çmimi ${price} jashtë ±5% të tregut (${mkt})`); return null;
+    }
+
+    if (action === "sl") { const c = `MOVE SL ${price}`; await log("sl", c, null); return c; }
+    if (action === "tp") {
+      const idx = Number(out.tpIndex);
+      const c = idx >= 1 && idx <= 4 ? `TP${idx} ${price}` : `CHANGE TP ${price}`;
+      await log("tp", c, null); return c;
+    }
+    await log("rejected", null, `veprim i panjohur: ${action}`); return null;
+  } catch (e) {
+    await log("rejected", null, (e as Error).message); return null;
+  }
 }
 
 // Chat-id sintetik për sinjalet që vijnë nga PLATFORMA e vetë përdoruesit (jo Telegram).
@@ -589,6 +681,21 @@ Deno.serve(async (req: Request) => {
     if (fpErr || !fpClaim || fpClaim.length === 0) return json({ ok: true, skip: "duplicate_content" });
   }
 
+  // RRJETI I SIGURISË ME AI — vetëm kur rregullat s'e kuptuan dot një mesazh që flet për
+  // stop/TP/breakeven. Thirret NJË herë këtu (jo për çdo përdorues) dhe teksti zëvendësohet me
+  // formën kanonike, të cilën parseri deterministik e zbaton më pas si çdo urdhër tjetër.
+  if (ps && !history) {
+    const mgmt = /\b(sl|s\/l|stop|stops|stoploss|stop\s*loss|tp|take\s*profit|break\s*-?\s*even)\b/i.test(text);
+    if (mgmt && parseSignal(text, "XAUUSD").kind === "unknown") {
+      const { data: gsCfg } = await db.from("gold_sniper_config")
+        .select("ai_parse_enabled").not("channel_id", "is", null).limit(1).maybeSingle();
+      if (gsCfg?.ai_parse_enabled !== false) {
+        const canonical = await aiNormalizeOrder(db, text);
+        if (canonical) text = canonical;
+      }
+    }
+  }
+
   // 2) BROADCAST (kërkesa e pronarit): sinjali përpunohet për TË GJITHË përdoruesit me Telegram Sin
   // AKTIV — secili tregton në llogarinë e VET MetaApi me parametrat e VET për kanal (lot/TP/tik…),
   // të cilët i rregullon vetë në faqen e tij. Çelësi vetëm autentikon burimin (kopjuesin).
@@ -722,7 +829,14 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
       const newSl = applySl ? (p.mod?.breakeven ? Number(t.entry_price) : (p.mod?.sl != null ? p.mod.sl : Number(t.stop_loss))) : Number(t.stop_loss);
       const newTp = tpMap.has(Number(t.tp_index)) ? tpMap.get(Number(t.tp_index))! : Number(t.take_profit);
       // Nëse ky rresht nuk preket nga asnjë ndryshim, kaloje.
-      const slChanged = applySl && Number.isFinite(newSl) && newSl !== Number(t.stop_loss);
+      // SIGURESË: SL-ja lejohet të lëvizë VETËM në drejtim MBROJTËS (të shtrëngohet).
+      // Për BUY do të thotë lart, për SELL poshtë. Një urdhër që e zgjeron SL-në — qoftë nga
+      // teksti i dërguesit, qoftë nga leximi me AI — do të rriste humbjen maksimale; injorohet.
+      const curSl = Number(t.stop_loss);
+      const isBuy = String(t.action || "").toUpperCase().includes("BUY");
+      const loosening = Number.isFinite(curSl) && curSl > 0 && Number.isFinite(newSl)
+        && (isBuy ? newSl < curSl : newSl > curSl);
+      const slChanged = applySl && !loosening && Number.isFinite(newSl) && newSl !== Number(t.stop_loss);
       const tpChanged = tpMap.has(Number(t.tp_index)) && Number.isFinite(newTp) && newTp !== Number(t.take_profit);
       if (!slChanged && !tpChanged) continue;
 

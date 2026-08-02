@@ -1940,4 +1940,12 @@ export const en: Record<string, string> = {
   "Emrat/fjalët e bllokuara (një për rresht ose ndarë me presje)": "Blocked names/words (one per line or comma-separated)",
   "p.sh.\nEric\nLevrone\nXNINE": "e.g.\nEric\nLevrone\nXNINE",
   "Nëse mesazhi përmban ndonjë nga këto fjalë, nuk kalon as te abonentët, as te kanali. Përputhja bëhet me fjalë të plota — \"Eric\" nuk e kap \"America\".": "If a message contains any of these words it reaches neither subscribers nor the channel. Matching uses whole words — \"Eric\" does not match \"America\".",
+  "Emrat/fjalët e bllokuara": "Blocked names/words",
+  "Shkruaj një emër ose fjalë dhe shtyp Enter": "Type a name or word and press Enter",
+  "Blloko": "Block",
+  "Zhblloko": "Unblock",
+  "Asnjë fjalë e bllokuar ende.": "No blocked words yet.",
+  "Kujdes: ndryshimet zbatohen vetëm pasi të klikosh \"Ruaj filtrat\".": "Note: changes take effect only after you click \"Save filters\".",
+  "U ruajt — zbatohet menjëherë te mesazhi i parë i ri.": "Saved — applies from the very next message.",
+  "Ruajtja nuk u konfirmua nga serveri — rifresko faqen dhe provo sërish.": "The save was not confirmed by the server — refresh the page and try again.",
 };
