@@ -228,6 +228,15 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
 // Chat-id sintetik për sinjalet që vijnë nga PLATFORMA e vetë përdoruesit (jo Telegram).
 const PLATFORM_CHAT_ID = "platform";
 
+// Gjurma e përmbajtjes (hash FNV-1a) — identifikon sinjalin nga TEKSTI i tij, jo nga id-ja e
+// burimit. Përdoret për të përjashtuar dublimin kur i njëjti sinjal vjen nga dy rrugë të
+// pavarura (webhook-u i drejtpërdrejtë i platformës + poller-i i feed-it).
+function contentHash(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36);
+}
+
 // ---------- SINJAL I STRUKTURUAR nga platforma e VETË përdoruesit ----------
 // Platforma jote e analizave/sinjaleve dërgon JSON të pastër → e kthejmë në tekstin kanonik që
 // parseSignal e kupton, dhe kalon nëpër TË NJËJTIN zinxhir si Telegrami (trade + tabela + raporte).
@@ -562,6 +571,23 @@ Deno.serve(async (req: Request) => {
   }
   // history=true (rilexim nga forwarder-i): regjistro/shfaq mesazhin, por MOS hap tregti.
   const history = update.history === true;
+
+  // REZERVIM SIPAS PËRMBAJTJES (kundër dublimit NDËR-BURIMOR): i njëjti sinjal vjen nga dy
+  // rrugë të pavarura — webhook-u i drejtpërdrejtë i platformës (i pari, real-time) dhe
+  // poller-i i feed-it (~2s më vonë, rrjet sigurie). Identifikimi me id dështon se secila
+  // rrugë ka id të vetat; PËRMBAJTJA është e njëjtë. Kushdo që e sjell i dyti humbet
+  // rezervimin dhe del menjëherë — pa trade, pa rreshta, pa postim në kanal.
+  // Sinjalet: kovë ditore (i njëjti tekst brenda ditës = dublim). Mesazhet (MOVE SL etj.):
+  // kovë orare — i njëjti urdhër mund të përsëritet legjitimisht më vonë gjatë ditës.
+  if (ps && !history) {
+    const isMsg = String(ps.action || "signal").toLowerCase() === "message";
+    const bucket = new Date().toISOString().slice(0, isMsg ? 13 : 10);
+    const fp = `fp:${isMsg ? "msg" : "sig"}:${bucket}:${contentHash(text.trim())}`;
+    const { data: fpClaim, error: fpErr } = await db.from("platform_feed_seen")
+      .upsert({ feed_id: fp, status: "content-claim" }, { onConflict: "feed_id", ignoreDuplicates: true })
+      .select("feed_id");
+    if (fpErr || !fpClaim || fpClaim.length === 0) return json({ ok: true, skip: "duplicate_content" });
+  }
 
   // 2) BROADCAST (kërkesa e pronarit): sinjali përpunohet për TË GJITHË përdoruesit me Telegram Sin
   // AKTIV — secili tregton në llogarinë e VET MetaApi me parametrat e VET për kanal (lot/TP/tik…),
