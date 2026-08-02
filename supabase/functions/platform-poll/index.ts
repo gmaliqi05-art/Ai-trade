@@ -52,10 +52,16 @@ Deno.serve(async (req: Request) => {
     for (const s of signals) {
       const fid = String(s.id ?? s.signal_number ?? "");
       if (!fid) { skipped++; continue; }
-      const { data: seen } = await db.from("platform_feed_seen").select("feed_id").eq("feed_id", fid).limit(1);
-      if (seen && seen.length) { skipped++; continue; }
       const status = String(s.status ?? "").toLowerCase();
-      await db.from("platform_feed_seen").insert({ feed_id: fid, signal_number: s.signal_number ?? null, status });
+      // REZERVIM ATOMIK (kundër dublimit): INSERT ... ON CONFLICT DO NOTHING + RETURNING.
+      // Vetëm ekzekutimi që e fiton rreshtin e dërgon sinjalin; ekzekutimet paralele
+      // marrin 0 rreshta dhe dalin. Kontrolli i vjetër "select pastaj insert" kishte
+      // vrimë kohore ku dy poll-e paralele e dërgonin të njëjtin sinjal dy herë.
+      const { data: claimed, error: claimErr } = await db.from("platform_feed_seen")
+        .upsert({ feed_id: fid, signal_number: s.signal_number ?? null, status },
+          { onConflict: "feed_id", ignoreDuplicates: true })
+        .select("feed_id");
+      if (claimErr || !claimed || claimed.length === 0) { skipped++; continue; }
       if (!["active", "open", "new", "pending"].includes(status)) { skipped++; continue; }
       const tps = [s.take_profit_1, s.take_profit_2, s.take_profit_3, s.take_profit_4].filter((x: unknown) => x != null);
       const payload = { signal: {
@@ -78,10 +84,13 @@ Deno.serve(async (req: Request) => {
     for (const m of messages) {
       const mid = String(m.id ?? "");
       if (!mid) continue;
-      const { data: seen } = await db.from("platform_feed_seen").select("feed_id").eq("feed_id", mid).limit(1);
-      if (seen && seen.length) continue;
       const type = String(m.type ?? "").toLowerCase();
-      await db.from("platform_feed_seen").insert({ feed_id: mid, status: `msg:${type}` });
+      // I njëjti rezervim atomik si te sinjalet — një mesazh përpunohet vetëm një herë.
+      const { data: claimed, error: claimErr } = await db.from("platform_feed_seen")
+        .upsert({ feed_id: mid, status: `msg:${type}` },
+          { onConflict: "feed_id", ignoreDuplicates: true })
+        .select("feed_id");
+      if (claimErr || !claimed || claimed.length === 0) continue;
       if (type === "signal") continue; // sinjalet trajtohen nga /signals (trade)
       const text = String(m.text ?? "").trim();
       if (!text) continue;

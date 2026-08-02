@@ -1,10 +1,14 @@
 name: Deploy platform-poll
 
 # Lexuesi i feed-it kuant të platformës (GoldSniperFX) → përcjell sinjalet te telegram-signals.
-# verify_jwt=false — thirret nga pg_cron (pa JWT). Nxitet manualisht.
+# verify_jwt=false — thirret nga pg_cron (pa JWT).
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/platform-poll/**'
 
 jobs:
   deploy:
