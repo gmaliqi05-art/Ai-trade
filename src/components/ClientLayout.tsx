@@ -172,10 +172,12 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
 
   const fetchUnread = useCallback(async () => {
     if (!user) return;
+    // I njëjti kufi si te faqja e njoftimeve — numëruesi te zilja duhet të përputhet.
+    const since = user.created_at || '1970-01-01T00:00:00Z';
     const { data } = await supabase
       .from('notifications')
       .select('id, is_broadcast')
-      .or(`user_id.eq.${user.id},is_broadcast.eq.true`)
+      .or(`user_id.eq.${user.id},and(is_broadcast.eq.true,created_at.gte.${since})`)
       .eq('is_read', false);
     // Përjashto broadcast-et që përdoruesi i ka lexuar (server-side + cache lokal).
     const readSet = await loadReadBroadcasts(user.id);
