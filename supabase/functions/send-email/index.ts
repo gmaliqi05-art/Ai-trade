@@ -133,7 +133,7 @@ function layout(brand: string, logoUrl: string, body: string, legal: string, foo
         &nbsp;·&nbsp;
         <a href="mailto:${SUPPORT}" style="color:${C.gold};text-decoration:none;">${SUPPORT}</a>
         &nbsp;·&nbsp;
-        <a href="${SITE}/#legal" style="color:${MUTED};text-decoration:underline;">Politikat Ligjore</a>
+        <a href="${SITE}/#legal" style="color:${MUTED};text-decoration:underline;">Legal Policies</a>
       </p>
       <p style="margin:0;color:${FAINT};font-size:10px;">© ${new Date().getFullYear()} ${esc(brand)} · ${esc(footer)}</p>
     </td></tr>
