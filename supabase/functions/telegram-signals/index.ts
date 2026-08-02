@@ -404,12 +404,14 @@ async function postToOwnerChannel(db: ReturnType<typeof createClient>, userId: s
 }
 
 // ---------- Push notification te aplikacioni (web-push-send) ----------
+// 'pref: signals' → respektohet çelësi te profiles.notification_preferences: kush e fik
+// te Cilësimet nuk merr më njoftime sinjalesh (të tjerët i marrin si më parë).
 async function pushNotify(payload: { user_id: string; title: string; body: string; url?: string; tag?: string }) {
   try {
     await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, pref: "signals" }),
       signal: AbortSignal.timeout(8000),
     });
   } catch { /* jo-kritik */ }
@@ -529,8 +531,8 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
         const win = totalNet >= 0;
         await pushNotify({
           user_id: userId,
-          title: `${win ? "✅ Trade mbyllur në fitim" : "🛑 Trade mbyllur"} — ${sym0}`,
-          body: `${win ? "Fitim" : "Humbje"} ${totalNet >= 0 ? "+" : ""}${totalNet.toFixed(2)}$ — GoldSniperFX`,
+          title: `${win ? "✅ Trade closed in profit" : "🛑 Trade closed"} — ${sym0}`,
+          body: `${win ? "Profit" : "Loss"} ${totalNet >= 0 ? "+" : ""}${totalNet.toFixed(2)}$ — GoldSniperFX`,
           url: "/", tag: `tgsin-closed-${String(legs[0].signal_id).slice(0, 8)}`,
         });
       } catch { /* push jo-kritik */ }
@@ -577,8 +579,8 @@ async function manageUser(db: ReturnType<typeof createClient>, cfgRow: any) {
         const nextSl = ((chans.get(String(sig.tg_chat_id ?? ""))?.move_be_after_tp1 ?? cfgRow.move_be_after_tp1) === true) ? (k === 1 ? "breakeven" : `TP${k - 1}`) : null;
         await pushNotify({
           user_id: userId,
-          title: `🎯 TP${k} u prek — ${sym} ${isBuy ? "BUY" : "SELL"}`,
-          body: `Çmimi preku TP${k} (${tps[k - 1]})${nextSl ? ` · SL kalon te ${nextSl}` : ""} — Telegram Sin`,
+          title: `🎯 TP${k} hit — ${sym} ${isBuy ? "BUY" : "SELL"}`,
+          body: `Price reached TP${k} (${tps[k - 1]})${nextSl ? ` · SL moves to ${nextSl === "breakeven" ? "breakeven" : nextSl}` : ""} — GoldSniperFX`,
           url: "/", tag: `tgsin-tp-${String(sig.id).slice(0, 8)}-${k}`,
         });
         notified++;
@@ -855,6 +857,19 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
       }
     }
     await finish(changed > 0 ? "modified" : "ignored", changed > 0 ? null : "asnjë ndryshim s'u aplikua");
+    // PUSH: lëvizja e SL / kalimi në breakeven — pa këtë, përdoruesi nuk merrte vesh se
+    // rreziku i pozicionit të tij sapo ndryshoi.
+    if (changed > 0) {
+      const be = !!p.mod?.breakeven;
+      await pushNotify({
+        user_id: cfgRow.user_id,
+        title: be ? `🔒 Risk-free — ${tradeSym}` : `🔧 Stop loss moved — ${tradeSym}`,
+        body: be
+          ? `Stop loss moved to entry (breakeven) on ${changed} position${changed > 1 ? "s" : ""} — your risk is now zero.`
+          : `${[...new Set(notes)].join(" · ") || `${changed} position${changed > 1 ? "s" : ""} updated`} — GoldSniperFX`,
+        url: "/", tag: `gsfx-modify-${signalId ?? messageId}`,
+      });
+    }
     if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `🔧 Telegram Sin: ${changed} ndryshime (${tradeSym})${notes.length ? "\n" + [...new Set(notes)].join(", ") : ""}.`);
     return json({ ok: true, kind: "modify", changed });
   }
@@ -889,8 +904,8 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
     if (total > 0) {
       await pushNotify({
         user_id: cfgRow.user_id,
-        title: `🚪 Dolëm nga trade — ${tradeSym}`,
-        body: `${closed} pozicione u mbyllën${canceled > 0 ? ` · ${canceled} porosi u anuluan` : ""} (urdhër dalje) — GoldSniperFX`,
+        title: `🚪 Exit — ${tradeSym}`,
+        body: `${closed} position${closed > 1 ? "s" : ""} closed${canceled > 0 ? ` · ${canceled} pending order${canceled > 1 ? "s" : ""} canceled` : ""} — GoldSniperFX`,
         url: "/", tag: `tgsin-exit-${signalId ?? messageId}`,
       });
     }
@@ -1001,8 +1016,8 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
   if (executed > 0) {
     await pushNotify({
       user_id: cfgRow.user_id,
-      title: `📥 ${isBuy ? "BUY" : "SELL"} ${tradeSym} — sinjal i ri (${chRow?.name || sender || "Telegram"})`,
-      body: `${pending ? "Porosi në pritje" : "Hyri"} ${executed} pozicione · SL ${sl}${validTps.length ? ` · TP ${validTps.join("/")}` : ""}`,
+      title: `📥 New signal — ${isBuy ? "BUY" : "SELL"} ${tradeSym}`,
+      body: `${pending ? "Pending" : "Opened"} ${executed} position${executed > 1 ? "s" : ""} · SL ${sl}${validTps.length ? ` · TP ${validTps.join("/")}` : ""} — GoldSniperFX`,
       url: "/", tag: `tgsin-entry-${signalId ?? messageId}`,
     });
   }
