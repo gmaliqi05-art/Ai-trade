@@ -894,4 +894,5 @@ export const it: Record<string, string> = {
   "Përmbledhje: 1) Abonimi + kodi i verifikimit → 2) Vantage MT5 → 3) MetaApi (Account ID + Token) → 4) Konfigurimi i Sinjaleve → Lidhja me MT5 → 5) Karta GoldSniperFX ON.": "Riepilogo: 1) Abbonamento + codice di verifica → 2) Vantage MT5 → 3) MetaApi (Account ID + token) → 4) Configurazione dei segnali → Collegamento MT5 → 5) Scheda GoldSniperFX su ON.",
   "Kanali në Telegram": "Canale Telegram",
   "Bashkohu me kanalin tonë të sinjaleve në Telegram": "Unisciti al nostro canale di segnali su Telegram",
+  "S'ka mesazhe më të vjetra.": "Nessun messaggio più vecchio.",
 };
