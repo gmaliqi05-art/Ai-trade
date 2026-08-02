@@ -66,8 +66,12 @@ Deno.serve(async (req: Request) => {
 
       if (await throttled(user.email)) return json({ ok: false, error: "throttled" }, 429);
 
-      const r = await send("verify", user.email,
-        { code: p.access_code, name: p.first_name || p.full_name || "" }, user.id);
+      // 'link' çon te ekrani i verifikimit me kodin brenda → butoni e hap gati për konfirmim.
+      const r = await send("verify", user.email, {
+        code: p.access_code,
+        name: p.first_name || p.full_name || "",
+        link: `${SITE}/#verify=${encodeURIComponent(p.access_code)}`,
+      }, user.id);
       return json({ ok: !!r.ok, error: r.error });
     }
 
@@ -81,7 +85,9 @@ Deno.serve(async (req: Request) => {
       const { data: link, error } = await db.auth.admin.generateLink({
         type: "recovery",
         email,
-        options: { redirectTo: `${SITE}/#reset` },
+        // PA fragment: Supabase e shkruan vetë '#access_token=...&type=recovery' te adresa,
+        // dhe një '#reset' i vendosur nga ne do të mbivendosej.
+        options: { redirectTo: `${SITE}/` },
       });
       const action_link = (link as { properties?: { action_link?: string } } | null)?.properties?.action_link;
       if (error || !action_link) return json({ ok: true });

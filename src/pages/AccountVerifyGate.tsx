@@ -31,8 +31,8 @@ export default function AccountVerifyGate() {
     setMailState(r.ok ? 'sent' : 'failed');
   };
 
-  const submit = async () => {
-    const clean = code.replace(/\s+/g, '');
+  const submit = async (raw?: string) => {
+    const clean = (raw ?? code).replace(/\s+/g, '');
     if (!/^\d{6}$/.test(clean)) { setErr(true); return; }
     setBusy(true); setErr(false);
     const ok = await verifyAccountCode(clean);
@@ -42,6 +42,21 @@ export default function AccountVerifyGate() {
       setErr(true); setBusy(false);
     }
   };
+
+  // KODI NGA EMAIL-I — lidhja "#verify=123456" e mbush fushën dhe e konfirmon vetë.
+  // Email-i nuk mund të kopjojë asgjë në kujtesë, prandaj kodin e sjell adresa.
+  const fromLink = useRef(false);
+  useEffect(() => {
+    if (fromLink.current || !profile || profile.is_verified) return;
+    const m = /[#&]verify=(\d{6})\b/.exec(window.location.hash || '');
+    if (!m) return;
+    fromLink.current = true;
+    // Hiqe kodin nga adresa që të mos mbetet në histori apo t'i dërgohet dikujt me link.
+    try { window.history.replaceState(null, '', window.location.pathname); } catch { /* injoro */ }
+    setCode(m[1]);
+    submit(m[1]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4 relative">
@@ -90,7 +105,7 @@ export default function AccountVerifyGate() {
         />
         {err && <p className="text-[12px] text-red-400 mt-2 text-center">{t('Kod i pasaktë. Kontrollo email-in ose ridërgo kodin.')}</p>}
 
-        <button onClick={submit} disabled={busy || code.length !== 6}
+        <button onClick={() => submit()} disabled={busy || code.length !== 6}
           className="mt-5 w-full flex items-center justify-center gap-2 text-sm font-bold px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 disabled:opacity-50 transition-colors">
           {busy && <Loader2 className="w-4 h-4 animate-spin" />}{t('Verifiko dhe hyr')}
         </button>

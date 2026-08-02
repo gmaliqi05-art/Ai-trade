@@ -77,9 +77,13 @@ insert into public.email_templates (key, name, subject, body, is_system, sort_or
 
 Thank you for joining **{{brand}}**.
 
-Enter this 6-digit code on the verification screen to unlock the platform:
+Tap the code below — or the button — and the verification screen opens with your code already filled in:
 
 [code]{{code}}[/code]
+
+[button]Verify my account|{{link}}[/button]
+
+If you prefer, type the 6 digits manually on the verification screen.
 
 The code works only for your account and expires in 24 hours. Never share it — no {{brand}} staff member will ever ask you for it.', true, 10),
 
