@@ -6,6 +6,10 @@ name: Deploy telegram-signals
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/telegram-signals/**'
 
 jobs:
   deploy:
