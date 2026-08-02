@@ -962,4 +962,12 @@ export const de: Record<string, string> = {
   "Emrat/fjalët e bllokuara (një për rresht ose ndarë me presje)": "Blockierte Namen/Wörter (einer pro Zeile oder per Komma)",
   "p.sh.\nEric\nLevrone\nXNINE": "z. B.\nEric\nLevrone\nXNINE",
   "Nëse mesazhi përmban ndonjë nga këto fjalë, nuk kalon as te abonentët, as te kanali. Përputhja bëhet me fjalë të plota — \"Eric\" nuk e kap \"America\".": "Enthält eine Nachricht eines dieser Wörter, erreicht sie weder Abonnenten noch den Kanal. Der Abgleich erfolgt wortgenau — „Eric“ trifft nicht auf „America“ zu.",
+  "Emrat/fjalët e bllokuara": "Blockierte Namen/Wörter",
+  "Shkruaj një emër ose fjalë dhe shtyp Enter": "Namen oder Wort eingeben und Enter drücken",
+  "Blloko": "Blockieren",
+  "Zhblloko": "Entsperren",
+  "Asnjë fjalë e bllokuar ende.": "Noch keine blockierten Wörter.",
+  "Kujdes: ndryshimet zbatohen vetëm pasi të klikosh \"Ruaj filtrat\".": "Hinweis: Änderungen wirken erst, nachdem du auf „Filter speichern“ klickst.",
+  "U ruajt — zbatohet menjëherë te mesazhi i parë i ri.": "Gespeichert — gilt ab der nächsten Nachricht.",
+  "Ruajtja nuk u konfirmua nga serveri — rifresko faqen dhe provo sërish.": "Das Speichern wurde vom Server nicht bestätigt — Seite neu laden und erneut versuchen.",
 };

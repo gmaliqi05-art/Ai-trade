@@ -107,7 +107,10 @@ export default function AdminGoldSniperPage() {
   const [fStrip, setFStrip] = useState(true);
   const [fHideChat, setFHideChat] = useState(false);
   const [fWords, setFWords] = useState('');
+  const [fNew, setFNew] = useState('');
   const [fBusy, setFBusy] = useState(false);
+  // Mesazh PRANË butonit — banneri lart nuk shihet kur faqja është e rrëshqitur poshtë.
+  const [fMsg, setFMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const flash = (type: 'success' | 'error', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 3500); };
@@ -207,16 +210,31 @@ export default function AdminGoldSniperPage() {
     finally { setOthersBusy(false); }
   };
 
-  const saveFilters = async () => {
+  // Lista e fjalëve të bllokuara si varg — burimi mbetet teksti (një fjalë për rresht).
+  const wordList = fWords.split(/[\n,]/).map((w) => w.trim()).filter(Boolean);
+  const setWords = (list: string[]) => setFWords(list.join('\n'));
+  const addWord = () => {
+    const w = fNew.trim();
+    if (!w) return;
+    if (wordList.some((x) => x.toLowerCase() === w.toLowerCase())) { setFNew(''); return; }
+    setWords([...wordList, w]); setFNew('');
+  };
+  const removeWord = (i: number) => setWords(wordList.filter((_, j) => j !== i));
+
+  const saveFilters = async (list?: string[]) => {
     if (!owner) return;
-    setFBusy(true);
-    const { error } = await supabase.from('gold_sniper_config').update({
-      msg_strip_emojis: fStrip, msg_hide_chat: fHideChat, msg_blocked_words: fWords.trim(),
+    setFBusy(true); setFMsg(null);
+    const words = (list ?? wordList).join('\n');
+    // VERIFIKIM: kërkohet rreshti i kthyer — një update pa përputhje s'jep gabim, por as ruajtje.
+    const { data, error } = await supabase.from('gold_sniper_config').update({
+      msg_strip_emojis: fStrip, msg_hide_chat: fHideChat, msg_blocked_words: words,
       updated_at: new Date().toISOString(),
-    }).eq('user_id', owner);
+    }).eq('user_id', owner).select('user_id');
     setFBusy(false);
-    if (error) flash('error', error.message);
-    else flash('success', t('Filtrat u ruajtën — zbatohen menjëherë te mesazhet e reja.'));
+    if (error) { setFMsg({ type: 'error', text: error.message }); return; }
+    if (!data || data.length === 0) { setFMsg({ type: 'error', text: t('Ruajtja nuk u konfirmua nga serveri — rifresko faqen dhe provo sërish.') }); return; }
+    setFMsg({ type: 'success', text: t('U ruajt — zbatohet menjëherë te mesazhi i parë i ri.') });
+    refresh();
   };
 
   const copy = (text: string) => { navigator.clipboard?.writeText(text).then(() => flash('success', t('U kopjua.'))).catch(() => {}); };
@@ -383,20 +401,58 @@ export default function AdminGoldSniperPage() {
             </ul>
           </div>
 
-          <label className="block">
-            <span className="text-[11px] text-gray-500 flex items-center gap-1.5 mb-1">
-              <Ban className="w-3.5 h-3.5 text-red-400" />{t('Emrat/fjalët e bllokuara (një për rresht ose ndarë me presje)')}
+          {/* LISTA E BLLOKIMEVE — shto me një fushë, hiq (zhblloko) me X te secili. */}
+          <div className="rounded-xl bg-black/20 border border-white/5 p-3 space-y-3">
+            <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
+              <Ban className="w-3.5 h-3.5 text-red-400" />{t('Emrat/fjalët e bllokuara')}
             </span>
-            <textarea value={fWords} onChange={(e) => setFWords(e.target.value)} rows={5}
-              placeholder={t('p.sh.\nEric\nLevrone\nXNINE')}
-              className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 resize-none" />
-            <span className="block text-[10px] text-gray-600 mt-1">{t('Nëse mesazhi përmban ndonjë nga këto fjalë, nuk kalon as te abonentët, as te kanali. Përputhja bëhet me fjalë të plota — "Eric" nuk e kap "America".')}</span>
-          </label>
 
-          <button onClick={saveFilters} disabled={fBusy}
-            className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-gray-950 disabled:opacity-50">
-            {fBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{t('Ruaj filtrat')}
-          </button>
+            <div className="flex gap-2">
+              <input value={fNew} onChange={(e) => setFNew(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addWord(); } }}
+                placeholder={t('Shkruaj një emër ose fjalë dhe shtyp Enter')}
+                className="flex-1 bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-red-500" />
+              <button onClick={addWord} disabled={!fNew.trim()}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 hover:bg-red-500/25 disabled:opacity-40">
+                <Ban className="w-4 h-4" />{t('Blloko')}
+              </button>
+            </div>
+
+            {wordList.length === 0 ? (
+              <p className="text-[11px] text-gray-600">{t('Asnjë fjalë e bllokuar ende.')}</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {wordList.map((w, i) => (
+                  <span key={`${w}-${i}`}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold pl-3 pr-1.5 py-1.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-200">
+                    {w}
+                    <button onClick={() => removeWord(i)} title={t('Zhblloko')}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-red-300 hover:bg-red-500/30 hover:text-white transition-colors">
+                      <XCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[10px] text-gray-600">
+              {t('Nëse mesazhi përmban ndonjë nga këto fjalë, nuk kalon as te abonentët, as te kanali. Përputhja bëhet me fjalë të plota — "Eric" nuk e kap "America".')}
+            </p>
+            <p className="text-[10px] text-amber-500/70">{t('Kujdes: ndryshimet zbatohen vetëm pasi të klikosh "Ruaj filtrat".')}</p>
+          </div>
+
+          {/* Ruajtja + përgjigjja PRANË butonit (banneri lart nuk shihet kur je poshtë). */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <button onClick={() => saveFilters()} disabled={fBusy}
+              className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-gray-950 disabled:opacity-50">
+              {fBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{t('Ruaj filtrat')}
+            </button>
+            {fMsg && (
+              <span className={`text-xs font-semibold ${fMsg.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                {fMsg.text}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
