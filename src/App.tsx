@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ScreenshotShield from './components/ScreenshotShield';
 import { LanguageProvider } from './i18n/i18n';
@@ -177,6 +178,7 @@ export default function App() {
         {/* Mburoja kundër screenshot-eve — aktive për çdo përdorues të kyçur, përveç të përjashtuarve. */}
         <ScreenshotShield />
         <AppContent />
+        <Analytics />
       </AuthProvider>
     </LanguageProvider>
   );
