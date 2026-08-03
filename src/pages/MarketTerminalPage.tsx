@@ -206,6 +206,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const [newTp, setNewTp] = useState('');         // TP për porosinë e re (manuale)
   const [appliedSignalId, setAppliedSignalId] = useState<string | null>(null);
   const [tradeLoading, setTradeLoading] = useState(false);
+  // Cila anë u shtyp te shiriti i shpejtë (BUY apo SELL). Pa këtë, të dy butonat lexonin vetëm
+  // 'tradeLoading' dhe rrotulla shfaqej te TË DY njëkohësisht — dukej sikur u shtypën të dyja,
+  // pra sikur u dërguan dy urdhra. Tani rrotulla shfaqet vetëm te butoni që shtypi përdoruesi.
+  const [quickSide, setQuickSide] = useState<'buy' | 'sell' | null>(null);
   const [tradeMsg, setTradeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -650,15 +654,19 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const vol = parseFloat(lot);
     if (isNaN(vol) || vol <= 0) { setTradeMsg({ type: 'error', text: t('Vendos një lot të vlefshëm (p.sh. 0.01).') }); return; }
     if (!metaConfigured) { setTradeMsg({ type: 'error', text: errText(t, 'metaapi_not_configured') }); return; }
-    setTradeType(dir); setTradeLoading(true); setTradeMsg(null);
-    const r = await executeTrade({ action: dir === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: vol });
-    if (r.error) setTradeMsg({ type: 'error', text: errText(t, r.error, r.message) });
-    else {
-      const d = dir === 'buy' ? t('BLEJ') : t('SHIT');
-      setTradeMsg({ type: 'success', text: t('Urdhër {dir} {sym} ({vol} lot){extra} dërguar ({mode}).', { dir: d, sym: selected, vol, extra: '', mode: r.mode ?? '' }) });
-      fetchMeta(); loadPreOpen();
+    setTradeType(dir); setQuickSide(dir); setTradeLoading(true); setTradeMsg(null);
+    try {
+      const r = await executeTrade({ action: dir === 'buy' ? 'BUY' : 'SELL', symbol: selected, volume: vol });
+      if (r.error) setTradeMsg({ type: 'error', text: errText(t, r.error, r.message) });
+      else {
+        const d = dir === 'buy' ? t('BLEJ') : t('SHIT');
+        setTradeMsg({ type: 'success', text: t('Urdhër {dir} {sym} ({vol} lot){extra} dërguar ({mode}).', { dir: d, sym: selected, vol, extra: '', mode: r.mode ?? '' }) });
+        fetchMeta(); loadPreOpen();
+      }
+    } finally {
+      // 'finally' që butonat të mos mbeten kurrë të bllokuar me rrotullë nëse thirrja hedh gabim.
+      setTradeLoading(false); setQuickSide(null);
     }
-    setTradeLoading(false);
   };
 
 
@@ -1333,13 +1341,16 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
                 title={t('Rrit lotin')} aria-label={t('Rrit lotin')}
                 className="px-2 text-gray-300 hover:bg-gray-700 hover:text-white font-bold text-sm">+</button>
             </div>
+            {/* Rrotulla shfaqet VETËM te ana e shtypur ('quickSide'); tjetra ruan ikonën e vet dhe
+                zbehet, që të lexohet qartë "ky po punon, tjetri është i bllokuar për pak" — jo
+                "u shtypën të dy". Butoni aktiv rri me ngjyrë të plotë. */}
             <button onClick={() => quickTrade('buy')} disabled={tradeLoading}
-              className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-green-500 hover:bg-green-400 text-white font-bold text-xs disabled:opacity-50">
-              {tradeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}BUY
+              className={`flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-green-500 hover:bg-green-400 text-white font-bold text-xs ${tradeLoading && quickSide !== 'buy' ? 'opacity-50' : ''}`}>
+              {tradeLoading && quickSide === 'buy' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}BUY
             </button>
             <button onClick={() => quickTrade('sell')} disabled={tradeLoading}
-              className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-xs disabled:opacity-50">
-              {tradeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingDown className="w-3.5 h-3.5" />}SELL
+              className={`flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-xs ${tradeLoading && quickSide !== 'sell' ? 'opacity-50' : ''}`}>
+              {tradeLoading && quickSide === 'sell' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingDown className="w-3.5 h-3.5" />}SELL
             </button>
             {/* "Open Order" (jo "Close") — hap dritaren me porositë e hapura live (kërkesa e pronarit).
                 Në telefon vetëm "Order": hapësira e re para BUY-t ia merr disa piksela, dhe pa këtë
