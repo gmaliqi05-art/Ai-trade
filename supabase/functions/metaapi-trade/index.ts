@@ -16,6 +16,10 @@ interface MetaApiConfig {
   token: string;
   region: string;
   mode: string;
+  // Etiketa DEMO/LIVE: 'mode' është ajo që shfaqet, 'mode_detected' ajo që raporton brokeri.
+  // 'mode_manual' = true → pronari e ka vendosur vetë dhe zbulimi nuk e mbishkruan.
+  mode_manual?: boolean;
+  mode_detected?: string | null;
   auto_trade: boolean;
   default_lot: number;
   max_lot: number;
@@ -265,14 +269,27 @@ Deno.serve(async (req: Request) => {
         //   ACCOUNT_TRADE_MODE_REAL → live | ACCOUNT_TRADE_MODE_DEMO / _CONTEST → demo
         // E ruajmë sa herë ndryshon, që edhe pjesët e tjera (Dashboard, Admin) ta shohin njësoj.
         const accType = String((info as { type?: unknown })?.type ?? "").toUpperCase();
-        let mode = config.mode;
-        if (accType.includes("REAL")) mode = "live";
-        else if (accType.includes("DEMO") || accType.includes("CONTEST")) mode = "demo";
-        if (mode !== config.mode) {
-          // Nëse brokeri s'e kthen 'type' (rast i rrallë), 'mode' mbetet siç ishte — s'trillojmë.
-          await db.from("metaapi_config").update({ mode }).eq("user_id", user.id);
+        let detected: string | null = null;
+        if (accType.includes("REAL")) detected = "live";
+        else if (accType.includes("DEMO") || accType.includes("CONTEST")) detected = "demo";
+
+        // MBIVENDOSJE E PRONARIT: kur 'mode_manual' është true, etiketa e vendosur me dorë mbetet
+        // dhe zbulimi nuk e prek. E vërteta e brokerit RUHET gjithsesi te 'mode_detected', që të mos
+        // humbasë kurrë — faqja e cilësimeve e tregon krahas etiketës kur të dyja ndryshojnë.
+        const manual = config.mode_manual === true;
+        const mode = (detected && !manual) ? detected : config.mode;
+
+        const patch: Record<string, unknown> = {};
+        if (detected && detected !== config.mode_detected) patch.mode_detected = detected;
+        if (mode !== config.mode) patch.mode = mode; // s'ndodh kur 'manual' është true
+        // Nëse brokeri s'e kthen 'type' (rast i rrallë), s'shkruajmë asgjë — nuk trillojmë.
+        if (Object.keys(patch).length > 0) {
+          await db.from("metaapi_config").update(patch).eq("user_id", user.id);
         }
-        return json({ success: true, mode, account_type: accType || null, account: info });
+        return json({
+          success: true, mode, mode_detected: detected, mode_manual: manual,
+          account_type: accType || null, account: info,
+        });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
       }

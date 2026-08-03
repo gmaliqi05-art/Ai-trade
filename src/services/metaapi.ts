@@ -9,6 +9,10 @@ export interface MetaApiConfig {
   /** Link i rikonfigurimit nga MetaApi (configure-trading-account-credentials) — shkurtore për të rregulluar lidhjen. */
   config_link: string;
   mode: 'demo' | 'live';
+  /** true = etiketa DEMO/LIVE e vendos pronari vetë; zbulimi nga brokeri nuk e mbishkruan. */
+  mode_manual: boolean;
+  /** Çfarë raporton brokeri realisht — ruhet gjithmonë, edhe kur ka mbivendosje. */
+  mode_detected: 'demo' | 'live' | null;
   auto_trade: boolean;
   default_lot: number;
   max_lot: number;
@@ -93,7 +97,7 @@ export interface MetaApiConfig {
 }
 
 export const DEFAULT_CONFIG: MetaApiConfig = {
-  account_id: '', token: '', region: 'new-york', config_link: '', mode: 'demo', auto_trade: false,
+  account_id: '', token: '', region: 'new-york', config_link: '', mode: 'demo', mode_manual: false, mode_detected: null, auto_trade: false,
   default_lot: 0.01, max_lot: 0.1, max_daily_loss: 100, max_open_trades: 3, kill_switch: false,
   min_confidence: 70, auto_symbols: 'XAUUSD',
   dynamic_lot: true, lot_conf_70: 0.01, lot_conf_80: 0.02, lot_conf_90: 0.05,
@@ -127,7 +131,10 @@ export async function loadMetaApiConfig(userId: string): Promise<MetaApiConfig> 
     return {
     account_id: data.account_id ?? '', token: data.token ?? '', region: data.region ?? 'new-york',
     config_link: data.config_link ?? '',
-    mode: (data.mode as 'demo' | 'live') ?? 'demo', auto_trade: !!data.auto_trade,
+    mode: (data.mode as 'demo' | 'live') ?? 'demo',
+    mode_manual: !!data.mode_manual,
+    mode_detected: (data.mode_detected as 'demo' | 'live' | null) ?? null,
+    auto_trade: !!data.auto_trade,
     default_lot: Number(data.default_lot ?? 0.01), max_lot: Number(data.max_lot ?? 0.1),
     max_daily_loss: Number(data.max_daily_loss ?? 100), max_open_trades: Number(data.max_open_trades ?? 3),
     kill_switch: !!data.kill_switch,
@@ -267,6 +274,9 @@ interface TradeResponse {
   success?: boolean; error?: string; message?: string; mode?: string;
   /** Lloji i llogarisë siç e raporton brokeri (ACCOUNT_TRADE_MODE_REAL / _DEMO / _CONTEST). */
   account_type?: string | null;
+  /** Modaliteti sipas brokerit dhe nëse etiketa është e mbivendosur me dorë. */
+  mode_detected?: 'demo' | 'live' | null;
+  mode_manual?: boolean;
   order_id?: string | null; account?: AccountInfo; positions?: OpenPosition[];
   deals?: HistoryDeal[]; candles?: Mt5Candle[]; orders?: PendingOrder[];
   price?: { symbol?: string; bid?: number; ask?: number; brokerTime?: string; time?: string };
