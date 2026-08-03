@@ -1042,7 +1042,14 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
   // mbivendosej pa asnjë shpjegim (p.sh. 0.10 aty, por hapej 0.01). Burimi i VETËM i lotit është
   // faqja e vet: telegram_sin_channels.lot → telegram_sin_config.lot.
   // Nga 'metaapi_config' merret vetëm LIDHJA (account_id, token, region, mode).
+  //
+  // GABIMI 10016 ("invalid stops"): brokeri e refuzon distancën e SL-së që kërkon sinjali, sepse në
+  // atë çast stops-level-i i tij është më i gjerë (hapja e së dielës, lajme, spread i trashë).
+  // VENDIM I PRONARIT (3 gusht 2026): hyrja të MOS bllokohet — ndodh vetëm në disa raste, jo në çdo
+  // tregti. Por meqë tregtia hapet me rrezik më të madh se sa thotë sinjali, pronari NJOFTOHET sa
+  // herë ndodh: push në aplikacion, shënim te raporti i tregtisë dhe rresht te përgjigjja në Telegram.
   let executed = 0; const details: string[] = [];
+  const widened: string[] = [];
   for (const leg of plan) {
     const vol = Math.round(leg.vol * 100) / 100;
     const tp = Math.round(leg.tp * 100) / 100;
@@ -1054,23 +1061,36 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
     let r = await maTrade(cfg, tradeBody);
     // 10016 (invalid stops) → zgjero SL/TP 1.5×, provo edhe një herë
     const rb0 = r.body as { numericCode?: number } | null;
+    let legWidened = false;
     if (!(r.ok && brokerResult(r.body).ok) && rb0?.numericCode === 10016) {
       const d2 = Math.round(slDist * 1.5 * 100) / 100;
       const sl2 = Math.round((isBuy ? ref - d2 : ref + d2) * 100) / 100;
       const tp2 = Math.round((isBuy ? ref + d2 * 2 : ref - d2 * 2) * 100) / 100;
       tradeBody.stopLoss = sl2; tradeBody.takeProfit = tp2;
+      legWidened = true;
       await new Promise((res) => setTimeout(res, 400));
       r = await maTrade(cfg, tradeBody);
     }
     const br = brokerResult(r.body);
+    // Vlerat e VËRTETA me të cilat u dërgua urdhri — jo ato që kërkoi sinjali. Kur ka pasur
+    // zgjerim, raporti duhet të tregojë atë që është realisht te brokeri.
+    const slUsed = Number(tradeBody.stopLoss);
+    const tpUsed = Number(tradeBody.takeProfit);
     await db.from("telegram_trades").insert({
       signal_id: signalId, user_id: cfgRow.user_id, symbol: tradeSym, action: isBuy ? "BUY" : "SELL",
-      volume: vol, tp_index: leg.idx, entry_price: ref, stop_loss: Number(tradeBody.stopLoss), take_profit: Number(tradeBody.takeProfit),
+      volume: vol, tp_index: leg.idx, entry_price: ref, stop_loss: slUsed, take_profit: tpUsed,
       metaapi_order_id: br.orderId, metaapi_position_id: pending ? null : br.positionId,
       status: br.ok ? (pending ? "pending" : "open") : "rejected",
-      reason: br.ok ? `TG TP${leg.idx}${pending ? " (pending)" : ""}` : `Brokeri: ${br.msg || br.code}`, raw_response: r.body ?? null,
+      reason: br.ok
+        ? `TG TP${leg.idx}${pending ? " (pending)" : ""}${legWidened ? ` · brokeri kërkoi stop më të gjerë (10016): SL ${sl}→${slUsed}, TP ${tp}→${tpUsed}` : ""}`
+        : `Brokeri: ${br.msg || br.code}`,
+      raw_response: r.body ?? null,
     });
-    if (br.ok) { executed++; details.push(`TP${leg.idx} @ ${tp} (${vol})${pending ? " ⏳" : ""}`); }
+    if (br.ok) {
+      executed++;
+      details.push(`TP${leg.idx} @ ${tpUsed} (${vol})${pending ? " ⏳" : ""}${legWidened ? " ⚠️" : ""}`);
+      if (legWidened) widened.push(`TP${leg.idx}: SL ${sl}→${slUsed}, TP ${tp}→${tpUsed}`);
+    }
   }
 
   // PUSH: njofto në aplikacion kur hapet trade/porosi e re nga sinjali (kërkesa e pronarit)
@@ -1082,13 +1102,27 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
       url: "/", tag: `tgsin-entry-${signalId ?? messageId}`,
     });
   }
+
+  // NJOFTIM I VEÇANTË për 10016 — i ndarë nga njoftimi i hyrjes, që të mos humbasë mes tij.
+  // Tregtia ËSHTË hapur; ky push thotë vetëm se rreziku real doli më i madh se i sinjalit.
+  if (widened.length > 0) {
+    await pushNotify({
+      user_id: cfgRow.user_id,
+      title: `⚠️ Broker widened the stop — ${tradeSym}`,
+      body: `Your broker refused the signal's stop distance (error 10016) and required a wider one. `
+        + `The trade was opened, but with more risk than the signal asked for — ${widened.join(" · ")}`,
+      url: "/", tag: `tgsin-10016-${signalId ?? messageId}`,
+    });
+  }
+
   const kindWord = pending ? "porosi në pritje" : "pozicione";
   await finish(executed > 0 ? (pending ? "pending" : (executed === plan.length ? "executed" : "partial")) : "rejected", executed > 0 ? null : "asnjë leg s'u ekzekutua (shih telegram_trades)");
   if (cfgRow.bot_token) {
     const emoji = executed > 0 ? "✅" : "⚠️";
     await tgReply(cfgRow.bot_token, chatId,
       `${emoji} <b>Telegram Sin</b> — ${isBuy ? "BUY" : "SELL"} ${tradeSym}` + (pending ? ` @ ${Math.round(ref * 100) / 100} ⏳` : "") + `\n` +
-      (executed > 0 ? `${pending ? "Vendosi" : "Hyri në"} ${executed} ${kindWord}:\n${details.join("\n")}\nSL: ${sl}` : `S'u hap dot: shih raportet në aplikacion.`));
+      (executed > 0 ? `${pending ? "Vendosi" : "Hyri në"} ${executed} ${kindWord}:\n${details.join("\n")}\nSL: ${sl}` : `S'u hap dot: shih raportet në aplikacion.`)
+      + (widened.length > 0 ? `\n⚠️ Brokeri kërkoi stop më të gjerë (10016): ${widened.join(" · ")}` : ""));
   }
   return json({ ok: true, kind: "entry", pending, executed, legs: plan.length });
 }
