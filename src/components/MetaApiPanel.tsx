@@ -65,13 +65,13 @@ export default function MetaApiPanel() {
 
   // Ndryshon dhe RUAN menjëherë — ruajtje E PJESSHME (vetëm fusha që ndryshoi), që të mos preken
   // fushat e tjera (p.sh. auto_trade). Bllokohet derisa konfigurimi real të jetë ngarkuar.
-  const setAndSave = async <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K]) => {
-    setCfg(p => ({ ...p, [k]: v }));
+  const setAndSave = async <K extends keyof MetaApiConfig>(k: K, v: MetaApiConfig[K], extra?: Partial<MetaApiConfig>) => {
+    setCfg(p => ({ ...p, [k]: v, ...(extra ?? {}) }));
     if (!user) return;
     if (!loaded) { setMsg({ type: 'error', text: t('Po ngarkohet konfigurimi — rifresko faqen para se të ndryshosh.') }); return; }
     setMsg(null);
     try {
-      await saveMetaApiConfigPartial(user.id, { [k]: v });
+      await saveMetaApiConfigPartial(user.id, { [k]: v, ...(extra ?? {}) });
       setMsg({ type: 'success', text: t('U ruajt automatikisht.') });
     } catch (e) {
       setMsg({ type: 'error', text: (e as Error).message });
@@ -138,23 +138,31 @@ export default function MetaApiPanel() {
       {/* ======= KONTROLLET KRYESORE (ruhen menjëherë) ======= */}
       <Section icon={Power} title={t('Kontrollet kryesore')} subtitle={t('Mode (Demo/Live) dhe siguria. Robotët ndizen te seksioni "Robotët" më poshtë.')}>
         <div className="grid sm:grid-cols-2 gap-3">
-          {/* MODE-i NUK ZGJIDHET MË ME DORË (3 gusht 2026). Më parë ky ishte një çelës: përdoruesi
-              e vendoste vetë "demo" ose "live", dhe kolona nisej gjithmonë me 'demo'. Kjo e bënte
-              etiketën një pohim, jo një fakt — llogari krejt reale shfaqeshin "DEMO". Tani e vërteta
-              lexohet nga brokeri (account-information → ACCOUNT_TRADE_MODE_*) sa herë testohet
-              lidhja, ndaj këtu vetëm tregohet. */}
-          <div className={`text-left rounded-xl border p-3 ${cfg.mode === 'live' ? 'bg-red-500/10 border-red-500/40' : 'bg-sky-500/10 border-sky-500/40'}`}>
-            <div className="flex items-center justify-between mb-1">
-              <span className={`text-sm font-semibold flex items-center gap-1.5 ${cfg.mode === 'live' ? 'text-red-400' : 'text-sky-400'}`}>
-                <Cloud className="w-4 h-4" />{cfg.mode === 'live' ? t('Mode: LIVE') : t('Mode: DEMO')}
-              </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.mode === 'live' ? 'bg-red-500/20 text-red-400' : 'bg-sky-500/20 text-sky-400'}`}>
-                {cfg.mode === 'live' ? 'LIVE' : 'DEMO'}
-              </span>
-            </div>
-            <p className="text-[10px] text-gray-500 leading-snug">
-              {t('Lexohet vetë nga brokeri kur testohet lidhja — nuk vendoset me dorë.')}
-            </p>
+          {/* ETIKETA DEMO/LIVE. Si parazgjedhje lexohet nga BROKERI sa herë testohet lidhja — kështu
+              llogaritë e reja nuk mbeten më "DEMO" nga default-i i kolonës. Pronari i llogarisë mund
+              ta mbivendosë për vete; atëherë 'mode_manual' bëhet true dhe zbulimi nuk e prek më.
+              E vërteta e brokerit ruhet gjithsesi te 'mode_detected' dhe tregohet këtu poshtë. */}
+          <div>
+            <BigToggle
+              on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo', { mode_manual: true })}
+              icon={Cloud} danger={cfg.mode === 'live'}
+              title={cfg.mode === 'demo' ? t('Mode: DEMO') : t('Mode: LIVE')}
+              desc={cfg.mode_manual
+                ? t('E vendosur nga ti. Zbulimi nga brokeri nuk e ndryshon.')
+                : t('Lexohet vetë nga brokeri. Prekja e vendos me dorë.')}
+              onLabel={cfg.mode === 'live' ? 'LIVE' : 'DEMO'} forceOnColor={cfg.mode === 'live'} />
+            {cfg.mode_manual && (
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                <span>
+                  {cfg.mode_detected
+                    ? t('Brokeri raporton: {mode}', { mode: cfg.mode_detected === 'live' ? 'LIVE' : 'DEMO' })
+                    : t('Brokeri s\'e ka raportuar ende.')}
+                </span>
+                <button onClick={() => setAndSave('mode_manual', false)} className="underline hover:text-gray-300 shrink-0">
+                  {t('Kthe te automatiku')}
+                </button>
+              </div>
+            )}
           </div>
           <BigToggle
             on={cfg.kill_switch} onClick={() => setAndSave('kill_switch', !cfg.kill_switch)} icon={Power} danger
