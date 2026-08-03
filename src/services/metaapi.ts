@@ -265,6 +265,8 @@ export interface Mt5Candle {
 
 interface TradeResponse {
   success?: boolean; error?: string; message?: string; mode?: string;
+  /** Lloji i llogarisë siç e raporton brokeri (ACCOUNT_TRADE_MODE_REAL / _DEMO / _CONTEST). */
+  account_type?: string | null;
   order_id?: string | null; account?: AccountInfo; positions?: OpenPosition[];
   deals?: HistoryDeal[]; candles?: Mt5Candle[]; orders?: PendingOrder[];
   price?: { symbol?: string; bid?: number; ask?: number; brokerTime?: string; time?: string };

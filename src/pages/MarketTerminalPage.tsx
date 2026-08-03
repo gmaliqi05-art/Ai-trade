@@ -393,6 +393,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     if (configured) {
       const [acc, hist, pos] = await Promise.all([checkMetaApiConnection(), loadTradeHistory(), loadOpenPositions()]);
       if (!acc.error && acc.account) setAccount(acc.account);
+      // DEMO/LIVE nga BROKERI, jo nga kolona e ruajtur: 'cfg.mode' u lexua më lart si vlerë fillestare,
+      // por e vërteta vjen me përgjigjen e CHECK-ut (serveri e nxjerr nga account-information dhe e
+      // ruan). Pa këtë, llogaritë e reja mbeteshin të etiketuara "DEMO" edhe kur ishin reale.
+      if (!acc.error && acc.mode) setMtMode(acc.mode);
       const dbRes = await fetchCloses();
       if (dbRes && !hist.error && Array.isArray(hist.deals)) {
         const grouped = groupDeals(hist.deals as HistoryDeal[]);

@@ -372,6 +372,7 @@ export const en: Record<string, string> = {
   "<span class=\"text-amber-400 font-semibold\">ℹ️ Mbrojtja \"qëndro në profit\":</span> sapo trade-i shkon +1$, SL ngrihet te hyrja (s'kthehet në humbje); nëse momentumi kthehet ndërsa je në fitim, mbyllet menjëherë.": "<span class=\"text-amber-400 font-semibold\">ℹ️ \"Stay in profit\" protection:</span> as soon as the trade goes +$1, the SL is moved to entry (it won't turn into a loss); if momentum reverses while you are in profit, it closes immediately.",
   "<span class=\"text-gray-300\">⚠️ Kujdes:</span> SL prej 2$ është shumë i ngushtë për arin — zhurma e tregut mund të prekë SL-në shpesh. Disa trade do mbyllen me humbje të vogël; kjo është normale për scalp.": "<span class=\"text-gray-300\">⚠️ Caution:</span> a $2 SL is very tight for gold — market noise can hit the SL often. Some trades will close with a small loss; this is normal for scalp.",
   "Mund t'i mbash <strong class=\"text-white\">të dyja aktive</strong> njëkohësisht — secila punon e pavarur brenda mbrojtjeve të rrezikut sipër.": "You can keep <strong class=\"text-white\">both active</strong> at the same time — each works independently within the risk protections above.",
+  "Lexohet vetë nga brokeri kur testohet lidhja — nuk vendoset me dorë.": "Read automatically from your broker when the connection is tested — not set by hand.",
   "Mode: DEMO": "Mode: DEMO",
   "Mode: LIVE": "Mode: LIVE",
   "Auto-trade": "Auto-trade",
