@@ -144,7 +144,7 @@ async function pushNotify(payload: Record<string, unknown>): Promise<void> {
     await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, pref: "signals" }),
       signal: AbortSignal.timeout(8000),
     });
   } catch { /* njoftimi s'duhet të ndalë tregtimin */ }
@@ -371,6 +371,19 @@ Deno.serve(async (req: Request) => {
             : (brokerMsg || `Përditësimi i SL/TP dështoi te brokeri (${resp.status}).`);
           return json({ error: "modify_failed", status: resp.status, message: msg, market_closed: marketClosed, details: rb }, 502);
         }
+        // PUSH: ndryshimi i SL/TP ishte i vetmi veprim manual pa njoftim — pikërisht ai që
+        // ndryshon rrezikun e pozicionit. Tani konfirmohet edhe kur aplikacioni s'është hapur.
+        {
+          const parts: string[] = [];
+          if (mbody.stopLoss != null) parts.push(`SL ${mbody.stopLoss}`);
+          if (mbody.takeProfit != null) parts.push(`TP ${mbody.takeProfit}`);
+          await pushNotify({
+            user_id: user.id,
+            title: `🔧 SL/TP updated — ${body.symbol || "position"}`,
+            body: parts.length ? `${parts.join(" · ")} — manual` : "Position updated — manual",
+            url: "/", tag: `manual-modify-${positionId}`,
+          });
+        }
         return json({ success: true, result: rb });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
@@ -414,7 +427,7 @@ Deno.serve(async (req: Request) => {
         }
         // REGJISTRO mbylljen te 'position_closes' (MENJËHERË) — shfaqet te lista pavarësisht historikut të rëndë të MT5.
         try { await new Promise((r) => setTimeout(r, 900)); await recordPositionClose(config, db, user.id, String(positionId), body.symbol); } catch { /* best-effort */ }
-        await pushNotify({ user_id: user.id, title: "Trade i mbyllur (manual)", body: `${body.symbol || "Pozicioni"} u mbyll.`, url: "/", tag: "manual-close" });
+        await pushNotify({ user_id: user.id, title: `🚪 Trade closed — ${body.symbol || "position"}`, body: "Closed manually from the platform.", url: "/", tag: "manual-close" });
         return json({ success: true, result: rb });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
@@ -601,8 +614,8 @@ Deno.serve(async (req: Request) => {
     await logExec("executed", pending ? `Porosi në pritje @ ${openPrice} (${config.mode})` : `OK (${config.mode})`, orderId, respBody);
     await pushNotify({
       user_id: user.id,
-      title: pending ? "Porosi në pritje (manual)" : "Trade i hapur (manual)",
-      body: `${action === "BUY" ? "BLEJ" : "SHIT"} ${symbol} • ${volume} lot${pending && openPrice ? ` @ ${openPrice}` : ""} (${config.mode})`,
+      title: pending ? `⏳ Pending order — ${symbol}` : `📈 Trade opened — ${symbol}`,
+      body: `${action === "BUY" ? "BUY" : "SELL"} ${volume} lot${pending && openPrice ? ` @ ${openPrice}` : ""} · manual (${config.mode})`,
       url: "/", tag: "manual-open",
     });
     return json({
