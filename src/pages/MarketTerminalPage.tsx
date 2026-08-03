@@ -169,6 +169,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // "I shëndetshëm" = i lidhur DHE po jep tick-e të freskëta (< 6s). Vetëm atëherë e fikim REST-in;
   // nëse lidhet por s'jep çmim (p.sh. emër simboli ende pa u zgjidhur), REST rikthehet vetvetiu.
   const streamHealthy = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 6000);
+  // Pasqyrë e gjendjes për funksionet asinkrone: një kërkesë REST e nisur më parë mbaron më vonë
+  // dhe do të mbante vlerën e vjetër të 'streamHealthy' po ta lexonte nga closure-i.
+  const streamHealthyRef = useRef(false);
   const [mtMode, setMtMode] = useState<'demo' | 'live'>('demo');
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [history, setHistory] = useState<ClosedTrade[]>([]);
@@ -395,7 +398,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
         mt5RestRef.current = grouped.filter(t => !dbRes.posCloseIds.has(t.id) && (t.source !== 'fastt' || !dbRes.fasttIds.has(t.id)));
         setHistory([...dbRes.posCloses, ...dbRes.fasttDedup, ...mt5RestRef.current].sort((a, b) => (b.closeTime || '').localeCompare(a.closeTime || '')));
       }
-      if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
+      // I njëjti rregull si te poll-i: streaming-u ka përparësi mbi REST-in për pozicionet.
+      if (!streamHealthyRef.current && !pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
     }
     setLastUpdated(new Date());
   }, [user, fetchCloses]);
@@ -424,6 +428,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   const fetchPositions = useCallback(async () => {
     if (!user || !metaConfigured) return;
     const pos = await loadOpenPositions();
+    // Kur streaming-u punon, ai e di i pari se pozicioni u mbyll. REST-i i MetaApi-t vonon disa
+    // sekonda dhe do ta rikthente pozicionin e mbyllur — prej andej vinin linjat që mbeteshin
+    // mbi grafik dhe dridhja (shfaqet → zhduket → shfaqet).
+    if (streamHealthyRef.current) return;
     if (!pos.error && Array.isArray(pos.positions)) setPositions(pos.positions);
   }, [user, metaConfigured]);
 
@@ -527,6 +535,8 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     setPxClock(Date.now());
     setPxTick(k => k + 1);
   }, [streamHealthy, stream.updatedAt, selected]);
+
+  useEffect(() => { streamHealthyRef.current = streamHealthy; }, [streamHealthy]);
 
   // Pozicionet nga streaming-u (real-time) → P&L pa polling kur lidhja direkte jep tick-e.
   useEffect(() => {
