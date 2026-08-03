@@ -673,8 +673,29 @@ Deno.serve(async (req: Request) => {
   // rezervimin dhe del menjëherë — pa trade, pa rreshta, pa postim në kanal.
   // Sinjalet: kovë ditore (i njëjti tekst brenda ditës = dublim). Mesazhet (MOVE SL etj.):
   // kovë orare — i njëjti urdhër mund të përsëritet legjitimisht më vonë gjatë ditës.
-  if (ps && !history) {
-    const isMsg = String(ps.action || "signal").toLowerCase() === "message";
+  //
+  // RREGULLIM (auditim, 3 gusht 2026): ky bllok ekzekutohej vetëm kur mesazhi vinte si sinjal i
+  // STRUKTURUAR ('ps'). Rruga e poller-it dërgon një update në formë Telegram-i, pra 'ps' është
+  // null dhe rezervimi kapërcehej krejt — prej andej kalonin dublikatet ndër-burimore. Tani
+  // vlen për ÇDO rrugë.
+  if (!history) {
+    // (a) REZERVIM ATOMIK SIPAS ID-së SË MESAZHIT. Kontrolli i dikurshëm ishte
+    //     "select → nëse s'ka, insert", pra dy thirrje njëkohshme e kalonin të dyja: gjetëm
+    //     në bazë të njëjtin tg_message_id të shkruar dy herë me 12 ms diferencë. Upsert-i me
+    //     'ignoreDuplicates' e zgjidh në nivel baze — vetëm i pari fiton.
+    if (messageId) {
+      const midKey = `mid:${chatId}:${messageId}`;
+      const { data: midClaim, error: midErr } = await db.from("platform_feed_seen")
+        .upsert({ feed_id: midKey, status: "msg-claim" }, { onConflict: "feed_id", ignoreDuplicates: true })
+        .select("feed_id");
+      if (midErr || !midClaim || midClaim.length === 0) return json({ ok: true, skip: "duplicate_message" });
+    }
+    // (b) REZERVIM SIPAS PËRMBAJTJES — kap dublimin kur dy burimet kanë id të ndryshme.
+    //     Sinjalet: kovë ditore. Urdhrat e menaxhimit (BREAKEVEN, CLOSE NOW): kovë orare,
+    //     sepse i njëjti urdhër mund të përsëritet ligjshëm më vonë gjatë ditës.
+    const isMsg = ps
+      ? String(ps.action || "signal").toLowerCase() === "message"
+      : parseSignal(text, "XAUUSD").kind !== "entry";
     const bucket = new Date().toISOString().slice(0, isMsg ? 13 : 10);
     const fp = `fp:${isMsg ? "msg" : "sig"}:${bucket}:${contentHash(text.trim())}`;
     const { data: fpClaim, error: fpErr } = await db.from("platform_feed_seen")
@@ -970,12 +991,22 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
     plan = validTps.map((tp, i) => ({ tp, vol: baseLot, idx: i + 1 }));
   }
 
-  // Kufizim pozicionesh PËR KANAL (numëron vetëm trade-t e sinjaleve të KËTIJ kanali)
-  const { data: chSigIds } = await db.from("telegram_signals").select("id")
-    .eq("user_id", cfgRow.user_id).eq("tg_chat_id", chatId).limit(500);
-  const idSet = new Set((chSigIds || []).map((r) => r.id));
-  const { data: openNow } = await db.from("telegram_trades").select("id, signal_id").eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
-  const openCount = (openNow || []).filter((r) => r.signal_id && idSet.has(r.signal_id)).length;
+  // Kufizim pozicionesh PËR KANAL (numëron vetëm trade-t e sinjaleve të KËTIJ kanali).
+  // RREGULLIM (auditim, 3 gusht 2026): më parë merreshin 500 sinjalet e kanalit PA renditje dhe
+  // filtrohej mbi to. Me historik mbi 500 rreshta (arrihet për pak javë), sinjalet e reja mund
+  // të mbeteshin jashtë atij grupi → pozicionet e tyre nuk numëroheshin → kufiri 'max_open'
+  // tejkalohej pa u vënë re. Tani nisemi nga trade-t E HAPURA (grup i vogël, i kufizuar vetiu)
+  // dhe pyesim vetëm për sinjalet e tyre — saktë pavarësisht sa i gjatë bëhet historiku.
+  const { data: openNow } = await db.from("telegram_trades").select("id, signal_id")
+    .eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
+  const openSigIds = [...new Set((openNow || []).map((r) => r.signal_id).filter(Boolean))];
+  let openCount = 0;
+  if (openSigIds.length > 0) {
+    const { data: chSigIds } = await db.from("telegram_signals").select("id")
+      .eq("user_id", cfgRow.user_id).eq("tg_chat_id", chatId).in("id", openSigIds);
+    const idSet = new Set((chSigIds || []).map((r) => r.id));
+    openCount = (openNow || []).filter((r) => r.signal_id && idSet.has(r.signal_id)).length;
+  }
   const room = Math.max(0, eff.max_open - openCount);
   if (room <= 0) { await finish("rejected", `Max pozicione të hapura për kanalin (${eff.max_open})`); return json({ ok: true, error: "max_open" }); }
   plan = plan.slice(0, room);
