@@ -1036,10 +1036,15 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
   if (room <= 0) { await finish("rejected", `Max pozicione të hapura për kanalin (${eff.max_open})`); return json({ ok: true, error: "max_open" }); }
   plan = plan.slice(0, room);
 
-  const maxLot = Number(cfg.max_lot) > 0 ? Number(cfg.max_lot) : Infinity;
+  // PAVARËSI E PLOTË (kërkesa e pronarit, 3 gusht 2026): roboti i sinjaleve GoldSniperFX nuk
+  // merr asnjë kufizim nga faqja e Cilësimeve të robotëve të tjerë. Më parë loti shkurtohej me
+  // 'metaapi_config.max_lot' — pra vlera e vendosur te "Konfigurimi i Sinjaleve" mund të
+  // mbivendosej pa asnjë shpjegim (p.sh. 0.10 aty, por hapej 0.01). Burimi i VETËM i lotit është
+  // faqja e vet: telegram_sin_channels.lot → telegram_sin_config.lot.
+  // Nga 'metaapi_config' merret vetëm LIDHJA (account_id, token, region, mode).
   let executed = 0; const details: string[] = [];
   for (const leg of plan) {
-    const vol = Math.min(Math.round(leg.vol * 100) / 100, maxLot);
+    const vol = Math.round(leg.vol * 100) / 100;
     const tp = Math.round(leg.tp * 100) / 100;
     const tradeBody: Record<string, unknown> = {
       actionType: pending ? pendingType : (isBuy ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL"),
