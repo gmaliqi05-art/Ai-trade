@@ -1314,9 +1314,15 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
             )}
           </div>
           {/* Shiriti i tregtimit: lot (me butona −/+ jashtë fushës) + BUY / SELL / OPEN ORDER —
-              NJË RRESHT, butona kompaktë që të rrinë të gjithë brenda edhe në telefon vertikal. */}
-          <div className="border-t border-[#2a2e39] px-2 py-1.5 flex items-center gap-1.5">
-            <div className="flex items-stretch shrink-0 rounded-lg overflow-hidden border border-gray-700 bg-black/40">
+              NJË RRESHT, butona kompaktë që të rrinë të gjithë brenda edhe në telefon vertikal.
+
+              HAPËSIRA PAS LOTIT (kërkesë e pronarit, 3 gusht 2026): butoni '+' i lotit ishte ngjitur
+              me BUY-n, ndaj gishti e prekte BUY-n aksidentalisht ndërsa ndryshohej loti — një klik i
+              gabuar hap tregti reale. Tani mes tyre ka një brez të vdekur, që nuk reagon në prekje.
+              Rritet me ekranin (telefon → tablet/iPad → PC); BUY/SELL/Open Order janë 'flex-1', pra
+              shkurtohen vetvetiu për ta bërë vend — pikërisht siç u kërkua. */}
+          <div className="border-t border-[#2a2e39] px-2 py-1.5 flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-stretch shrink-0 rounded-lg overflow-hidden border border-gray-700 bg-black/40 mr-2 sm:mr-4 lg:mr-6">
               <button onClick={() => setLot(l => (Math.max(0.01, Math.round(((parseFloat(l) || 0.01) - 0.01) * 100) / 100)).toFixed(2))}
                 title={t('Ul lotin')} aria-label={t('Ul lotin')}
                 className="px-2 text-gray-300 hover:bg-gray-700 hover:text-white font-bold text-sm">−</button>
@@ -1335,10 +1341,12 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
               className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-xs disabled:opacity-50">
               {tradeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingDown className="w-3.5 h-3.5" />}SELL
             </button>
-            {/* "Open Order" (jo "Close") — hap dritaren me porositë e hapura live (kërkesa e pronarit). */}
+            {/* "Open Order" (jo "Close") — hap dritaren me porositë e hapura live (kërkesa e pronarit).
+                Në telefon vetëm "Order": hapësira e re para BUY-t ia merr disa piksela, dhe pa këtë
+                etiketa thyhej në dy rreshta e trashte shiritin. Nga sm: e lart teksti është i plotë. */}
             <button onClick={openClosePanel} disabled={tradeLoading}
-              className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 font-bold text-xs disabled:opacity-50">
-              <Activity className="w-3.5 h-3.5" />Open Order
+              className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 font-bold text-xs whitespace-nowrap disabled:opacity-50">
+              <Activity className="w-3.5 h-3.5 shrink-0" /><span><span className="hidden sm:inline">Open </span>Order</span>
             </button>
           </div>
           {tradeMsg && (
