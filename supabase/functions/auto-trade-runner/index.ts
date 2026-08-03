@@ -693,6 +693,11 @@ async function trailPositions(cfg: Cfg): Promise<number> {
   const lockFrac = Math.min(0.95, Math.max(0.05, Number(cfg.trail_lock_pct ?? 50) / 100));
   let moves = 0;
   for (const p of positions) {
+    // RREGULLIM (auditim, 3 gusht 2026): ky cikël ecte mbi ÇDO pozicion te brokeri, pra i
+    // lëvizte SL-në edhe tregtive MANUALE të pronarit dhe atyre të GoldSniperFX — të cilat kanë
+    // menaxhimin e vet me tikun e veçantë. Tregtimi manual duhet të mbetet plotësisht i pavarur:
+    // pa shenjë roboti (SIG/SCALP/FastT/MMT) → mos e prek fare.
+    if (!isRobotPosition(p)) continue;
     if (isScalpLivePosition(p)) continue; // i menaxhon scalp-live (mos prek SL-në e tij)
     const isBuy = String(p.type || "").includes("BUY");
     const entry = Number(p.openPrice), cur = Number(p.currentPrice);
@@ -1013,6 +1018,10 @@ Deno.serve(async (req: Request) => {
 
       // MENAXHIMI I POZICIONEVE TË HAPURA
       for (const p of positions) {
+        // I njëjti kufi si te trailing-u i shpejtë: roboti menaxhon VETËM pozicionet e veta.
+        // Pozicionet pa shenjë janë manuale; ato me shenjë TG i menaxhon GoldSniperFX sipas
+        // tikut të vet te Konfigurimi i Sinjaleve.
+        if (!isRobotPosition(p)) continue;
         if (isScalpLivePosition(p)) continue; // scalp-live e menaxhon vetë (mos prek SL-në/mos mbyll)
         const isBuy = String(p.type || "").includes("BUY");
         const entry = Number(p.openPrice), cur = Number(p.currentPrice);
