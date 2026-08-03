@@ -1010,7 +1010,6 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // LIVE në trade · në pritje · raportet (të mbyllura/anuluara). (Kërkesa e pronarit.)
   const tgSigEntries = tgEntries.filter((s) => ['pending', 'executed', 'partial', 'closed', 'canceled'].includes(s.status));
   const tgLegsOf = (sigId: string) => tgLegs.filter((l) => l.signal_id === sigId);
-  const tgLive = tgSigEntries.filter((s) => ['executed', 'partial'].includes(s.status));
   const tgPending = tgSigEntries.filter((s) => s.status === 'pending');
   const tgDone = tgSigEntries.filter((s) => ['closed', 'canceled'].includes(s.status));
 
@@ -1607,13 +1606,17 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
       {/* Tabelat rrinë GJITHMONË në faqe — edhe kur janë bosh, edhe pa lidhje me MetaTrader.
           Kështu përdoruesi e sheh strukturën që do t'i mbushet sapo të nisë tregtimi, në vend
           që faqja t'i dukej e zbrazët (kërkesa e pronarit). */}
-      <TLFold k="tglive" title={t('GoldSniperFX Algorithm — LIVE në trade')} icon={<Zap className="w-4 h-4 text-emerald-400" />}>
-        {tgLive.length > 0 ? renderTgSinTable(tgLive) : <TLEmpty text={t('Asnjë pozicion i hapur nga sinjalet për momentin.')} />}
-      </TLFold>
-      <TLFold k="tgpend" title={t('GoldSniperFX Algorithm — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
-        <p className="text-[10px] text-gray-500 mb-2">{t('Porosia rri në pritje derisa çmimi të arrijë hyrjen (ose derisa të mbyllet nga sinjali/ti).')}</p>
-        {tgPending.length > 0 ? renderTgSinTable(tgPending) : <TLEmpty text={t('Asnjë porosi në pritje.')} />}
-      </TLFold>
+      {/* "LIVE në trade" U HOQ: te "Pozicionet e hapura (live nga MT5)" më lart shfaqen tashmë
+          TË GJITHA pozicionet e hapura, përfshirë ato të hapura nga sinjalet — ishte e njëjta
+          punë dy herë (kërkesa e pronarit).
+          "Porositë në pritje" shfaqet VETËM kur ka vërtet ndonjë — një tabelë që thotë
+          "asnjë porosi" nuk i shërben askujt; raportet dhe mesazhet mbeten gjithmonë. */}
+      {tgPending.length > 0 && (
+        <TLFold k="tgpend" title={t('GoldSniperFX Algorithm — porositë në pritje')} icon={<Clock className="w-4 h-4 text-blue-400" />}>
+          <p className="text-[10px] text-gray-500 mb-2">{t('Porosia rri në pritje derisa çmimi të arrijë hyrjen (ose derisa të mbyllet nga sinjali/ti).')}</p>
+          {renderTgSinTable(tgPending)}
+        </TLFold>
+      )}
       <TLFold k="tgdone" title={t('GoldSniperFX')} icon={<History className="w-4 h-4 text-sky-400" />}>
         {/* NDARJE DITORE + përmbledhje ditore & e përgjithshme + filtër date (ditë/interval). */}
         {tgReportRows.length > 0
