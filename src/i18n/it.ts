@@ -330,6 +330,7 @@ export const it: Record<string, string> = {
   "Mirë se erdhe": "Bentornato",
   "Mode (Demo/Live) dhe siguria. Robotët ndizen te seksioni \"Robotët\" më poshtë.": "Modalità (Demo/Live) e sicurezza. I robot si attivano nella sezione \"Robot\" qui sotto.",
   "Mode LIVE përdor para reale. Sigurohu që e ke testuar në demo.": "La modalità LIVE usa denaro reale. Assicurati di averla testata in demo.",
+  "Lexohet vetë nga brokeri kur testohet lidhja — nuk vendoset me dorë.": "Letto automaticamente dal broker quando si testa la connessione — non impostato a mano.",
   "Mode: DEMO": "Modalità: DEMO",
   "Mode: LIVE": "Modalità: LIVE",
   "Modeli": "Modello",

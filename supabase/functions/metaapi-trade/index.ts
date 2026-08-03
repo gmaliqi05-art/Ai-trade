@@ -254,7 +254,25 @@ Deno.serve(async (req: Request) => {
     if (action === "CHECK") {
       try {
         const info = await metaApiGet(config, "/account-information");
-        return json({ success: true, mode: config.mode, account: info });
+        // DEMO/LIVE lexohet nga BROKERI, jo nga një vlerë e ruajtur (3 gusht 2026).
+        //
+        // Deri tani 'metaapi_config.mode' ishte thjesht një kolonë me default 'demo', dhe faqja e
+        // re "Konfigurimi i Sinjaleve" s'ka fare çelës për ta ndryshuar. Rrjedhimisht ÇDO llogari e
+        // re shfaqej "DEMO" përjetësisht — edhe kur lidhej një llogari krejt reale. Etiketë e
+        // rreme te një platformë ku njeriu duhet ta dijë me siguri nëse po rrezikon para të vërteta.
+        //
+        // MT4/MT5 e kthejnë të vërtetën te 'type' i account-information:
+        //   ACCOUNT_TRADE_MODE_REAL → live | ACCOUNT_TRADE_MODE_DEMO / _CONTEST → demo
+        // E ruajmë sa herë ndryshon, që edhe pjesët e tjera (Dashboard, Admin) ta shohin njësoj.
+        const accType = String((info as { type?: unknown })?.type ?? "").toUpperCase();
+        let mode = config.mode;
+        if (accType.includes("REAL")) mode = "live";
+        else if (accType.includes("DEMO") || accType.includes("CONTEST")) mode = "demo";
+        if (mode !== config.mode) {
+          // Nëse brokeri s'e kthen 'type' (rast i rrallë), 'mode' mbetet siç ishte — s'trillojmë.
+          await db.from("metaapi_config").update({ mode }).eq("user_id", user.id);
+        }
+        return json({ success: true, mode, account_type: accType || null, account: info });
       } catch (e) {
         return json({ error: "metaapi_unreachable", message: (e as Error).message }, 502);
       }

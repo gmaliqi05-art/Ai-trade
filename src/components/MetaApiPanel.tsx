@@ -138,9 +138,24 @@ export default function MetaApiPanel() {
       {/* ======= KONTROLLET KRYESORE (ruhen menjëherë) ======= */}
       <Section icon={Power} title={t('Kontrollet kryesore')} subtitle={t('Mode (Demo/Live) dhe siguria. Robotët ndizen te seksioni "Robotët" më poshtë.')}>
         <div className="grid sm:grid-cols-2 gap-3">
-          <BigToggle
-            on={cfg.mode === 'live'} onClick={() => setAndSave('mode', cfg.mode === 'demo' ? 'live' : 'demo')} icon={Cloud} danger={cfg.mode === 'live'}
-            title={cfg.mode === 'demo' ? t('Mode: DEMO') : t('Mode: LIVE')} desc={cfg.mode === 'demo' ? t('Para virtuale — pa rrezik. Ideale për test.') : t('PARA REALE. Sigurohu që e ke testuar në demo.')} onLabel={cfg.mode === 'live' ? 'LIVE' : 'DEMO'} forceOnColor={cfg.mode === 'live'} />
+          {/* MODE-i NUK ZGJIDHET MË ME DORË (3 gusht 2026). Më parë ky ishte një çelës: përdoruesi
+              e vendoste vetë "demo" ose "live", dhe kolona nisej gjithmonë me 'demo'. Kjo e bënte
+              etiketën një pohim, jo një fakt — llogari krejt reale shfaqeshin "DEMO". Tani e vërteta
+              lexohet nga brokeri (account-information → ACCOUNT_TRADE_MODE_*) sa herë testohet
+              lidhja, ndaj këtu vetëm tregohet. */}
+          <div className={`text-left rounded-xl border p-3 ${cfg.mode === 'live' ? 'bg-red-500/10 border-red-500/40' : 'bg-sky-500/10 border-sky-500/40'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-sm font-semibold flex items-center gap-1.5 ${cfg.mode === 'live' ? 'text-red-400' : 'text-sky-400'}`}>
+                <Cloud className="w-4 h-4" />{cfg.mode === 'live' ? t('Mode: LIVE') : t('Mode: DEMO')}
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.mode === 'live' ? 'bg-red-500/20 text-red-400' : 'bg-sky-500/20 text-sky-400'}`}>
+                {cfg.mode === 'live' ? 'LIVE' : 'DEMO'}
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-500 leading-snug">
+              {t('Lexohet vetë nga brokeri kur testohet lidhja — nuk vendoset me dorë.')}
+            </p>
+          </div>
           <BigToggle
             on={cfg.kill_switch} onClick={() => setAndSave('kill_switch', !cfg.kill_switch)} icon={Power} danger
             title={t('Kill-switch')} desc={t('ON = ndalon menjëherë çdo trade të ri (urgjencë).')} />
