@@ -62,6 +62,19 @@ Deno.serve(async (req: Request) => {
   const nowIso = new Date(now).toISOString();
   const upd = async (uid: string, patch: Record<string, unknown>) => { if (!dryRun && Object.keys(patch).length) await db.from("metaapi_config").update(patch).eq("user_id", uid); };
   const notify = async (uid: string, title: string, body: string) => { if (!dryRun) await db.from("notifications").insert({ user_id: uid, type: "system", title, body }); };
+  // PUSH te pajisja. Watchdog-u është i vetmi vend që i kap mbylljet me TP/SL kur aplikacioni
+  // është i mbyllur — pa këtë, përdoruesi e merrte vesh vetëm kur e hapte platformën.
+  const pushNotify = async (uid: string, title: string, body: string, tag: string) => {
+    if (dryRun) return;
+    try {
+      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/web-push-send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+        body: JSON.stringify({ user_id: uid, title, body, url: "/", tag, pref: "signals" }),
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch { /* push jo-kritik — s'e prish watchdog-un */ }
+  };
 
   // app_config helpers (gjendja globale e provisioning-ut)
   const getCfg = async (k: string): Promise<string | null> => {
@@ -191,11 +204,21 @@ Deno.serve(async (req: Request) => {
                     : /^scalp auto/i.test(r) ? "Sinjalet-Scalp" : /^auto ?\(/i.test(r) ? "Sinjalet" : null;
                   const source = robot ? "auto" : "manual";
                   const horizon = robot == null ? null : (robot === "GoldSniperFX" || robot === "Sinjalet" || robot === "MMT-Long" ? "long" : "short");
-                  await db.from("position_closes").upsert({
+                  const { data: ins } = await db.from("position_closes").upsert({
                     user_id: cfg.user_id, position_id: id, symbol: info.sym, action: info.action, volume: info.vol,
                     entry_price: info.entry || null, exit_price: outD ? Number(outD.price) : null, net,
                     source, horizon, robot, opened_at: info.openTime || null, closed_at: nowIso,
-                  }, { onConflict: "user_id,position_id" });
+                  }, { onConflict: "user_id,position_id", ignoreDuplicates: true }).select("position_id");
+                  // PUSH vetëm për tregtitë MANUALE: mbylljet e sinjaleve dhe të robotëve
+                  // njoftohen nga funksionet e tyre — përndryshe përdoruesi merrte dy njoftime.
+                  // 'ignoreDuplicates' → njoftojmë vetëm herën e parë që kapet kjo mbyllje.
+                  if (source === "manual" && ins && ins.length > 0) {
+                    const win = net >= 0;
+                    await pushNotify(cfg.user_id,
+                      `${win ? "✅ Trade closed in profit" : "🛑 Trade closed"} — ${info.sym}`,
+                      `${info.action} ${info.vol} lot · ${win ? "Profit" : "Loss"} ${net >= 0 ? "+" : ""}${net.toFixed(2)}$ — manual`,
+                      `manual-auto-close-${id}`);
+                  }
                 }
               }
               await db.from("open_pos_snapshot").upsert({ user_id: cfg.user_id, positions: cur, updated_at: nowIso }, { onConflict: "user_id" });
