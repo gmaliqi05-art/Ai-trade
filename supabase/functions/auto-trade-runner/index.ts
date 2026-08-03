@@ -1454,6 +1454,11 @@ Deno.serve(async (req: Request) => {
           // 10004) → riprovo njësoj; (b) INVALID STOPS 10016 (hapja e së dielës/lajme — brokeri e
           // zgjeron stops-level-in) → ZGJERO SL/TP 1.5× dhe riprovo. Më parë një 10016 i vetëm e
           // vriste sinjalin përfundimisht, sepse kontrolli i dublikatit i ndalonte riprovat pasuese.
+          //
+          // Vlerat fillestare ruhen që, nëse ndodh zgjerimi, pronari të njoftohet me shifra konkrete
+          // (vendim i tij, 3 gusht 2026: hyrja të mos bllokohet, por të mos ndodhë në heshtje).
+          const slPlanned = stopLoss, tpPlanned = takeProfit;
+          let widened = false;
           for (let a = 0; a < 3; a++) {
             const rb0 = r.body as { orderId?: string; numericCode?: number } | null;
             if (r.ok && rb0?.orderId) break;
@@ -1464,6 +1469,7 @@ Deno.serve(async (req: Request) => {
               stopLoss = Math.round((isBuy ? entryPx - slDist : entryPx + slDist) * 100) / 100;
               takeProfit = Math.round((isBuy ? entryPx + tpDist : entryPx - tpDist) * 100) / 100;
               tradeBody.stopLoss = stopLoss; tradeBody.takeProfit = takeProfit;
+              widened = true;
             } else if (code0 !== 10019 && code0 !== 10021 && code0 !== 10004) break;
             await new Promise((res) => setTimeout(res, 500));
             r = await maTrade(cfg, tradeBody);
@@ -1475,11 +1481,18 @@ Deno.serve(async (req: Request) => {
             summary.push({ user: cfg.user_id, signal: sig.id, status: "broker_rejected", code: br.code });
             continue;
           }
-          await log("executed", `auto (${cfg.mode}, ${dataSrc})`, br.orderId, r.body);
+          await log("executed", `auto (${cfg.mode}, ${dataSrc})${widened ? ` · brokeri kërkoi stop më të gjerë (10016): SL ${r2(slPlanned ?? 0)}→${r2(stopLoss ?? 0)}, TP ${r2(tpPlanned ?? 0)}→${r2(takeProfit ?? 0)}` : ""}`, br.orderId, r.body);
           openTrades += 1;
           await pushNotify({ user_id: cfg.user_id, title: `🤖 Roboti hapi trade: ${isBuy ? "BLEJ" : "SHIT"} ${tradeSym}`,
             body: `${volume} lot • Hyrje ${r2(entryPx ?? 0)} · TP ${takeProfit != null ? r2(takeProfit) : "—"} · SL ${stopLoss != null ? r2(stopLoss) : "—"} (${cfg.mode})`,
             url: "/", tag: "trade-open" });
+          // Hyrja u lejua me stop më të gjerë se i planifikuari → njoftim i veçantë, me shifra.
+          if (widened) {
+            await pushNotify({ user_id: cfg.user_id, title: `⚠️ Broker widened the stop — ${tradeSym}`,
+              body: `Your broker refused the planned stop distance (error 10016) and required a wider one. `
+                + `The trade was opened, but with more risk than planned — SL ${r2(slPlanned ?? 0)}→${r2(stopLoss ?? 0)}, TP ${r2(tpPlanned ?? 0)}→${r2(takeProfit ?? 0)}`,
+              url: "/", tag: `trade-10016-${sig.id}` });
+          }
           summary.push({ user: cfg.user_id, signal: sig.id, status: "executed", order: br.orderId, src: dataSrc });
         } catch (e) {
           await log("error", (e as Error).message, null, null);
