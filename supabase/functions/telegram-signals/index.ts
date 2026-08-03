@@ -207,8 +207,12 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
 
   // 2) DALJE (mbyll gjithçka) — kërkon URDHËR të qartë, jo thjesht fjalën "close/exit" të përmendur
   // brenda një sqarimi (p.sh. "gold closed above 4100" ose "close to support" NUK duhet të mbyllin).
+  // Përfshihet edhe "close <simboli>" — pikërisht formën që prodhon vetë platforma te
+  // structuredToText ("close XAUUSD"). Pa të, urdhri i mbylljes i dërguar nga platforma
+  // klasifikohej 'unknown' dhe injorohej: pozicionet nuk mbylleshin kurrë.
+  // "closed"/"close to" NUK përputhen: \b pas "close" i përjashton ato.
   const isExit =
-    /\b(?:close|exit|cancel)\s+(?:all|everything|now|out|it|them|pending|positions?|orders?|(?:the|this|our|my)\s+(?:trade|position|order|setup|entry)s?)\b/i.test(low)
+    /\b(?:close|exit|cancel)\s+(?:all|everything|now|out|it|them|pending|positions?|orders?|xau(?:usd)?|gold|(?:the|this|our|my)\s+(?:trade|position|order|setup|entry)s?)\b/i.test(low)
     || /\b(?:closing\s+now|book\s+(?:the\s+)?profits?|get\s+out\s+now)\b/i.test(low)
     || /\b(?:mbyll(?:e|eni)?|anulo(?:je|jeni)?|dil\s+(?:nga\s+trade|tani))\b/i.test(low);
   if (isExit && !hasStructure) {
@@ -257,17 +261,27 @@ async function aiNormalizeOrder(db: any, text: string): Promise<string | null> {
     try { await db.from("signal_ai_log").insert({ text_in: text.slice(0, 2000), text_out: out, decision, reason }); } catch { /* */ }
   };
   try {
+    // RREGULLIM KRITIK (auditim, 3 gusht 2026): kërkohej slug-u "claude", por rreshti në bazë
+    // — dhe çdo funksion tjetër (expert-room, lab-trades, strategy-advisor) — përdor "anthropic".
+    // Pra 'prov' dilte gjithmonë null, çelësi mungonte dhe funksioni kthehej PA asnjë gjurmë:
+    // rrjeti i sigurisë me AI ishte i fjetur që nga dita e parë, pa u vënë re fare.
     const { data: prov } = await db.from("ai_providers")
-      .select("api_key_encrypted, model").eq("slug", "claude").eq("is_active", true).maybeSingle();
+      .select("api_key_encrypted, model, slug").in("slug", ["anthropic", "claude"])
+      .eq("is_active", true).limit(1).maybeSingle();
     const key = prov?.api_key_encrypted;
-    if (!key) return null;
+    // Mungesa e çelësit REGJISTROHET tani — përndryshe s'kishte si ta merrje vesh që AI-ja hesht.
+    if (!key) { await log("rejected", null, "asnjë ofrues AI aktiv me çelës (ai_providers)"); return null; }
 
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    // Modeli: ai i konfiguruar, ose një i njohur si aktual. Nëse i konfiguruari s'pranohet më
+    // (id i vjetruar), provohet një herë me modelin rezervë — një klasifikues sigurie s'duhet
+    // të bjerë vetëm se emri i modelit ka ndërruar.
+    const FALLBACK_MODEL = "claude-sonnet-5";
+    const callAI = (model: string) => fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
       signal: AbortSignal.timeout(12000),
       body: JSON.stringify({
-        model: prov.model || "claude-sonnet-4-6",
+        model,
         max_tokens: 120,
         system: "You classify trade-management messages from a gold (XAUUSD) signal channel. "
           + "Answer ONLY with compact JSON, no prose. Schema: "
@@ -280,6 +294,17 @@ async function aiNormalizeOrder(db: any, text: string): Promise<string | null> {
         messages: [{ role: "user", content: text.slice(0, 1500) }],
       }),
     });
+
+    let resp = await callAI(prov.model || FALLBACK_MODEL);
+    if (!resp.ok && (prov.model || FALLBACK_MODEL) !== FALLBACK_MODEL) {
+      const first = await resp.text().catch(() => "");
+      if (/model/i.test(first) || resp.status === 404) resp = await callAI(FALLBACK_MODEL);
+    }
+    if (!resp.ok) {
+      const errTxt = await resp.text().catch(() => "");
+      await log("rejected", null, `Anthropic ${resp.status}: ${errTxt.slice(0, 160)}`);
+      return null;
+    }
     const j = await resp.json().catch(() => ({}));
     const raw = String(j?.content?.[0]?.text || "").trim();
     const m = raw.match(/\{[\s\S]*\}/);
