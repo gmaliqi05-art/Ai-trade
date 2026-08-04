@@ -3,7 +3,7 @@ import {
   Crosshair, Send, Power, PowerOff, Loader2, Copy, ExternalLink, ShieldAlert, ChevronDown, Info,
   Filter, Smile, MessageSquareOff, Ban, Save, MessageSquare, Link2, Lock, CheckCircle2,
   AlertTriangle, Sunrise, Moon, CalendarX, Clock, Trophy, Scissors, XCircle,
-  BarChart3, RefreshCw, Bot, ShieldOff,
+  BarChart3, RefreshCw, Bot, ShieldOff, Type,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
@@ -25,7 +25,7 @@ import {
 // E RËNDËSISHME: feed-i i GoldSniperFX i takon llogarisë PRONARE (ajo që ka kanalin te
 // gold_sniper_config), jo llogarisë admin. Prandaj çdo panel punon mbi 'owner' — të njëjtin
 // rresht që lexon edhe funksioni 'platform-poll'. Kështu asnjë lidhje ekzistuese nuk prishet.
-type Tab = 'messages' | 'signals' | 'filters' | 'report' | 'links';
+type Tab = 'messages' | 'signals' | 'texts' | 'filters' | 'report' | 'links';
 
 // MESAZHET E GATSHME — tekstet shkojnë te kanali publik, prandaj janë në ANGLISHT.
 // {v} zëvendësohet me vlerën e fushës "Çmimi/vlera" (nëse shabllon e kërkon).
@@ -127,6 +127,16 @@ export default function AdminGoldSniperPage() {
   const [fWords, setFWords] = useState('');
   const [fNew, setFNew] = useState('');
   const [fBusy, setFBusy] = useState(false);
+  // TEKSTET E MESAZHIT (ballina / mbyllja / fundi) — secili me çelësin e vet ON/OFF.
+  // Deri tani "Good luck! 🥇" ishte i fiksuar në tri edge-functions; tani ruhet në bazë.
+  const [tHeader, setTHeader] = useState('');
+  const [tNote, setTNote] = useState('');
+  const [tFooter, setTFooter] = useState('');
+  const [tHeaderOn, setTHeaderOn] = useState(true);
+  const [tNoteOn, setTNoteOn] = useState(true);
+  const [tFooterOn, setTFooterOn] = useState(true);
+  const [tBusy, setTBusy] = useState(false);
+  const [tMsg, setTMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   // Mesazh PRANË butonit — banneri lart nuk shihet kur faqja është e rrëshqitur poshtë.
   const [fMsg, setFMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -176,9 +186,17 @@ export default function AdminGoldSniperPage() {
     try { setCfg(await loadTelegramSinConfig(owner)); setLoaded(true); } catch { setLoaded(false); }
     try {
       const { data } = await supabase.from('gold_sniper_config')
-        .select('msg_strip_emojis, msg_hide_chat, msg_blocked_words').eq('user_id', owner).maybeSingle();
-      const g = data as { msg_strip_emojis?: boolean; msg_hide_chat?: boolean; msg_blocked_words?: string } | null;
-      if (g) { setFStrip(g.msg_strip_emojis !== false); setFHideChat(!!g.msg_hide_chat); setFWords(g.msg_blocked_words || ''); }
+        .select('msg_strip_emojis, msg_hide_chat, msg_blocked_words, header, note, footer, header_enabled, note_enabled, footer_enabled').eq('user_id', owner).maybeSingle();
+      const g = data as {
+        msg_strip_emojis?: boolean; msg_hide_chat?: boolean; msg_blocked_words?: string;
+        header?: string; note?: string; footer?: string;
+        header_enabled?: boolean; note_enabled?: boolean; footer_enabled?: boolean;
+      } | null;
+      if (g) {
+        setFStrip(g.msg_strip_emojis !== false); setFHideChat(!!g.msg_hide_chat); setFWords(g.msg_blocked_words || '');
+        setTHeader(g.header ?? ''); setTNote(g.note ?? ''); setTFooter(g.footer ?? '');
+        setTHeaderOn(g.header_enabled !== false); setTNoteOn(g.note_enabled !== false); setTFooterOn(g.footer_enabled !== false);
+      }
     } catch { /* */ }
     try { setOthers(await loadOthersStateAdmin(owner)); } catch { /* */ }
   }, [owner]);
@@ -279,6 +297,23 @@ export default function AdminGoldSniperPage() {
     refresh();
   };
 
+  // Ruan tekstet e mesazhit. Si te filtrat, kërkohet rreshti i kthyer — një update pa përputhje
+  // s'jep gabim te Supabase, por as nuk ruan, dhe do të dukej sikur u ruajt.
+  const saveTexts = async () => {
+    if (!owner) return;
+    setTBusy(true); setTMsg(null);
+    const { data, error } = await supabase.from('gold_sniper_config').update({
+      header: tHeader, note: tNote, footer: tFooter,
+      header_enabled: tHeaderOn, note_enabled: tNoteOn, footer_enabled: tFooterOn,
+      updated_at: new Date().toISOString(),
+    }).eq('user_id', owner).select('user_id');
+    setTBusy(false);
+    if (error) { setTMsg({ type: 'error', text: error.message }); return; }
+    if (!data || data.length === 0) { setTMsg({ type: 'error', text: t('Ruajtja nuk u konfirmua nga serveri — rifresko faqen dhe provo sërish.') }); return; }
+    setTMsg({ type: 'success', text: t('U ruajt — zbatohet te sinjali i parë i ri.') });
+    refresh();
+  };
+
   const copy = (text: string) => { navigator.clipboard?.writeText(text).then(() => flash('success', t('U kopjua.'))).catch(() => {}); };
   const hookUrl = cfg.webhook_secret ? webhookUrlFor(cfg.webhook_secret) : '';
 
@@ -298,6 +333,7 @@ export default function AdminGoldSniperPage() {
   const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: 'messages', label: t('Mesazhet'), icon: MessageSquare },
     { id: 'signals', label: t('Sinjalet'), icon: Crosshair },
+    { id: 'texts', label: t('Tekstet'), icon: Type },
     { id: 'filters', label: t('Bllokimet'), icon: Filter },
     { id: 'report', label: t('Raporti'), icon: BarChart3 },
     { id: 'links', label: t('Lidhjet'), icon: Link2 },
@@ -395,6 +431,68 @@ export default function AdminGoldSniperPage() {
       )}
 
       {/* ============ 3) BLLOKIMET ============ */}
+      {/* ============ TEKSTET E MESAZHIT ============ */}
+      {tab === 'texts' && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-4">
+          <div>
+            <h3 className="text-white font-bold text-sm flex items-center gap-2">
+              <Type className="w-4 h-4 text-amber-400" />{t('Tekstet e mesazhit të sinjalit')}
+            </h3>
+            <p className="text-[11px] text-gray-500 mt-1">
+              {t('Këto tri tekste shoqërojnë çdo sinjal që dërgojmë te Telegram-i. Çelësi OFF e heq rreshtin fare, pa ta fshirë tekstin.')}
+            </p>
+          </div>
+
+          {([
+            { key: 'header', label: t('Ballina — mbi sinjal'), value: tHeader, set: setTHeader, on: tHeaderOn, setOn: setTHeaderOn,
+              hint: t('P.sh. "🎯 NEW SIGNAL — GoldSniper|FX"') },
+            { key: 'note', label: t('Mbyllja — poshtë sinjalit'), value: tNote, set: setTNote, on: tNoteOn, setOn: setTNoteOn,
+              hint: t('P.sh. "Good luck! 🥇". Nëse sinjali sjell shënimin e vet, ai ka përparësi.') },
+            { key: 'footer', label: t('Fundi — rreshti i fundit'), value: tFooter, set: setTFooter, on: tFooterOn, setOn: setTFooterOn,
+              hint: t('P.sh. lidhja e kanalit ose një paralajmërim rreziku.') },
+          ] as const).map((f) => (
+            <div key={f.key} className={`rounded-xl border p-3 transition-colors ${f.on ? 'border-white/10 bg-white/[0.02]' : 'border-gray-800 bg-gray-900/40'}`}>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <span className={`text-xs font-semibold ${f.on ? 'text-white' : 'text-gray-500'}`}>{f.label}</span>
+                <button onClick={() => f.setOn(!f.on)} title={f.on ? t('Fike') : t('Ndize')}
+                  className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full border transition-colors ${
+                    f.on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-gray-800 text-gray-500 border-gray-700'}`}>
+                  {f.on ? <Power className="w-3 h-3" /> : <PowerOff className="w-3 h-3" />}{f.on ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              <textarea value={f.value} onChange={(e) => f.set(e.target.value)} rows={2}
+                placeholder={f.hint} disabled={!f.on}
+                className="w-full bg-black/40 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 disabled:opacity-40 resize-y" />
+              <p className="text-[10px] text-gray-600 mt-1">{f.hint}</p>
+            </div>
+          ))}
+
+          {/* PARAPAMJE — pikërisht si do të dalë te kanali. */}
+          <div className="rounded-xl border border-white/10 bg-black/40 p-3">
+            <div className="text-[10px] uppercase text-gray-500 mb-2">{t('Parapamje')}</div>
+            <pre className="text-[11px] text-gray-200 whitespace-pre-wrap font-sans leading-relaxed">
+{[
+  tHeaderOn && tHeader ? tHeader : null,
+  '🟢 BUY XAUUSD\n📍 Entry: 4050\n🛑 SL: 4040\n🎯 TP1: 4060',
+  tNoteOn && tNote ? tNote : null,
+  tFooterOn && tFooter ? tFooter : null,
+].filter(Boolean).join('\n\n')}
+            </pre>
+          </div>
+
+          {tMsg && (
+            <div className={`text-xs rounded-lg px-3 py-2 border ${tMsg.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-red-500/10 border-red-500/30 text-red-300'}`}>
+              {tMsg.text}
+            </div>
+          )}
+
+          <button onClick={saveTexts} disabled={tBusy}
+            className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl bg-amber-500 text-gray-950 hover:bg-amber-400 disabled:opacity-50">
+            {tBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}{t('Ruaj tekstet')}
+          </button>
+        </div>
+      )}
+
       {tab === 'filters' && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-4">
           <h3 className="text-white font-bold text-sm flex items-center gap-2">
