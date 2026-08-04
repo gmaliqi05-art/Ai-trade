@@ -31,6 +31,11 @@ interface MetaApiConfig {
   // Cache i qëndrueshëm i emrave REALË të simboleve te brokeri (p.sh. {"XAUUSD":"XAUUSD+"}).
   // Mbushet vetëm me emra të VERIFIKUAR te lista e brokerit → imun ndaj dështimeve kalimtare të /symbols.
   symbol_map?: Record<string, string> | null;
+  // Identiteti i llogarisë TE BROKERI (jo te MetaApi) — numri MT5, serveri, emri i brokerit.
+  // Mbushen te CHECK; shërbejnë për përputhjen me raportet e partneritetit (IB) të brokerit.
+  mt_login?: string | null;
+  mt_server?: string | null;
+  mt_broker?: string | null;
 }
 
 function host(region: string): string {
@@ -279,7 +284,21 @@ Deno.serve(async (req: Request) => {
         const manual = config.mode_manual === true;
         const mode = (detected && !manual) ? detected : config.mode;
 
+        // NUMRI I LLOGARISË TE BROKERI (4 gusht 2026) — çelësi i vetëm që na lidh me portalin IB.
+        //
+        // Portali i partneritetit të brokerit raporton sipas numrit MT5 (login), jo sipas 'account_id'
+        // të MetaApi-t, të cilin brokeri as nuk e njeh. Pa e ruajtur këtu, raporti i rebate-it mbetet
+        // një listë numrash që s'i përkasin askujt te ne. E ruajmë vetëm kur brokeri e kthen — pa të
+        // dhëna nuk shkruajmë asgjë, që një përgjigje e cunguar të mos e fshijë atë që dimë tashmë.
+        const inf = info as { login?: unknown; server?: unknown; broker?: unknown };
+        const mtLogin  = inf?.login  != null ? String(inf.login)  : "";
+        const mtServer = inf?.server != null ? String(inf.server) : "";
+        const mtBroker = inf?.broker != null ? String(inf.broker) : "";
+
         const patch: Record<string, unknown> = {};
+        if (mtLogin  && mtLogin  !== config.mt_login)  patch.mt_login  = mtLogin;
+        if (mtServer && mtServer !== config.mt_server) patch.mt_server = mtServer;
+        if (mtBroker && mtBroker !== config.mt_broker) patch.mt_broker = mtBroker;
         if (detected && detected !== config.mode_detected) patch.mode_detected = detected;
         if (mode !== config.mode) patch.mode = mode; // s'ndodh kur 'manual' është true
         // Nëse brokeri s'e kthen 'type' (rast i rrallë), s'shkruajmë asgjë — nuk trillojmë.
