@@ -30,7 +30,10 @@ export const DEFAULT_TG_CONFIG: TelegramSinConfig = {
   fallback_sl_usd: 30,
   move_be_after_tp1: true,
   symbol_default: 'XAUUSD',
-  max_open: 12,
+  // HYRJET NJËKOHËSISHT — 4 si nisje (kërkesë e pronarit, 4 gusht 2026). Ishte 12, çka është
+  // shumë për një llogari të vogël: 12 pozicione të hapura njëherësh e shterrin marzhin dhe
+  // brokeri i refuzon hyrjet e mëvonshme. Përdoruesi e ngre vetë kur të dojë.
+  max_open: 4,
   bot_token: '',
   webhook_secret: '',
   allowed_chat_ids: [],
@@ -84,7 +87,7 @@ export async function loadTelegramSinConfig(userId: string): Promise<TelegramSin
     fallback_sl_usd: Number(data.fallback_sl_usd ?? 30),
     move_be_after_tp1: data.move_be_after_tp1 ?? true,
     symbol_default: data.symbol_default ?? 'XAUUSD',
-    max_open: Number(data.max_open ?? 12),
+    max_open: Number(data.max_open ?? 4),
     bot_token: data.bot_token ?? '',
     webhook_secret: data.webhook_secret ?? '',
     allowed_chat_ids: data.allowed_chat_ids ?? [],
