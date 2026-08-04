@@ -37,9 +37,21 @@ describe('urdhrat e mbylljes', () => {
   it.each([
     ['Cancel BUY - no reaction', 'buy'],   // mesazhi real që dështoi
     ['Cancel SELL', 'sell'],
+    ['Close Buy', 'buy'], ['Close Sell', 'sell'],
+    ['Cancel Buy', 'buy'], ['Cancel Sell', 'sell'],
+    ['CLOSE BUY', 'buy'], ['close sell now', 'sell'],
     ['Close the buy', 'buy'],
     ['cancel long', 'buy'],
     ['Close shorts now', 'sell'],
+    // Fjalë mbushëse mes foljes dhe drejtimit — pa to "Close all buys" mbyllte edhe shitjet.
+    ['Close all buys', 'buy'],
+    ['Cancel all sells', 'sell'],
+    ['Close the pending buy', 'buy'],
+    ['Cancel buy order', 'buy'],
+    ['Mbyll blerjen', 'buy'],
+    ['Anulo shitjen', 'sell'],
+    // Ana tjetër përmendet, por urdhri është ai që pason foljen.
+    ['Cancel the buy, the sell is still valid', 'buy'],
   ])('%s → mbyll vetëm %s', (text, dir) => {
     const r = parse(text);
     expect(r.kind).toBe('exit');
@@ -54,6 +66,9 @@ describe('urdhrat e mbylljes', () => {
     'cancel pending orders',
     'mbylle pozicionin',
     'anuloje',
+    // Të dyja anët të lidhura shprehimisht → mbyllet gjithçka.
+    'Close BUY and SELL',
+    'Cancel buy & sell',
   ])('%s → mbyll gjithçka për simbolin', (text) => {
     const r = parse(text);
     expect(r.kind).toBe('exit');
@@ -105,6 +120,90 @@ describe('urdhrat e menaxhimit', () => {
     'XAUUSD Entry 4092 SL 4080 TP1 4100',
     'Entry 4092 SL 4080',
   ])('%s → unknown (hyrje e palexueshme, jo menaxhim)', (text) => {
+    expect(parse(text).kind).toBe('unknown');
+  });
+});
+
+/* MESAZHET ME NJË PREKJE (Admin → GoldSniperFX). Këto janë tekstet që dërgon pronari me një klikim,
+ * ndaj sjellja e tyre duhet të jetë e ngurtë: nëse dikush i ndryshon fjalët nesër, testi bie këtu
+ * para se ta zbulojë kanali. */
+describe('mesazhet e gatshme të panelit', () => {
+  it('“Mbyll pozicionin” mbyll vërtet', () => {
+    expect(parse('⚠️ CLOSE THE POSITION NOW\n\nMarket conditions changed — we exit and protect the account.').kind)
+      .toBe('exit');
+  });
+  it('“SL → Breakeven” çon stopin te hyrja', () => {
+    expect(parse('🔒 MOVE SL TO ENTRY (BREAKEVEN)\n\nSecure your position — risk is now zero.').kind)
+      .toBe('modify');
+  });
+  it('“Lëviz SL te 4085” lëviz stopin', () => {
+    expect(parse('🔒 MOVE SL TO 4085\n\nProtect your running profit.').kind).toBe('modify');
+  });
+  it.each([
+    ['Sesioni u mbyll', '🌙 Session closed for today.\n\nRest well — we are back tomorrow with new setups.'],
+    ['Tregu i mbyllur', '📅 The market is currently closed.\n\nSignals resume at market open. Orders placed now will be queued.'],
+    ['Lajme me ndikim', '⚠️ HIGH IMPACT NEWS AHEAD\n\nNo new entries until volatility settles. Manage your open positions carefully.'],
+    ['Mirëmëngjes', '☀️ Good morning traders!\n\nMarket analysis in progress — signals will follow shortly. Stay ready.'],
+  ])('“%s” nuk prek asnjë pozicion', (_label, text) => {
+    expect(parse(text).kind).toBe('unknown');
+  });
+});
+
+/* MBULIMI I ANGLISHTES.
+ *
+ * Pronari e ka sqaruar se kanali shkruan GJITHMONË në anglisht, ndaj mbulimi i saj nuk mund të
+ * mbetet te format që më kanë ardhur mua ndër mend. Lista më poshtë doli nga një provë e gjerë e
+ * mënyrave reale të të shkruarit; secila që dështoi, u rregullua. */
+describe('anglishtja — mbyllje me drejtim', () => {
+  it.each([
+    'Close the buy now', 'Close buy trade', 'Close buy position', 'Cancel the buy order',
+    'Cancel pending buy', 'Cancel buy limit', 'Close out the buy', 'Exit the buy', 'Exit buy now',
+    'Please close the buy', 'Guys close the buy', 'Close the long',
+    // Folje që më parë nuk bënin absolutisht asgjë.
+    'Remove the buy', 'Delete the pending buy', 'Abort the buy', 'Scrap the buy', 'Drop the buy',
+  ])('%s → mbyll vetëm blerjet', (text) => {
+    const r = parse(text);
+    expect(r.kind).toBe('exit');
+    expect(r.direction).toBe('buy');
+  });
+
+  it('Cancel the short → mbyll vetëm shitjet', () => {
+    expect(parse('Cancel the short')).toMatchObject({ kind: 'exit', direction: 'sell' });
+  });
+});
+
+describe('anglishtja — mbyllje e përgjithshme', () => {
+  it.each([
+    'Close all positions', 'Close everything', 'Close trade', 'Close position', 'Close now',
+    'Close out', 'Cancel all', 'Cancel the setup', 'Cancel this trade', 'Close gold',
+    'Get out now', 'Book profits', 'Closing now', 'Close all pending orders', 'Cancel all orders',
+    'Setup invalid - cancel',   // urdhri në FUND të fjalisë
+    'Go flat',
+  ])('%s → mbyll gjithçka', (text) => {
+    expect(parse(text).kind).toBe('exit');
+  });
+});
+
+describe('anglishtja — stopi dhe TP-ja', () => {
+  it.each([
+    'SL to BE', 'Bring SL to entry', 'Secure SL at breakeven', 'SL at BE', 'Stop to breakeven',
+    'Set SL at 4085', 'Move your SL to 4085', 'Tighten SL to 4085', 'Raise SL to 4085',
+    'Move TP1 to 4105', 'TP to 4105',   // e fundit nuk njihej më parë
+  ])('%s → menaxhim', (text) => {
+    expect(parse(text).kind).toBe('modify');
+  });
+});
+
+/* Gjysma tjetër, dhe më e rëndësishmja: fjali të zakonshme të tregut që përmbajnë të njëjtat fjalë
+ * por NUK janë urdhra. Një parser që reagon te "Gold closed above 4100" është më i rrezikshëm se
+ * një që nuk kupton fare. */
+describe('anglishtja — komente që nuk duhet të prekin asgjë', () => {
+  it.each([
+    'Price closing in on 4100', 'We might close the day higher', 'Waiting to close above 4100',
+    'Buy side is strong today', 'I would sell here if it breaks', 'The candle closed bullish',
+    'Market closes early today', 'No new entries until volatility settles',
+    'Stay away from buying here',
+  ])('%s → asgjë', (text) => {
     expect(parse(text).kind).toBe('unknown');
   });
 });
