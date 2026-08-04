@@ -10,6 +10,7 @@ import AdminLayout from './components/AdminLayout';
 import ClientLayout from './components/ClientLayout';
 
 import DashboardPage from './pages/DashboardPage';
+import AdminUserAuditPage from './admin/AdminUserAuditPage';
 import MarketTerminalPage from './pages/MarketTerminalPage';
 import DemoTradingPage from './pages/DemoTradingPage';
 import ChartAnalysisPage from './pages/ChartAnalysisPage';
@@ -49,14 +50,14 @@ export type ClientPage =
   | 'signals' | 'protrade' | 'metatrader' | 'mmt' | 'telegram_sin' | 'journal' | 'support' | 'notifications' | 'reports' | 'settings' | 'manual' | 'gsfx';
 
 export type AdminPage =
-  | 'admin_overview' | 'admin_users' | 'admin_signals'
+  | 'admin_overview' | 'admin_users' | 'admin_user_audit' | 'admin_signals'
   | 'admin_trades' | 'admin_ai' | 'admin_cost' | 'admin_broadcast' | 'admin_metatrader'
   | 'admin_howitworks' | 'admin_protrade_lab' | 'admin_expert_room' | 'admin_vip_codes' | 'admin_goldsniper' | 'admin_support' | 'admin_payments' | 'admin_plans' | 'admin_email' | 'admin_audit' | 'admin_settings';
 
 export type Page = ClientPage | AdminPage;
 
 const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'demo_trading', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'mmt', 'telegram_sin', 'journal', 'support', 'notifications', 'reports', 'settings', 'manual', 'gsfx'];
-const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_vip_codes', 'admin_goldsniper', 'admin_support', 'admin_payments', 'admin_plans', 'admin_email', 'admin_audit', 'admin_settings'];
+const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_user_audit', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_vip_codes', 'admin_goldsniper', 'admin_support', 'admin_payments', 'admin_plans', 'admin_email', 'admin_audit', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
 function usePersistedPage<T extends string>(storageKey: string, valid: T[], fallback: T): [T, (p: T) => void] {
@@ -81,6 +82,7 @@ function AdminApp() {
     <AdminLayout currentPage={currentPage} onNavigate={setCurrentPage}>
       {currentPage === 'admin_overview' && <AdminOverviewPage onNavigate={setCurrentPage} />}
       {currentPage === 'admin_users' && <AdminPageTab tab="users" />}
+      {currentPage === 'admin_user_audit' && <AdminUserAuditPage />}
       {currentPage === 'admin_signals' && <AdminPageTab tab="signals" />}
       {currentPage === 'admin_audit' && <AdminPageTab tab="audit" />}
       {currentPage === 'admin_trades' && <AdminPageTab tab="trades" />}
