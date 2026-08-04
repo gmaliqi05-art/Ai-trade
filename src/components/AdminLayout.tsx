@@ -110,7 +110,7 @@ export default function AdminLayout({ currentPage, onNavigate, children }: Admin
         </div>
         {!collapsed && (
           <div>
-            <div className="text-white font-bold text-sm leading-none tracking-wide">GOLDTRADE</div>
+            <div className="text-white font-bold text-sm leading-none tracking-wide">GoldSniper<span className="text-amber-400">FX</span></div>
             <div className="text-red-400 text-[10px] font-semibold tracking-[0.2em] uppercase mt-0.5">Super Admin</div>
           </div>
         )}

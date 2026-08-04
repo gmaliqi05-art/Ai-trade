@@ -175,7 +175,7 @@ function AppContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
           </div>
-          <div className="text-gray-400 text-sm">Loading GOLDTRADE AI...</div>
+          <div className="text-gray-400 text-sm">Loading GoldSniperFX…</div>
         </div>
       </div>
     );

@@ -73,7 +73,7 @@ export default function AccountVerifyGate() {
             <TrendingUp className="w-8 h-8 text-gray-950" />
           </div>
           <div className="text-left">
-            <h1 className="text-2xl font-bold text-white leading-none">GOLDTRADE</h1>
+            <h1 className="text-2xl font-bold text-white leading-none">GoldSniper<span className="text-amber-400">FX</span></h1>
             <p className="text-amber-400 text-xs font-semibold tracking-[0.2em] uppercase mt-1">{t('PLATFORMË AI')}</p>
           </div>
         </div>
