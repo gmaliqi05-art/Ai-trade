@@ -97,7 +97,12 @@ export default function AuthPage() {
               <TrendingUp className="w-8 h-8 text-gray-950" />
             </div>
             <div className="text-left">
-              <h1 className="text-2xl font-bold text-white">GOLDTRADE</h1>
+              {/* Emri ZYRTAR i platformës. Deri tani këtu shkruante "GOLDTRADE" — emër i
+                  mëparshëm — ndërsa marka kudo tjetër (karta e ndarjes, kanali, emailet) është
+                  GoldSniperFX. Ngjyrat dhe pamja mbeten të pandryshuara. */}
+              <h1 className="text-2xl font-bold text-white">
+                GoldSniper<span className="text-amber-400">FX</span>
+              </h1>
               <p className="text-amber-400 text-sm font-medium tracking-widest">{t('PLATFORMË AI')}</p>
             </div>
           </div>
@@ -167,7 +172,7 @@ export default function AuthPage() {
             <div className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-gray-950" />
             </div>
-            <span className="text-white font-bold text-lg">GOLDTRADE AI</span>
+            <span className="text-white font-bold text-lg">GoldSniper<span className="text-amber-400">FX</span></span>
           </div>
           <h2 className="text-3xl font-bold text-white mb-2">
             {mode === 'login' ? t('Mirë se erdhe') : t('Krijo llogari')}
