@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
+  ClipboardList,
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
   Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown, Crosshair, ScrollText, LifeBuoy, CreditCard, Mail
@@ -20,6 +21,7 @@ interface AdminLayoutProps {
 const navItems: { id: AdminPage; label: string; icon: React.ElementType; section: string }[] = [
   { id: 'admin_overview', label: 'Përmbledhje', icon: LayoutDashboard, section: 'Paneli' },
   { id: 'admin_users', label: 'Përdoruesit', icon: Users, section: 'Menaxhimi' },
+  { id: 'admin_user_audit', label: 'Auditimi i përdoruesve', icon: ClipboardList, section: 'Menaxhimi' },
   { id: 'admin_signals', label: 'Sinjalet', icon: Zap, section: 'Menaxhimi' },
   { id: 'admin_goldsniper', label: 'GoldSniperFX', icon: Crosshair, section: 'Menaxhimi' },
   { id: 'admin_trades', label: 'Tregtitë', icon: Activity, section: 'Menaxhimi' },
@@ -42,6 +44,7 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
 const pageLabels: Record<AdminPage, string> = {
   admin_overview: 'Përmbledhja e platformës',
   admin_users: 'Menaxhimi i përdoruesve',
+  admin_user_audit: 'Auditimi i përdoruesve',
   admin_signals: 'Menaxhimi i sinjaleve',
   admin_trades: 'Monitorimi i tregtive',
   admin_ai: 'AI Providers',
