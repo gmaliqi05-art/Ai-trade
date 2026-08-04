@@ -395,6 +395,7 @@ export const en: Record<string, string> = {
   "Shumë kërkesa njëherësh te MetaApi. Prit gjysmë minute dhe provo sërish.": "Too many requests to MetaApi at once. Wait half a minute and try again.",
   "MetaApi nuk po përgjigjet për momentin. Provo sërish pas pak minutash — nuk është gabim i cilësimeve të tua.": "MetaApi is not responding right now. Try again in a few minutes — this is not a problem with your settings.",
   "Lidhja dështoi — kontrollo Account ID, Token dhe rajonin.": "Connection failed — check the Account ID, Token and region.",
+  "Shkruaje saktësisht si te MetaApi — p.sh. london, new-york, backup-new-york.": "Type it exactly as MetaApi shows it — e.g. london, new-york, backup-new-york.",
   "Mode: DEMO": "Mode: DEMO",
   "Mode: LIVE": "Mode: LIVE",
   "Auto-trade": "Auto-trade",
