@@ -37,9 +37,21 @@ describe('urdhrat e mbylljes', () => {
   it.each([
     ['Cancel BUY - no reaction', 'buy'],   // mesazhi real që dështoi
     ['Cancel SELL', 'sell'],
+    ['Close Buy', 'buy'], ['Close Sell', 'sell'],
+    ['Cancel Buy', 'buy'], ['Cancel Sell', 'sell'],
+    ['CLOSE BUY', 'buy'], ['close sell now', 'sell'],
     ['Close the buy', 'buy'],
     ['cancel long', 'buy'],
     ['Close shorts now', 'sell'],
+    // Fjalë mbushëse mes foljes dhe drejtimit — pa to "Close all buys" mbyllte edhe shitjet.
+    ['Close all buys', 'buy'],
+    ['Cancel all sells', 'sell'],
+    ['Close the pending buy', 'buy'],
+    ['Cancel buy order', 'buy'],
+    ['Mbyll blerjen', 'buy'],
+    ['Anulo shitjen', 'sell'],
+    // Ana tjetër përmendet, por urdhri është ai që pason foljen.
+    ['Cancel the buy, the sell is still valid', 'buy'],
   ])('%s → mbyll vetëm %s', (text, dir) => {
     const r = parse(text);
     expect(r.kind).toBe('exit');
@@ -54,6 +66,9 @@ describe('urdhrat e mbylljes', () => {
     'cancel pending orders',
     'mbylle pozicionin',
     'anuloje',
+    // Të dyja anët të lidhura shprehimisht → mbyllet gjithçka.
+    'Close BUY and SELL',
+    'Cancel buy & sell',
   ])('%s → mbyll gjithçka për simbolin', (text) => {
     const r = parse(text);
     expect(r.kind).toBe('exit');
@@ -105,6 +120,31 @@ describe('urdhrat e menaxhimit', () => {
     'XAUUSD Entry 4092 SL 4080 TP1 4100',
     'Entry 4092 SL 4080',
   ])('%s → unknown (hyrje e palexueshme, jo menaxhim)', (text) => {
+    expect(parse(text).kind).toBe('unknown');
+  });
+});
+
+/* MESAZHET ME NJË PREKJE (Admin → GoldSniperFX). Këto janë tekstet që dërgon pronari me një klikim,
+ * ndaj sjellja e tyre duhet të jetë e ngurtë: nëse dikush i ndryshon fjalët nesër, testi bie këtu
+ * para se ta zbulojë kanali. */
+describe('mesazhet e gatshme të panelit', () => {
+  it('“Mbyll pozicionin” mbyll vërtet', () => {
+    expect(parse('⚠️ CLOSE THE POSITION NOW\n\nMarket conditions changed — we exit and protect the account.').kind)
+      .toBe('exit');
+  });
+  it('“SL → Breakeven” çon stopin te hyrja', () => {
+    expect(parse('🔒 MOVE SL TO ENTRY (BREAKEVEN)\n\nSecure your position — risk is now zero.').kind)
+      .toBe('modify');
+  });
+  it('“Lëviz SL te 4085” lëviz stopin', () => {
+    expect(parse('🔒 MOVE SL TO 4085\n\nProtect your running profit.').kind).toBe('modify');
+  });
+  it.each([
+    ['Sesioni u mbyll', '🌙 Session closed for today.\n\nRest well — we are back tomorrow with new setups.'],
+    ['Tregu i mbyllur', '📅 The market is currently closed.\n\nSignals resume at market open. Orders placed now will be queued.'],
+    ['Lajme me ndikim', '⚠️ HIGH IMPACT NEWS AHEAD\n\nNo new entries until volatility settles. Manage your open positions carefully.'],
+    ['Mirëmëngjes', '☀️ Good morning traders!\n\nMarket analysis in progress — signals will follow shortly. Stay ready.'],
+  ])('“%s” nuk prek asnjë pozicion', (_label, text) => {
     expect(parse(text).kind).toBe('unknown');
   });
 });
