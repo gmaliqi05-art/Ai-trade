@@ -198,7 +198,7 @@ export const en: Record<string, string> = {
   "{period} ditët e fundit": "last {period} days",
   "S'u lexuan dot të dhënat e tregtimit.": "Could not read trading data.",
   "Gabim gjatë leximit.": "Error while reading.",
-  "GOLDTRADE — Raport tregtimi ({periodLabel})": "GOLDTRADE — Trading report ({periodLabel})",
+  "GoldSniperFX — Raport tregtimi ({periodLabel})": "GoldSniperFX — Trading report ({periodLabel})",
   "Gjeneruar: {date}": "Generated: {date}",
   "Balanca: {balance} {currency}": "Balance: {balance} {currency}",
   "PERMBLEDHJE": "SUMMARY",

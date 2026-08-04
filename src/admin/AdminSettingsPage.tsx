@@ -186,7 +186,7 @@ export default function AdminSettingsPage() {
         </div>
         <div className="p-5 space-y-3">
           {[
-            { label: t('Emri i platformës'), value: 'GOLDTRADE AI' },
+            { label: t('Emri i platformës'), value: 'GoldSniperFX' },
             { label: t('Mjedisi'), value: import.meta.env.PROD ? 'Production' : 'Development' },
             { label: t('Databaza'), value: 'Supabase PostgreSQL' },
             { label: t('Provider Auth'), value: 'Supabase Auth' },

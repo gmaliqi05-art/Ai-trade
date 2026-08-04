@@ -191,7 +191,7 @@ export default function ReportsPage() {
 
   const exportCSV = () => {
     const lines: string[] = [];
-    lines.push(t('GOLDTRADE — Raport tregtimi ({periodLabel})', { periodLabel }));
+    lines.push(t('GoldSniperFX — Raport tregtimi ({periodLabel})', { periodLabel }));
     lines.push(t('Gjeneruar: {date}', { date: new Date().toLocaleString(dtLocale()) }));
     lines.push(t('Balanca: {balance} {currency}', { balance: balance.toFixed(2), currency }));
     lines.push('');

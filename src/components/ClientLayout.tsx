@@ -234,7 +234,11 @@ export default function ClientLayout({ currentPage, onNavigate, children }: Clie
         </div>
         {!collapsed && (
           <div>
-            <div className="text-white font-bold text-sm leading-none">GOLDTRADE</div>
+            {/* Emri zyrtar i platformës — i njëjti si te faqja hyrëse. Këtu shkruante ende
+                "GOLDTRADE", emri i mëparshëm. "FX" me të artën ekzistuese, si te hyrja. */}
+            <div className="text-white font-bold text-sm leading-none">
+              GoldSniper<span className="text-amber-400">FX</span>
+            </div>
             <div className="text-amber-400 text-[10px] font-semibold tracking-[0.2em] uppercase mt-0.5">{t('Sinjale AI')}</div>
           </div>
         )}

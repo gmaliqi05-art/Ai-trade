@@ -49,7 +49,7 @@ export default function SubscriptionGate() {
             <TrendingUp className="w-5 h-5 text-gray-950" />
           </div>
           <div>
-            <div className="text-white font-bold text-sm leading-none">GOLDTRADE</div>
+            <div className="text-white font-bold text-sm leading-none">GoldSniper<span className="text-amber-400">FX</span></div>
             <div className="text-amber-400 text-[10px] font-semibold tracking-[0.2em] uppercase mt-0.5">{t('PLATFORMË AI')}</div>
           </div>
         </div>
