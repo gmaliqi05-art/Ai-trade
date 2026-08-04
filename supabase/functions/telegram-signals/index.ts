@@ -1095,6 +1095,10 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
     await db.from("telegram_trades").insert({
       signal_id: signalId, user_id: cfgRow.user_id, symbol: tradeSym, action: isBuy ? "BUY" : "SELL",
       volume: vol, tp_index: leg.idx, entry_price: ref, stop_loss: slUsed, take_profit: tpUsed,
+      // NIVELET ORIGJINALE — ruhen veç dhe nuk preken më kurrë. 'stop_loss' e lëviz menaxheri ynë
+      // (breakeven / ngjitje shkallë-shkallë), ndaj pas pak orësh ai nuk është më ai i sinjalit.
+      // Pa këto dy, pyetja "po ta kishte lënë siç ishte, a do të fitonte?" s'ka si t'i përgjigjet.
+      orig_stop_loss: slUsed, orig_take_profit: tpUsed,
       metaapi_order_id: br.orderId, metaapi_position_id: pending ? null : br.positionId,
       status: br.ok ? (pending ? "pending" : "open") : "rejected",
       reason: br.ok

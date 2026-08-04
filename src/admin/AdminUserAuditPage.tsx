@@ -31,10 +31,17 @@ type Row = {
 };
 
 type SigTrade = {
-  created_at: string; closed_at: string | null; symbol: string; action: string;
+  id: string; created_at: string; closed_at: string | null; symbol: string; action: string;
   volume: number; tp_index: number | null; entry_price: number | null; stop_loss: number | null;
-  take_profit: number | null; exit_price: number | null; net: number | null;
+  take_profit: number | null; orig_stop_loss: number | null; orig_take_profit: number | null;
+  exit_price: number | null; net: number | null;
   status: string; outcome: 'tp' | 'sl' | 'manual' | 'open' | 'rejected';
+};
+
+/** Rezultati i kontrollit "po ta kishte lënë siç e dha sinjali". */
+type WhatIf = {
+  verdict: 'tp' | 'sl' | 'undecided' | 'ambiguous' | 'unknown';
+  at?: string | null; sl?: number; tp?: number; approx_levels?: boolean; error?: string;
 };
 
 const money = (n: number) => `${n >= 0 ? '+' : ''}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}$`;
@@ -55,6 +62,9 @@ export default function AdminUserAuditPage() {
   const [expiry, setExpiry] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Kontrolli per-tregti: çfarë do të kishte ndodhur me nivelet e sinjalit.
+  const [wif, setWif] = useState<Record<string, WhatIf>>({});
+  const [wifBusy, setWifBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setErr(null);
@@ -96,6 +106,14 @@ export default function AdminUserAuditPage() {
     setSaving(false);
     if (error) { setErr(error.message); return; }
     setSaved(true); setExpiry(iso.slice(0, 10)); load();
+  };
+
+  const checkWhatIf = async (id: string) => {
+    setWifBusy(id);
+    const { data, error } = await supabase.functions.invoke('admin-whatif', { body: { trade_id: id, hours: 72 } });
+    setWifBusy(null);
+    const r = (data ?? {}) as WhatIf & { ok?: boolean };
+    setWif(p => ({ ...p, [id]: error ? { verdict: 'unknown', error: error.message } : r }));
   };
 
   const list = rows.filter(r => {
@@ -237,7 +255,7 @@ export default function AdminUserAuditPage() {
                             <table className="w-full text-[11px]">
                               <thead className="bg-black/40">
                                 <tr className="text-gray-500">
-                                  {[t('Data'), t('Simboli'), t('Drejtimi'), t('Lot'), t('Hyrja'), 'SL', 'TP', t('Dalja'), t('Neto'), t('Rezultati')].map(h => (
+                                  {[t('Data'), t('Simboli'), t('Drejtimi'), t('Lot'), t('Hyrja'), 'SL', 'TP', t('Dalja'), t('Neto'), t('Rezultati'), t('Po ta linte?')].map(h => (
                                     <th key={h} className="text-left font-medium px-2 py-1.5 whitespace-nowrap">{h}</th>
                                   ))}
                                 </tr>
@@ -255,6 +273,28 @@ export default function AdminUserAuditPage() {
                                     <td className="px-2 py-1.5 tabular-nums">{x.exit_price ?? '—'}</td>
                                     <td className={`px-2 py-1.5 tabular-nums font-bold ${cls(Number(x.net || 0))}`}>{x.net != null ? money(Number(x.net)) : '—'}</td>
                                     <td className="px-2 py-1.5">{badge(x.outcome)}</td>
+                                    {/* KONTROLLI VENDIMTAR: vetëm për tregtitë ku dikush ndërhyri.
+                                        Merr qirinjtë PAS mbylljes dhe sheh cilin nivel ORIGJINAL do
+                                        ta kishte prekur i pari — TP-në apo SL-në. */}
+                                    <td className="px-2 py-1.5 whitespace-nowrap">
+                                      {x.outcome !== 'manual' ? <span className="text-gray-700">—</span>
+                                        : wif[x.id] ? (() => {
+                                          const w = wif[x.id];
+                                          const map: Record<string, [string, string]> = {
+                                            tp: [t('do të kishte fituar'), 'text-emerald-300'],
+                                            sl: [t('do të kishte humbur'), 'text-red-300'],
+                                            ambiguous: [t('i njëjti qiri — s\'dihet'), 'text-gray-400'],
+                                            undecided: [t('pa përfundim në 72h'), 'text-gray-400'],
+                                            unknown: [t('s\'u kontrollua dot'), 'text-gray-500'],
+                                          };
+                                          const [lbl, c] = map[w.verdict] ?? [w.verdict, 'text-gray-400'];
+                                          return <span className={`font-semibold ${c}`}>{lbl}{w.approx_levels ? ' *' : ''}</span>;
+                                        })()
+                                        : <button onClick={() => checkWhatIf(x.id)} disabled={wifBusy === x.id}
+                                            className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-gray-800 text-gray-300 hover:text-white border border-gray-700 disabled:opacity-50">
+                                            {wifBusy === x.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}{t('kontrollo')}
+                                          </button>}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -266,6 +306,11 @@ export default function AdminUserAuditPage() {
                               {t('{n} nga këto tregti dolën larg SL-së dhe TP-së së sinjalit — pra u mbyllën me dorë ose u lëvizën nivelet.', {
                                 n: trades.filter(x => x.outcome === 'manual').length,
                               })}
+                            </p>
+                          )}
+                          {trades.some(x => wif[x.id]?.approx_levels) && (
+                            <p className="text-[10px] text-gray-600 mt-1">
+                              {t('* nivelet e kësaj tregtie u ruajtën retroaktivisht, ndaj mund të mos jenë saktësisht ato të sinjalit.')}
                             </p>
                           )}
                         </>
