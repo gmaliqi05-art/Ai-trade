@@ -144,7 +144,12 @@ export default function JournalPage() {
     const from = new Date(chartFrom + 'T12:00:00');
     const toRaw = new Date(chartTo + 'T12:00:00');
     if (!(from.getTime() <= toRaw.getTime())) return [];
-    const end = Math.min(toRaw.getTime(), today.getTime());
+    // RREGULLIM (4 gusht 2026): pikat janë të ankoruara në orën 12:00, kurse prerja bëhej me
+    // 'today' = çasti aktual. Pra dita e SOTME hynte në grafik vetëm pas mesditës — para saj
+    // mungonte. Në ditët e para të muajit kjo e linte grafikun me një pikë të vetme (ose zero) dhe
+    // ai zhdukej fare. Tani pritja bëhet në FUND të ditës së sotme, pra dita e sotme hyn gjithmonë.
+    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    const end = Math.min(toRaw.getTime(), endOfToday.getTime());
     const pts: { key: string; d: Date; cum: number; dayNet: number; traded: boolean }[] = [];
     let cum = 0;
     for (let tms = from.getTime(); tms <= end; tms += 86400000) {
@@ -474,16 +479,24 @@ export default function JournalPage() {
           </div>
         </div>
 
-        {equitySeries.length > 1 ? (() => {
+        {/* Mjafton NJË pikë: në ditët e para të muajit ka vetëm një ditë tregtimi, dhe më parë
+            grafiku zhdukej krejt me mesazhin "s'ka të dhëna" edhe pse tregti kishte. */}
+        {equitySeries.length > 0 ? (() => {
           const W = 640, H = 210, L = 56, R = 14, T = 14, B = 30;
           const vals = equitySeries.map(p => p.cum);
           const yMin = Math.min(0, ...vals), yMax = Math.max(0, ...vals);
           const pad = Math.max((yMax - yMin) * 0.1, 1);
           const lo = yMin - pad, hi = yMax + pad;
-          const x = (i: number) => L + (i / (equitySeries.length - 1)) * (W - L - R);
+          const only = equitySeries.length === 1; // shmang pjesëtimin me zero te x()
+          const x = (i: number) => only ? L + (W - L - R) / 2 : L + (i / (equitySeries.length - 1)) * (W - L - R);
           const y = (v: number) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
           const path = equitySeries.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.cum).toFixed(1)}`).join(' ');
-          const area = `${path} L${x(equitySeries.length - 1).toFixed(1)},${y(lo).toFixed(1)} L${x(0).toFixed(1)},${y(lo).toFixed(1)} Z`;
+          const line = only
+            ? `M${(x(0) - 26).toFixed(1)},${y(vals[0]).toFixed(1)} L${(x(0) + 26).toFixed(1)},${y(vals[0]).toFixed(1)}`
+            : path;
+          const area = only
+            ? `${line} L${(x(0) + 26).toFixed(1)},${y(lo).toFixed(1)} L${(x(0) - 26).toFixed(1)},${y(lo).toFixed(1)} Z`
+            : `${path} L${x(equitySeries.length - 1).toFixed(1)},${y(lo).toFixed(1)} L${x(0).toFixed(1)},${y(lo).toFixed(1)} Z`;
           const lastV = vals[vals.length - 1];
           const col = lastV >= 0 ? '#34d399' : '#f87171';
           const yTicks = Array.from({ length: 4 }, (_, i) => lo + ((hi - lo) * i) / 3);
@@ -515,7 +528,7 @@ export default function JournalPage() {
                 ))}
                 {lo < 0 && hi > 0 && <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} stroke="#4b5563" strokeWidth="1" strokeDasharray="4 3" />}
                 <path d={area} fill={col} opacity="0.10" />
-                <path d={path} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                <path d={line} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
                 {equitySeries.map((p, i) => p.traded ? (
                   <circle key={p.key} cx={x(i)} cy={y(p.cum)} r={p.key === selDay ? 4.5 : 3} fill={col} stroke={p.key === selDay ? '#fbbf24' : '#111827'} strokeWidth={p.key === selDay ? 2 : 1}
                     className="cursor-pointer" onClick={() => setSelDay(p.key)}>
