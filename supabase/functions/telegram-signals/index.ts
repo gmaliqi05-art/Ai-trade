@@ -211,12 +211,36 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   // structuredToText ("close XAUUSD"). Pa të, urdhri i mbylljes i dërguar nga platforma
   // klasifikohej 'unknown' dhe injorohej: pozicionet nuk mbylleshin kurrë.
   // "closed"/"close to" NUK përputhen: \b pas "close" i përjashton ato.
+  //
+  // RREGULLIM (4 gusht 2026) — rasti real që e nxori: kanali dërgoi "Cancel BUY - no reaction"
+  // dhe roboti e la si koment. Në bazë duket qartë: kind='unknown', status='ignored' për të 7
+  // përdoruesit, ndërsa porositë në pritje të sinjalit BUY mbetën te brokeri.
+  //
+  // Shkaku: lista e "objekteve" që lejohej të pasonin foljen nuk përmbante DREJTIMIN. Pra
+  // "cancel all", "cancel orders", "cancel gold" punonin — por "cancel BUY", forma më e natyrshme
+  // që përdor një trejder, nuk përputhej me asgjë.
+  const EXIT_OBJ =
+    "all|everything|now|out|it|them|pending|positions?|orders?|trades?|setups?|entr(?:y|ies)"
+    + "|xau(?:usd)?|gold|buys?|sells?|longs?|shorts?|blerjen|shitjen"
+    + "|(?:the|this|our|my)\\s+(?:trade|position|order|setup|entry|buy|sell|long|short)s?";
   const isExit =
-    /\b(?:close|exit|cancel)\s+(?:all|everything|now|out|it|them|pending|positions?|orders?|xau(?:usd)?|gold|(?:the|this|our|my)\s+(?:trade|position|order|setup|entry)s?)\b/i.test(low)
+    new RegExp(`\\b(?:close|exit|cancel)\\s+(?:${EXIT_OBJ})\\b`, "i").test(low)
+    // Urdhër i zhveshur në krye të mesazhit: "Cancel", "Close!", "Cancel — no reaction".
+    // Kërkohet fillimi i tekstit dhe një shenjë ndarëse pas foljes, që "close to support" ose
+    // "closed above 4100" të mos përputhen kurrë.
+    || /^(?:close|exit|cancel)\s*(?:[-–—:!.,]|$)/i.test(low)
     || /\b(?:closing\s+now|book\s+(?:the\s+)?profits?|get\s+out\s+now)\b/i.test(low)
     || /\b(?:mbyll(?:e|eni)?|anulo(?:je|jeni)?|dil\s+(?:nga\s+trade|tani))\b/i.test(low);
   if (isExit && !hasStructure) {
-    return { kind: "exit", symbol: symbol ?? defaultSymbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [] };
+    // DREJTIMI I MBYLLJES. "Cancel BUY" duhet të prekë VETËM blerjet — nëse përdoruesi ka edhe një
+    // shitje të hapur nga një sinjal tjetër, ajo nuk ka pse të mbyllet bashkë me të. Kur drejtimi
+    // nuk shprehet ("close all"), mbetet null dhe mbyllet gjithçka për simbolin, si më parë.
+    const dm = low.match(
+      /\b(?:close|exit|cancel|mbyll(?:e|eni)?|anulo(?:je|jeni)?)\s+(?:the\s+|this\s+|our\s+|my\s+)?(buy|sell|long|short|blerjen|shitjen)s?\b/i);
+    const exitDir: "buy" | "sell" | null = dm
+      ? (/^(?:buy|long|blerjen)$/i.test(dm[1]) ? "buy" : "sell")
+      : null;
+    return { kind: "exit", symbol: symbol ?? defaultSymbol, direction: exitDir, entryType: "market", entryPrice: null, stopLoss: null, tps: [] };
   }
 
   // 3) MENAXHIM (modify): lëviz SL / breakeven / ndrysho TP-t — pa drejtim të ri.
@@ -231,6 +255,15 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   const moveSl = low.match(new RegExp(`(?:${VERBS})[^\\d]{0,24}(?:sl|s\\/l|stop\\s*loss|stoploss|stops?)[^\\d]{0,12}(\\d{2,7}(?:\\.\\d+)?)`, "i"))
     || low.match(/(?:sl|s\/l|stop\s*loss|stoploss|stops?)\s*(?:->|→|to|at|=|:|@)\s*(\d{2,7}(?:\.\d+)?)/i);
   if (moveSl) modSl = parseFloat(moveSl[1]);
+  // FORMA E ZHVESHUR: "SL 4085" — pa folje dhe pa shigjetë. Doli gjatë provave të këtij rregullimi:
+  // mesazhi klasifikohej 'unknown' dhe injorohej, edhe pse është mënyra më e shkurtër e mundshme për
+  // të kërkuar zhvendosjen e stopit. Pranohet VETËM kur mesazhi s'përmban asgjë tjetër — pa drejtim,
+  // pa çmim hyrjeje, pa TP — që një sinjal i plotë të cilit i mungon fjala BUY/SELL të mos kthehet
+  // gabimisht në urdhër zhvendosjeje të SL-së.
+  if (modSl == null && stopLoss != null && direction == null && entryPrice == null
+      && tpUpdates.length === 0 && tpNoIdx.length === 0) {
+    modSl = stopLoss;
+  }
   // TP pa indeks i shprehur si urdhër → zbatohet te TP-ja e secilit leg (idx 1..4).
   const tpCmdUpdates: TpUpdate[] = [];
   if (tpUpdates.length === 0 && tpCmd) {
@@ -238,7 +271,12 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
     if (Number.isFinite(v)) for (let i = 1; i <= 4; i++) tpCmdUpdates.push({ idx: i, price: v });
   }
   const allTp = tpUpdates.length > 0 ? tpUpdates : tpCmdUpdates;
-  if (breakeven || modSl != null || allTp.length > 0) {
+  // MBROJTJE: një mesazh me ÇMIM HYRJEJE plus SL/TP është sinjal hyrjeje që s'u lexua dot (p.sh.
+  // i mungon fjala BUY/SELL) — jo urdhër menaxhimi. Pa këtë kusht ai binte te dega e mëposhtme dhe
+  // do t'i lëvizte SL/TP-të e pozicioneve EKZISTUESE sipas niveleve të një sinjali krejt tjetër.
+  // Më mirë të mbetet 'unknown' dhe të duket te raportet, sesa të prekë para mbi një hamendje.
+  const looksLikeBrokenEntry = entryPrice != null && (stopLoss != null || allTp.length > 0);
+  if (!looksLikeBrokenEntry && (breakeven || modSl != null || allTp.length > 0)) {
     return { kind: "modify", symbol: symbol ?? defaultSymbol, direction: null, entryType: "market", entryPrice: null, stopLoss: null, tps: [],
       mod: { sl: modSl, breakeven, tpUpdates: allTp.length > 0 ? allTp : undefined } };
   }
@@ -285,10 +323,15 @@ async function aiNormalizeOrder(db: any, text: string): Promise<string | null> {
         max_tokens: 120,
         system: "You classify trade-management messages from a gold (XAUUSD) signal channel. "
           + "Answer ONLY with compact JSON, no prose. Schema: "
-          + '{"action":"breakeven"|"sl"|"tp"|"none","price":number|null,"tpIndex":1|2|3|4|null}. '
+          + '{"action":"breakeven"|"sl"|"tp"|"close"|"none","price":number|null,"tpIndex":1|2|3|4|null,'
+          + '"direction":"buy"|"sell"|null}. '
           + 'Use "breakeven" when the author asks to move the stop to entry/break-even. '
           + 'Use "sl" with the exact numeric price when they ask to move the stop loss to a price. '
-          + 'Use "tp" when they ask to change a take profit. Use "none" if it is commentary, '
+          + 'Use "tp" when they ask to change a take profit. '
+          + 'Use "close" when they tell readers to close, exit or cancel an existing trade or a '
+          + 'pending order — set "direction" to buy or sell when they name one (e.g. "cancel the buy"), '
+          + 'otherwise null. Do NOT use "close" for market commentary about price closing above or '
+          + 'below a level. Use "none" if it is commentary, '
           + "an opinion, a market observation, or anything that is not an explicit instruction. "
           + "Never invent a price that is not written in the message. When unsure, answer none.",
         messages: [{ role: "user", content: text.slice(0, 1500) }],
@@ -309,11 +352,24 @@ async function aiNormalizeOrder(db: any, text: string): Promise<string | null> {
     const raw = String(j?.content?.[0]?.text || "").trim();
     const m = raw.match(/\{[\s\S]*\}/);
     if (!m) { await log("rejected", null, "përgjigje jo-JSON"); return null; }
-    const out = JSON.parse(m[0]) as { action?: string; price?: number | null; tpIndex?: number | null };
+    const out = JSON.parse(m[0]) as { action?: string; price?: number | null; tpIndex?: number | null; direction?: string | null };
     const action = String(out.action || "none");
     if (action === "none") { await log("none", null, null); return null; }
 
     if (action === "breakeven") { await log("breakeven", "BREAKEVEN", null); return "BREAKEVEN"; }
+
+    // MBYLLJE. Nuk ka çmim për të verifikuar, ndaj i vetmi kufizim është që drejtimi, kur jepet,
+    // të përmendet vërtet në mesazh — që AI-ja të mos shpikë një "cancel the sell" nga një tekst
+    // ku shitja as nuk figuron. Forma kanonike lexohet pastaj nga parseri deterministik.
+    if (action === "close") {
+      const dir = String(out.direction || "").toLowerCase();
+      const named = dir === "buy" || dir === "sell";
+      if (named && !new RegExp(`\\b(?:${dir}|${dir === "buy" ? "long" : "short"})s?\\b`, "i").test(text)) {
+        await log("rejected", null, `drejtimi '${dir}' nuk përmendet në mesazh`); return null;
+      }
+      const c = named ? `CLOSE ${dir.toUpperCase()}` : "CLOSE XAUUSD";
+      await log("close", c, null); return c;
+    }
 
     const price = Number(out.price);
     if (!Number.isFinite(price) || price <= 0) { await log("rejected", null, "pa çmim të vlefshëm"); return null; }
@@ -749,7 +805,10 @@ Deno.serve(async (req: Request) => {
   // stop/TP/breakeven. Thirret NJË herë këtu (jo për çdo përdorues) dhe teksti zëvendësohet me
   // formën kanonike, të cilën parseri deterministik e zbaton më pas si çdo urdhër tjetër.
   if (ps && !history) {
-    const mgmt = /\b(sl|s\/l|stop|stops|stoploss|stop\s*loss|tp|take\s*profit|break\s*-?\s*even)\b/i.test(text);
+    // Porta e rrjetit të sigurisë. Fillimisht kërkonte VETËM fjalë për stop/TP/breakeven, ndaj një
+    // urdhër mbylljeje si "Cancel BUY - no reaction" as nuk arrinte deri te AI-ja: rregullat nuk e
+    // kuptonin dhe rrjeti as që aktivizohej. Tani mbulon edhe daljen.
+    const mgmt = /\b(sl|s\/l|stop|stops|stoploss|stop\s*loss|tp|take\s*profit|break\s*-?\s*even|close|closing|cancel|exit|mbyll\w*|anulo\w*)\b/i.test(text);
     if (mgmt && parseSignal(text, "XAUUSD").kind === "unknown") {
       const { data: gsCfg } = await db.from("gold_sniper_config")
         .select("ai_parse_enabled").not("channel_id", "is", null).limit(1).maybeSingle();
@@ -940,7 +999,12 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
   if (p.kind === "exit") {
     const { data: openTrades } = await db.from("telegram_trades").select("*")
       .eq("user_id", cfgRow.user_id).in("status", ["open", "pending"]);
-    const toClose = (openTrades || []).filter((t) => same(t.symbol || "", tradeSym) || same(t.symbol || "", p.symbol || ""));
+    // Drejtimi, kur urdhri e ka thënë ("Cancel BUY"): preken vetëm tregtitë e atij drejtimi.
+    // Pa drejtim ("close all") mbyllet gjithçka për simbolin, si më parë.
+    const wantDir = p.direction ? String(p.direction).toLowerCase() : null;
+    const toClose = (openTrades || [])
+      .filter((t) => same(t.symbol || "", tradeSym) || same(t.symbol || "", p.symbol || ""))
+      .filter((t) => !wantDir || String(t.action || "").toLowerCase() === wantDir);
     let closed = 0, canceled = 0;
     for (const t of toClose) {
       if (t.status === "pending" && t.metaapi_order_id) {
@@ -958,6 +1022,11 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
           await db.from("telegram_trades").update({ status: "closed", closed_at: new Date().toISOString(), reason: "Telegram: exit" }).eq("id", t.id);
           closed++;
         }
+      } else {
+        // As porosi, as pozicion te brokeri — rresht i mbetur pezull. Mbyllet lokalisht, që të mos
+        // rrijë përjetësisht 'pending' dhe të mos i bllokojë hyrjet e ardhshme te kufiri i hapjeve.
+        await db.from("telegram_trades").update({ status: "closed", closed_at: new Date().toISOString(), reason: "Telegram: exit (pa referencë te brokeri)" }).eq("id", t.id);
+        canceled++;
       }
     }
     const total = closed + canceled;
