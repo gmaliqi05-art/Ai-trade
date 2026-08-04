@@ -356,6 +356,7 @@ export const de: Record<string, string> = {
   "MetaApi nuk po përgjigjet për momentin. Provo sërish pas pak minutash — nuk është gabim i cilësimeve të tua.": "MetaApi antwortet gerade nicht. Versuche es in ein paar Minuten erneut — es liegt nicht an deinen Einstellungen.",
   "Lidhja dështoi — kontrollo Account ID, Token dhe rajonin.": "Verbindung fehlgeschlagen — prüfe Account-ID, Token und Region.",
   "Shkruaje saktësisht si te MetaApi — p.sh. london, new-york, backup-new-york.": "Genau so eintragen, wie MetaApi es anzeigt — z. B. london, new-york, backup-new-york.",
+  "Kalendari dhe grafiku shfaqin tregtitë që platforma i ka parë duke u mbyllur — nga dita që lidhe MT5-në e tutje, qofshin nga roboti apo të hapura me dorë. Tregtitë e mbyllura para lidhjes nuk regjistrohen dot. Paneli lart, përkundrazi, lexohet drejt nga MT5 dhe tregon gjithë historikun e llogarisë.": "Kalender und Diagramm zeigen Trades, deren Schließung die Plattform gesehen hat — ab dem Tag, an dem du MT5 verbunden hast, egal ob vom Roboter oder manuell eröffnet. Vor der Verbindung geschlossene Trades können nicht erfasst werden. Das Feld oben wird dagegen direkt aus MT5 gelesen und zeigt die gesamte Kontohistorie.",
   "Mode: DEMO": "Modus: DEMO",
   "Mode: LIVE": "Modus: LIVE",
   "Modeli": "Modell",

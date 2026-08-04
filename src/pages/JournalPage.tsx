@@ -675,6 +675,16 @@ export default function JournalPage() {
           </div>
         </div>
       </details>
+
+      {/* SQARIM (kërkesë e pronarit, 4 gusht 2026) — në FUND të faqes, me shkronja të vogla.
+          Paneli lart lexohet drejt nga MT5, ndaj shfaq gjithë historikun e llogarisë. Kalendari,
+          P&L-ja mujore dhe grafiku vijnë nga regjistri ynë, ku një tregti shënohet vetëm kur
+          platforma e SHEH duke u mbyllur. Prandaj tregtitë e mbyllura para lidhjes s'kanë si të
+          dalin — dhe një përdorues i ri e merr kalendarin bosh për defekt. Kjo e shpjegon, pa e
+          zënë vendin kryesor. */}
+      <p className="text-[10px] text-gray-600 leading-relaxed px-1 pb-1">
+        {t('Kalendari dhe grafiku shfaqin tregtitë që platforma i ka parë duke u mbyllur — nga dita që lidhe MT5-në e tutje, qofshin nga roboti apo të hapura me dorë. Tregtitë e mbyllura para lidhjes nuk regjistrohen dot. Paneli lart, përkundrazi, lexohet drejt nga MT5 dhe tregon gjithë historikun e llogarisë.')}
+      </p>
     </div>
   );
 }
