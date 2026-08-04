@@ -3,7 +3,7 @@ import {
   ClipboardList,
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
-  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown, Crosshair, ScrollText, LifeBuoy, CreditCard, Mail
+  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown, Crosshair, ScrollText, LifeBuoy, CreditCard, Mail, Handshake
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -29,6 +29,7 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_plans', label: 'Planet e Abonimit', icon: Crown, section: 'Menaxhimi' },
   { id: 'admin_payments', label: 'Pagesat', icon: CreditCard, section: 'Menaxhimi' },
   { id: 'admin_email', label: 'Email', icon: Mail, section: 'Menaxhimi' },
+  { id: 'admin_brokers', label: 'Brokerët', icon: Handshake, section: 'Menaxhimi' },
   { id: 'admin_protrade_lab', label: 'ProTrade Lab', icon: FlaskConical, section: 'Platforma' },
   { id: 'admin_expert_room', label: 'Dhoma e Ekspertëve', icon: UsersRound, section: 'Platforma' },
   { id: 'admin_ai', label: 'AI Providers', icon: Brain, section: 'Platforma' },
@@ -60,6 +61,7 @@ const pageLabels: Record<AdminPage, string> = {
   admin_payments: 'Pagesat — Stripe & Kripto',
   admin_plans: 'Planet e Abonimit — çmimet',
   admin_email: 'Email — lidhja me Resend',
+  admin_brokers: 'Brokerët — partneritetet IB/CPA',
   admin_audit: 'Audit Log — veprimet e adminëve',
   admin_settings: 'Profili i Adminit',
 };
