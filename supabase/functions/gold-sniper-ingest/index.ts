@@ -12,7 +12,19 @@ const cors = {
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
 // deno-lint-ignore no-explicit-any
-function fmtSignal(header: string, footer: string, p: any): string {
+// Tekstet rreth sinjalit vijnë nga 'gold_sniper_config', secili me çelësin e vet ON/OFF
+// (4 gusht 2026). Më parë mbyllja ishte e fiksuar si "Good luck! 🥇" këtu në kod.
+// deno-lint-ignore no-explicit-any
+function msgTexts(c: any): { header: string; note: string; footer: string } {
+  return {
+    header: c?.header_enabled === false ? "" : String(c?.header ?? ""),
+    note: c?.note_enabled === false ? "" : String(c?.note ?? "Good luck! 🥇"),
+    footer: c?.footer_enabled === false ? "" : String(c?.footer ?? ""),
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+function fmtSignal(header: string, footer: string, note: string, p: any): string {
   const dir = String(p.direction || p.type || "").toLowerCase();
   const dirLabel = dir === "buy" ? "🟢 BUY" : dir === "sell" ? "🔴 SELL" : "";
   const entry = p.entry ?? p.entry_price;
@@ -24,8 +36,9 @@ function fmtSignal(header: string, footer: string, p: any): string {
   if (entry != null) lines.push(`📍 Entry: <b>${entry}</b>`);
   if (sl != null) lines.push(`🛑 SL: <b>${sl}</b>`);
   tps.forEach((tp, i) => { if (tp != null) lines.push(`🎯 TP${i + 1}: <b>${tp}</b>`); });
-  if (p.note) lines.push("", String(p.note));
-  else lines.push("", "Good luck! 🥇");
+  // p.note (i vetë sinjalit) ka përparësi; ndryshe teksti i konfigurimit. Bosh → hiqet krejt.
+  const closing = p.note ? String(p.note) : note;
+  if (closing) lines.push("", closing);
   if (footer) lines.push("", footer);
   return lines.join("\n");
 }
@@ -44,7 +57,7 @@ Deno.serve(async (req: Request) => {
 
   const body = await req.json().catch(() => ({}));
   // Teksti: ose i dërguar gati (message), ose i formatuar nga fushat strukturore.
-  const text = body.message ? String(body.message) : fmtSignal(cfg.header || "", cfg.footer || "", body);
+  const text = body.message ? String(body.message) : (() => { const tx = msgTexts(cfg); return fmtSignal(tx.header, tx.footer, tx.note, body); })();
 
   const resp = await fetch(`https://api.telegram.org/bot${cfg.bot_token}/sendMessage`, {
     method: "POST", headers: { "Content-Type": "application/json" },

@@ -383,9 +383,21 @@ function structuredToText(p: any): string {
   return lines.join("\n");
 }
 
+// Tekstet rreth sinjalit (ballina / mbyllja / fundi) vijnë nga 'gold_sniper_config' dhe secili ka
+// çelësin e vet ON/OFF (4 gusht 2026). Më parë mbyllja ishte e fiksuar si "Good luck! 🥇" në kod,
+// pra ndryshimi i saj kërkonte rilëshim. Kur çelësi është OFF, rreshti nuk shfaqet fare.
+// deno-lint-ignore no-explicit-any
+function msgTexts(gs: any): { header: string; note: string; footer: string } {
+  return {
+    header: gs?.header_enabled === false ? "" : String(gs?.header ?? ""),
+    note: gs?.note_enabled === false ? "" : String(gs?.note ?? "Good luck! 🥇"),
+    footer: gs?.footer_enabled === false ? "" : String(gs?.footer ?? ""),
+  };
+}
+
 // Teksti i sinjalit për kanalin GoldSniper (anglisht, HTML) — sinjalet e platformës janë të pronarit.
 // deno-lint-ignore no-explicit-any
-function fmtChannelSignal(header: string, footer: string, p: any): string {
+function fmtChannelSignal(header: string, footer: string, note: string, p: any): string {
   const dir = String(p.direction || p.side || "").toLowerCase();
   const dirLabel = dir === "sell" ? "🔴 SELL" : "🟢 BUY";
   const sym = String(p.symbol || "XAUUSD").toUpperCase();
@@ -398,7 +410,10 @@ function fmtChannelSignal(header: string, footer: string, p: any): string {
   if (entry != null) lines.push(`📍 Entry: <b>${entry}</b>`);
   if (sl != null) lines.push(`🛑 SL: <b>${sl}</b>`);
   tps.forEach((tp, i) => lines.push(`🎯 TP${i + 1}: <b>${tp}</b>`));
-  lines.push("", p.note ? String(p.note) : "Good luck! 🥇");
+  // Shënimi i vetë sinjalit (p.note) ka përparësi; nëse s'ka, përdoret ai i konfigurimit.
+  // Kur çelësi i mbylljes është OFF, 'note' vjen bosh dhe rreshti hiqet krejt.
+  const closing = p.note ? String(p.note) : note;
+  if (closing) lines.push("", closing);
   if (footer) lines.push("", footer);
   return lines.join("\n");
 }
@@ -411,7 +426,8 @@ async function postToOwnerChannel(db: ReturnType<typeof createClient>, userId: s
   const srcId = `platform-${messageId}`;
   const { data: dup } = await db.from("gold_sniper_posts").select("id").eq("user_id", userId).eq("source_signal_id", srcId).limit(1);
   if (dup && dup.length > 0) return { skip: "duplicate" };
-  const text = fmtChannelSignal(gs.header || "", gs.footer || "", ps);
+  const tx = msgTexts(gs);
+  const text = fmtChannelSignal(tx.header, tx.footer, tx.note, ps);
   const resp = await fetch(`https://api.telegram.org/bot${gs.bot_token}/sendMessage`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: gs.channel_id, text, parse_mode: "HTML", disable_web_page_preview: true }),

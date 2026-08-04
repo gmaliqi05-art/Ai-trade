@@ -11,7 +11,17 @@ const cors = {
 };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
-function fmtSignal(header: string, footer: string, p: {
+// Tekstet rreth sinjalit vijnë nga 'gold_sniper_config', secili me çelësin e vet ON/OFF.
+// deno-lint-ignore no-explicit-any
+function msgTexts(c: any): { header: string; note: string; footer: string } {
+  return {
+    header: c?.header_enabled === false ? "" : String(c?.header ?? ""),
+    note: c?.note_enabled === false ? "" : String(c?.note ?? "Good luck! 🥇"),
+    footer: c?.footer_enabled === false ? "" : String(c?.footer ?? ""),
+  };
+}
+
+function fmtSignal(header: string, footer: string, note: string, p: {
   symbol?: string; direction?: string; entry?: number; stop_loss?: number; tps?: number[]; note?: string;
 }): string {
   const dir = String(p.direction || "").toLowerCase();
@@ -22,7 +32,8 @@ function fmtSignal(header: string, footer: string, p: {
   if (p.entry != null) lines.push(`📍 Entry: <b>${p.entry}</b>`);
   if (p.stop_loss != null) lines.push(`🛑 SL: <b>${p.stop_loss}</b>`);
   (p.tps || []).forEach((tp, i) => { if (tp != null) lines.push(`🎯 TP${i + 1}: <b>${tp}</b>`); });
-  if (p.note) lines.push("", p.note);
+  const closing = p.note ? String(p.note) : note;
+  if (closing) lines.push("", closing);
   if (footer) lines.push("", footer);
   return lines.join("\n");
 }
@@ -64,7 +75,7 @@ Deno.serve(async (req: Request) => {
       // Teksti: ose i dërguar gati (custom), ose i formatuar nga fushat e sinjalit.
       text = body.message
         ? String(body.message)
-        : fmtSignal(cfg.header || "", cfg.footer || "", body);
+        : (() => { const tx = msgTexts(cfg); return fmtSignal(tx.header, tx.footer, tx.note, body); })();
     }
 
     const resp = await fetch(`https://api.telegram.org/bot${cfg.bot_token}/sendMessage`, {
