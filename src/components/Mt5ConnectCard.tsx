@@ -7,7 +7,12 @@ import {
   DEFAULT_CONFIG, type MetaApiConfig,
 } from '../services/metaapi';
 
-const REGIONS = ['new-york', 'london', 'singapore'];
+// RAJONET E METAAPI-t. Lista është vetëm NDIHMESE, jo kufizuese: MetaApi shton vende të reja
+// (dhe ka variante 'backup-…' për kopjet), ndaj një listë e ngurtë do të mbetej gjithmonë prapa.
+// Rasti real, 4 gusht 2026: llogaria e një përdoruesi nuk lidhej dot nga 'london', ai krijoi një
+// kopje te 'backup-new-york' — dhe ajo vlerë nuk ekzistonte fare te lista jonë, pra s'kishte si ta
+// zgjidhte. Tani fusha pranon çdo tekst; këto janë thjesht sugjerime.
+const REGIONS = ['new-york', 'london', 'singapore', 'backup-new-york', 'backup-london', 'backup-singapore'];
 
 /**
  * Kartë E VETËMJAFTUESHME e lidhjes me MT5/MetaApi — Account ID, Rajoni, Token, Link rikonfigurimi,
@@ -73,9 +78,15 @@ export default function Mt5ConnectCard() {
         </label>
         <label className="block">
           <span className="text-[11px] text-gray-500">{t('Rajoni (i njëjti si te MetaApi)')}</span>
-          <select value={cfg.region} onChange={e => set('region', e.target.value)} className={inp}>
-            {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
+          <input list="metaapi-regions" value={cfg.region}
+            onChange={e => set('region', e.target.value.trim().toLowerCase())}
+            placeholder="new-york" className={inp} />
+          <datalist id="metaapi-regions">
+            {REGIONS.map(r => <option key={r} value={r} />)}
+          </datalist>
+          <span className="block text-[10px] text-gray-600 mt-1">
+            {t('Shkruaje saktësisht si te MetaApi — p.sh. london, new-york, backup-new-york.')}
+          </span>
         </label>
         <label className="block sm:col-span-2">
           <span className="text-[11px] text-gray-500">{t('MetaApi Token')}</span>
