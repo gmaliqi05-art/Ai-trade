@@ -148,3 +148,62 @@ describe('mesazhet e gatshme të panelit', () => {
     expect(parse(text).kind).toBe('unknown');
   });
 });
+
+/* MBULIMI I ANGLISHTES.
+ *
+ * Pronari e ka sqaruar se kanali shkruan GJITHMONË në anglisht, ndaj mbulimi i saj nuk mund të
+ * mbetet te format që më kanë ardhur mua ndër mend. Lista më poshtë doli nga një provë e gjerë e
+ * mënyrave reale të të shkruarit; secila që dështoi, u rregullua. */
+describe('anglishtja — mbyllje me drejtim', () => {
+  it.each([
+    'Close the buy now', 'Close buy trade', 'Close buy position', 'Cancel the buy order',
+    'Cancel pending buy', 'Cancel buy limit', 'Close out the buy', 'Exit the buy', 'Exit buy now',
+    'Please close the buy', 'Guys close the buy', 'Close the long',
+    // Folje që më parë nuk bënin absolutisht asgjë.
+    'Remove the buy', 'Delete the pending buy', 'Abort the buy', 'Scrap the buy', 'Drop the buy',
+  ])('%s → mbyll vetëm blerjet', (text) => {
+    const r = parse(text);
+    expect(r.kind).toBe('exit');
+    expect(r.direction).toBe('buy');
+  });
+
+  it('Cancel the short → mbyll vetëm shitjet', () => {
+    expect(parse('Cancel the short')).toMatchObject({ kind: 'exit', direction: 'sell' });
+  });
+});
+
+describe('anglishtja — mbyllje e përgjithshme', () => {
+  it.each([
+    'Close all positions', 'Close everything', 'Close trade', 'Close position', 'Close now',
+    'Close out', 'Cancel all', 'Cancel the setup', 'Cancel this trade', 'Close gold',
+    'Get out now', 'Book profits', 'Closing now', 'Close all pending orders', 'Cancel all orders',
+    'Setup invalid - cancel',   // urdhri në FUND të fjalisë
+    'Go flat',
+  ])('%s → mbyll gjithçka', (text) => {
+    expect(parse(text).kind).toBe('exit');
+  });
+});
+
+describe('anglishtja — stopi dhe TP-ja', () => {
+  it.each([
+    'SL to BE', 'Bring SL to entry', 'Secure SL at breakeven', 'SL at BE', 'Stop to breakeven',
+    'Set SL at 4085', 'Move your SL to 4085', 'Tighten SL to 4085', 'Raise SL to 4085',
+    'Move TP1 to 4105', 'TP to 4105',   // e fundit nuk njihej më parë
+  ])('%s → menaxhim', (text) => {
+    expect(parse(text).kind).toBe('modify');
+  });
+});
+
+/* Gjysma tjetër, dhe më e rëndësishmja: fjali të zakonshme të tregut që përmbajnë të njëjtat fjalë
+ * por NUK janë urdhra. Një parser që reagon te "Gold closed above 4100" është më i rrezikshëm se
+ * një që nuk kupton fare. */
+describe('anglishtja — komente që nuk duhet të prekin asgjë', () => {
+  it.each([
+    'Price closing in on 4100', 'We might close the day higher', 'Waiting to close above 4100',
+    'Buy side is strong today', 'I would sell here if it breaks', 'The candle closed bullish',
+    'Market closes early today', 'No new entries until volatility settles',
+    'Stay away from buying here',
+  ])('%s → asgjë', (text) => {
+    expect(parse(text).kind).toBe('unknown');
+  });
+});

@@ -173,7 +173,11 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   const tpNoIdx: number[] = [];
   const tpGenRe = /(?:take\s*profit|target|objektiv)\s*:?\s*(\d{2,7}(?:\.\d+)?)/gi;
   // "CHANGE TP 4003" / "set tp to 4010" — TP pa indeks, i shprehur si URDHËR.
-  const tpCmd = low.match(/(?:change|move|update|set|new)\s+(?:the\s+)?(?:tp|take\s*profit)\s*(?:to|@|=|:)?\s*(\d{3,7}(?:\.\d+)?)/i);
+  // Forma me folje ("change TP to 4105") dhe ajo pa folje ("TP to 4105", "TP → 4105"). E dyta
+  // mungonte: "Change TP to 4105" punonte, "TP to 4105" jo — pa asnjë arsye të dukshme për atë që
+  // shkruan. Kërkohet një shigjetë/lidhëz, që numri i thatë pas "TP" të mos ngatërrohet me sinjal.
+  const tpCmd = low.match(/(?:change|move|update|set|new)\s+(?:the\s+)?(?:tp|take\s*profit)\s*(?:to|@|=|:)?\s*(\d{3,7}(?:\.\d+)?)/i)
+    || low.match(/\b(?:tp|take\s*profit)\s*(?:->|→|to|at|=|:|@)\s*(\d{3,7}(?:\.\d+)?)/i);
   let tg: RegExpExecArray | null;
   while ((tg = tpGenRe.exec(low)) !== null) { const v = parseFloat(tg[1]); if (Number.isFinite(v)) tpNoIdx.push(v); }
 
@@ -223,19 +227,28 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   // Fjalët MBUSHËSE mes foljes dhe objektit ("close ALL buys", "cancel THE PENDING sell") trajtohen
   // veçmas. Pa to, "Close the pending buy" nuk njihej fare si mbyllje, dhe "Close all buys" mbyllte
   // edhe shitjet — sepse "all" përputhej i pari dhe drejtimi humbte.
-  const VERB_X = "close|exit|cancel|mbyll(?:e|eni)?|anulo(?:je|jeni)?";
-  const FILL = "(?:(?:all|the|this|our|my|any|open|pending|remaining|both)\\s+){0,3}";
+  //
+  // FOLJET. Përveç close/exit/cancel u shtuan ato që një trejder i shkruan po aq natyrshëm në
+  // anglisht — remove / delete / abort / scrap / drop / kill / void. Dolën nga një provë e gjerë
+  // formash reale: "Remove the buy", "Abort the buy", "Drop the buy" nuk bënin absolutisht asgjë.
+  // Ato kërkojnë GJITHMONË një objekt pas tyre; vetëm close/exit/cancel pranohen si urdhër i zhveshur.
+  const VERB_X = "close|exit|cancel|remove|delete|abort|scrap|drop|kill|void"
+    + "|mbyll(?:e|eni)?|anulo(?:je|jeni)?";
+  const FILL = "(?:(?:all|the|this|our|my|any|open|pending|remaining|both|out)\\s+){0,3}";
   const DIR = "buy|sell|long|short|blerjen|shitjen";
   const EXIT_OBJ =
     "all|everything|now|out|it|them|pending|positions?|orders?|trades?|setups?|entr(?:y|ies)"
     + `|xau(?:usd)?|gold|${DIR}|buys|sells|longs|shorts`;
   const isExit =
-    new RegExp(`\\b(?:close|exit|cancel)\\s+${FILL}(?:${EXIT_OBJ})\\b`, "i").test(low)
+    new RegExp(`\\b(?:${VERB_X})\\s+${FILL}(?:${EXIT_OBJ})\\b`, "i").test(low)
     // Urdhër i zhveshur në krye të mesazhit: "Cancel", "Close!", "Cancel — no reaction".
     // Kërkohet fillimi i tekstit dhe një shenjë ndarëse pas foljes, që "close to support" ose
     // "closed above 4100" të mos përputhen kurrë.
     || /^(?:close|exit|cancel)\s*(?:[-–—:!.,]|$)/i.test(low)
-    || /\b(?:closing\s+now|book\s+(?:the\s+)?profits?|get\s+out\s+now)\b/i.test(low)
+    // …dhe në FUND të mesazhit, pas një ndarësi: "Setup invalid - cancel". E njëjta formë, vetëm
+    // e kthyer; pa këtë ajo mbetej krejt e palexuar.
+    || /[-–—:,]\s*(?:close|exit|cancel)\s*[.!]?$/i.test(low)
+    || /\b(?:closing\s+now|book\s+(?:the\s+)?profits?|get\s+out\s+now|go\s+flat)\b/i.test(low)
     || /\b(?:mbyll(?:e|eni)?|anulo(?:je|jeni)?|dil\s+(?:nga\s+trade|tani))\b/i.test(low);
   if (isExit && !hasStructure) {
     // DREJTIMI I MBYLLJES. "Cancel BUY" duhet të prekë VETËM blerjet — nëse përdoruesi ka edhe një
