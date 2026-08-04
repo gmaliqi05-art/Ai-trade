@@ -10,7 +10,7 @@ import {
 import { useI18n } from '../i18n/i18n';
 import { useAuth } from '../context/AuthContext';
 import {
-  loadMetaApiConfig, saveMetaApiConfigPartial, checkMetaApiConnection,
+  loadMetaApiConfig, saveMetaApiConfigPartial, checkMetaApiConnection, metaApiErrorKey,
   DEFAULT_CONFIG, type MetaApiConfig,
 } from '../services/metaapi';
 
@@ -790,7 +790,9 @@ function BigToggle({ on, onClick, icon: Icon, title, desc, danger, onLabel, forc
 function errText(t: (key: string, params?: Record<string, string | number>) => string, code: string, message?: string): string {
   const map: Record<string, string> = {
     metaapi_not_configured: t('Plotëso Account ID dhe Token, pastaj ruaj.'),
-    metaapi_unreachable: t('S\'u arrit MetaApi — kontrollo token-in, account-id dhe rajonin.'),
+    metaapi_unreachable: t(metaApiErrorKey(message)),
   };
-  return map[code] || message || code;
+  // Asnjëherë JSON i papërpunuar te përdoruesi: kur kodi s'njihet, mesazhi kalon nëpër mapper-in
+  // që e kthen gabimin teknik të MetaApi-t në gjuhë të kuptueshme.
+  return map[code] || (message ? t(metaApiErrorKey(message)) : code);
 }

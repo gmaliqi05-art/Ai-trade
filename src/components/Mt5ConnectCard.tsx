@@ -3,7 +3,7 @@ import { Cloud, Loader2, Save, Eye, EyeOff, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/i18n';
 import {
-  loadMetaApiConfig, saveMetaApiConfigPartial, checkMetaApiConnection,
+  loadMetaApiConfig, saveMetaApiConfigPartial, checkMetaApiConnection, metaApiErrorKey,
   DEFAULT_CONFIG, type MetaApiConfig,
 } from '../services/metaapi';
 
@@ -48,7 +48,8 @@ export default function Mt5ConnectCard() {
   const testConnection = async () => {
     setBusy(true); setMsg(null);
     const r = await checkMetaApiConnection();
-    if (r.error) setMsg({ type: 'error', text: r.message || t('Lidhja dështoi — kontrollo Account ID, Token dhe rajonin.') });
+    // Gabimi teknik i MetaApi-t (JSON) përkthehet në një fjali që i thotë përdoruesit ÇFARË të bëjë.
+    if (r.error) setMsg({ type: 'error', text: t(metaApiErrorKey(r.message)) });
     else setMsg({ type: 'success', text: t('Lidhja OK ({mode}). Llogaria u arrit.', { mode: r.mode }) });
     setBusy(false);
   };

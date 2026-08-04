@@ -304,6 +304,36 @@ async function callTrade(body: Record<string, unknown>): Promise<TradeResponse> 
   return data as TradeResponse;
 }
 
+/** GABIMET E METAAPI-t NË GJUHË NJERËZORE (4 gusht 2026).
+ *
+ *  MetaApi i kthen gabimet si JSON teknik, p.sh.:
+ *    MetaApi 504: {"id":1444419,"error":"TimeoutError","message":"It seems like the account
+ *    bc37220c-… is not connected to broker yet or request URL you use does not match the
+ *    account region."}
+ *
+ *  Përdoruesi nuk e lexon dot atë. Këtu njihet shkaku i vërtetë dhe kthehet një fjali që i thotë
+ *  ÇFARË të bëjë. Kthen çelësin e përkthimit (tekstin burim shqip) — thirrësi e kalon nëpër t().
+ *  Kur gabimi s'njihet, kthehet një fjali e përgjithshme, jo JSON-i. */
+export function metaApiErrorKey(raw?: string | null): string {
+  const m = String(raw ?? '').toLowerCase();
+  if (!m) return 'Lidhja dështoi — kontrollo Account ID, Token dhe rajonin.';
+  // Rasti më i shpeshtë te llogaritë e reja: llogaria s'është lidhur ende me brokerin, ose
+  // rajoni i zgjedhur këtu s'përputhet me atë te MetaApi.
+  if (m.includes('not connected to broker') || m.includes('does not match the account region') || m.includes('timeouterror'))
+    return 'Llogaria nuk është lidhur ende me brokerin, ose rajoni nuk përputhet. Sigurohu që rajoni këtu është i njëjti si te MetaApi, dhe prit 1–2 minuta pasi llogaria të jetë ndezur (deployed) atje.';
+  if (m.includes('undeployed') || m.includes('not deployed'))
+    return 'Llogaria te MetaApi nuk është e ndezur (deployed). Hape MetaApi-n, shtyp "Deploy" te llogaria, prit derisa të bëhet "Connected", pastaj provo sërish.';
+  if (m.includes('unauthorized') || m.includes('invalid token') || m.includes(' 401') || m.includes(' 403'))
+    return 'Token-i i MetaApi nuk pranohet. Krijo një token të ri te MetaApi dhe ngjite këtu.';
+  if (m.includes('notfound') || m.includes('not found') || m.includes(' 404'))
+    return 'Ky Account ID nuk u gjet te MetaApi. Kontrollo që e ke kopjuar të plotë, pa hapësira.';
+  if (m.includes('toomanyrequests') || m.includes(' 429'))
+    return 'Shumë kërkesa njëherësh te MetaApi. Prit gjysmë minute dhe provo sërish.';
+  if (m.includes(' 502') || m.includes(' 503') || m.includes(' 504'))
+    return 'MetaApi nuk po përgjigjet për momentin. Provo sërish pas pak minutash — nuk është gabim i cilësimeve të tua.';
+  return 'Lidhja dështoi — kontrollo Account ID, Token dhe rajonin.';
+}
+
 /** Teston lidhjen me MetaApi (kthen info të llogarisë). */
 export function checkMetaApiConnection() {
   return callTrade({ action: 'CHECK' });
