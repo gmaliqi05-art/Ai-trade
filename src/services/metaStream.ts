@@ -30,8 +30,12 @@ export interface StreamSnapshot {
   positions: StreamPosition[];
   orders: unknown[];
   account: { balance?: number; equity?: number; currency?: string } | null;
-  lastTickAt: number; // ms i tick-ut më të fundit ndër simbolet e abonuara (0 = ende asnjë)
-  updatedAt: number;  // ms i leximit të fundit të snapshot-it
+  /** ms (ORA LOKALE) kur çmimi i një simboli të abonuar LËVIZI së fundmi. 0 = ende asnjë.
+   *  Qëllimisht ora lokale, jo koha e brokerit: freskia matet gjithmonë me një orë të vetme —
+   *  po t'i përziesh të dyja, mjafton disa sekonda ndryshim ore te telefoni që lidhja e shëndetshme
+   *  të duket e vjetruar përgjithmonë. */
+  lastTickAt: number;
+  updatedAt: number;  // ms i ndryshimit të fundit REAL të snapshot-it (jo i çdo leximi)
 }
 
 type Listener = (s: StreamSnapshot) => void;
@@ -200,7 +204,7 @@ class MetaStream {
   private readTerminal() {
     if (!this.terminal) return;
     const prices: Record<string, StreamPrice> = {};
-    let lastTickAt = 0;
+    let moved = false;
     for (const base of this.subsReq) {
       if (!this.subBroker.has(base)) this.tryResolveAndSubscribe(base); // zgjidh emrin sapo specs janë gati
       const sym = this.subBroker.get(base) || base;
@@ -210,10 +214,15 @@ class MetaStream {
         if (bid > 0 && ask > 0) {
           const t = p?.time ? new Date(p.time).getTime() : Date.now();
           prices[base] = { bid, ask, time: t }; // çelësi mbetet simboli i kërkuar (bazë)
-          if (t > lastTickAt) lastTickAt = t;
+          const prev = this.snap.prices[base];
+          if (!prev || prev.bid !== bid || prev.ask !== ask) moved = true;
         }
       } catch { /* ende pa çmim */ }
     }
+    // Ora LOKALE e lëvizjes së fundit. 'p.time' mbetet te çmimi për shfaqje, por freskia matet
+    // vetëm me orën tonë — ndryshe një orë telefoni pak e zhvendosur e bën lidhjen e gjallë të
+    // duket të vdekur, dhe ekrani bie te polling-u i REST-it pa asnjë nevojë.
+    const lastTickAt = moved ? Date.now() : this.snap.lastTickAt;
 
     let positions: StreamPosition[] = [];
     let orders: unknown[] = [];
@@ -251,7 +260,48 @@ class MetaStream {
       status = connected ? 'live' : 'reconnecting';
     }
 
-    this.set({ prices, positions, orders, account, connectedToBroker, lastTickAt, status });
+    // NJOFTO VETËM KUR DIÇKA NDRYSHOI VËRTET.
+    //
+    // Leximi bëhet çdo 200ms. Më parë çdo lexim krijonte një snapshot të ri dhe i njoftonte të
+    // gjithë dëgjuesit — pra faqja "Tregto Live", një ekran i rëndë me grafik, rirenderohej 5 herë
+    // në sekondë edhe kur çmimi nuk kishte lëvizur fare. Në telefon kjo shihet si bllokada dhe
+    // ngadalësim: procesori shpenzohet për të rivizatuar të njëjtën pamje.
+    //
+    // Krahasimi është i cekët dhe i lirë; kur asgjë s'ndryshon, snapshot-i mbetet i njëjti objekt
+    // dhe React nuk ka çfarë të bëjë. 'updatedAt' rrjedhimisht do të thotë "ndryshim i fundit",
+    // ndaj freskia NUK matet më prej tij (shih useMetaStream) — përndryshe një lidhje e vdekur pa
+    // ndryshime do të dukej përjetësisht e freskët.
+    if (this.changed({ prices, positions, orders, account, connectedToBroker, lastTickAt, status })) {
+      this.set({ prices, positions, orders, account, connectedToBroker, lastTickAt, status });
+    }
+  }
+
+  /** A ndryshoi diçka që e sheh përdoruesi? Krahasim i cekët i fushave që përdor UI-ja. */
+  private changed(next: Omit<StreamSnapshot, 'error' | 'updatedAt'>): boolean {
+    const s = this.snap;
+    if (s.status !== next.status || s.connectedToBroker !== next.connectedToBroker
+      || s.lastTickAt !== next.lastTickAt || s.orders.length !== next.orders.length) return true;
+
+    const ak = Object.keys(s.prices), bk = Object.keys(next.prices);
+    if (ak.length !== bk.length) return true;
+    for (const k of bk) {
+      const a = s.prices[k], b = next.prices[k];
+      if (!a || a.bid !== b.bid || a.ask !== b.ask) return true;
+    }
+
+    if (s.positions.length !== next.positions.length) return true;
+    for (let i = 0; i < next.positions.length; i++) {
+      const a = s.positions[i], b = next.positions[i];
+      // Fitimi dhe çmimi aktual lëvizin me çdo tik; SL/TP dhe volumi ndryshojnë me veprim.
+      if (a.id !== b.id || a.profit !== b.profit || a.currentPrice !== b.currentPrice
+        || a.stopLoss !== b.stopLoss || a.takeProfit !== b.takeProfit || a.volume !== b.volume) return true;
+    }
+
+    const x = s.account, y = next.account;
+    if ((x == null) !== (y == null)) return true;
+    if (x && y && (x.balance !== y.balance || x.equity !== y.equity)) return true;
+
+    return false;
   }
 
   async stop(): Promise<void> {

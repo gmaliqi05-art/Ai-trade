@@ -165,10 +165,10 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
   // Lidhja DIREKTE streaming (websocket) — kredencialet për ta nisur + snapshot-i live.
   const [streamCfg, setStreamCfg] = useState<{ token: string; accountId: string; region: string } | null>(null);
   const stream = useMetaStream();
-  const streamLive = stream.status === 'live';
-  // "I shëndetshëm" = i lidhur DHE po jep tick-e të freskëta (< 6s). Vetëm atëherë e fikim REST-in;
+  // "I shëndetshëm" = i lidhur DHE po jep tick-e të freskëta. Vetëm atëherë e fikim REST-in;
   // nëse lidhet por s'jep çmim (p.sh. emër simboli ende pa u zgjidhur), REST rikthehet vetvetiu.
-  const streamHealthy = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 6000);
+  // Llogaritet te hook-u, me një orë të vetme dhe një rrahje çdo sekondë (shih useMetaStream).
+  const streamHealthy = stream.healthy;
   // Pasqyrë e gjendjes për funksionet asinkrone: një kërkesë REST e nisur më parë mbaron më vonë
   // dhe do të mbante vlerën e vjetër të 'streamHealthy' po ta lexonte nga closure-i.
   const streamHealthyRef = useRef(false);
@@ -536,15 +536,27 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     if (!p || !(p.bid > 0 && p.ask > 0)) return;
     const mid = (p.bid + p.ask) / 2;
     const prev = lastMidRef.current;
-    if (prev != null && Math.abs(mid - prev) > 1e-9) setPxDir(mid > prev ? 'up' : 'down');
+    // Çmimi s'ka lëvizur → mos e prek gjendjen. Një setState me të njëjtën vlerë prapë e rirenderon
+    // faqen; këtu ndryshimet e pozicioneve vinin edhe pa lëvizur çmimi, dhe ekrani rivizatohej kot.
+    if (prev != null && Math.abs(mid - prev) < 1e-9) return;
+    if (prev != null) setPxDir(mid > prev ? 'up' : 'down');
     lastMidRef.current = mid;
     setBrokerPx({ bid: p.bid, ask: p.ask });
-    setPxAt(p.time || Date.now());
-    setPxClock(Date.now());
+    // Ora LOKALE, jo koha e brokerit: freskia matet me një orë të vetme (shih metaStream).
+    setPxAt(Date.now());
     setPxTick(k => k + 1);
   }, [streamHealthy, stream.updatedAt, selected]);
 
   useEffect(() => { streamHealthyRef.current = streamHealthy; }, [streamHealthy]);
+
+  // RRAHJA E FRESKISË — një herë në sekondë, gjithmonë.
+  // 'pxFresh' krahason pxClock me pxAt. Më parë pxClock përditësohej vetëm brenda rrugës së çmimit;
+  // kur streaming-u pushonte së dërguari (lidhje e rënë), pxClock ngrinte bashkë me të dhe çmimi i
+  // vjetruar mbetej i shënuar "live" — pikërisht e kundërta e asaj që duhet të ndodhë.
+  useEffect(() => {
+    const id = setInterval(() => setPxClock(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Pozicionet nga streaming-u (real-time) → P&L pa polling kur lidhja direkte jep tick-e.
   useEffect(() => {

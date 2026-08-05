@@ -31,7 +31,7 @@ export default function OpenPositionsPanel({ configured, section = 'both' }: { c
   // Lidhja DIREKTE streaming (websocket) — burimi parësor real-time; REST mbetet vetëm rezervë.
   const stream = useMetaStream();
   const streamLive = stream.status === 'live';
-  const streamHealthy = streamLive && stream.lastTickAt > 0 && (stream.updatedAt - stream.lastTickAt < 6000);
+  const streamHealthy = stream.healthy; // llogaritet te useMetaStream, me një orë të vetme
   const posFresh = posAt > 0 && (posClock - posAt) < 12000; // feed-i i pozicioneve është i freskët
 
   const showPositions = section === 'positions' || section === 'both';
