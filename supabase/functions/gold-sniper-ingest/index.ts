@@ -72,6 +72,50 @@ Deno.serve(async (req: Request) => {
     note: body.note ?? null, message: text, telegram_message_id: ok ? (tg.result?.message_id ?? null) : null,
     status: ok ? "sent" : "failed", error: ok ? null : (tg.description || "dërgimi dështoi"),
   });
+  // ---------- ROBOTI (5 gusht 2026) ----------
+  //
+  // Kjo hallkë mungonte krejt. Ky webhook e postonte mesazhin te kanali dhe ndalej aty — roboti nuk
+  // e merrte vesh kurrë. Për tekste informuese s'kishte rëndësi; për një urdhër jo.
+  //
+  // Ndodhi më 5 gusht: pas një hyrjeje BUY, pronari dërgoi "Cancel BUY - we didnt reach entry on
+  // time". Mesazhi u shfaq te kanali, abonentët e panë — dhe porositë mbetën te brokeri, sepse
+  // asnjë rresht kodi nuk ia kaloi robotit. Në bazë s'kishte as gjurmë: as sinjal, as bllokim.
+  // Dukej si problem i parserit; parseri e kupton pa asnjë vështirësi, edhe me emoji — thjesht
+  // teksti nuk i mbërrinte kurrë.
+  //
+  // Tani teksti kalon te 'telegram-signals', ku parseSignal vendos vetë: anulim/mbyllje → vepro,
+  // lëvizje SL/TP → modifiko, koment → injoro. Dërgohet i papastruar (vetëm shenjat markdown) —
+  // emoji-t dhe dekorimet nuk e pengojnë parserin, dhe një urdhër nuk duhet të varet nga stolisja.
+  //
+  // Vetëm rruga e TEKSTIT ('message'). Sinjalet e strukturuara vijnë te roboti nga poller-i i
+  // feed-it; po t'i dërgonim edhe këtu, e njëjta hyrje rrezikon të hapet dy herë.
+  //
+  // Bëhet PAS postimit te kanali: postimi zgjat rreth 200ms, ndërsa 'telegram-signals' u flet të
+  // gjithë përdoruesve e brokerit dhe mund të zgjasë shumë më gjatë. Kështu asnjëra s'e pret tjetrën.
+  if (body.message) {
+    try {
+      const { data: k } = await db.from("telegram_sin_config")
+        .select("webhook_secret").eq("user_id", cfg.user_id).maybeSingle();
+      const secret = k?.webhook_secret;
+      if (secret) {
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/telegram-signals?key=${encodeURIComponent(secret)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signal: {
+            action: "message",
+            message: String(body.message).replace(/[`*_]/g, ""),
+            symbol: body.symbol ?? "XAUUSD",
+            // Id-ja e mesazhit te Telegrami — e qëndrueshme dhe unike. Kur mungon, mbrojtja nga
+            // dublimi te 'telegram-signals' bie te gjurma e përmbajtjes; të dyja janë atje.
+            id: ok ? (tg.result?.message_id ?? 0) : 0,
+            source: body.source ?? "GoldSniperFX",
+          } }),
+          signal: AbortSignal.timeout(25000),
+        });
+      }
+    } catch { /* roboti s'duhet ta rrëzojë kurrë postimin te kanali */ }
+  }
+
   if (!ok) return json({ ok: false, error: "telegram", message: tg.description || "Dërgimi dështoi." }, 502);
   return json({ ok: true, message_id: tg.result?.message_id ?? null });
 });
