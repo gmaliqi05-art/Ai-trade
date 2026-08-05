@@ -1380,4 +1380,14 @@ export const de: Record<string, string> = {
   "objektiva": "Ziele",
   "vlen deri më {d}": "gültig bis {d}",
   "Çdo faturë e Stripe-it si rresht: kush pagoi, sa, për cilin plan dhe deri kur vlen.": "Jede Stripe-Rechnung als Zeile: wer bezahlt hat, wie viel, für welchen Tarif und wie lange sie gilt.",
+
+  // Fshirja e plotë e përdoruesit
+  "Abonimi te Stripe anulohet i pari — që karta të mos faturohet më.": "Das Stripe-Abo wird zuerst gekündigt — damit die Karte nicht weiter belastet wird.",
+  "Do të fshihen PËRGJITHMONË llogaria, profili, tregtitë, faturat, konfigurimet dhe i gjithë historiku i këtij përdoruesi. Nuk ka kthim pas.": "Dies löscht dauerhaft Konto, Profil, Trades, Rechnungen, Einstellungen und die gesamte Historie des Nutzers. Es gibt kein Zurück.",
+  "Emaili lirohet, pra mund të regjistrohet sërish me të njëjtin.": "Die E-Mail wird freigegeben, er kann sich also erneut damit registrieren.",
+  "Fshi përgjithmonë": "Endgültig löschen",
+  "Fshirje e përhershme": "Endgültige Löschung",
+  "Për të vazhduar, shkruaj email-in e tij:": "Zum Fortfahren die E-Mail eingeben:",
+  "Përdoruesi '{name}' u fshi plotësisht — {stripe}. Emaili është i lirë për regjistrim të ri.": "Nutzer „{name}“ wurde vollständig gelöscht — {stripe}. Die E-Mail ist für eine neue Anmeldung frei.",
+  "pa abonim te Stripe": "kein Stripe-Abo",
 };
