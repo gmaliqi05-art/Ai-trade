@@ -1,10 +1,18 @@
 name: Deploy gold-sniper-ingest
 
-# Webhook hyrës: platforma e përdoruesit dërgon sinjale → postohen te kanali GoldSniper|FX.
-# verify_jwt=false — autentikimi bëhet me ?key=<ingest_secret>. Nxitet manualisht.
-
+# Webhook hyrës: platforma e përdoruesit dërgon sinjale → postohen te kanali GoldSniper|FX
+# dhe përcillen te roboti. verify_jwt=false — autentikimi bëhet me ?key=<ingest_secret>.
+#
+# NXITJA NGA PUSH-I MUNGONTE (5 gusht 2026). Ky workflow kishte VETËM 'workflow_dispatch', pra
+# ndryshimet e funksionit shkonin te 'main' dhe rrinin aty derisa dikush kujtohej ta niste me dorë.
+# U kap pikërisht te rregullimi i anulimit që s'i mbërrinte robotit: PR-i u merge-ua, prodhimi mbeti
+# me versionin e vjetër, dhe urdhrat e mbylljes do të kishin vazhduar të humbnin pa u vënë re.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/gold-sniper-ingest/**'
 
 jobs:
   deploy:
