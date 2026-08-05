@@ -22,6 +22,10 @@ export interface Profile {
   subscription_status?: string | null;
   subscription_expires_at?: string | null;
   trial_ends_at?: string | null;
+  /** Rinovimi automatik i abonimit (pasqyron 'cancel_at_period_end' te Stripe). */
+  auto_renew?: boolean;
+  /** NULL = mirëseardhja pas aktivizimit ende s'është parë. */
+  welcome_seen_at?: string | null;
 }
 
 // Të dhënat e regjistrimit të zgjeruar (KYC-light): emri/mbiemri, datëlindja (18+ e detyrueshme),

@@ -3,7 +3,7 @@ import {
   ClipboardList,
   TrendingUp, LayoutDashboard, Users, BarChart2, Zap, Activity,
   Brain, Megaphone, Shield, LogOut, ChevronLeft, Menu, X,
-  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown, Crosshair, ScrollText, LifeBuoy, CreditCard, Mail, Handshake
+  Bell, Settings, Monitor, ChevronDown, Coins, BookOpen, FlaskConical, UsersRound, Crown, Crosshair, ScrollText, LifeBuoy, CreditCard, Mail, Handshake, Receipt
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -28,6 +28,7 @@ const navItems: { id: AdminPage; label: string; icon: React.ElementType; section
   { id: 'admin_support', label: 'Suporti', icon: LifeBuoy, section: 'Menaxhimi' },
   { id: 'admin_plans', label: 'Planet e Abonimit', icon: Crown, section: 'Menaxhimi' },
   { id: 'admin_payments', label: 'Pagesat', icon: CreditCard, section: 'Menaxhimi' },
+  { id: 'admin_subpayments', label: 'Pagesat e abonuesve', icon: Receipt, section: 'Menaxhimi' },
   { id: 'admin_email', label: 'Email', icon: Mail, section: 'Menaxhimi' },
   { id: 'admin_brokers', label: 'Brokerët', icon: Handshake, section: 'Menaxhimi' },
   { id: 'admin_protrade_lab', label: 'ProTrade Lab', icon: FlaskConical, section: 'Platforma' },
@@ -62,6 +63,7 @@ const pageLabels: Record<AdminPage, string> = {
   admin_plans: 'Planet e Abonimit — çmimet',
   admin_email: 'Email — lidhja me Resend',
   admin_brokers: 'Brokerët — partneritetet IB/CPA',
+  admin_subpayments: 'Pagesat e abonuesve',
   admin_audit: 'Audit Log — veprimet e adminëve',
   admin_settings: 'Profili i Adminit',
 };

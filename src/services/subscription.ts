@@ -110,3 +110,59 @@ export async function choosePlan(plan: PlanId): Promise<CheckoutResp> {
     return j;
   } catch (e) { return { error: (e as Error).message }; }
 }
+
+// ---------------------------------------------------------------------------
+// RINOVIMI AUTOMATIK, PAGESAT E MIA, DHE MIRËSEARDHJA (5 gusht 2026)
+// ---------------------------------------------------------------------------
+
+/** Gjendja e plotë e abonimit + rinovimi + a është parë mirëseardhja. */
+export interface SubExtra {
+  autoRenew: boolean;
+  hasStripeSub: boolean;
+  welcomeSeenAt: string | null;
+}
+
+export async function loadSubExtra(userId: string): Promise<SubExtra> {
+  const { data } = await supabase.from('profiles')
+    .select('auto_renew, stripe_subscription_id, welcome_seen_at')
+    .eq('id', userId).maybeSingle();
+  const d = (data ?? {}) as { auto_renew?: boolean; stripe_subscription_id?: string | null; welcome_seen_at?: string | null };
+  return {
+    autoRenew: d.auto_renew !== false,
+    hasStripeSub: !!d.stripe_subscription_id,
+    welcomeSeenAt: d.welcome_seen_at ?? null,
+  };
+}
+
+/** Ndez ose fik rinovimin automatik. Fikja NUK e ndërpret aksesin — abonimi vlen deri në fund
+ *  të periudhës së paguar dhe thjesht nuk rifaturohet. */
+export async function setAutoRenew(enabled: boolean): Promise<{ ok?: boolean; auto_renew?: boolean; error?: string }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const resp = await fetch(CHECKOUT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ plan: 'autorenew', enabled }),
+    });
+    return (await resp.json().catch(() => ({}))) as { ok?: boolean; auto_renew?: boolean; error?: string };
+  } catch (e) { return { error: (e as Error).message }; }
+}
+
+export interface MyPayment {
+  id: string; plan: string; amount_cents: number; currency: string; status: string;
+  paid_at: string | null; period_end: string | null; invoice_url: string | null;
+}
+
+/** Faturat e MIA — RLS-ja e kufizon vetë te rreshtat e përdoruesit të kyçur. */
+export async function loadMyPayments(): Promise<MyPayment[]> {
+  const { data } = await supabase.from('payments')
+    .select('id, plan, amount_cents, currency, status, paid_at, period_end, invoice_url')
+    .order('paid_at', { ascending: false, nullsFirst: false })
+    .limit(24);
+  return (data ?? []) as MyPayment[];
+}
+
+/** Shënon mirëseardhjen si të parë, që të mos shfaqet sërish në çdo hyrje. */
+export async function markWelcomeSeen(userId: string): Promise<void> {
+  await supabase.from('profiles').update({ welcome_seen_at: new Date().toISOString() }).eq('id', userId);
+}

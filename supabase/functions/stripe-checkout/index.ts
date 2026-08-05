@@ -94,6 +94,31 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, url: portal.url });
     }
 
+    // ---- RINOVIMI AUTOMATIK: ndeze/fike pa dalë nga aplikacioni ----
+    //
+    // Kërkesa e pronarit: përdoruesi duhet ta ndalë vetë rinovimin kur të dojë, me një çelës te
+    // Cilësimet — jo vetëm përmes portalit të Stripe, ku shumica nuk shkojnë kurrë.
+    //
+    // Nuk e ANULOJMË abonimin: vendosim 'cancel_at_period_end'. Domethënë përdoruesi e mban aksesin
+    // deri në fund të periudhës që ka paguar, dhe pastaj nuk i hiqet më asgjë nga karta. Anulimi i
+    // menjëhershëm do t'i merrte ditët e paguara — para të tijat, jo tonat.
+    if (plan === "autorenew") {
+      const key1 = await stripeSecretKey(db);
+      if (!key1) return json({ error: "stripe_not_configured" }, 503);
+      const { data: prow } = await db.from("profiles")
+        .select("stripe_subscription_id").eq("id", userId).maybeSingle();
+      const subId = (prow as { stripe_subscription_id?: string | null } | null)?.stripe_subscription_id;
+      if (!subId) return json({ error: "no_subscription" }, 400);
+      const on = body.enabled !== false;   // true = rinovo vetë · false = ndalo në fund të periudhës
+      const s = await stripe(`subscriptions/${subId}`, key1, {
+        cancel_at_period_end: on ? "false" : "true",
+      });
+      // Ruajmë atë që KTHEU Stripe, jo atë që kërkuam — burimi i së vërtetës është ai.
+      const applied = (s as { cancel_at_period_end?: boolean }).cancel_at_period_end !== true;
+      await db.from("profiles").update({ auto_renew: applied }).eq("id", userId);
+      return json({ ok: true, auto_renew: applied });
+    }
+
     // ---- ABONIM ME PAGESË (Stripe Checkout) — kartë Debit/Kredit, rinovim AUTOMATIK ----
     if (plan !== "monthly" && plan !== "yearly") return json({ error: "bad_plan" }, 400);
     const key = await stripeSecretKey(db);

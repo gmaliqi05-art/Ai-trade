@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown, BellRing, Smartphone, Trash2, AlertTriangle, Camera } from 'lucide-react';
+import { Settings, User, Shield, Bell, CreditCard, Save, Loader2, Check, ChevronRight, LogOut, Crown, BellRing, Smartphone, Trash2, AlertTriangle, Camera, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useI18n } from '../i18n/i18n';
 import { isStandalone, isIosLike, getPushState, subscribePush, unsubscribePush, sendTestPush } from '../services/push';
 import SubscriptionPlans from '../components/SubscriptionPlans';
-import { loadSubscription, daysLeft, openBillingPortal, type SubState } from '../services/subscription';
+import {
+  loadSubscription, daysLeft, openBillingPortal, loadSubExtra, setAutoRenew, loadMyPayments,
+  type SubState, type SubExtra, type MyPayment,
+} from '../services/subscription';
 
 type Section = 'profile' | 'security' | 'notifications' | 'subscription';
 
@@ -79,8 +82,29 @@ export default function SettingsPage() {
 
   // ABONIMI: gjendja aktuale (plan, status, skadimi) — për tab-in "Abonimi".
   const [sub, setSub] = useState<SubState | null>(null);
-  const refreshSub = useCallback(async () => { if (user) setSub(await loadSubscription(user.id)); }, [user]);
+  // RINOVIMI AUTOMATIK + FATURAT E MIA. Të dyja ngarkohen bashkë me abonimin, që kartela e
+  // abonimit të jetë e plotë me një kërkesë të vetme rifreskimi.
+  const [extra, setExtra] = useState<SubExtra | null>(null);
+  const [pays, setPays] = useState<MyPayment[]>([]);
+  const [renewBusy, setRenewBusy] = useState(false);
+  const [renewMsg, setRenewMsg] = useState('');
+
+  const refreshSub = useCallback(async () => {
+    if (!user) return;
+    setSub(await loadSubscription(user.id));
+    try { setExtra(await loadSubExtra(user.id)); } catch { /* injoro */ }
+    try { setPays(await loadMyPayments()); } catch { /* injoro */ }
+  }, [user]);
   useEffect(() => { refreshSub(); }, [refreshSub]);
+
+  // Ndryshimi shkon te Stripe dhe kthehet gjendja E VËRTETË prej andej — nuk e supozojmë ne.
+  const toggleRenew = async (on: boolean) => {
+    setRenewBusy(true); setRenewMsg('');
+    const r = await setAutoRenew(on);
+    setRenewBusy(false);
+    if (r.error) { setRenewMsg(r.error); return; }
+    setExtra(e => (e ? { ...e, autoRenew: r.auto_renew !== false } : e));
+  };
   // Menaxhimi i abonimit (ndrysho kartën / anulo) — portali i sigurt i Stripe.
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalMsg, setPortalMsg] = useState('');
@@ -450,6 +474,65 @@ export default function SettingsPage() {
                 ) : (
                   <p className="text-gray-400 text-sm">{t('Zgjidh një plan më poshtë për të hapur sinjalet dhe robotin auto-trade.')}</p>
                 )}
+                {/* RINOVIMI AUTOMATIK — çelësi që kërkoi pronari: përdoruesi e ndal vetë kur të dojë,
+                    pa dalë nga aplikacioni dhe pa humbur ditët që ka paguar. */}
+                {extra?.hasStripeSub && sub?.tier && ['monthly', 'yearly'].includes(sub.tier) && (
+                  <div className={`mt-3 rounded-xl border p-3 ${extra.autoRenew ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : 'border-gray-700 bg-gray-800/40'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-white text-sm font-semibold flex items-center gap-1.5">
+                          <RefreshCw className={`w-3.5 h-3.5 ${extra.autoRenew ? 'text-emerald-400' : 'text-gray-500'}`} />
+                          {t('Rinovimi automatik')}
+                        </div>
+                        <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
+                          {extra.autoRenew
+                            ? t('Abonimi rinovohet vetë kur t\'i vijë koha dhe pagesa merret nga karta — nuk ndërpritet asgjë.')
+                            : t('Rinovimi është i ndalur. E mban aksesin deri në datën e skadimit dhe pastaj nuk të hiqet më asgjë nga karta.')}
+                        </p>
+                      </div>
+                      <button onClick={() => toggleRenew(!extra.autoRenew)} disabled={renewBusy}
+                        title={extra.autoRenew ? t('Ndalo rinovimin') : t('Ndiz rinovimin')}
+                        className={`shrink-0 w-12 h-6 rounded-full border transition-colors relative disabled:opacity-50 ${
+                          extra.autoRenew ? 'bg-emerald-500/30 border-emerald-500/50' : 'bg-gray-700 border-gray-600'}`}>
+                        <span className={`absolute top-0.5 w-5 h-5 rounded-full transition-all ${
+                          extra.autoRenew ? 'left-6 bg-emerald-400' : 'left-0.5 bg-gray-400'}`} />
+                      </button>
+                    </div>
+                    {renewBusy && <p className="text-[11px] text-gray-500 mt-1.5">{t('Duke ruajtur te Stripe…')}</p>}
+                    {renewMsg && <p className="text-[11px] text-red-400 mt-1.5">{renewMsg}</p>}
+                  </div>
+                )}
+
+                {/* FATURAT E MIA — historiku i pagesave, drejt nga Stripe përmes webhook-ut. */}
+                {pays.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-white/10 bg-black/20 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-white/10 text-[11px] font-semibold text-gray-300">
+                      {t('Faturat e mia')}
+                    </div>
+                    <div className="divide-y divide-white/5 max-h-56 overflow-y-auto">
+                      {pays.map(p => (
+                        <div key={p.id} className="px-3 py-2 flex items-center gap-2 text-[11px]">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.status === 'paid' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                          <span className="text-gray-400 w-16 shrink-0">
+                            {p.paid_at ? new Date(p.paid_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'}
+                          </span>
+                          <span className="text-gray-500 flex-1 truncate">
+                            {p.plan === 'yearly' ? t('Vjetor') : p.plan === 'monthly' ? t('Mujor') : p.plan}
+                          </span>
+                          <span className={`font-semibold ${p.status === 'paid' ? 'text-white' : 'text-red-400'}`}>
+                            {(p.amount_cents / 100).toFixed(2)} {String(p.currency).toUpperCase()}
+                          </span>
+                          {p.invoice_url && (
+                            <a href={p.invoice_url} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 shrink-0">
+                              {t('fatura')}
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* MENAXHIMI I ABONIMIT — ndrysho kartën ose anulo (portali i Stripe). */}
                 {sub?.tier && ['monthly', 'yearly'].includes(sub.tier) && (
                   <div className="mt-3">

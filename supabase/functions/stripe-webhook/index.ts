@@ -97,6 +97,9 @@ Deno.serve(async (req: Request) => {
           : st === "canceled" ? "canceled" : st || "active";
         if (subId) patch.stripe_subscription_id = subId;
         if (expiresAt) patch.subscription_expires_at = expiresAt;
+        // RINOVIMI AUTOMATIK — pasqyrim i 'cancel_at_period_end'. Përdoruesi mund ta ndalë vetë nga
+        // Cilësimet ose nga portali i Stripe; kudo që ta bëjë, e vërteta vjen këtu dhe ruhet.
+        patch.auto_renew = obj.cancel_at_period_end !== true;
         break;
       }
       case "customer.subscription.deleted": {
@@ -109,8 +112,48 @@ Deno.serve(async (req: Request) => {
         break;
       }
     }
+    // ABONIM I RI → mirëseardhja shfaqet sërish. 'welcome_seen_at' është NULL te llogaritë e reja,
+    // por një përdorues që kthehet pas një pauze e ka të mbushur nga hera e parë; duke e pastruar
+    // vetëm te fatura e KRIJIMIT të abonimit, festa i takon çdo abonimi të ri, jo çdo rinovimi.
+    if (String(obj.billing_reason ?? "") === "subscription_create"
+        || type === "checkout.session.completed") {
+      patch.welcome_seen_at = null;
+    }
+
     if (Object.keys(patch).length) {
       try { await db.from("profiles").update(patch).eq("id", userId); } catch { /* */ }
+    }
+
+    // ---------- REGJISTRI I PAGESAVE ----------
+    // Shkruhet nga FATURAT, jo nga sesioni i checkout-it: fatura është dokumenti që mban shumën e
+    // arkëtuar, periudhën dhe lidhjen me abonimin — dhe ka një id unik, çka e bën shkrimin të
+    // përsëritshëm pa dublikatë kur Stripe e ridërgon të njëjtën ngjarje.
+    if (type === "invoice.paid" || type === "invoice.payment_failed") {
+      const ok = type === "invoice.paid";
+      const cents = Number(obj.amount_paid ?? obj.amount_due ?? 0);
+      // Plani merret nga vetë fatura (intervali i linjës), jo nga metadata — metadata mungon te
+      // faturat e rinovimit, ndërsa intervali është gjithmonë aty.
+      const line = ((obj.lines as { data?: Record<string, unknown>[] })?.data ?? [])[0] ?? {};
+      const interval = String(((line.plan ?? line.price) as { interval?: string })?.interval ?? "");
+      const paidSec = Number((obj.status_transitions as { paid_at?: number })?.paid_at ?? 0);
+      const sec = (v: unknown) => (Number(v) > 0 ? new Date(Number(v) * 1000).toISOString() : null);
+      try {
+        await db.from("payments").upsert({
+          user_id: userId || null,
+          stripe_invoice_id: String(obj.id ?? ""),
+          stripe_customer_id: customer || null,
+          stripe_subscription_id: String(obj.subscription ?? "") || null,
+          plan: plan ?? (interval === "year" ? "yearly" : interval === "month" ? "monthly" : ""),
+          amount_cents: cents,
+          currency: String(obj.currency ?? "eur"),
+          status: ok ? "paid" : "failed",
+          paid_at: ok ? (sec(paidSec) ?? new Date().toISOString()) : null,
+          period_start: sec((line.period as { start?: number })?.start ?? obj.period_start),
+          period_end: sec((line.period as { end?: number })?.end ?? obj.period_end),
+          invoice_url: String(obj.hosted_invoice_url ?? "") || null,
+          receipt_url: String(obj.invoice_pdf ?? "") || null,
+        }, { onConflict: "stripe_invoice_id" });
+      } catch { /* regjistri s'duhet ta prishë kurrë webhook-un */ }
     }
 
     // ---------- EMAIL-ET E ABONIMIT ----------
