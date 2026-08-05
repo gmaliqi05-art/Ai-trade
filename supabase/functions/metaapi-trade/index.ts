@@ -297,6 +297,19 @@ Deno.serve(async (req: Request) => {
 
         const patch: Record<string, unknown> = {};
         if (mtLogin  && mtLogin  !== config.mt_login)  patch.mt_login  = mtLogin;
+        // LLOGARI E RE → HIQ CACHE-N E SIMBOLEVE (5 gusht 2026).
+        //
+        // 'symbol_map' mban emrin REAL të simbolit te brokeri (XAUUSD → XAUUSD+ te Vantage,
+        // XAUUSD.s te PU Prime). Ishte i përjetshëm: kur pronari e fshiu llogarinë e vjetër MT5 dhe
+        // lidhi një të re te një broker tjetër, harta e vjetër mbeti. Aplikacioni vazhdoi të kërkonte
+        // 'XAUUSD.s' te një llogari që ka vetëm 'XAUUSD' — grafiku ngriu, çmimi u shënua "jo-live",
+        // dhe kërkesa çdo sekondë e çoi MetaApi-n në 429 (TooManyRequests). Asgjë s'e tregonte
+        // shkakun; dukej si problem lidhjeje.
+        //
+        // Numri MT5 është identiteti i llogarisë te brokeri. Kur ai ndryshon, llogaria është TJETËR
+        // dhe çdo gjë e mësuar për të vjetrën duhet harruar. Harta rindërtohet vetvetiu te kërkesa e
+        // parë, dhe vetëm me emra të verifikuar te lista e brokerit.
+        if (mtLogin && config.mt_login && mtLogin !== config.mt_login) patch.symbol_map = {};
         if (mtServer && mtServer !== config.mt_server) patch.mt_server = mtServer;
         if (mtBroker && mtBroker !== config.mt_broker) patch.mt_broker = mtBroker;
         if (detected && detected !== config.mode_detected) patch.mode_detected = detected;
