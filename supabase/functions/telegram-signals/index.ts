@@ -429,6 +429,35 @@ async function aiNormalizeOrder(db: any, text: string): Promise<string | null> {
   }
 }
 
+// PORTA E URDHRIT — a duhet pyetur AI-ja për këtë mesazh, dhe pse.
+//
+// Kthen 'ruled' (vendimi i rregullave) dhe 'needsAi'. Dy raste e ndezin AI-në:
+//   · SHPËTIM — teksti flet për stop/TP/mbyllje por rregullat s'kuptuan asgjë ('unknown');
+//   · VETO   — rregullat thanë urdhër, POR urdhri nuk qëndron i vetëm te rreshti i parë i shkurtër,
+//              pra teksti është rrëfim me fjalë urdhri brenda.
+//
+// Pse pikërisht rreshti i parë: te të dhënat reale urdhrat vijnë të shkurtër dhe në krye
+// ("CLOSE NOW", "MOVE SL 4050", "⚠️ CLOSE THE POSITION NOW"), ndërsa rrëfimi i shpërndan fjalët
+// brenda fjalive ("My SL setup … should soon be at break even and I am still holding"). Kufiri
+// 40 shkronja i mban urdhrat e vërtetë JASHTË thirrjes së AI-së — pa vonesë, pa kosto, pa varësi
+// nga rrjeti për rastin që ndodh më shpesh.
+function orderGate(text: string): { ruled: string; needsAi: boolean } {
+  // Fjalët që e ndezin fare shqyrtimin. Përveç atyre teknike, edhe parafrazat e zakonshme të
+  // daljes: "get out", "off the table", "go flat". Pa to, një urdhër i thënë me fjalë të thjeshta
+  // ("guys, get out of this one") nuk arrinte as te rregullat as te AI-ja — e gjeti testi.
+  // Zgjerimi është i sigurt: kjo vetëm VENDOS nëse pyetet Claude, dhe ai është i udhëzuar
+  // shprehimisht të përgjigjet "none" kur s'është udhëzim i qartë.
+  const mgmt = /\b(sl|s\/l|stop|stops|stoploss|stop\s*loss|tp|take\s*profit|break\s*-?\s*even|close|closing|cancel|exit|flat|mbyll\w*|anulo\w*|dil)\b/i.test(text)
+    || /\bget\s+out\b|\boff\s+the\s+table\b|\bgo\s+flat\b/i.test(text);
+  const ruled = parseSignal(text, "XAUUSD").kind;
+  if (!mgmt) return { ruled, needsAi: false };
+  if (ruled === "unknown") return { ruled, needsAi: true };
+  if (ruled !== "modify" && ruled !== "exit") return { ruled, needsAi: false };
+  const firstLine = text.split("\n").map((l) => l.trim()).filter(Boolean)[0] ?? "";
+  const compact = firstLine.length <= 40 && parseSignal(firstLine, "XAUUSD").kind === ruled;
+  return { ruled, needsAi: !compact };
+}
+
 // Chat-id sintetik për sinjalet që vijnë nga PLATFORMA e vetë përdoruesit (jo Telegram).
 const PLATFORM_CHAT_ID = "platform";
 
@@ -832,20 +861,39 @@ Deno.serve(async (req: Request) => {
     if (fpErr || !fpClaim || fpClaim.length === 0) return json({ ok: true, skip: "duplicate_content" });
   }
 
-  // RRJETI I SIGURISË ME AI — vetëm kur rregullat s'e kuptuan dot një mesazh që flet për
-  // stop/TP/breakeven. Thirret NJË herë këtu (jo për çdo përdorues) dhe teksti zëvendësohet me
-  // formën kanonike, të cilën parseri deterministik e zbaton më pas si çdo urdhër tjetër.
-  if (ps && !history) {
-    // Porta e rrjetit të sigurisë. Fillimisht kërkonte VETËM fjalë për stop/TP/breakeven, ndaj një
-    // urdhër mbylljeje si "Cancel BUY - no reaction" as nuk arrinte deri te AI-ja: rregullat nuk e
-    // kuptonin dhe rrjeti as që aktivizohej. Tani mbulon edhe daljen.
-    const mgmt = /\b(sl|s\/l|stop|stops|stoploss|stop\s*loss|tp|take\s*profit|break\s*-?\s*even|close|closing|cancel|exit|mbyll\w*|anulo\w*)\b/i.test(text);
-    if (mgmt && parseSignal(text, "XAUUSD").kind === "unknown") {
+  // RRJETI I SIGURISË ME AI — tani në TË DY DREJTIMET.
+  //
+  // Deri më 5 gusht AI-ja thirrej VETËM kur rregullat dështonin. Domethënë mund të shpëtonte një
+  // urdhër të humbur, por s'kishte si ta ndalte një të rremë. Dhe pikërisht të rremët u gjetën te
+  // të dhënat: tri mesazhe rrëfyese u lexuan si urdhra —
+  //
+  //   "…my position from yesterday will reach break even, allowing me to exit without a loss"
+  //   "My SL setup from yesterday should soon be at break even and I am still holding"
+  //   "SL 4087 - That's a crazy, manipulative day. No more trades for me today"
+  //
+  // Të treja janë rrëfim i autorit për pozicionin e VET, jo udhëzim për lexuesin. Roboti do t'u
+  // kishte lëvizur SL-në përdoruesve; nuk ndodhi vetëm sepse atë çast s'kishte pozicione hapur.
+  // Rregullat gjykojnë me FJALË, jo me QËLLIM: "break even" është njësoj në të dyja rastet.
+  //
+  // Ndarja që funksionon te të dhënat reale: urdhrat janë TË SHKURTËR dhe urdhërorë ("CLOSE NOW",
+  // "MOVE SL 4050", "BREAKEVEN"), kurse rrëfimi është i gjatë. Prandaj:
+  //   · rreshti i parë i shkurtër që lexohet si urdhër → zbatohet menjëherë, pa AI (pa vonesë);
+  //   · çdo gjë tjetër që rregullat e quajtën urdhër → i kërkohet Claude-it konfirmim;
+  //   · në dyshim NUK veprohet (vendim i pronarit, 5 gusht): një urdhër i humbur rregullohet me
+  //     një mesazh të dytë, një SL i lëvizur gabimisht mbi para reale nuk kthehet.
+  //
+  // Vlen për ÇDO rrugë tani — më parë kushti 'ps' e përjashtonte krejt atë që shkruhet drejt te
+  // Telegrami, pra pikërisht kanalin ku shkruhen komentet e gjata.
+  let vetoed = false;
+  if (!history) {
+    const { ruled, needsAi } = orderGate(text);
+    if (needsAi) {
       const { data: gsCfg } = await db.from("gold_sniper_config")
         .select("ai_parse_enabled").not("channel_id", "is", null).limit(1).maybeSingle();
       if (gsCfg?.ai_parse_enabled !== false) {
         const canonical = await aiNormalizeOrder(db, text);
         if (canonical) text = canonical;
+        else if (ruled !== "unknown") vetoed = true; // AI s'e pa urdhër (ose s'u arrit) → mos vepro
       }
     }
   }
@@ -860,7 +908,7 @@ Deno.serve(async (req: Request) => {
   if (!cfgList.some((c) => String(c.user_id) === String(cfgRow.user_id))) cfgList.push(cfgRow);
   const results: Record<string, unknown>[] = [];
   for (const c of cfgList) {
-    try { results.push({ user: String(c.user_id).slice(0, 8), ...(await processForUser(db, c, { text, chatId, messageId, sender, history })) }); }
+    try { results.push({ user: String(c.user_id).slice(0, 8), ...(await processForUser(db, c, { text, chatId, messageId, sender, history, vetoed })) }); }
     catch (e) { results.push({ user: String(c.user_id).slice(0, 8), error: (e as Error).message }); }
   }
 
@@ -876,7 +924,7 @@ Deno.serve(async (req: Request) => {
 // Përpunon një mesazh kanali për NJË përdorues: filtra → idempotencë → parametrat për kanal →
 // parse → modify/exit/entry — gjithçka në llogarinë dhe me cilësimet e ATIJ përdoruesi.
 // deno-lint-ignore no-explicit-any
-async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, m: { text: string; chatId: string; messageId: number; sender: string; history?: boolean }): Promise<Record<string, unknown>> {
+async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, m: { text: string; chatId: string; messageId: number; sender: string; history?: boolean; vetoed?: boolean }): Promise<Record<string, unknown>> {
   const { text, chatId, messageId, sender } = m;
   const history = m.history === true;
   // Brenda këtij funksioni 'json' kthen OBJEKT të thjeshtë (jo Response) — rezultatet e të gjithë
@@ -942,6 +990,13 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
 
   // RILEXIM HISTORIK (backfill): regjistro/shfaq mesazhin, por MOS ekzekto asnjë tregti.
   if (history) { await finish("ignored", "📥 histori (rilexim) — pa tregti"); return json({ ok: true, kind: "history" }); }
+  // VETO E RRJETIT TË SIGURISË: rregullat e lexuan si urdhër, por teksti është i gjatë/rrëfyes dhe
+  // AI-ja nuk e konfirmoi (ose s'u arrit). Regjistrohet që të duket te raporti — por nuk preket
+  // asnjë pozicion. Kështu një koment i gjatë s'e lëviz më SL-në e askujt.
+  if (m.vetoed === true) {
+    await finish("ignored", "🛑 duket koment, jo urdhër — nuk u zbatua (kontroll AI)");
+    return json({ ok: true, kind: "vetoed" });
+  }
 
   if (p.kind === "unknown") { await finish("ignored", "koment/tekst — s'është sinjal me strukturë (Entry/SL/TP)"); return json({ ok: true, kind: "unknown" }); }
   if (channelOff) { await finish("ignored", "kanali është i çaktivizuar nga cilësimet"); return json({ ok: true, skip: "chat_disabled" }); }
