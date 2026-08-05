@@ -134,10 +134,25 @@ Deno.serve(async (req: Request) => {
 
   // ── (1) PER-LLOGARI: a po shërben llogaria të dhëna? ──────────────────────────────────
   try {
+    // ÇDO LLOGARI E LIDHUR, jo vetëm ato me auto-trade (5 gusht 2026).
+    //
+    // Ky cikël bën dy punë: kontrollon lidhjen DHE regjistron te 'position_closes' çdo pozicion që
+    // u mbyll (duke krahasuar 'open_pos_snapshot' me gjendjen live). Rreshtat e asaj tabele janë i
+    // VETMI burim i Ditarit dhe i raporteve të Adminit.
+    //
+    // Filtri ishte '.eq("auto_trade", true)'. Por 'auto_trade' është çelësi i robotit TË VJETËR —
+    // s'ka asnjë lidhje me faktin nëse tregtitë e njeriut duhen regjistruar. Kush tregtonte vetë nga
+    // aplikacioni MT5 me auto-trade të fikur nuk shihte kurrë asgjë te Ditari, dhe as e merrte vesh
+    // pse: te Tregto Live tregtitë dukeshin (merren live nga brokeri), te Ditari jo.
+    //
+    // U gjet te llogaria e një përdoruesi me 51 tregti te brokeri dhe zero rreshta te ne. Dhe u rëndua
+    // po atë ditë: kur robotët e vjetër u çarmatosën duke fikur 'auto_trade' kudo, ky regjistrim
+    // pushoi për të GJITHË. Raportimi nuk duhet të varet kurrë nga çelësi i një roboti.
     const { data: configs } = await db
       .from("metaapi_config")
       .select("user_id, account_id, token, region, disconnect_since, disconnect_alerted, last_connected_at, conn_fail_count")
-      .eq("auto_trade", true);
+      .not("account_id", "is", null).neq("account_id", "")
+      .not("token", "is", null).neq("token", "");
 
     for (const raw of (configs ?? [])) {
       const cfg = raw as Cfg;
@@ -231,7 +246,9 @@ Deno.serve(async (req: Request) => {
 
       // S'lidhet. Nëse llogaria S'ËSHTË lidhur KURRË (lastConn==0) → ndoshta e keqkonfiguruar → mos alarmo.
       // Por nëse është lidhur ndonjëherë, VAZHDO monitorimin sado gjatë të zgjasë ndërprerja — që ta
-      // kapim rikthimin dhe të njoftojmë. (auto_trade=true → përdoruesi e DO të lidhur; s'duhet të heshtim.)
+      // kapim rikthimin dhe të njoftojmë. Arsyetimi i dikurshëm ishte "auto_trade=true → e do të
+      // lidhur"; tani cikli mbulon çdo llogari të lidhur, dhe njoftimi vlen po aq — pa lidhje, edhe
+      // sinjalet e GoldSniperFX nuk ekzekutohen dot.
       const lastConn = cfg.last_connected_at ? new Date(cfg.last_connected_at).getTime() : 0;
       if (lastConn === 0) {
         out.push({ user: cfg.user_id, action: "never_connected(skip)" });
