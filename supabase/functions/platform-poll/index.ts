@@ -110,10 +110,18 @@ function extractSignal(text: string): string | null {
   return keep.length >= 2 ? keep.join("\n") : null;
 }
 
-// A duket si URDHËR për robotin (lëviz SL, breakeven, mbyll, TP)? Këta NUK bllokohen nga
+// A duket si URDHËR për robotin (lëviz SL, breakeven, mbyll, ANULO, TP)? Këta NUK bllokohen nga
 // filtri i komenteve — përndryshe roboti s'do t'i mbronte pozicionet e hapura.
+//
+// "CANCEL" MUNGONTE (5 gusht 2026). Lista e foljeve këtu kishte mbetur pas asaj të parserit: ai i
+// njeh 'cancel/remove/delete/abort/scrap/drop/kill/void/anulo', kjo njihte vetëm 'close/exit/mbyll'.
+// Pasoja: me 'Fshih bisedat' të ndezur, një "Cancel BUY" trajtohej si muhabet dhe hidhej pa arritur
+// kurrë te roboti — ndërsa porositë rrinin te brokeri. Foljet mbahen të njëjta me ato të parserit.
 function isRobotOrder(text: string): boolean {
-  return /\b(sl|stop\s*loss|tp|take\s*profit|break\s*even|breakeven|be)\b|\b(move|close|exit|mbyll|dil)\b/i.test(text);
+  // 'tp\s*\d?' e jo 'tp': te "TP1 4160" nuk ka kufi fjale mes 'p' dhe '1', ndaj '\btp\b' dështonte
+  // dhe ndryshimi i një objektivi hidhej si muhabet. E gjeti testi, jo syri.
+  return /\b(sl|stop\s*loss|tp\s*\d?|take\s*profit\s*\d?|break\s*even|breakeven|be)\b/i.test(text)
+    || /\b(move|close|exit|cancel|remove|delete|abort|scrap|drop|kill|void|flat|mbyll(?:e|eni)?|anulo(?:je|jeni)?|dil)\b/i.test(text);
 }
 
 Deno.serve(async (req: Request) => {
@@ -190,6 +198,23 @@ Deno.serve(async (req: Request) => {
           feed_id: mid, reason: why.reason, matched: why.matched,
           text_excerpt: text.slice(0, 2000), source: m.source ?? "GoldSniperFX",
         }).then(() => {}, () => {});
+        // BLLOKIMI NDALON SHFAQJEN, JO MBROJTJEN E PARAVE (5 gusht 2026).
+        // Filtri u bë për të mos i çuar abonentëve spam. Por nëse i njëjti mesazh është urdhër
+        // roboti — "Cancel BUY", "close all", "move SL to BE" — heqja e tij nuk fsheh thjesht një
+        // rresht teksti: lë porosi dhe pozicione të hapura te brokeri, me para të vërteta, kur
+        // pronari ka kërkuar shprehimisht t'i ndalë. Ndaj urdhri kalon te roboti gjithsesi; te
+        // kanali nuk postohet, saktësisht siç është vendosur.
+        if (secret && isRobotOrder(text)) {
+          try {
+            await fetch(`${SELF}/functions/v1/telegram-signals?key=${encodeURIComponent(secret)}`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ signal: {
+                action: "message", message: text.replace(/[`*_]/g, ""), symbol: "XAUUSD",
+                id: uuidToNum(mid), source: m.source ?? "GoldSniperFX",
+              } }),
+            });
+          } catch { /* mos e ndal poller-in */ }
+        }
         skipped++; continue;
       }
       // b) Fshehja e komenteve/bisedave — urdhrat e robotit (SL/TP/breakeven/mbyll) kalojnë gjithmonë.
