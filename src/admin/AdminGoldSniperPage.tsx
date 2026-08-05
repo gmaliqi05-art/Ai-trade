@@ -43,6 +43,11 @@ const QUICK_GROUPS: { group: string; items: Quick[] }[] = [
         text: '📊 CLOSE HALF OF THE POSITION\n\nTake partial profit and let the rest run with SL at breakeven.' },
       { id: 'close', icon: XCircle, tone: 'red', label: 'Mbyll pozicionin',
         text: '⚠️ CLOSE THE POSITION NOW\n\nMarket conditions changed — we exit and protect the account.' },
+      // ANULIMI I POROSIVE NË PRITJE — mungonte si buton, ndonëse është urdhri që jepet më shpesh
+      // kur çmimi nuk e arrin hyrjen. Deri tani shkruhej me dorë te kutia e tekstit, dhe një
+      // shkrim i nxituar ("setup invalid") mund të mos njihej fare si urdhër.
+      { id: 'cancelpend', icon: XCircle, tone: 'red', label: 'Anulo porositë në pritje',
+        text: '❌ CANCEL ALL PENDING ORDERS\n\nWe did not reach the entry in time — the setup is no longer valid.' },
     ],
   },
   {
