@@ -1,0 +1,32 @@
+name: Deploy analyze-chart
+
+# Analiza e grafikut me AI. verify_jwt=true.
+#
+# PSE EKZISTON (5 gusht 2026): ky funksion nuk kishte workflow. Kodi te repo-ja ndryshohej dhe
+# merge-ohej te 'main', por te Supabase mbetej versioni i vjetër — ndryshimi thjesht s'shkonte
+# kurrë në prodhim, pa asnjë gabim që ta tregonte. U zbulua kur rregullimi i fshirjes së
+# përdoruesit u merge-ua dhe abonimet vazhduan të faturoheshin: funksioni në prodhim ishte ende
+# versioni i qershorit. Çdo funksion tani ka deploy-in e vet.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/analyze-chart/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.107.0
+
+      - name: Deploy analyze-chart
+        run: supabase functions deploy analyze-chart --project-ref zwyuscgqacfpjafznybg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

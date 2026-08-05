@@ -21,6 +21,12 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 //
 // Rendi ka rëndësi: PARA, pastaj të dhëna. Nëse Stripe dështon, nuk fshihet asgjë — një llogari e
 // fshirë me abonim të gjallë nuk rregullohet dot më nga paneli.
+//
+// SHËNIM PËR VENDOSJEN (5 gusht 2026): rishikimi më lart u merge-ua te 'main' dhe prapëseprapë
+// PRODHIMI mbeti me versionin e vjetër — sepse ky funksion nuk kishte fare workflow deploy-i.
+// Kodi ndryshonte, testet ishin të gjelbra, dhe abonimet vazhdonin të faturoheshin. Prandaj tani
+// ekziston '.github/workflows/deploy-admin-delete-user.yml'; ky rresht është edhe prekja që e nis
+// atë deploy të parë.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
