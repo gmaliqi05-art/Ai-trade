@@ -94,6 +94,44 @@ Deno.serve(async (req: Request) => {
         status: ok ? "sent" : "failed", error: ok ? null : (tg.description || "dërgimi dështoi"),
       });
     }
+    // ---------- ROBOTI (5 gusht 2026) ----------
+    //
+    // Butonat e konsolës së Adminit ("Mbyll pozicionin", "SL → Breakeven", "Anulo porositë në
+    // pritje") dërgonin VETËM një mesazh te kanali. Abonentët e lexonin dhe e bënin vetë me dorë;
+    // roboti nuk merrte vesh asgjë, ndaj llogaritë e lidhura mbeteshin siç ishin.
+    //
+    // Ndodhi më 3 gusht: u shtyp "Mbyll pozicionin", teksti shkoi te kanali — dhe porositë mbetën
+    // te brokeri. Nuk pati humbje vetëm sepse dikush i hoqi me dorë pas pak minutash.
+    //
+    // Një buton që thotë "mbylle" duhet ta mbyllë. Tani teksti kalon te 'telegram-signals', ku
+    // parseSignal vendos vetë: anulim/mbyllje → vepro, SL/TP → modifiko, tekst informues → injoro.
+    // Pra "TP1 HIT" ose "Mirëmëngjes" nuk prekin asnjë pozicion — vetëm urdhrat veprojnë.
+    //
+    // Vetëm rruga e TEKSTIT. Sinjalet e strukturuara (hyrje e re nga faqja GoldSniper) NUK
+    // përcillen: ato vijnë te roboti nga poller-i i feed-it, dhe një rrugë e dytë do të rrezikonte
+    // të hapte të njëjtën hyrje dy herë.
+    if (action !== "test" && body.message) {
+      try {
+        const { data: k } = await svc.from("telegram_sin_config")
+          .select("webhook_secret").eq("user_id", ownerId).maybeSingle();
+        const secret = k?.webhook_secret;
+        if (secret) {
+          await fetch(`${url}/functions/v1/telegram-signals?key=${encodeURIComponent(secret)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ signal: {
+              action: "message",
+              message: String(body.message).replace(/[`*_]/g, ""),
+              symbol: body.symbol ?? "XAUUSD",
+              id: messageId ?? 0,
+              source: "AdminConsole",
+            } }),
+            signal: AbortSignal.timeout(25000),
+          });
+        }
+      } catch { /* roboti s'duhet ta rrëzojë kurrë postimin te kanali */ }
+    }
+
     if (!ok) return json({ ok: false, error: "telegram", message: tg.description || "Dërgimi dështoi (kontrollo tokenin/kanalin dhe që boti është admin)." }, 502);
     return json({ ok: true, message_id: messageId });
   } catch (e) {
