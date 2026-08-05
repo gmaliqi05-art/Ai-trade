@@ -117,6 +117,16 @@ Deno.serve(async (req: Request) => {
     const origin = String(body.origin || req.headers.get("origin") || "").replace(/\/+$/, "");
     const session = await stripe("checkout/sessions", key, {
       mode: "subscription",                     // rinovim AUTOMATIK (si çdo abonim standard)
+      // MANAGED PAYMENTS (5 gusht 2026) — llogaritë e reja Stripe e kanë të ndezur si parazgjedhje,
+      // dhe atëherë Stripe e REFUZON kërkesën nëse dërgojmë 'payment_method_types':
+      //   "Unsupported parameter: payment_method_types. Managed Payments … handles this for you."
+      // U zbulua duke krijuar një sesion të vërtetë me çelësin e llogarisë së re: pagesa e parë do
+      // të kishte dështuar me 400, pa asnjë shenjë tjetër përveç gabimit te ekrani i përdoruesit.
+      //
+      // E fikim shprehimisht dhe mbajmë kartën, ashtu siç ka qenë sjellja deri sot. Alternativa —
+      // ta lëmë Managed Payments të vendosë — kërkon edhe një 'tax_code' për produktin, gjë që prek
+      // trajtimin e TVSH-së; ajo është zgjedhje e pronarit dhe e kontabilitetit, jo e kodit.
+      "managed_payments[enabled]": "false",
       "payment_method_types[0]": "card",         // vetëm kartë Debit/Kredit
       customer,
       billing_address_collection: "auto",
