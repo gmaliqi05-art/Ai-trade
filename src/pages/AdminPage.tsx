@@ -300,21 +300,31 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
     setSaving(false);
   };
 
-  // Fshin përdoruesin TËRËSISHT (edhe nga auth/databaza) → emaili lirohet për regjistrim të ri.
-  const deleteUser = async (u: UserRow) => {
-    const name = u.full_name || u.username || u.email || u.id;
-    if (!window.confirm(t("Të fshihet PËRGJITHMONË '{name}' (edhe nga databaza dhe auth)? Emaili lirohet për regjistrim të ri. Ky veprim S'kthehet mbrapsht.", { name }))) return;
-    setSaving(true);
+  // FSHIRJA E PLOTË — përdoruesi hiqet edhe nga auth, që emaili të lirohet për regjistrim të ri.
+  //
+  // Konfirmimi kërkon SHKRIMIN e email-it, jo një "OK". Kjo nuk është formalitet: veprimi fshin
+  // përgjithmonë tregtitë, faturat dhe historikun e një klienti që paguan, dhe një klikim i gabuar
+  // te rreshti ngjitur nuk kthehet dot mbrapsht.
+  const [delTarget, setDelTarget] = useState<UserRow | null>(null);
+  const [delTyped, setDelTyped] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delErr, setDelErr] = useState('');
+
+  const confirmDelete = async () => {
+    const u = delTarget;
+    if (!u) return;
+    setDelBusy(true); setDelErr('');
     const { data, error } = await supabase.functions.invoke('admin-delete-user', { body: { user_id: u.id } });
-    const errMsg = error?.message || (data as { error?: string } | null)?.error;
-    if (errMsg) {
-      flash('error', t('Fshirja dështoi: {msg}', { msg: errMsg }));
-    } else {
-      await logAction('DELETE_USER', 'auth.users', u.id, { full_name: u.full_name });
-      await fetchUsers();
-      flash('success', t("Përdoruesi '{name}' u fshi plotësisht.", { name }));
-    }
-    setSaving(false);
+    const res = (data ?? {}) as { ok?: boolean; error?: string; stripe?: string; had_plan?: string | null };
+    const errMsg = error?.message || res.error;
+    setDelBusy(false);
+    if (errMsg) { setDelErr(errMsg); return; }
+    const name = u.full_name || u.username || u.email || u.id;
+    await logAction('DELETE_USER', 'auth.users', u.id, { full_name: u.full_name, email: u.email, stripe: res.stripe });
+    await fetchUsers();
+    setDelTarget(null); setDelTyped('');
+    flash('success', t("Përdoruesi '{name}' u fshi plotësisht — {stripe}. Emaili është i lirë për regjistrim të ri.",
+      { name, stripe: res.stripe || t('pa abonim te Stripe') }));
   };
 
   const createSignal = async () => {
@@ -471,7 +481,7 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
                               }} className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-all" title={t('Ndrysho fjalëkalimin')}>
                                 <Key className="w-4 h-4" />
                               </button>
-                              <button onClick={() => deleteUser(u)} disabled={saving || u.id === user?.id}
+                              <button onClick={() => { setDelTarget(u); setDelTyped(''); setDelErr(''); }} disabled={saving || u.id === user?.id}
                                 title={u.id === user?.id ? t('Nuk mund të fshish veten') : t('Fshi përdoruesin plotësisht')}
                                 className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                                 <Trash2 className="w-4 h-4" />
@@ -945,6 +955,55 @@ export default function AdminPage({ forcedTab }: AdminPageProps = {}) {
             {!loading && auditLog.length === 0 && (
               <div className="text-center py-12 text-gray-500 text-sm">{t('Ende pa veprime në regjistër')}</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* DRITARJA E FSHIRJES — kërkon email-in e shkruar me dorë. */}
+      {delTarget && (
+        <div className="fixed inset-0 z-[120] bg-black/75 flex items-center justify-center p-4"
+          onClick={() => !delBusy && setDelTarget(null)}>
+          <div className="bg-gray-900 border border-red-900/60 rounded-2xl p-5 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="text-red-400 font-bold flex items-center gap-2 mb-2">
+              <AlertTriangle className="w-5 h-5" />{t('Fshirje e përhershme')}
+            </h3>
+            <p className="text-gray-300 text-sm leading-relaxed">
+              {t('Do të fshihen PËRGJITHMONË llogaria, profili, tregtitë, faturat, konfigurimet dhe i gjithë historiku i këtij përdoruesi. Nuk ka kthim pas.')}
+            </p>
+            <ul className="text-[12px] text-gray-400 mt-2.5 space-y-1 list-disc list-inside">
+              <li>{t('Abonimi te Stripe anulohet i pari — që karta të mos faturohet më.')}</li>
+              <li>{t('Emaili lirohet, pra mund të regjistrohet sërish me të njëjtin.')}</li>
+            </ul>
+
+            <div className="mt-3 rounded-xl bg-black/40 border border-gray-700 px-3 py-2">
+              <div className="text-[11px] text-gray-500">{t('Përdoruesi')}</div>
+              <div className="text-white text-sm font-semibold">{delTarget.full_name || delTarget.username || '—'}</div>
+              <div className="text-gray-400 text-xs">{delTarget.email || '—'}</div>
+            </div>
+
+            <label className="block mt-3">
+              <span className="block text-[11px] text-gray-400 mb-1">
+                {t('Për të vazhduar, shkruaj email-in e tij:')}
+              </span>
+              <input value={delTyped} onChange={e => { setDelTyped(e.target.value); setDelErr(''); }}
+                autoFocus spellCheck={false} placeholder={delTarget.email || ''}
+                className="w-full bg-gray-950 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-700 focus:outline-none focus:border-red-500" />
+            </label>
+
+            {delErr && <p className="text-[12px] text-red-400 mt-2">{delErr}</p>}
+
+            <div className="flex gap-2 justify-end mt-4">
+              <button onClick={() => setDelTarget(null)} disabled={delBusy}
+                className="text-sm font-semibold px-4 py-2 rounded-xl bg-gray-800 text-gray-300 border border-gray-700 hover:text-white disabled:opacity-50">
+                {t('Anulo')}
+              </button>
+              <button onClick={confirmDelete}
+                disabled={delBusy || !delTarget.email || delTyped.trim().toLowerCase() !== (delTarget.email || '').toLowerCase()}
+                className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl bg-red-600 text-white hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed">
+                {delBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {t('Fshi përgjithmonë')}
+              </button>
+            </div>
           </div>
         </div>
       )}
