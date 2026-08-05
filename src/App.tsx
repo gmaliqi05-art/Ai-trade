@@ -6,6 +6,8 @@ import { LanguageProvider } from './i18n/i18n';
 import AuthPage from './pages/AuthPage';
 import AccountVerifyGate from './pages/AccountVerifyGate';
 import SubscriptionGate from './pages/SubscriptionGate';
+import WelcomeCelebration from './components/WelcomeCelebration';
+import { markWelcomeSeen } from './services/subscription';
 import AdminLayout from './components/AdminLayout';
 import ClientLayout from './components/ClientLayout';
 
@@ -44,6 +46,7 @@ import AdminPaymentsPage from './admin/AdminPaymentsPage';
 import AdminPlansPage from './admin/AdminPlansPage';
 import AdminEmailPage from './admin/AdminEmailPage';
 import AdminBrokersPage from './admin/AdminBrokersPage';
+import AdminSubscriptionPaymentsPage from './admin/AdminSubscriptionPaymentsPage';
 import AdminPage from './pages/AdminPage';
 
 export type ClientPage =
@@ -53,12 +56,12 @@ export type ClientPage =
 export type AdminPage =
   | 'admin_overview' | 'admin_users' | 'admin_user_audit' | 'admin_signals'
   | 'admin_trades' | 'admin_ai' | 'admin_cost' | 'admin_broadcast' | 'admin_metatrader'
-  | 'admin_howitworks' | 'admin_protrade_lab' | 'admin_expert_room' | 'admin_vip_codes' | 'admin_goldsniper' | 'admin_support' | 'admin_payments' | 'admin_plans' | 'admin_email' | 'admin_brokers' | 'admin_audit' | 'admin_settings';
+  | 'admin_howitworks' | 'admin_protrade_lab' | 'admin_expert_room' | 'admin_vip_codes' | 'admin_goldsniper' | 'admin_support' | 'admin_payments' | 'admin_plans' | 'admin_email' | 'admin_brokers' | 'admin_subpayments' | 'admin_audit' | 'admin_settings';
 
 export type Page = ClientPage | AdminPage;
 
 const CLIENT_PAGES: ClientPage[] = ['dashboard', 'market_prices', 'demo_trading', 'chart_analysis', 'signals', 'protrade', 'metatrader', 'mmt', 'telegram_sin', 'journal', 'support', 'notifications', 'reports', 'settings', 'manual', 'gsfx'];
-const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_user_audit', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_vip_codes', 'admin_goldsniper', 'admin_support', 'admin_payments', 'admin_plans', 'admin_email', 'admin_brokers', 'admin_audit', 'admin_settings'];
+const ADMIN_PAGES: AdminPage[] = ['admin_overview', 'admin_users', 'admin_user_audit', 'admin_signals', 'admin_trades', 'admin_ai', 'admin_cost', 'admin_broadcast', 'admin_metatrader', 'admin_howitworks', 'admin_protrade_lab', 'admin_expert_room', 'admin_vip_codes', 'admin_goldsniper', 'admin_support', 'admin_payments', 'admin_plans', 'admin_email', 'admin_brokers', 'admin_subpayments', 'admin_audit', 'admin_settings'];
 
 // Mban faqen aktuale edhe pas rifreskimit të shfletuesit (ruhet në localStorage).
 function usePersistedPage<T extends string>(storageKey: string, valid: T[], fallback: T): [T, (p: T) => void] {
@@ -101,6 +104,7 @@ function AdminApp() {
       {currentPage === 'admin_plans' && <AdminPlansPage />}
       {currentPage === 'admin_email' && <AdminEmailPage />}
       {currentPage === 'admin_brokers' && <AdminBrokersPage />}
+      {currentPage === 'admin_subpayments' && <AdminSubscriptionPaymentsPage />}
       {currentPage === 'admin_settings' && <AdminSettingsPage />}
     </AdminLayout>
   );
@@ -137,7 +141,7 @@ function ClientApp() {
 }
 
 function AppContent() {
-  const { user, loading, profile } = useAuth();
+  const { user, loading, profile, refreshProfile } = useAuth();
 
   // POLITIKAT LIGJORE — hapen me #legal nga kudo (footer, regjistrimi), edhe pa llogari.
   const [showLegal, setShowLegal] = useState(() => window.location.hash === '#legal');
@@ -205,7 +209,30 @@ function AppContent() {
     return <AccountVerifyGate />;
   }
 
-  return <ClientApp />;
+  // MIRËSEARDHJA PAS PAGESËS — shfaqet VETËM kur webhook-u i Stripe e ka aktivizuar llogarinë
+  // (plan me pagesë + status aktiv) dhe ende s'është parë. Pas saj, 'welcome_seen_at' mbushet dhe
+  // përdoruesi nuk e sheh më. Nuk shfaqet për provën falas: aty nuk ka pagesë për të festuar.
+  const paidPlan = profile?.subscription_tier === 'monthly' || profile?.subscription_tier === 'yearly';
+  const justActivated = !!profile && paidPlan
+    && (profile.subscription_status === 'active')
+    && !profile.welcome_seen_at;
+
+  return (
+    <>
+      {justActivated && (
+        <WelcomeCelebration
+          name={profile?.first_name || profile?.full_name || null}
+          plan={profile?.subscription_tier}
+          expiresAt={profile?.subscription_expires_at ?? null}
+          onDone={async () => {
+            if (profile?.id) { try { await markWelcomeSeen(profile.id); } catch { /* injoro */ } }
+            await refreshProfile();
+          }}
+        />
+      )}
+      <ClientApp />
+    </>
+  );
 }
 
 export default function App() {
