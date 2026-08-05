@@ -813,12 +813,18 @@ Deno.serve(async (req: Request) => {
     messageId = Number(ps.id ?? Date.now());
     sender = String(ps.source || "GoldSniper|FX");
   } else {
-    const msg = update.message || update.channel_post || update.edited_message || null;
-    if (!msg) return json({ ok: true, skip: "no_message" });
-    text = msg.text || msg.caption || "";
-    chatId = String(msg.chat?.id ?? "");
-    messageId = Number(msg.message_id ?? 0);
-    sender = String(msg.from?.username || msg.from?.id || msg.sender_chat?.title || "");
+    // KANALI I TELEGRAMIT NUK E KOMANDON ROBOTIN (5 gusht 2026 — vendim i pronarit).
+    //
+    // Roboti i merr urdhrat VETËM nga burimet tona të njohura, që të gjitha dërgojnë 'signal':
+    // platforma e pronarit (webhook + poller i feed-it) dhe konsola e Adminit. Një update i papërpunuar
+    // Telegrami — pra dikush që shkruan te kanali — nuk përpunohet më.
+    //
+    // Praktikisht kjo rrugë s'ka sjellë kurrë asgjë: nga 459 mesazhe të përpunuara ndonjëherë, TË
+    // GJITHA kanë ardhur me chat 'platform'. Por kodi e pranonte, dhe mjaftonte që dikush të regjistronte
+    // një webhook te Telegrami që biseda e kanalit — komente, shaka, mendime me fjalën "close" brenda —
+    // të fillonte t'i prekte pozicionet e njerëzve. Dera mbyllet me vetëdije, jo nga rastësia e
+    // konfigurimit.
+    return json({ ok: true, skip: "telegram_chat_not_a_command_source" });
   }
   // history=true (rilexim nga forwarder-i): regjistro/shfaq mesazhin, por MOS hap tregti.
   const history = update.history === true;
