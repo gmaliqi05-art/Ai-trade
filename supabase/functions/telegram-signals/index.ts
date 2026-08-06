@@ -1047,22 +1047,30 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
     const targets = (rows || []).filter((t) => same(t.symbol || "", tradeSym) || same(t.symbol || "", p.symbol || ""));
     if (targets.length === 0) { await finish("ignored", "s'ka pozicione/porosi për të ndryshuar"); if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `ℹ️ Telegram Sin: s'ka pozicione aktive për të ndryshuar (${tradeSym}).`); return json({ ok: true, kind: "modify", changed: 0 }); }
 
-    // TIKU I NDJEKJES (për-kanal): kur është OFF, SL-ja NUK lëvizet KURRË pas hyrjes — as nga
-    // shkallëzimi ynë, as nga urdhrat e dërguesit ("move SL to breakeven"). SL/TP mbeten siç u
-    // dërguan në sinjal. (Rasti real: BE-ja e dërguesit e nxori nga trade para se çmimi të kapte TP2.)
-    const followOn = (chRow?.move_be_after_tp1 ?? cfgRow.move_be_after_tp1) === true;
+    // URDHRI I DËRGUESIT ZBATOHET GJITHMONË (6 gusht 2026 — vendim i pronarit).
+    //
+    // Deri tani tiku "Mbrojtja shkallë-shkallë" bllokonte DY gjëra të ndryshme: shkallëzimin TONË
+    // automatik (TP1 preket → SL te hyrja) DHE urdhrat e shprehur të dërguesit ("BREAKEVEN",
+    // "Move SL to 4100"). E dyta ishte gabim: ai tik u shpik për të kontrolluar sjelljen tonë, jo
+    // për të heshtur një njeri që thotë shprehimisht ku ta çojë stopin.
+    //
+    // Ndodhi sot: erdhi "BREAKEVEN" me pozicione të hapura dhe u la pa u zbatuar, me arsyen "tiku
+    // është OFF". Dhe tiku dukej OFF pa e ditur askush — përdoruesit e kanë ON te cilësimet e
+    // llogarisë, por rreshti për-kanal krijohet me 'false' dhe e mbivendos në heshtje. Pra urdhri
+    // binte për një arsye që askush s'e kishte zgjedhur.
+    //
+    // Rreziku i përmendur dikur — "BE-ja e dërguesit të nxjerr nga trade para TP2" — mbetet i
+    // mbrojtur nga siguresa më poshtë: SL lejohet të lëvizë VETËM në drejtim shtrëngues. Breakeven
+    // është shtrëngim; humbja maksimale s'rritet kurrë nga një urdhër i tillë.
+    //
+    // Tiku vazhdon të vlejë për atë që u bë: shkallëzimin tonë automatik te cikli i menaxhimit.
     const slRequested = !!(p.mod?.breakeven || p.mod?.sl != null);
     const tpMap = new Map<number, number>();
     for (const u of (p.mod?.tpUpdates || [])) tpMap.set(u.idx, u.price);
-    if (slRequested && !followOn && tpMap.size === 0) {
-      await finish("ignored", "tiku 'Mbrojtja shkallë-shkallë' është OFF — SL nuk ndiqet (mbetet siç u dërgua)");
-      if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `ℹ️ Telegram Sin: lëvizja e SL u ANASHKALUA (tiku i mbrojtjes OFF) — SL mbetet siç u dërgua në sinjal.`);
-      return json({ ok: true, kind: "modify", changed: 0, skipped: "follow_off" });
-    }
     let changed = 0; const notes: string[] = [];
 
     for (const t of targets) {
-      const applySl = slRequested && followOn;
+      const applySl = slRequested;
       const newSl = applySl ? (p.mod?.breakeven ? Number(t.entry_price) : (p.mod?.sl != null ? p.mod.sl : Number(t.stop_loss))) : Number(t.stop_loss);
       const newTp = tpMap.has(Number(t.tp_index)) ? tpMap.get(Number(t.tp_index))! : Number(t.take_profit);
       // Nëse ky rresht nuk preket nga asnjë ndryshim, kaloje.
