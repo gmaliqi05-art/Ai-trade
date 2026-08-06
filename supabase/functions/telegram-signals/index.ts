@@ -279,7 +279,24 @@ function parseSignal(raw: string, defaultSymbol: string): Parsed {
   // "BE" pranohet VETËM në kontekst SL/stop — përndryshe fjala e zakonshme "be" do të shkaktonte
   // lëvizje të rreme të SL-së në çdo fjali angleze.
   const breakeven = /break\s*-?\s*even/i.test(low)
-    || /(?:sl|s\/l|stops?|stop\s*loss)\s*(?:->|→|=|:|\bto\b|\bat\b|\bin\b)\s*(?:\bbe\b|entry|entri|hyrje)/i.test(low);
+    || /(?:sl|s\/l|stops?|stop\s*loss)\s*(?:->|→|=|:|\bto\b|\bat\b|\bin\b)\s*(?:\bbe\b|entry|entri|hyrje)/i.test(low)
+    // "MOVING BE" — shkurtesa pa fjalën 'SL'. Rasti real, 6 gusht 2026: pas një hyrjeje SELL erdhi
+    // "Moving BE at 4061 - buyers are back." dhe roboti e la si koment; SL-të mbetën ku ishin.
+    // Rregulli i mëparshëm e pranonte 'BE' VETËM pas 'SL/stop', ndaj kjo formë s'kapej fare.
+    //
+    // Dy mbrojtje që 'be'-ja e zakonshme angleze të mos lëvizë asnjë stop:
+    //   · 'BE' duhet me SHKRONJA TË MËDHA — testohet mbi tekstin origjinal, jo mbi 'low'; kështu
+    //     "this will be fine" nuk përputhet kurrë;
+    //   · duhet një folje lëvizjeje brenda 24 shkronjave para saj, pra një urdhër, jo një fjali.
+    // Çmimi pas saj ("at 4061") NUK merret si SL: breakeven do të thotë SL te HYRJA, dhe rregulli i
+    // 'moveSl' kërkon fjalën sl/stop, të cilën kjo formë s'e ka.
+    //
+    // Folja kërkohet pa dallim shkronjash ("Moving", "moving"), kurse shkurtesa krahasohet e ndarë,
+    // që kushti i shkronjave të mëdha të vlejë PIKËRISHT për 'BE' — jo për foljen para saj.
+    || (() => {
+      const m = text.match(/\b(?:mov(?:e|ing)|go(?:ing)?|set|put|bring|shift|switch|secure)\b[^.\n]{0,24}\b(be)\b/i);
+      return !!m && m[1] === "BE";
+    })();
   let modSl: number | undefined;
   // Foljet e menaxhimit + "sl|stop|stoploss" (edhe pa fjalën "loss") + to/at/@/=/: + çmimi.
   const VERBS = "move|moving|change|changing|update|updating|set|setting|put|putting|bring|bringing|tighten|tightening|shift|shifting|raise|raising|lower|lowering|secure|securing|adjust|adjusting|vendos|zhvendos|ngri";
@@ -448,7 +465,12 @@ function orderGate(text: string): { ruled: string; needsAi: boolean } {
   // Zgjerimi është i sigurt: kjo vetëm VENDOS nëse pyetet Claude, dhe ai është i udhëzuar
   // shprehimisht të përgjigjet "none" kur s'është udhëzim i qartë.
   const mgmt = /\b(sl|s\/l|stop|stops|stoploss|stop\s*loss|tp|take\s*profit|break\s*-?\s*even|close|closing|cancel|exit|flat|mbyll\w*|anulo\w*|dil)\b/i.test(text)
-    || /\bget\s+out\b|\boff\s+the\s+table\b|\bgo\s+flat\b/i.test(text);
+    || /\bget\s+out\b|\boff\s+the\s+table\b|\bgo\s+flat\b/i.test(text)
+    // 'BE' me shkronja të mëdha — shkurtesa e breakeven-it. Me shkronja të vogla do të përputhej
+    // folja më e zakonshme e anglishtes dhe AI-ja do të pyetej për çdo bisedë; kështu pyetet vetëm
+    // kur dikush e shkruan si shkurtesë. Format që rregullat s'i kapin dot ("BE now") mbërrijnë
+    // kështu te Claude në vend që të biem në heshtje.
+    || /\bBE\b/.test(text);
   const ruled = parseSignal(text, "XAUUSD").kind;
   if (!mgmt) return { ruled, needsAi: false };
   if (ruled === "unknown") return { ruled, needsAi: true };
