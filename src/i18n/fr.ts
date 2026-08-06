@@ -1388,4 +1388,11 @@ export const fr: Record<string, string> = {
   "Për të vazhduar, shkruaj email-in e tij:": "Pour continuer, saisissez son e-mail :",
   "Përdoruesi '{name}' u fshi plotësisht — {stripe}. Emaili është i lirë për regjistrim të ri.": "L'utilisateur « {name} » a été entièrement supprimé — {stripe}. L'e-mail est libre pour une nouvelle inscription.",
   "pa abonim te Stripe": "aucun abonnement Stripe",
+  "GoldSniperFX u ndez.": "GoldSniperFX activé.",
+  "GoldSniperFX u fik.": "GoldSniperFX désactivé.",
+  "GoldSniperFX ekzekuton sinjalet te llogaria jote MT5. Fike kur të duash — pozicionet e hapura nuk preken.": "GoldSniperFX exécute les signaux sur ton compte MT5. Désactive-le quand tu veux — les positions ouvertes ne sont pas touchées.",
+  "GoldSniperFX: po ngarkohet…": "GoldSniperFX : chargement…",
+  "GoldSniperFX: ON": "GoldSniperFX : ON",
+  "GoldSniperFX: OFF": "GoldSniperFX : OFF",
+  "Kur është ON, çdo sinjal i ri hapet automatikisht te llogaria jote sipas lotit dhe TP-ve që ke vendosur te faqja e sinjaleve. Kur është OFF, sinjalet vetëm regjistrohen — asnjë porosi nuk dërgohet. Live apo Demo vendoset te kontrollet kryesore lart.": "Quand c'est ON, chaque nouveau signal s'ouvre automatiquement sur ton compte avec le lot et les TP définis sur la page des signaux. Quand c'est OFF, les signaux sont seulement enregistrés — aucun ordre n'est envoyé. Live ou Demo se règle dans les contrôles principaux ci-dessus.",
 };

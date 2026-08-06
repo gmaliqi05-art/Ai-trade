@@ -207,3 +207,45 @@ describe('anglishtja — komente që nuk duhet të prekin asgjë', () => {
     expect(parse(text).kind).toBe('unknown');
   });
 });
+
+/* SHKURTESA "BE" — breakeven pa fjalën 'SL'.
+ *
+ * Rasti real (6 gusht 2026): pas një hyrjeje SELL erdhi "Moving BE at 4061 - buyers are back." dhe
+ * roboti e la si koment — SL-të mbetën ku ishin, ndonëse ishte urdhër i qartë. Rregulli i vjetër e
+ * pranonte 'BE' vetëm pas 'SL/stop' ("SL to BE"), ndaj kjo formë s'kapej fare.
+ *
+ * Rreziku i kundërt është po aq real: 'be' është folja më e zakonshme e anglishtes. Prandaj kërkohen
+ * dy kushte njëherësh — shkronja të mëdha DHE një folje lëvizjeje pranë. Të dyja anët mbrohen këtu.
+ *
+ * Fiksohet edhe një hollësi që mund të kushtonte: te "Moving BE at 4061" numri NUK bëhet SL i ri.
+ * Breakeven do të thotë SL te HYRJA; po ta merrte 4061-shin si stop, urdhri do të kthehej në të
+ * kundërtën e vetvetes. */
+describe('breakeven i shkruar si "BE"', () => {
+  it.each([
+    'Moving BE at 4061 - buyers are back.',   // mesazhi real që dështoi
+    'Moving BE',
+    'Move to BE',
+    'MOVING BE NOW',
+    'Go BE now',
+    'Set BE please',
+    'SL to BE',
+  ])('%s → breakeven', (text) => {
+    const r = parse(text) as { kind: string; mod?: { breakeven?: boolean } };
+    expect(r.kind).toBe('modify');
+    expect(r.mod?.breakeven).toBe(true);
+  });
+
+  it('“Moving BE at 4061” nuk e merr 4061-shin si stop të ri', () => {
+    const r = parse('Moving BE at 4061 - buyers are back.') as { mod?: { sl?: number } };
+    expect(r.mod?.sl).toBeUndefined();
+  });
+
+  it.each([
+    'this will be a strong move today',
+    'buyers are back and the trend should be strong',
+    'we will move higher and it should be fine',
+    'it might be time to be patient',
+  ])('“%s” → asgjë (folja "be", jo shkurtesa)', (text) => {
+    expect(parse(text).kind).toBe('unknown');
+  });
+});

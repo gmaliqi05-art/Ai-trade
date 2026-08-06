@@ -13,6 +13,7 @@ import {
   loadMetaApiConfig, saveMetaApiConfigPartial, checkMetaApiConnection, metaApiErrorKey,
   DEFAULT_CONFIG, type MetaApiConfig,
 } from '../services/metaapi';
+import { loadTelegramSinConfig, saveTelegramSinConfigPartial } from '../services/telegramSin';
 
 // RAJONET E METAAPI-t. Lista është vetëm NDIHMESE, jo kufizuese: MetaApi shton vende të reja
 // (dhe ka variante 'backup-…' për kopjet), ndaj një listë e ngurtë do të mbetej gjithmonë prapa.
@@ -57,12 +58,32 @@ export default function MetaApiPanel() {
   // nuk lejohet — që një gjendje DEFAULT (p.sh. nga sesion i skaduar) të mos mbishkruajë realin.
   const [loaded, setLoaded] = useState(false);
 
+  // ÇELËSI I GoldSniperFX — jeton te 'telegram_sin_config.active', jo te 'metaapi_config'.
+  // null = ende pa u ngarkuar (butoni rri i bllokuar që të mos shkruajë mbi një gjendje të panjohur).
+  const [gsfxOn, setGsfxOn] = useState<boolean | null>(null);
+
   const refresh = useCallback(async () => {
     if (!user) return;
     try { const c = await loadMetaApiConfig(user.id); setCfg(c); setLoaded(true); }
     catch { setLoaded(false); /* dështim kalimtar → ruaj gjendjen; mos lejo ruajtje që mbishkruan */ }
     finally { setLoading(false); }
+    try { const g = await loadTelegramSinConfig(user.id); setGsfxOn(!!g.active); }
+    catch { /* dështim kalimtar → butoni mbetet i bllokuar */ }
   }, [user]);
+
+  // Ndez/fik GoldSniperFX-in. Është i vetmi robot që tregton për përdoruesit standardë.
+  const toggleGsfx = async () => {
+    if (!user || gsfxOn === null) return;
+    const next = !gsfxOn;
+    setGsfxOn(next); setMsg(null);
+    try {
+      await saveTelegramSinConfigPartial(user.id, { active: next });
+      setMsg({ type: 'success', text: next ? t('GoldSniperFX u ndez.') : t('GoldSniperFX u fik.') });
+    } catch (e) {
+      setGsfxOn(!next); // kthe pamjen te e vërteta e bazës
+      setMsg({ type: 'error', text: (e as Error).message });
+    }
+  };
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -257,25 +278,22 @@ export default function MetaApiPanel() {
         </p>
       </Section>
 
-      {/* ======= ROBOTËT AKTIVË — Sinjale + Tregtime të shkurta (mund të jenë të dy ON) ======= */}
-      <Section icon={Power} title={t('Robotët')} subtitle={t('Ndez/fik secilin robot. Mund t\'i kesh të dy njëkohësisht; fik secilin kur të duash.')}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <button type="button"
-            onClick={() => cfg.auto_trade
-              ? setAndSave('auto_trade', false)
-              : setManyAndSave({ auto_trade: true, strategy_swing: true, allow_both_robots: true, kill_switch: false })}
-            className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.auto_trade ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
-            <Power className="w-4 h-4" />{cfg.auto_trade ? t('Roboti i Sinjaleve: ON') : t('Roboti i Sinjaleve: OFF')}
-          </button>
-          <button type="button"
-            onClick={() => cfg.strategy_scalp
-              ? setAndSave('strategy_scalp', false)
-              : setManyAndSave({ strategy_scalp: true, allow_both_robots: true })}
-            className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition ${cfg.strategy_scalp ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
-            <Zap className="w-4 h-4" />{cfg.strategy_scalp ? t('Tregtime të shkurta: ON') : t('Tregtime të shkurta: OFF')}
-          </button>
-        </div>
-        <p className="text-[11px] text-gray-500 mt-2.5 leading-snug">{t('Roboti i Sinjaleve (afatgjatë) dhe Tregtimet e shkurta (scalp) mund të punojnë bashkë — ndezja e njërit NUK e fik tjetrin. Live apo Demo vendoset te kontrollet kryesore lart.')}</p>
+      {/* ======= ROBOTI =======
+        * Deri më 5 gusht 2026 këtu kishte dy butona: "Roboti i Sinjaleve" dhe "Tregtime të shkurta".
+        * Që të dy ndiznin motorin E VJETËR ('metaapi_config.auto_trade' / 'strategy_scalp'), i cili
+        * është shkëputur nga tregtimi live. Emri thoshte një gjë dhe veprimi bënte tjetrën: kush
+        * shtypte "Roboti i Sinjaleve: ON" mendonte se po ndizte GoldSniperFX-in, ndërsa ri-armatoste
+        * pikërisht robotin që pronari kishte urdhëruar të rrinte i fikur.
+        *
+        * Tani butoni ndez atë që thotë: GoldSniperFX — i vetmi robot që tregton për përdoruesit,
+        * me çelësin e vet te 'telegram_sin_config.active'. */}
+      <Section icon={Power} title={t('Roboti')} subtitle={t('GoldSniperFX ekzekuton sinjalet te llogaria jote MT5. Fike kur të duash — pozicionet e hapura nuk preken.')}>
+        <button type="button" onClick={toggleGsfx} disabled={gsfxOn === null}
+          className={`w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-semibold transition disabled:opacity-50 ${gsfxOn ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}>
+          <Power className="w-4 h-4" />
+          {gsfxOn === null ? t('GoldSniperFX: po ngarkohet…') : gsfxOn ? t('GoldSniperFX: ON') : t('GoldSniperFX: OFF')}
+        </button>
+        <p className="text-[11px] text-gray-500 mt-2.5 leading-snug">{t('Kur është ON, çdo sinjal i ri hapet automatikisht te llogaria jote sipas lotit dhe TP-ve që ke vendosur te faqja e sinjaleve. Kur është OFF, sinjalet vetëm regjistrohen — asnjë porosi nuk dërgohet. Live apo Demo vendoset te kontrollet kryesore lart.')}</p>
 
         {/* MBROJTJA E FITIMIT — butona të shpejtë poshtë robotëve; vlerat e hollësishme te seksioni "Mbrojtja e fitimit" më poshtë. */}
         <div className="mt-4 pt-3 border-t border-gray-800">
