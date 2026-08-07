@@ -501,6 +501,66 @@ function isBareSignal(ps: any): boolean {
   return !hasEntry && !hasSl && !hasTp;
 }
 
+// MBROJTJET E CILËSISË SË SINJALIT (7 gusht 2026).
+//
+// Rasti që i lindi: platforma emetoi sinjale automatike (source="GoldSniperFX Algorithm") me hyrje
+// absurde dhe TP në anën e gabuar. Roboti i ekzekutoi te 5 llogari sepse një hyrje SHUMË larg tregut
+// e kthente në porosi TREGU dhe e hapte menjëherë me çmim krejt tjetër nga ai i sinjalit. Doli me fat
+// pozitiv, por mund të kishte qenë humbje. Këto mbrojtje i refuzojnë sinjalet e tilla PARA ekzekutimit.
+//
+// Kthen arsyen e refuzimit, ose null nëse sinjali është i shëndoshë. E pastër dhe e provueshme veçmas.
+function signalRejectReason(
+  p: { direction: string | null; entryType: string; entryPrice: number | null; stopLoss: number | null; tps: number[] },
+  live: number,
+): string | null {
+  if (!(live > 0)) return null; // pa çmim live s'gjykohet dot; trajtohet gjetkë
+  const isBuy = String(p.direction).toLowerCase() === "buy";
+
+  // 1) HYRJE SHUMË LARG ÇMIMIT LIVE (>2.5%) → sinjal i vjetruar ose i gabuar. Ky ishte defekti i
+  //    mëngjesit: hyrja 4070 me treg 4257 (~4.4% larg) kthehej në porosi tregu dhe hapej në 4257.
+  //    Një porosi limit legjitime nuk rri kaq larg; mbi 2.5% e trajtojmë si të gabuar dhe e refuzojmë.
+  if (p.entryPrice != null && p.entryType !== "market") {
+    const off = Math.abs(p.entryPrice - live) / live;
+    if (off > 0.025) return `hyrja ${p.entryPrice} është ${(off * 100).toFixed(1)}% larg çmimit live (${live}) — refuzuar`;
+  }
+
+  // Referenca për të gjykuar anët: hyrja e sinjalit nëse është dhënë, ndryshe çmimi live.
+  const base = (p.entryPrice != null && p.entryType !== "market") ? p.entryPrice : live;
+
+  // 2) SL NË ANËN E GABUAR. BUY → SL poshtë hyrjes; SELL → SL sipër hyrjes. Përndryshe s'është stop:
+  //    do të prekej menjëherë ose do të linte pozicionin pa mbrojtje. Këtu REFUZOJMË (nuk e "ndreqim"
+  //    në heshtje si më parë), sepse anë e gabuar do të thotë sinjal i përmbysur — mos i beso.
+  if (p.stopLoss != null && p.stopLoss > 0) {
+    const slWrong = isBuy ? p.stopLoss >= base : p.stopLoss <= base;
+    if (slWrong) return `SL ${p.stopLoss} në anën e gabuar për ${isBuy ? "BUY" : "SELL"} (hyrja ${base}) — refuzuar`;
+  }
+
+  // 3) TP NË ANËN E GABUAR. BUY → TP sipër; SELL → TP poshtë. Nëse janë dhënë TP dhe ASNJË s'është
+  //    në anën e duhur, sinjali është i përmbysur (rasti "SELL … TP mbi hyrjen"). Refuzo.
+  const tps = (p.tps || []).filter((t) => Number(t) > 0);
+  if (tps.length > 0) {
+    const anyRight = tps.some((t) => (isBuy ? t > base : t < base));
+    if (!anyRight) return `të gjitha TP-t në anën e gabuar për ${isBuy ? "BUY" : "SELL"} (hyrja ${base}) — refuzuar`;
+  }
+
+  return null;
+}
+
+// BURIMI I LEJUAR (allowlist opsionale, 7 gusht 2026).
+//
+// Kur pronari do që të tregtojnë VETËM disa burime (p.sh. ekspertët, jo algoritmi), vendos listën te
+// app_config['allowed_signal_sources'] (të ndara me presje). Bosh/e pavendosur → lejohen të gjithë.
+//
+// SHËNIM I RËNDËSISHËM: sot feed-i i platformës i etiketon TË GJITHË sinjalet si "GoldSniperFX
+// Algorithm" — të mirët dhe të gabuarit njësoj. Pra kjo listë s'i ndan dot ende ata; mbrojtja e
+// vërtetë kundër sinjaleve të gabuara janë kontrollet 1–3 më lart. Kjo është gati për ditën kur
+// platforma t'i etiketojë ekspertët veçmas.
+function isSourceAllowed(sender: string, allowCsv: string): boolean {
+  const allow = (allowCsv || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (allow.length === 0) return true; // pa listë → lejo të gjithë
+  return allow.includes(String(sender || "").trim().toLowerCase());
+}
+
 // Chat-id sintetik për sinjalet që vijnë nga PLATFORMA e vetë përdoruesit (jo Telegram).
 const PLATFORM_CHAT_ID = "platform";
 
@@ -874,6 +934,14 @@ Deno.serve(async (req: Request) => {
   // regjistrohet, që të mos mbushet Trade View me "BUY XAUUSD" pa kuptim.
   if (isBareSignal(ps)) return json({ ok: true, skip: "bare_signal_no_levels" });
 
+  // BURIMI I LEJUAR — nëse pronari ka vendosur një allowlist, sinjalet nga burime të tjera ndalen
+  // këtu (një herë, para broadcast-it). Bosh → lejohen të gjithë (sjellja e sotme, pa ndryshim).
+  {
+    const { data: asRow } = await db.from("app_config").select("value").eq("key", "allowed_signal_sources").maybeSingle();
+    const allowCsv = String((asRow as { value?: string } | null)?.value ?? "");
+    if (!isSourceAllowed(sender, allowCsv)) return json({ ok: true, skip: "source_not_allowed", sender });
+  }
+
   // history=true (rilexim nga forwarder-i): regjistro/shfaq mesazhin, por MOS hap tregti.
   const history = update.history === true;
 
@@ -1197,6 +1265,18 @@ async function processForUser(db: ReturnType<typeof createClient>, cfgRow: any, 
   const lp = await livePrice(cfg, tradeSym);
   const mkt = lp ? (isBuy ? lp.ask : lp.bid) : (p.entryPrice ?? 0);
   if (!(mkt > 0)) { await finish("rejected", "s'mora çmim live nga MetaApi"); return json({ ok: true, error: "no_price" }); }
+
+  // MBROJTJET E CILËSISË: hyrje shumë larg tregut · SL në anën e gabuar · të gjithë TP në anën e
+  // gabuar. Refuzohet PARA ekzekutimit — pikërisht rasti i sinjaleve automatike të gabuara që hapën
+  // tregti të pa-autorizuara. Kërkon çmimin live, ndaj vjen këtu (jo në portën e hershme).
+  {
+    const bad = signalRejectReason(p, mkt);
+    if (bad) {
+      await finish("rejected", `Mbrojtje: ${bad}`);
+      if (cfgRow.bot_token) await tgReply(cfgRow.bot_token, chatId, `🛡️ Sinjali u refuzua nga mbrojtja: ${bad}`);
+      return json({ ok: true, kind: "entry", skip: "guard_rejected", reason: bad });
+    }
+  }
 
   // PENDING vs MARKET: nëse trejderi dha një çmim hyrjeje TË SAKTË që tregu s'e ka arritur ende,
   // vendos porosi NË PRITJE (limit/stop) — mbushet AUTOMATIKISHT kur çmimi arrin aty. Ndryshe: market.
