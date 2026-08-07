@@ -1056,6 +1056,9 @@ export default function MarketTerminalPage({ onNavigate }: { onNavigate: (p: Cli
     const lastClose = legs.map((l) => l.closed_at).filter(Boolean).sort().pop();
     return {
       id: s.id, date: new Date(lastClose || s.created_at),
+      // Kolona "Ora" tregon GJITHMONË mbërritjen e sinjalit — e qëndrueshme, kurrë para sinjalit.
+      // (Data/grupimi ditor mbetet sipas mbylljes, që një trade i mbyllur nesër të bjerë te nesërmja.)
+      time: new Date(s.created_at),
       label: TG_CHAN_LABEL[String(s.tg_chat_id ?? '')] || s.tg_sender || 'Telegram',
       direction: (s.direction as 'buy' | 'sell' | null) ?? null,
       entry: s.entry_price ?? null, market: s.entry_type === 'market',
