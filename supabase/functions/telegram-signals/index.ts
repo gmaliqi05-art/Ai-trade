@@ -480,6 +480,27 @@ function orderGate(text: string): { ruled: string; needsAi: boolean } {
   return { ruled, needsAi: !compact };
 }
 
+// SINJAL BOSH — VETËM DREJTIM, PA NIVELE (6 gusht 2026).
+//
+// Rasti real: platforma e sinjaleve nxori dy "sinjale" (#30 sell, #31 buy) nga një koment analize
+// që përmendte "(BUY)" dhe "(Sell)" si etiketa skenarësh. Erdhën te ne me drejtim + XAUUSD, por PA
+// Entry/SL/TP. parseSignal i refuzoi si hyrje të thyer — pra asnjë tregti u hap, mirë — por prapë u
+// regjistruan dhe u shfaqën si "BUY XAUUSD" / "SELL XAUUSD" te Trade View. Zhurmë pa kuptim.
+//
+// Një hyrje e re PA asnjë nivel nuk është urdhër: s'ka ku të hapet, s'ka ku të mbrohet, s'ka ku të
+// dalë. E heqim para regjistrimit, që të mos mbetet as gjurmë. Vlen VETËM për 'signal' (hyrje e re):
+// 'close', 'modify' dhe 'message' s'kanë nevojë për nivele dhe kalojnë si më parë.
+// deno-lint-ignore no-explicit-any
+function isBareSignal(ps: any): boolean {
+  if (!ps) return false;
+  const act = String(ps.action || "signal").toLowerCase();
+  if (act !== "signal") return false; // vetëm hyrjet e reja; urdhrat e menaxhimit s'kanë nivele
+  const hasEntry = (ps.entry ?? ps.entry_price ?? ps.price) != null;
+  const hasSl = (ps.sl ?? ps.stop_loss) != null;
+  const hasTp = (Array.isArray(ps.tps) && ps.tps.length > 0) || ps.tp != null || ps.target_price != null;
+  return !hasEntry && !hasSl && !hasTp;
+}
+
 // Chat-id sintetik për sinjalet që vijnë nga PLATFORMA e vetë përdoruesit (jo Telegram).
 const PLATFORM_CHAT_ID = "platform";
 
@@ -848,6 +869,11 @@ Deno.serve(async (req: Request) => {
     // konfigurimit.
     return json({ ok: true, skip: "telegram_chat_not_a_command_source" });
   }
+  // SINJAL BOSH → HIQE NË HESHTJE. Vjen nga platforma kur gjeneruesi nxjerr një "sinjal" prej fjalëve
+  // (BUY)/(Sell) të shpërndara në një koment, pa nivele. S'ka çfarë të bëjë roboti me të; as të
+  // regjistrohet, që të mos mbushet Trade View me "BUY XAUUSD" pa kuptim.
+  if (isBareSignal(ps)) return json({ ok: true, skip: "bare_signal_no_levels" });
+
   // history=true (rilexim nga forwarder-i): regjistro/shfaq mesazhin, por MOS hap tregti.
   const history = update.history === true;
 
