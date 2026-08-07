@@ -6,7 +6,8 @@ import { useI18n } from '../i18n/i18n';
 
 export interface ReportRow {
   id: string;
-  date: Date;                       // koha e mbylljes/krijimit
+  date: Date;                       // koha e MBYLLJES — përdoret për grupimin ditor + renditjen
+  time?: Date;                      // koha që SHFAQET te kolona "Ora" (mbërritja e sinjalit). Nëse mungon, përdoret 'date'.
   label?: string;                   // kanali ose simboli (kolona "Burimi")
   direction?: 'buy' | 'sell' | null;
   entry?: number | null;            // çmimi i hyrjes (null => MKT)
@@ -155,7 +156,7 @@ function ReportTable({ list, lossLabel, t }: { list: ReportRow[]; lossLabel?: st
             const tps = s.tps ?? [];
             return (
               <tr key={s.id} className="border-b border-gray-800/60">
-                <td className="py-2 pr-3 text-gray-400 whitespace-nowrap">{s.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="py-2 pr-3 text-gray-400 whitespace-nowrap">{(s.time ?? s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                 <td className="py-2 pr-3 text-sky-300 whitespace-nowrap">{s.label || '—'}</td>
                 <td className={`py-2 pr-3 font-semibold ${s.direction === 'buy' ? 'text-green-400' : s.direction === 'sell' ? 'text-red-400' : 'text-gray-400'}`}>{s.direction ? s.direction.toUpperCase() : '—'}</td>
                 <td className="py-2 pr-3 text-right text-gray-300 tabular-nums">{s.market ? 'MKT' : (s.entry ?? '—')}</td>
